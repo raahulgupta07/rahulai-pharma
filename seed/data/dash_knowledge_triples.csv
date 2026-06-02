@@ -1,3 +1,0 @@
-id,project_slug,subject,predicate,object,source_type,source_id,confidence,inferred,community,created_at,extractor,extraction_cost_usd,source_uri
-877,proj_demo_citypharma,citypharma_balance_stock,has_metric,weighted_cost_price,table,citypharma_balance_stock,1,f,0,2026-05-26 16:17:08.651294+00,llm,0.000000,
-878,proj_demo_citypharma,citypharma_balance_stock,joins_with,citypharma_articles,table,article_code,0.8,f,0,2026-05-26 16:17:08.651294+00,llm,0.000000,

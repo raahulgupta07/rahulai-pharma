@@ -30,13 +30,21 @@ psql -v ON_ERROR_STOP=1 < "$HERE/10_project_schema.sql"
 
 echo "▸ loading metadata (project row + brain + persona + training)…"
 # dash_projects first (FK target for the rest); user_id=1 = demo super-admin.
+# Map by CSV header columns so schema drift (extra default cols) is tolerated.
+# Per-table failures warn + continue — never abort the whole seed.
+set +e
 for T in dash_projects dash_personas dash_company_brain dash_training_qa \
-         dash_table_metadata dash_business_rules_db dash_memories dash_knowledge_triples; do
+         dash_table_metadata dash_business_rules_db dash_memories; do
   f="$HERE/data/${T}.csv"
   [ -s "$f" ] || { echo "  skip ${T} (empty)"; continue; }
   rows=$(( $(wc -l < "$f") - 1 ))
-  cat "$f" | psql -c "COPY public.${T} FROM STDIN CSV HEADER" >/dev/null
-  echo "  ✓ ${T}: ${rows} rows"
+  cols="$(head -1 "$f")"
+  if cat "$f" | psql -v ON_ERROR_STOP=1 -c "COPY public.${T} (${cols}) FROM STDIN CSV HEADER" >/dev/null 2>&1; then
+    echo "  ✓ ${T}: ${rows} rows"
+  else
+    echo "  ⚠ ${T}: load failed (schema drift?) — skipped"
+  fi
 done
+set -e
 
 echo "✓ CityPharma seeded."
