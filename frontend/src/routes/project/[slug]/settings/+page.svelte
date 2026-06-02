@@ -5287,7 +5287,6 @@ function signUserJWT($user) {
  { key: 'config', label: 'Config', count: (featureConfig ? 1 : 0) },
  { key: 'sources', label: 'Sources', count: ((spSources?.length ?? 0) + (gdSources?.length ?? 0) + (dbSources?.length ?? 0) + (odSources?.length ?? 0)) },
  { key: 'learn', label: 'Learn', count: 0 },
- { key: 'fed', label: 'Federation', count: (fedHealth?.connected ? 1 : 0) },
  ]);
  let tabsFilledCount = $derived(tabCompletionPills.filter((t: any) => t.count > 0).length);
  let tabsTotalCount = $derived(tabCompletionPills.length);
@@ -6209,12 +6208,7 @@ function signUserJWT($user) {
       { label: 'Intelligence', icon: 'intel', items: [
         { id: 'self-learn', label: 'Learn' },
         { id: 'pipeline', label: 'Pipeline' },
-        { id: 'graph', label: 'Graph' },
-        { id: 'journal', label: 'Journal' },
-        { id: 'canvas', label: 'Canvas' },
-        { id: 'venture', label: 'VentureDesk' },
-        { id: 'scenarios', label: 'Scenario Lab' },
-        { id: 'fed-health', label: 'Federation' },
+        // pruned in single-agent: Graph / Journal / Canvas / VentureDesk / Scenario Lab / Federation
       ]},
     ]}
     {@const _connSrc = (spSources?.length ?? 0) + (gdSources?.length ?? 0) + (dbSources?.length ?? 0) + (odSources?.length ?? 0)}
@@ -10347,7 +10341,8 @@ function signUserJWT($user) {
       </div>
     </div>
 
-    <!-- ── Vertical pack picker (Issue #4) ── -->
+    {#if false}
+    <!-- ── Vertical pack picker (Issue #4) — pruned in single-agent ── -->
     <div style="margin-bottom: 18px; padding: 14px 16px; background: var(--pw-bg-alt, #f1ede4); border: 1px solid var(--pw-border, #e7e3da); border-radius: 8px;">
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
         <div>
@@ -10408,6 +10403,7 @@ function signUserJWT($user) {
         <div style="font-size: 12px; color: var(--pw-muted); padding: 6px 0;">Click "Detect packs" to see which vertical templates match this project's schema.</div>
       {/if}
     </div>
+    {/if}
     <div class="flex items-center justify-between mb-4">
       <div style="font-size: 16px; font-weight: 900; text-transform: uppercase;">Workflows</div>
       <div>
@@ -15549,6 +15545,8 @@ function signUserJWT($user) {
     {#if sourceType === 'none'}
       <div style="font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">ADD DATA SOURCE</div>
       <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px;">
+        {#if false}
+        <!-- pruned in single-agent: SharePoint / Google Drive / OneDrive connectors removed -->
         <!-- SharePoint -->
         <button class="ink-border" style="padding: 16px; background: var(--pw-surface); cursor: pointer; text-align: center; border-width: 2px; opacity: {spConfigured ? 1 : 0.5};"
           onclick={() => { if (spConfigured) { sourceType = 'sharepoint'; spStartConnect(); } }}
@@ -15576,6 +15574,7 @@ function signUserJWT($user) {
           <div style="font-size: 11px; color: var(--pw-muted); margin-top: 2px;">Personal &middot; Business &middot; Files.Read scope</div>
           {#if !odConfigured}<div style="font-size: 11px; color: var(--pw-error); margin-top: 4px;">CONFIGURE IN ADMIN</div>{/if}
         </button>
+        {/if}
         <!-- PostgreSQL -->
         <button class="ink-border" style="padding: 16px; background: var(--pw-surface); cursor: pointer; text-align: center; border-width: 2px;"
           onclick={() => { sourceType = 'database'; dbType = 'postgresql'; dbPort = '5432'; dbStep = 'form'; }}>
