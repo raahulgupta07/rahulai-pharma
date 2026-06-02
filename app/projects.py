@@ -20,6 +20,7 @@ from sqlalchemy.pool import NullPool
 
 from db import db_url
 from db.session import create_project_schema
+from dash.single_agent import is_single_agent, locked_slug, guard_no_project_management
 
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
 
@@ -663,10 +664,18 @@ def list_projects(request: Request):
     user = _get_user(request)
 
     with _engine.connect() as conn:
-        rows = conn.execute(text(
-            "SELECT id, slug, name, agent_name, agent_role, agent_personality, schema_name, created_at, updated_at, COALESCE(is_favorite, FALSE) "
-            "FROM public.dash_projects WHERE user_id = :uid ORDER BY updated_at DESC"
-        ), {"uid": user["user_id"]}).fetchall()
+        if is_single_agent():
+            # Single-agent product: only ever surface the one locked project,
+            # regardless of which user owns the seeded row.
+            rows = conn.execute(text(
+                "SELECT id, slug, name, agent_name, agent_role, agent_personality, schema_name, created_at, updated_at, COALESCE(is_favorite, FALSE) "
+                "FROM public.dash_projects WHERE slug = :slug ORDER BY updated_at DESC"
+            ), {"slug": locked_slug()}).fetchall()
+        else:
+            rows = conn.execute(text(
+                "SELECT id, slug, name, agent_name, agent_role, agent_personality, schema_name, created_at, updated_at, COALESCE(is_favorite, FALSE) "
+                "FROM public.dash_projects WHERE user_id = :uid ORDER BY updated_at DESC"
+            ), {"uid": user["user_id"]}).fetchall()
 
     # Batch query: get table counts per schema in one query
     schema_stats: dict[str, dict] = {}
@@ -725,6 +734,7 @@ def list_projects(request: Request):
 @router.post("")
 def create_project(request: Request, name: str, agent_name: str, agent_role: str = "", agent_personality: str = "friendly"):
     """Create a new project."""
+    guard_no_project_management("create projects")
     user = _get_user(request)
 
     if not name or len(name) < 2:
@@ -786,6 +796,7 @@ def create_project(request: Request, name: str, agent_name: str, agent_role: str
 @router.post("/{slug}/duplicate")
 def duplicate_project(slug: str, request: Request):
     """Duplicate a project — copies config + persona. Does NOT copy data (user retrains)."""
+    guard_no_project_management("duplicate projects")
     user = _get_user(request)
     src = get_project(slug, request)
 
@@ -1974,6 +1985,7 @@ def get_project(slug: str, request: Request):
 @router.delete("/{slug}")
 def delete_project(slug: str, request: Request):
     """Delete a project, its schema, and all data."""
+    guard_no_project_management("delete projects")
     from dash.utils.project_schemas import drop_all_project_schemas, drop_project_knowledge_tables
     from dash.utils.cascade import cascade_delete_project
 

@@ -102,3 +102,15 @@ test-rate-limit:
 # scripts/drift_allowlist.txt). Run before any PR that adds new DB refs.
 check-drift:
 	@python3 scripts/check_migration_drift.py --report
+
+# ── CityPharma single-agent product ──
+.PHONY: up seed rebuild-cp
+up: ## boot CityPharma stack (:8011) then seed the agent
+	docker compose up -d --build
+	bash seed/load.sh
+
+seed: ## load citypharma project schema + brain + persona (idempotent)
+	bash seed/load.sh
+
+rebuild-cp: ## rebuild api image + force recreate
+	docker compose build dash-api && docker compose up -d --force-recreate dash-api
