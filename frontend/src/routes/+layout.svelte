@@ -850,6 +850,12 @@
 
  // Dashboard nav
  let dashProjects = $state<{slug: string; name: string; agent_name: string}[]>([]);
+ // Single-agent product (CityPharma) — set from /api/flags
+ let singleAgent = $state(false);
+ let lockedSlug = $state<string | null>(null);
+ let productName = $state('Dash');
+ const chatHref = $derived(singleAgent && lockedSlug ? `/ui/project/${lockedSlug}` : '/ui/chat');
+ const agentBrainHref = $derived(singleAgent && lockedSlug ? `/ui/project/${lockedSlug}/settings` : '/ui/projects');
  let showDashPicker = $state(false);
 
  async function changePassword() {
@@ -880,6 +886,11 @@
  });
 
  onMount(async () => {
+ // Product flags (public) — single-agent lock
+ try {
+ const fr = await fetch('/api/flags');
+ if (fr.ok) { const f = await fr.json(); singleAgent = !!f.single_agent; lockedSlug = f.locked_slug || null; productName = f.product_name || 'Dash'; }
+ } catch {}
  // Load tenant branding (public endpoint, no auth required)
  await loadBrand();
  const unsubBrand = brand.subscribe((b) => applyBrandToDocument(b));
@@ -930,9 +941,16 @@
  if (!isLogin) window.location.href = '/ui/login';
  }
 
- // Redirect root to home
+ // Redirect root → chat (single-agent) or home
  $effect(() => {
- if (authenticated && page.url.pathname === '/ui') {
+ if (!authenticated) return;
+ const p = page.url.pathname;
+ if (singleAgent && lockedSlug) {
+ // Land straight in the locked agent's chat; never show projects/home grids.
+ if (p === '/ui' || p === '/ui/home' || p === '/ui/projects' || p === '/ui/chat') {
+ window.location.href = `/ui/project/${lockedSlug}`;
+ }
+ } else if (p === '/ui') {
  window.location.href = '/ui/home';
  }
  });
@@ -1160,6 +1178,26 @@
 
         <!-- Desktop Nav -->
         <nav class="pw-nav-row" onclick={(e) => e.stopPropagation()}>
+        {#if singleAgent}
+          <button onclick={() => navTo(chatHref)} class="pw-nav" class:pw-nav-active={page.url.pathname.includes('/project/') && !page.url.pathname.includes('/settings')}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            Chat
+          </button>
+          <button onclick={() => navTo(agentBrainHref)} class="pw-nav" class:pw-nav-active={page.url.pathname.includes('/settings')}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2a3 3 0 0 0-3 3v1a3 3 0 0 0-2 5 3 3 0 0 0 2 5v1a3 3 0 0 0 6 0V2H9zM15 2a3 3 0 0 1 3 3v1a3 3 0 0 1 2 5 3 3 0 0 1-2 5v1a3 3 0 0 1-6 0"/></svg>
+            Agent Brain
+          </button>
+          <button onclick={() => navTo('/ui/brain')} class="pw-nav" class:pw-nav-active={routeMatches('/brain') || routeMatches('/ontology')}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><line x1="7.5" y1="7.5" x2="10.5" y2="16"/><line x1="16.5" y1="7.5" x2="13.5" y2="16"/><line x1="8.5" y1="6" x2="15.5" y2="6"/></svg>
+            Company Brain
+          </button>
+          {#if isSuper}
+            <button onclick={() => { openMenu = null; navTo('/ui/command-center'); }} class="pw-nav" class:pw-nav-active={isAdminActive}>
+              Admin
+              {#if adminCounts.skill_drafts > 0}<span class="pw-badge-coral">{adminCounts.skill_drafts}</span>{/if}
+            </button>
+          {/if}
+        {:else}
           <button onclick={() => navTo('/ui/projects')} class="pw-nav" class:pw-nav-active={isProjectsActive}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
             Projects
@@ -1252,6 +1290,7 @@
               </button>
             </div>
           {/if}
+        {/if}
         </nav>
 
         <!-- Mobile hamburger -->

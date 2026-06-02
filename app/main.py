@@ -1217,10 +1217,15 @@ _glog = _gate_log.getLogger(__name__)
 def _global_flags():
     import os as _os_flags
     _on = lambda k: _os_flags.getenv(k, "").strip().lower() in ("1", "true", "yes", "on")
+    from dash.single_agent import is_single_agent, locked_slug, product_name
     return {
         # sim_lab_enabled DELETED 2026-05-23
         "automl_enabled": _on("AUTOML_ENABLED"),
         "investment_vertical_enabled": _on("INVESTMENT_VERTICAL_ENABLED"),
+        # Single-agent product (CityPharma)
+        "single_agent": is_single_agent(),
+        "locked_slug": locked_slug() if is_single_agent() else None,
+        "product_name": product_name(),
     }
 
 
@@ -1542,7 +1547,7 @@ from starlette.responses import JSONResponse
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    SKIP_PATHS = {"/health", "/api/health", "/", "/info", "/config", "/api/auth/login", "/api/auth/register", "/api/sharepoint/callback", "/api/gdrive/callback", "/api/onedrive/callback", "/api/embed/session/create", "/api/embed/chat", "/api/embed/chat/stream", "/api/embed/widget.js", "/api/embed/docs"}
+    SKIP_PATHS = {"/health", "/api/health", "/api/flags", "/", "/info", "/config", "/api/auth/login", "/api/auth/register", "/api/sharepoint/callback", "/api/gdrive/callback", "/api/onedrive/callback", "/api/embed/session/create", "/api/embed/chat", "/api/embed/chat/stream", "/api/embed/widget.js", "/api/embed/docs"}
     SKIP_PREFIXES = ("/ui", "/docs", "/openapi.json", "/redoc", "/api/branding", "/v1/ontology", "/brand", "/decks", "/api/health", "/health", "/api/embed/try", "/api/embed/config", "/api/s/")
 
     async def dispatch(self, request, call_next):  # type: ignore[no-untyped-def]

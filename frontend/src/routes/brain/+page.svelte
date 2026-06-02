@@ -634,6 +634,13 @@
       {/each}
     </div>
   {/each}
+  <!-- Ontology lives under Company Brain (merged section) -->
+  <div class="brain-rail-group">
+    <div class="brain-rail-grouplabel">Ontology</div>
+    <button class="brain-rail-btn" onclick={() => (window.location.href = '/ui/ontology')}>
+      <span class="brain-rail-label">Open Ontology →</span>
+    </button>
+  </div>
 </aside>
 
 <!-- ═══ MAIN ═══ -->
