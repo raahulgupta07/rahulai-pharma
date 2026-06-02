@@ -1,0 +1,14 @@
+apiVersion: v2
+name: dash
+description: Dash — Self-Learning Multi-Tenant Data Notebook
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+home: https://github.com/.../dash
+keywords:
+  - data-agent
+  - llm
+  - postgres
+  - fabric
+maintainers:
+  - name: Dash Team

@@ -1,0 +1,64 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dash-backup-db
+  namespace: dash
+spec:
+  schedule: "0 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 14
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: backup
+            image: postgres:18-trixie
+            command: ["/bin/sh","-c"]
+            args:
+            - |
+              set -e
+              apt-get update -qq && apt-get install -y -qq awscli >/dev/null
+              /scripts/backup.sh
+            volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+            - name: knowledge
+              mountPath: /app/knowledge
+              readOnly: true
+            env:
+            - name: DB_HOST
+              valueFrom: { configMapKeyRef: { name: dash-config, key: DB_HOST } }
+            - name: DB_USER
+              valueFrom: { configMapKeyRef: { name: dash-config, key: DB_USER } }
+            - name: DB_DATABASE
+              valueFrom: { configMapKeyRef: { name: dash-config, key: DB_DATABASE } }
+            - name: DB_PASS
+              valueFrom: { secretKeyRef: { name: dash-secrets, key: DB_PASS } }
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: dash-secrets, key: AWS_ACCESS_KEY_ID } }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: dash-secrets, key: AWS_SECRET_ACCESS_KEY } }
+            - name: AWS_REGION
+              valueFrom: { configMapKeyRef: { name: dash-config, key: AWS_REGION, optional: true } }
+            - name: BACKUP_S3_BUCKET
+              valueFrom: { configMapKeyRef: { name: dash-config, key: BACKUP_S3_BUCKET } }
+            - name: BACKUP_ENV
+              value: "prod"
+            - name: BACKUP_TYPES
+              value: "db,knowledge"
+            resources:
+              requests: { cpu: 100m, memory: 256Mi }
+              limits: { cpu: 500m, memory: 1Gi }
+          volumes:
+          - name: scripts
+            configMap:
+              name: dash-backup-scripts
+              defaultMode: 0755
+          - name: knowledge
+            persistentVolumeClaim:
+              claimName: dash-knowledge-data

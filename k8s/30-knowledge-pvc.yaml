@@ -1,0 +1,35 @@
+# ===========================================================================
+# dash-knowledge-data PersistentVolumeClaim
+# ---------------------------------------------------------------------------
+# Purpose: Shared knowledge base storage for `/app/knowledge`. Mounted by
+# dash-api (3+ replicas) and — only when opted in — dash-ml-worker.
+# NOTE (2026 trim): dash-ml-worker is OPT-IN / default-OFF, so by default this
+# PVC is mounted by dash-api alone. RWX is still required because dash-api runs
+# multiple replicas. The dash-ml-worker reference above is informational only.
+# Mirrors compose `knowledge_data` named volume.
+#
+# Storage class notes:
+#   - RWX requires NFS, CephFS, EFS, Azure Files, or similar. Set the
+#     `storageClassName` to your cluster's RWX-capable class.
+#   - TODO: replace `nfs-client` with your cluster's RWX storage class.
+#   - For SINGLE-replica clusters (dev / single-node), you can switch
+#     accessModes to ReadWriteOnce and use any default block storage class
+#     — but then dash-api replicas must be pinned to 1 (HPA disabled) since
+#     RWO volumes attach to a single node.
+# ===========================================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dash-knowledge-data
+  labels:
+    app: dash
+    component: storage
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi
+  # TODO: set to your RWX storage class (e.g. nfs-client, efs-sc,
+  # azurefile-csi, rook-cephfs).
+  storageClassName: nfs-client

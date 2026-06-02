@@ -1,0 +1,236 @@
+# NetworkPolicies for the `dash` namespace.
+#
+# NOTE (2026 trim): dash-ml-worker is OPT-IN / default-OFF (40-ml-worker-deploy
+# .yaml is not applied by default). The `app: dash-ml-worker` selectors below
+# are harmless when ml-worker isn't deployed (no pod carries the label, so they
+# match nothing). They're kept so the policy works automatically if you opt in.
+# Policy 8 (allow-ml-worker-egress) only governs ml-worker pods, so it's inert
+# until ml-worker exists. Do not remove these for the other tiers' sake.
+#
+# Model: default-deny on ingress (and selectively egress), then explicit
+# allows for each tier-to-tier hop:
+#
+#   internet -> [ingress-nginx | dash-caddy] -> dash-api -> dash-pgbouncer -> dash-db
+#                                                       \-> dash-ml-worker -> dash-pgbouncer -> dash-db
+#                                                       \-> egress 443/53 (OpenRouter, Graph, Google)
+#
+# Allow / Deny matrix (ingress, in-cluster):
+#   src \ dst         caddy  api    pgbouncer  db    ml-worker
+#   internet           ALLOW  ----   ----       ----  ----
+#   ingress-nginx ns   ----   ALLOW  ----       ----  ----
+#   dash-caddy         ----   ALLOW  ----       ----  ----
+#   dash-api           ----   ----   ALLOW      ----  ----
+#   dash-ml-worker     ----   ----   ALLOW      ----  ----
+#   dash-pgbouncer     ----   ----   ----       ALLOW ----
+#   anything else      DENY   DENY   DENY       DENY  DENY
+#
+# TODO (Group K8S):
+#   - Ensure the ingress-nginx namespace is labelled `name=ingress-nginx`
+#     (kubectl label ns ingress-nginx name=ingress-nginx) so the
+#     namespaceSelector below matches.
+#   - If a separate egress-firewall / NetworkPolicy CNI (Cilium, Calico)
+#     is in use, port these to the richer CRDs for FQDN-based egress.
+---
+# 1. Default deny: every pod in `dash` rejects all ingress + egress
+#    unless another NetworkPolicy explicitly allows the flow.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: dash
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# 2. Allow DNS egress for every pod (kube-dns / CoreDNS in kube-system).
+#    Without this, default-deny breaks all name resolution.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: dash
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# 3. Allow the ingress-nginx controller to reach dash-api on 8000.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-api
+  namespace: dash
+spec:
+  podSelector:
+    matchLabels:
+      app: dash-api
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+        - podSelector:
+            matchLabels:
+              app: dash-caddy
+      ports:
+        - port: 8000
+          protocol: TCP
+---
+# 4. Allow public traffic into dash-caddy on 80/443.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-public-to-caddy
+  namespace: dash
+spec:
+  podSelector:
+    matchLabels:
+      app: dash-caddy
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: []  # any source (LoadBalancer / NodePort)
+      ports:
+        - port: 80
+          protocol: TCP
+        - port: 443
+          protocol: TCP
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: dash-api
+      ports:
+        - port: 8000
+          protocol: TCP
+---
+# 5. dash-api + dash-ml-worker -> dash-pgbouncer:6432
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-to-pgbouncer
+  namespace: dash
+spec:
+  podSelector:
+    matchLabels:
+      app: dash-pgbouncer
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: dash-api
+        - podSelector:
+            matchLabels:
+              app: dash-ml-worker
+      ports:
+        - port: 6432
+          protocol: TCP
+---
+# 6. dash-pgbouncer (and dash-ml-worker for direct/admin access) -> dash-db:5432
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-pgbouncer-to-db
+  namespace: dash
+spec:
+  podSelector:
+    matchLabels:
+      app: dash-db
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: dash-pgbouncer
+        - podSelector:
+            matchLabels:
+              app: dash-ml-worker
+      ports:
+        - port: 5432
+          protocol: TCP
+---
+# 7. dash-api egress: pgbouncer (in-namespace) + internet HTTPS for
+#    OpenRouter, Microsoft Graph, Google APIs. DNS is granted by
+#    `allow-dns-egress` above.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-egress
+  namespace: dash
+spec:
+  podSelector:
+    matchLabels:
+      app: dash-api
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: dash-pgbouncer
+      ports:
+        - port: 6432
+          protocol: TCP
+    - to:
+        - namespaceSelector: {}    # any namespace -> external via cluster egress
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 53
+          protocol: UDP
+---
+# 8. dash-ml-worker egress: pgbouncer + HTTPS (model APIs / object storage).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ml-worker-egress
+  namespace: dash
+spec:
+  podSelector:
+    matchLabels:
+      app: dash-ml-worker
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: dash-pgbouncer
+      ports:
+        - port: 6432
+          protocol: TCP
+        - port: 5432
+          protocol: TCP
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 443
+          protocol: TCP
+---
+# 9. dash-pgbouncer egress: only to dash-db.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-pgbouncer-egress
+  namespace: dash
+spec:
+  podSelector:
+    matchLabels:
+      app: dash-pgbouncer
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: dash-db
+      ports:
+        - port: 5432
+          protocol: TCP

@@ -1,0 +1,16 @@
+event_id,event_date,description
+EV-001,2026-01-01,New Year promotion launch
+EV-002,01/15/2026,Mid-January inventory review
+EV-003,Feb 1 2026,February planning kickoff
+EV-004,2026-02-14T12:00:00Z,Valentine's Day campaign
+EV-005,,Undated milestone (TBD)
+EV-006,not a date,Legacy record migration issue
+EV-007,2026-03-01,Q2 prep meeting
+EV-008,03/15/2026,Mid-quarter review
+EV-009,Apr 1 2026,Fiscal year start
+EV-010,2026-04-15T09:30:00Z,Spring product launch
+EV-011,,Pending date confirmation
+EV-012,not a date,Unparseable timestamp
+EV-013,2026-05-01,May Day holiday
+EV-014,05/15/2026,Mid-May checkpoint
+EV-015,Jun 1 2026,Summer kick-off event

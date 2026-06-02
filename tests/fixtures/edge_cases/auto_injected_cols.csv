@@ -1,0 +1,13 @@
+customer_id,_source_file,_period,order_total,region
+C-2001,sales_jan.xlsx,2026-01,234.50,North
+C-2002,sales_jan.xlsx,2026-01,567.80,South
+C-2003,sales_jan.xlsx,2026-01,123.45,East
+C-2004,sales_jan.xlsx,2026-01,890.25,West
+C-2005,sales_jan.xlsx,2026-01,456.78,North
+C-2006,sales_jan.xlsx,2026-01,234.56,South
+C-2007,sales_jan.xlsx,2026-01,789.01,East
+C-2008,sales_jan.xlsx,2026-01,345.67,West
+C-2009,sales_jan.xlsx,2026-01,678.90,North
+C-2010,sales_jan.xlsx,2026-01,1234.50,South
+C-2011,sales_jan.xlsx,2026-01,98.45,East
+C-2012,sales_jan.xlsx,2026-01,567.80,West

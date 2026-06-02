@@ -1,0 +1,17 @@
+# Persistent storage for PostgreSQL data directory (/var/lib/postgresql/data).
+# Replace storageClassName with a class that exists in your cluster (e.g. gp3, standard, premium-rwo).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dash-db-data
+  namespace: dash
+  labels:
+    app: dash
+    component: db
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: REPLACE_ME_STORAGE_CLASS

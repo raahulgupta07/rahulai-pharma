@@ -1,0 +1,261 @@
+# =============================================================================
+# Dash — default values
+# Override per environment via -f values-<env>.yaml or --set.
+# =============================================================================
+
+# -- Namespace this release deploys into. Helm `--namespace` flag wins.
+namespace: dash
+
+# -----------------------------------------------------------------------------
+# Image
+# -----------------------------------------------------------------------------
+image:
+  repository: dash
+  tag: latest
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# ml-worker is OPT-IN (2026 trim): default OFF. The dash-ml image is not built
+# by default (mirrors the compose `profiles: ["ml"]` decision). Set
+# mlWorker.enabled=true ONLY after building+pushing ml_worker/Dockerfile.
+mlWorker:
+  enabled: false
+  image:
+    repository: dash-ml
+    tag: latest
+    pullPolicy: IfNotPresent
+
+# -----------------------------------------------------------------------------
+# Replicas + autoscaling
+# -----------------------------------------------------------------------------
+replicaCount:
+  api: 3
+  mlWorker: 1
+  caddy: 2
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPU: 70
+  targetMemory: 75
+
+# -----------------------------------------------------------------------------
+# Resources
+# -----------------------------------------------------------------------------
+resources:
+  api:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits:   { cpu: 2,    memory: 4Gi }
+  mlWorker:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits:   { cpu: 1,    memory: 1Gi }
+  db:
+    requests: { cpu: 500m, memory: 512Mi }
+    limits:   { cpu: 2,    memory: 4Gi }
+  pgbouncer:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+  caddy:
+    requests: { cpu: 100m, memory: 64Mi }
+    limits:   { cpu: 500m, memory: 256Mi }
+
+# -----------------------------------------------------------------------------
+# Storage
+# -----------------------------------------------------------------------------
+storage:
+  db:
+    size: 20Gi
+    storageClassName: ""   # cluster default
+    accessMode: ReadWriteOnce
+  knowledge:
+    size: 50Gi
+    storageClassName: ""   # must be RWX-capable
+    accessMode: ReadWriteMany
+  caddy:
+    size: 5Gi
+    storageClassName: ""
+    accessMode: ReadWriteOnce
+
+# -----------------------------------------------------------------------------
+# Config (non-secret) — projected into ConfigMap dash-config
+# -----------------------------------------------------------------------------
+config:
+  domain: dash.example.com
+  corsOrigins: "*"
+  workers: 8
+  rateLimit: "500/minute"
+  chatModel: "google/gemini-3-flash-preview"
+  deepModel: "openai/gpt-5.4-mini"
+  liteModel: "google/gemini-3.1-flash-lite-preview"
+  embeddingModel: "google/gemini-embedding-2-preview"
+  superAdmin: admin
+  dbUser: ai
+  dbDatabase: ai
+  dbHost: dash-pgbouncer
+  dbPort: 6432
+  agnoDebug: "False"
+
+# -----------------------------------------------------------------------------
+# Secrets (use --set or external-secrets / sealed-secrets in production)
+# -----------------------------------------------------------------------------
+secrets:
+  openrouterApiKey: ""
+  dbPass: ""
+  superAdminPass: ""
+  msClientId: ""
+  msClientSecret: ""
+  msTenantId: ""
+  googleClientId: ""
+  googleClientSecret: ""
+  keycloakClientSecret: ""
+  slackToken: ""
+
+# -----------------------------------------------------------------------------
+# Ingress
+# -----------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: 250m
+  hosts:
+    - host: dash.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: dash-tls
+      hosts:
+        - dash.example.com
+
+# -----------------------------------------------------------------------------
+# NetworkPolicy
+# -----------------------------------------------------------------------------
+networkPolicy:
+  enabled: true
+  ingressNamespaceLabel: ingress-nginx
+
+# -----------------------------------------------------------------------------
+# Service account / RBAC
+# -----------------------------------------------------------------------------
+serviceAccount:
+  create: true
+  name: dash-sa
+  annotations: {}
+
+rbac:
+  create: true
+
+# -----------------------------------------------------------------------------
+# Caddy (optional, used if ingress.enabled=false)
+# -----------------------------------------------------------------------------
+caddy:
+  enabled: false
+  image:
+    repository: caddy
+    tag: 2-alpine
+    pullPolicy: IfNotPresent
+
+# -----------------------------------------------------------------------------
+# Probes
+# -----------------------------------------------------------------------------
+probes:
+  liveness:
+    initialDelaySeconds: 15
+    periodSeconds: 30
+  readiness:
+    initialDelaySeconds: 15
+    periodSeconds: 10
+  startup:
+    failureThreshold: 30
+
+# -----------------------------------------------------------------------------
+# Image pull secret reference for private registries
+# -----------------------------------------------------------------------------
+imagePullSecrets: []
+
+# -----------------------------------------------------------------------------
+# Daemon host — dedicated singleton pod for in-process background daemons
+# (cost_guard, auto-campaign, dream cycles, ab-revert, benchmark sync,
+# ontology cluster, etc). API pods get DAEMONS_DISABLED=1
+# so only this deployment runs daemons → no multi-replica races.
+# Set daemon.enabled=false for single-node test deployments.
+# -----------------------------------------------------------------------------
+daemon:
+  enabled: true
+  resources:
+    requests: {cpu: "200m", memory: "1Gi"}
+    limits: {cpu: "500m", memory: "2Gi"}
+  nodeSelector: {}
+  tolerations: []
+
+# -----------------------------------------------------------------------------
+# Self-learning CronJobs (replaces in-process scheduler under HPA)
+# -----------------------------------------------------------------------------
+learning:
+  cronEnabled: true
+  cronJobs:
+    - name: daily
+      schedule: "0 4 * * *"
+      endpoint: /cycle
+      args: ""
+      activeDeadlineSeconds: 3600
+    - name: canary
+      schedule: "0 5 * * 0"
+      endpoint: /cycle
+      args: "?dry_run=true"
+      activeDeadlineSeconds: 1800
+    - name: decay
+      schedule: "0 3 * * *"
+      endpoint: /decay
+      args: ""
+      activeDeadlineSeconds: 600
+
+# -----------------------------------------------------------------------------
+# SkillRefinery — nightly auto-improvement of agent tools (Phase 7)
+# -----------------------------------------------------------------------------
+skillRefinery:
+  cronEnabled: true
+  schedule: "0 3 * * *"
+  activeDeadlineSeconds: 1800
+
+# -----------------------------------------------------------------------------
+# Ontology auto-cluster — daily merge candidate detection (Phase B)
+# -----------------------------------------------------------------------------
+ontologyCluster:
+  cronEnabled: true
+  schedule: "0 3 * * *"
+  activeDeadlineSeconds: 1800
+
+# -----------------------------------------------------------------------------
+# Benchmark sync — weekly fetch of public industry KPIs into global Brain
+# (Phase C). One-shot endpoint: POST /api/ontology/benchmarks/sync-now
+# -----------------------------------------------------------------------------
+benchmarkSync:
+  cronEnabled: true
+  schedule: "0 4 * * 0"   # Sunday 04:00 UTC
+  activeDeadlineSeconds: 1800
+
+# -----------------------------------------------------------------------------
+# Auto-Campaign Daemon (Tier 4) — daily RFM/churn snapshot + auto-draft.
+# In-process loop runs in app pods; this CronJob is the centralized
+# alternative for K8s deployments where the in-process loop is disabled
+# via AUTO_CAMPAIGN_DAEMON_DISABLED=1.
+# -----------------------------------------------------------------------------
+autoCampaign:
+  cronEnabled: true
+  schedule: "0 2 * * *"   # daily 02:00 UTC
+  activeDeadlineSeconds: 1800
+
+# -----------------------------------------------------------------------------
+# Automated Backups (pg_dump + knowledge tar → S3)
+# -----------------------------------------------------------------------------
+backup:
+  enabled: true
+  cronJobs:
+    - name: backup-daily
+      schedule: "0 3 * * *"
+      types: "db,knowledge"
+      keepHistory: 7

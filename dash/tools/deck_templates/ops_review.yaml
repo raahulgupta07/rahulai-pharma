@@ -1,0 +1,41 @@
+id: ops_review
+title: Operations Review
+audience: operations_team
+period: last_month
+theme: city_executive
+slides:
+  - title: "{project_name} — Operations Review"
+    layout: cover
+    content_type: text
+    metrics_needed: []
+    narrative_prompt: "Write a one-line cover subtitle naming the review window."
+  - title: SLA Performance
+    layout: 3_kpi
+    content_type: metric
+    metrics_needed: [sla_pct, p95_latency_ms]
+    narrative_prompt: "Report SLA attainment and tail latency, calling out any breaches."
+  - title: Top Anomalies (Last 7d)
+    layout: table
+    content_type: list
+    metrics_needed: [anomaly_count]
+    narrative_prompt: "List top anomalies detected and likely root causes from KG context."
+  - title: Incident Summary
+    layout: table
+    content_type: list
+    metrics_needed: [anomaly_count]
+    narrative_prompt: "Summarize incidents: count, severity mix, MTTR, and recurring themes."
+  - title: Quality Metrics
+    layout: chart
+    content_type: chart
+    metrics_needed: [defect_rate]
+    narrative_prompt: "Describe defect-rate trend and any quality gates that need attention."
+  - title: Backlog & Velocity
+    layout: chart
+    content_type: chart
+    metrics_needed: [throughput]
+    narrative_prompt: "Report throughput vs backlog growth and whether the team is keeping pace."
+  - title: Action Items
+    layout: closing
+    content_type: list
+    metrics_needed: []
+    narrative_prompt: "List 3-5 concrete action items with owners suggested from the data."

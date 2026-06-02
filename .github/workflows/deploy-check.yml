@@ -1,0 +1,152 @@
+name: Deploy Freshness Check
+
+# Layer 2 of stale-image defense (Caveat #5). After a deploy, hit
+# /api/admin/image/info on the target environment and fail the workflow if:
+#   - image is older than DEPLOY_MAX_AGE_HOURS (default 1)
+#   - BUILD_COMMIT doesn't match the HEAD short SHA of this workflow run
+#
+# Triggers: manual dispatch, post-deploy webhook (workflow_run), or PR comment.
+# Configure the target URL + admin token as GitHub Actions secrets:
+#   DEPLOY_TARGET_URL        e.g. https://dash.example.com
+#   DEPLOY_ADMIN_TOKEN       super-admin bearer token (or API key)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "Override deploy target URL"
+        required: false
+        type: string
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+  workflow_run:
+    workflows: ["Build and Push Docker"]
+    types: [completed]
+
+env:
+  DEPLOY_MAX_AGE_HOURS: "1"
+
+jobs:
+  freshness-check:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Resolve target URL + HEAD SHA
+        id: resolve
+        run: |
+          TARGET="${{ github.event.inputs.target_url }}"
+          if [ -z "$TARGET" ]; then
+            TARGET="${{ secrets.DEPLOY_TARGET_URL }}"
+          fi
+          if [ -z "$TARGET" ]; then
+            echo "::warning::DEPLOY_TARGET_URL not set — skipping freshness check"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          HEAD_SHA="$(git rev-parse --short HEAD)"
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch /api/admin/image/info
+        if: steps.resolve.outputs.skip != 'true'
+        id: fetch
+        env:
+          TARGET: ${{ steps.resolve.outputs.target }}
+          TOKEN: ${{ secrets.DEPLOY_ADMIN_TOKEN }}
+        run: |
+          set -e
+          HTTP_CODE=$(curl -sS -o /tmp/image_info.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            "${TARGET}/api/admin/image/info" || echo "000")
+          echo "http_code=$HTTP_CODE" >> "$GITHUB_OUTPUT"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::image/info returned HTTP $HTTP_CODE"
+            cat /tmp/image_info.json || true
+            exit 1
+          fi
+          cat /tmp/image_info.json
+          echo "---"
+
+      - name: Gate on freshness + commit
+        if: steps.resolve.outputs.skip != 'true'
+        env:
+          HEAD_SHA: ${{ steps.resolve.outputs.head_sha }}
+        run: |
+          set -e
+          AGE=$(jq -r '.image_age_hours // empty' /tmp/image_info.json)
+          COMMIT=$(jq -r '.git_commit // "unknown"' /tmp/image_info.json)
+          MAX_AGE="${DEPLOY_MAX_AGE_HOURS}"
+
+          echo "deployed git_commit: $COMMIT"
+          echo "HEAD short SHA:      $HEAD_SHA"
+          echo "image_age_hours:     $AGE (max ${MAX_AGE}h)"
+
+          FAIL=0
+          REASONS=""
+
+          if [ -z "$AGE" ] || [ "$AGE" = "null" ]; then
+            FAIL=1
+            REASONS="${REASONS}- image_age_hours missing — BUILD_TIME not stamped at build\n"
+          else
+            # bash float comparison via awk
+            OVER=$(awk -v a="$AGE" -v m="$MAX_AGE" 'BEGIN{print (a+0 > m+0) ? 1 : 0}')
+            if [ "$OVER" = "1" ]; then
+              FAIL=1
+              REASONS="${REASONS}- image_age_hours=${AGE} exceeds limit ${MAX_AGE}h\n"
+            fi
+          fi
+
+          if [ "$COMMIT" != "unknown" ] && [ "$COMMIT" != "$HEAD_SHA" ]; then
+            FAIL=1
+            REASONS="${REASONS}- deployed commit ${COMMIT} != HEAD ${HEAD_SHA}\n"
+          fi
+
+          {
+            echo "## Deploy Freshness Check"
+            echo ""
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| deployed commit | \`${COMMIT}\` |"
+            echo "| HEAD short SHA | \`${HEAD_SHA}\` |"
+            echo "| image_age_hours | ${AGE} (max ${DEPLOY_MAX_AGE_HOURS}h) |"
+            echo "| status | $([ "$FAIL" = "0" ] && echo "✅ fresh" || echo "❌ stale") |"
+            if [ "$FAIL" = "1" ]; then
+              echo ""
+              echo "### Reasons"
+              printf "${REASONS}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$FAIL" = "1" ]; then
+            echo "::error::Deployed image is stale — see job summary"
+            exit 1
+          fi
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request' && steps.resolve.outputs.skip != 'true' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = '## Deploy Freshness Check\n\n';
+            try {
+              const info = JSON.parse(fs.readFileSync('/tmp/image_info.json', 'utf8'));
+              const status = '${{ job.status }}' === 'success' ? '✅ fresh' : '❌ stale';
+              body += `- commit: \`${info.git_commit}\`\n`;
+              body += `- age: ${info.image_age_hours}h\n`;
+              body += `- status: ${status}\n`;
+            } catch (e) {
+              body += `Unable to read image info: ${e.message}\n`;
+            }
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });

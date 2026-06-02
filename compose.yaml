@@ -1,0 +1,308 @@
+services:
+  dash-db:
+    image: pgvector/pgvector:pg18-trixie
+    container_name: cp-db
+    restart: always
+    command: >
+      postgres
+        -c max_connections=300
+        -c shared_buffers=1GB
+        -c work_mem=32MB
+        -c effective_cache_size=3GB
+        -c maintenance_work_mem=256MB
+        -c password_encryption=scram-sha-256
+        -c idle_in_transaction_session_timeout=60000
+        -c statement_timeout=120000
+    environment:
+      POSTGRES_USER: ${DB_USER:?DB_USER required}
+      POSTGRES_PASSWORD: ${DB_PASS:?DB_PASS required}
+      POSTGRES_DB: ${DB_DATABASE:?DB_DATABASE required}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:?DB_USER required}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dash
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  dash-pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: cp-pgbouncer
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    environment:
+      DATABASE_URL: postgres://${DB_USER:?DB_USER required}:${DB_PASS:?DB_PASS required}@dash-db:5432/${DB_DATABASE:?DB_DATABASE required}
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 3000
+      DEFAULT_POOL_SIZE: 80
+      MIN_POOL_SIZE: 20
+      RESERVE_POOL_SIZE: 20
+      MAX_DB_CONNECTIONS: 200
+      SERVER_RESET_QUERY: DISCARD ALL
+      SERVER_IDLE_TIMEOUT: 300
+      CLIENT_IDLE_TIMEOUT: 600
+      QUERY_WAIT_TIMEOUT: 30
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,options
+    depends_on:
+      dash-db:
+        condition: service_healthy
+    networks:
+      - dash
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  dash-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${IMAGE_NAME:-citypharma}:${IMAGE_TAG:-latest}
+    container_name: cp-api
+    command: gunicorn -c scripts/gunicorn_conf.py app.main:app
+    restart: always
+    ports:
+      - "127.0.0.1:8011:8000"
+    environment:
+      # Core
+      - RUNTIME_ENV=prd
+      - PYTHONPATH=/app
+      - AGNO_DEBUG=False
+      - AGNO_TELEMETRY=${AGNO_TELEMETRY:-false}
+      - OTEL_SDK_DISABLED=${OTEL_SDK_DISABLED:-true}
+      - AGENTOS_URL=http://127.0.0.1:8000
+      # Single-agent product lock (CityPharma)
+      - SINGLE_AGENT_MODE=${SINGLE_AGENT_MODE:-1}
+      - LOCKED_PROJECT_SLUG=${LOCKED_PROJECT_SLUG:-citypharma}
+      - PRODUCT_NAME=${PRODUCT_NAME:-CityPharma}
+      # Database — goes through PgBouncer
+      - DB_HOST=dash-pgbouncer
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:?DB_USER required}
+      - DB_PASS=${DB_PASS:?DB_PASS required}
+      - DB_DATABASE=${DB_DATABASE:?DB_DATABASE required}
+      # Scaling
+      - RATE_LIMIT=${RATE_LIMIT:-500/minute}
+      # Required
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      # Models (3-tier with auto-fallback via OpenRouter models[])
+      - CHAT_MODEL=${CHAT_MODEL:-google/gemini-3-flash-preview}
+      - DEEP_MODEL=${DEEP_MODEL:-google/gemini-3-flash-preview}
+      - LITE_MODEL=${LITE_MODEL:-google/gemini-3.1-flash-lite-preview}
+      - MID_MODEL=${MID_MODEL:-openai/gpt-5.4-nano}
+      - REASONING_MODEL=${REASONING_MODEL:-qwen/qwen3-max-thinking}
+      - ULTRA_MODEL=${ULTRA_MODEL:-openai/gpt-5.4-mini}
+      - TRAINING_MODEL=${TRAINING_MODEL:-}
+      - CHAT_FALLBACKS=${CHAT_FALLBACKS:-}
+      - DEEP_FALLBACKS=${DEEP_FALLBACKS:-}
+      - LITE_FALLBACKS=${LITE_FALLBACKS:-}
+      - SUPER_ADMIN=${SUPER_ADMIN:?SUPER_ADMIN required}
+      - SUPER_ADMIN_PASS=${SUPER_ADMIN_PASS:?SUPER_ADMIN_PASS required}
+      - CORS_ORIGINS=${CORS_ORIGINS:?CORS_ORIGINS required}
+      - DOMAIN=${DOMAIN:-localhost}
+      # Optional — Keycloak SSO
+      - KEYCLOAK_URL=${KEYCLOAK_URL:-}
+      - KEYCLOAK_REALM=${KEYCLOAK_REALM:-dash}
+      - KEYCLOAK_CLIENT_ID=${KEYCLOAK_CLIENT_ID:-dash-app}
+      - KEYCLOAK_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET:-}
+      # Optional — Slack
+      - SLACK_TOKEN=${SLACK_TOKEN:-}
+      - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET:-}
+      # Phase 9 — Skills auto-inject (Layer 14) + skl_pptx_builder
+      - EXPERIMENTAL_AGI=${EXPERIMENTAL_AGI:-0}
+      # Deep Deck enrichment — Pexels hero images (optional, free 200/hr tier)
+      - PEXELS_API_KEY=${PEXELS_API_KEY:-}
+      # PPTX rendering — native python-pptx, in-process (no sidecar).
+      - PPTX_ENGINE=${PPTX_ENGINE:-native}
+      # Training Pipeline V2 — Phase E (vertical detect+apply via fingerprint-cached step runner). Default off.
+      - TRAINING_V2_PHASE_E=${TRAINING_V2_PHASE_E:-0}
+    volumes:
+      - knowledge_data:/app/knowledge
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      dash-db:
+        condition: service_healthy
+      dash-pgbouncer:
+        condition: service_healthy
+      dash-redis:
+        condition: service_healthy
+    networks:
+      - dash
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+
+  dash-redis:
+    image: redis:7-alpine
+    container_name: cp-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - dash
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: cp-caddy
+    restart: always
+    ports:
+      - "8090:80"
+      - "8453:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - dash-api
+    networks:
+      - dash
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  dash-ml:
+    # Opt-in (2026-05-20 trim). Only needed for AutoML (gated off) + the
+    # TRAIN-ALL anomaly-model pre-train for tables >1000 rows + 24h retrain.
+    # All 6 Data Scientist chat tools run INLINE in dash-api and do NOT need
+    # this worker. Start it with: docker compose --profile ml up -d dash-ml
+    profiles: ["ml"]
+    build:
+      context: .
+      dockerfile: ml_worker/Dockerfile
+    container_name: cp-ml
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:?DB_USER required}:${DB_PASS:?DB_PASS required}@dash-pgbouncer:5432/${DB_DATABASE:?DB_DATABASE required}
+      - DB_HOST=dash-pgbouncer
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:?DB_USER required}
+      - DB_PASS=${DB_PASS:?DB_PASS required}
+      - DB_DATABASE=${DB_DATABASE:?DB_DATABASE required}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - CHAT_MODEL=${CHAT_MODEL:-google/gemini-3-flash-preview}
+      - DEEP_MODEL=${DEEP_MODEL:-google/gemini-3-flash-preview}
+      - LITE_MODEL=${LITE_MODEL:-google/gemini-3.1-flash-lite-preview}
+      - MID_MODEL=${MID_MODEL:-openai/gpt-5.4-nano}
+      - REASONING_MODEL=${REASONING_MODEL:-qwen/qwen3-max-thinking}
+      - ULTRA_MODEL=${ULTRA_MODEL:-openai/gpt-5.4-mini}
+      - TRAINING_MODEL=${TRAINING_MODEL:-}
+      - CHAT_FALLBACKS=${CHAT_FALLBACKS:-}
+      - DEEP_FALLBACKS=${DEEP_FALLBACKS:-}
+      - LITE_FALLBACKS=${LITE_FALLBACKS:-}
+    depends_on:
+      dash-db:
+        condition: service_healthy
+      dash-pgbouncer:
+        condition: service_healthy
+    networks:
+      - dash
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  # Optional: stdio MCP bridge for local IDE integrations.
+  # Claude Desktop / Cursor / Windsurf connect via `docker exec -i dash-mcp …`.
+  # Opt-in: `docker compose --profile mcp up -d dash-mcp`.
+  dash-mcp:
+    image: citypharma:latest
+    container_name: cp-mcp
+    restart: unless-stopped
+    command: ["tail", "-f", "/dev/null"]  # idle; clients invoke `docker exec -i dash-mcp python -m mcp_server`
+    environment:
+      - DB_HOST=dash-pgbouncer
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:?DB_USER required}
+      - DB_PASS=${DB_PASS:?DB_PASS required}
+      - DB_DATABASE=${DB_DATABASE:?DB_DATABASE required}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - CHAT_MODEL=${CHAT_MODEL:-google/gemini-3-flash-preview}
+      - DEEP_MODEL=${DEEP_MODEL:-google/gemini-3-flash-preview}
+      - LITE_MODEL=${LITE_MODEL:-google/gemini-3.1-flash-lite-preview}
+      - MID_MODEL=${MID_MODEL:-openai/gpt-5.4-nano}
+      - REASONING_MODEL=${REASONING_MODEL:-qwen/qwen3-max-thinking}
+      - ULTRA_MODEL=${ULTRA_MODEL:-openai/gpt-5.4-mini}
+      - SUPER_ADMIN=${SUPER_ADMIN:?SUPER_ADMIN required}
+      - DASH_MCP_LOG_LEVEL=${DASH_MCP_LOG_LEVEL:-INFO}
+    depends_on:
+      dash-pgbouncer:
+        condition: service_healthy
+      dash-api:
+        condition: service_started
+    networks:
+      - dash
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    profiles:
+      - mcp
+
+  # Nightly pg_dump backup → /var/backups/dash, 7-day retention.
+  # Updates public.dash_system_status.last_backup_at after each successful dump,
+  # which is surfaced on /health. See docs/BACKUP.md for restore.
+  dash-backup:
+    image: postgres:18-alpine
+    container_name: cp-backup
+    restart: unless-stopped
+    # Alpine doesn't ship python by default — install it once, then run daemon.
+    command: ["sh", "-c", "apk add --no-cache python3 >/dev/null && exec python3 /opt/backup/backup_daemon.py"]
+    environment:
+      - DB_HOST=dash-db
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:?DB_USER required}
+      - DB_PASS=${DB_PASS:?DB_PASS required}
+      - DB_DATABASE=${DB_DATABASE:?DB_DATABASE required}
+      - BACKUP_DIR=/var/backups/dash
+      - BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-7}
+    volumes:
+      - ./cron/backup_daemon.py:/opt/backup/backup_daemon.py:ro
+      - backup_data:/var/backups/dash
+    depends_on:
+      dash-db:
+        condition: service_healthy
+    networks:
+      - dash
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+networks:
+  dash:
+
+volumes:
+  pgdata:
+  knowledge_data:
+  backup_data:
+  caddy_data:
+  caddy_config:
+  redis_data:

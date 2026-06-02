@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dash-db-data
+  labels:
+    {{- include "dash.labels" . | nindent 4 }}
+    component: db
+spec:
+  accessModes:
+    - {{ .Values.storage.db.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.db.size }}
+  {{- if .Values.storage.db.storageClassName }}
+  storageClassName: {{ .Values.storage.db.storageClassName | quote }}
+  {{- end }}

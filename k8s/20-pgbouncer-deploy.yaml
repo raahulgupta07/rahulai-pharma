@@ -1,0 +1,99 @@
+# PgBouncer — transaction-mode connection pooler in front of dash-db.
+# Application engines use NullPool; PgBouncer owns pooling. AUTH_TYPE matches PG (scram-sha-256).
+# Note: compose.yaml uses edoburu/pgbouncer with DATABASE_URL; this manifest uses bitnami/pgbouncer
+# with explicit POSTGRESQL_*/PGBOUNCER_* variables (same effective config).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dash-pgbouncer
+  namespace: dash
+  labels:
+    app: dash
+    component: pgbouncer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dash
+      component: pgbouncer
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: dash
+        component: pgbouncer
+    spec:
+      containers:
+        - name: pgbouncer
+          image: bitnami/pgbouncer:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: pgbouncer
+              containerPort: 6432
+              protocol: TCP
+          env:
+            # Upstream PostgreSQL
+            - name: POSTGRESQL_HOST
+              value: "dash-db"
+            - name: POSTGRESQL_PORT
+              value: "5432"
+            - name: POSTGRESQL_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: dash-config
+                  key: DB_USER
+            - name: POSTGRESQL_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: dash-config
+                  key: DB_DATABASE
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: dash-secrets
+                  key: DB_PASS
+
+            # PgBouncer pool config
+            - name: PGBOUNCER_DATABASE
+              value: "ai"
+            - name: PGBOUNCER_AUTH_TYPE
+              value: "scram-sha-256"
+            - name: PGBOUNCER_POOL_MODE
+              value: "transaction"
+            - name: PGBOUNCER_MAX_CLIENT_CONN
+              value: "500"
+            - name: PGBOUNCER_DEFAULT_POOL_SIZE
+              value: "80"
+            - name: PGBOUNCER_IGNORE_STARTUP_PARAMETERS
+              value: "extra_float_digits,options"
+            - name: PGBOUNCER_SERVER_RESET_QUERY
+              value: "DISCARD ALL"
+            - name: PGBOUNCER_CLIENT_IDLE_TIMEOUT
+              value: "60"
+            - name: PGBOUNCER_QUERY_WAIT_TIMEOUT
+              value: "120"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            tcpSocket:
+              port: 6432
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 6432
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3

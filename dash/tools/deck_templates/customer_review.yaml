@@ -1,0 +1,46 @@
+id: customer_review
+title: Customer Portfolio Review
+audience: revenue_customer_success
+period: last_quarter
+theme: city_executive
+slides:
+  - title: "{project_name} — Customer Portfolio Review"
+    layout: cover
+    content_type: text
+    metrics_needed: []
+    narrative_prompt: "Write a one-line cover subtitle framing the customer health story."
+  - title: RFM Segment Mix
+    layout: chart
+    content_type: chart
+    metrics_needed: [rfm_segments]
+    narrative_prompt: "Describe the distribution across RFM segments and shifts since last period."
+  - title: Champions vs At-Risk
+    layout: 3_kpi
+    content_type: metric
+    metrics_needed: [rfm_segments, churn_count]
+    narrative_prompt: "Contrast champion and at-risk cohorts; quantify the gap and trajectory."
+  - title: Churn Risk Heatmap
+    layout: chart
+    content_type: chart
+    metrics_needed: [churn_count]
+    narrative_prompt: "Highlight where churn risk concentrates (segment, geography, tenure)."
+  - title: CLV by Segment
+    layout: chart
+    content_type: chart
+    metrics_needed: [clv_total]
+    narrative_prompt: "Explain CLV distribution and which segments justify deeper investment."
+  - title: Next-Best-Offer Suggestions
+    layout: table
+    content_type: list
+    metrics_needed: [nbo_count]
+    narrative_prompt: "List top NBO recommendations from Brain with expected uplift."
+  - title: Top 10 Accounts
+    layout: table
+    content_type: list
+    metrics_needed: [clv_total]
+    narrative_prompt: "Name top 10 accounts with status, expansion potential, and risk flags."
+  - title: Closing & Next Steps
+    layout: closing
+    content_type: text
+    metrics_needed: []
+    narrative_prompt: "Close with 2-3 portfolio actions for the next period."

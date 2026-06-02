@@ -1,0 +1,143 @@
+# ===========================================================================
+# dash-api Deployment
+# ---------------------------------------------------------------------------
+# Purpose: FastAPI + uvicorn workers serving the Dash application.
+# Mirrors `compose.yaml` service `dash-api` (image=dash:latest, port 8000,
+# external 8001 via Service/Ingress). Container listens on 8000 internally.
+#
+# Dependencies (must exist in same namespace before applying):
+#   - ConfigMap  : dash-config      (DB_HOST, DB_PORT, DB_USER, DB_DATABASE,
+#                                    WORKERS, RATE_LIMIT, CHAT_MODEL,
+#                                    DEEP_MODEL, LITE_MODEL, EMBEDDING_MODEL,
+#                                    DOMAIN, CORS_ORIGINS, RUNTIME_ENV, etc.)
+#   - Secret     : dash-secrets     (OPENROUTER_API_KEY, DB_PASS,
+#                                    SUPER_ADMIN_PASS, KEYCLOAK_CLIENT_SECRET,
+#                                    SLACK_TOKEN, SLACK_SIGNING_SECRET, etc.)
+#   - Secret     : registry-secret  (imagePullSecret for private registry)
+#   - PVC        : dash-knowledge-data  (see 30-knowledge-pvc.yaml)
+#   - ConfigMap  : dash-migrations   (SQL migration files, read-only mount)
+#   - Service    : dash-pgbouncer    (DB connection pooler reachable at
+#                                     DB_HOST=dash-pgbouncer:5432)
+#
+# Resource sizing rationale:
+#   compose.yaml memory limit = 8G (single container, 8 uvicorn workers).
+#   K8s sets limit=4Gi per pod with replicas=3 → total 12Gi cluster headroom
+#   (50% more than compose) but per-pod is half so a single pod OOM does
+#   not take the whole API down. WORKERS env should be lowered to ~4 per pod.
+#   HPA (see 30-api-hpa.yaml) scales 3→10 on CPU/memory pressure.
+# ===========================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dash-api
+  labels:
+    app: dash-api
+    component: api
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: dash-api
+  template:
+    metadata:
+      labels:
+        app: dash-api
+        component: api
+    spec:
+      # TODO: replace `registry-secret` with the actual imagePullSecret name
+      # for your container registry (GHCR, ECR, GCR, etc.).
+      imagePullSecrets:
+        - name: registry-secret
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: dash-api
+          # TODO: replace `dash:latest` with the fully qualified registry path,
+          # e.g. ghcr.io/your-org/dash:v1.2.3. Avoid `:latest` in production.
+          image: dash:latest
+          imagePullPolicy: IfNotPresent
+          command: ["uvicorn"]
+          args:
+            - "app.main:app"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8000"
+            - "--workers"
+            - "$(WORKERS)"
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: dash-config
+            - secretRef:
+                name: dash-secrets
+          # Daemons run in dedicated dash-daemon deployment (replicas=1).
+          env:
+            - name: PYTHONPATH
+              value: /app
+            - name: AGENTOS_URL
+              value: http://127.0.0.1:8000
+            - name: DAEMONS_DISABLED
+              value: "1"
+          volumeMounts:
+            - name: knowledge
+              mountPath: /app/knowledge
+            - name: migrations
+              mountPath: /app/db/migrations
+              readOnly: true
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          # /health is served by FastAPI (see app/main.py).
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 5
+            failureThreshold: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: knowledge
+          persistentVolumeClaim:
+            claimName: dash-knowledge-data
+        # TODO: switch to a PVC if migrations exceed ConfigMap 1MiB cap.
+        - name: migrations
+          configMap:
+            name: dash-migrations
+            optional: true
+      terminationGracePeriodSeconds: 30

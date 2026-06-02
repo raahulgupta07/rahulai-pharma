@@ -1,0 +1,138 @@
+{{- if .Values.daemon.enabled }}
+# ===========================================================================
+# dash-daemon Deployment
+# ---------------------------------------------------------------------------
+# Purpose: dedicated singleton pod that hosts in-process background daemons
+# (cost_guard, auto-campaign, dream cycles, ab-revert, benchmark sync,
+# ontology cluster, etc). Splitting daemons out of the API
+# deployment prevents multi-replica races where each of the 3 API pods'
+# worker_rank=0 spawns its own copy of every daemon.
+#
+# Hard constraints:
+#   * replicas: 1 (singleton — no HPA)
+#   * strategy: Recreate (must never have 2 daemon-host pods at once)
+#   * WORKERS=1 (one gunicorn worker → one WORKER_RANK=0 → one daemon set)
+#   * DAEMONS_DISABLED is UNSET here so daemons actually spawn
+#   * No Service (no inbound traffic — daemons poll outbound only)
+# ===========================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dash-daemon
+  labels:
+    {{- include "dash.labels" . | nindent 4 }}
+    component: daemon
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: dash-daemon
+  template:
+    metadata:
+      labels:
+        {{- include "dash.selectorLabels" . | nindent 8 }}
+        app: dash-daemon
+        component: daemon
+    spec:
+      serviceAccountName: {{ include "dash.serviceAccountName" . }}
+      {{- with (concat (default (list) .Values.imagePullSecrets) (default (list) .Values.image.pullSecrets)) }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ .name | default . }}
+        {{- end }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: dash-daemon
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["uvicorn"]
+          args:
+            - "app.main:app"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8000"
+            - "--workers"
+            - "1"
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: dash-config
+            - secretRef:
+                name: dash-secrets
+          # DAEMONS_DISABLED intentionally UNSET so daemons spawn here.
+          # WORKERS=1 ensures only one WORKER_RANK=0 process exists.
+          env:
+            - name: PYTHONPATH
+              value: /app
+            - name: AGENTOS_URL
+              value: http://127.0.0.1:8000
+            - name: WORKERS
+              value: "1"
+            - name: WORKER_RANK
+              value: "0"
+          volumeMounts:
+            - name: knowledge
+              mountPath: /app/knowledge
+            - name: migrations
+              mountPath: /app/db/migrations
+              readOnly: true
+          resources:
+            {{- toYaml .Values.daemon.resources | nindent 12 }}
+          # /api/health/daemons reports daemon liveness (always 200 once app boots).
+          startupProbe:
+            httpGet:
+              path: /api/health/daemons
+              port: 8000
+            periodSeconds: 5
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /api/health/daemons
+              port: 8000
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health/daemons
+              port: 8000
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+      {{- with .Values.daemon.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.daemon.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: knowledge
+          persistentVolumeClaim:
+            claimName: dash-knowledge-data
+        - name: migrations
+          configMap:
+            name: dash-migrations
+            optional: true
+      terminationGracePeriodSeconds: 30
+{{- end }}

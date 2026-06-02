@@ -1,0 +1,51 @@
+id: qbr
+title: Quarterly Business Review
+audience: executive_leadership
+period: last_quarter
+theme: city_executive
+slides:
+  - title: "{project_name} — Quarterly Business Review {quarter}"
+    layout: cover
+    content_type: text
+    metrics_needed: []
+    narrative_prompt: "Write a one-sentence cover subtitle framing the quarter's theme."
+  - title: Executive Summary
+    layout: 3_kpi
+    content_type: metric
+    metrics_needed: [revenue, customer_count, churn_rate]
+    narrative_prompt: "Summarize the three headline KPIs and quarter-over-quarter movement in 2 sentences."
+  - title: Revenue Trend
+    layout: chart
+    content_type: chart
+    metrics_needed: [revenue]
+    narrative_prompt: "Describe the revenue trajectory this quarter, highlighting inflection points and seasonality."
+  - title: Top Growth Drivers
+    layout: table
+    content_type: list
+    metrics_needed: [top_segment_revenue]
+    narrative_prompt: "List the top 3 segments or products driving growth and why each contributed."
+  - title: Risks & Headwinds
+    layout: narrative
+    content_type: text
+    metrics_needed: [churn_rate]
+    narrative_prompt: "Identify 2-3 key risks for next quarter (churn, concentration, macro) grounded in the metrics."
+  - title: Customer Highlights
+    layout: table
+    content_type: list
+    metrics_needed: [customer_count, top_segment_revenue]
+    narrative_prompt: "Call out marquee wins, expansions, and notable logos this quarter."
+  - title: Operational Health
+    layout: 3_kpi
+    content_type: metric
+    metrics_needed: [churn_rate]
+    narrative_prompt: "Summarize operational health: delivery, support, and retention discipline."
+  - title: Next Quarter Focus
+    layout: narrative
+    content_type: list
+    metrics_needed: []
+    narrative_prompt: "Propose 3 priorities for the coming quarter aligned with risks and drivers above."
+  - title: Closing & Q&A
+    layout: closing
+    content_type: text
+    metrics_needed: []
+    narrative_prompt: "Write a short closing line inviting executive discussion."

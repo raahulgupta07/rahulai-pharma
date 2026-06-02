@@ -1,0 +1,46 @@
+id: investor_update
+title: Investor Update
+audience: investors_board
+period: last_month
+theme: city_executive
+slides:
+  - title: "{project_name} — Investor Update"
+    layout: cover
+    content_type: text
+    metrics_needed: []
+    narrative_prompt: "Write a one-line cover subtitle setting the tone (momentum, milestones)."
+  - title: North Star Metric
+    layout: 3_kpi
+    content_type: metric
+    metrics_needed: [mrr, arr]
+    narrative_prompt: "Lead with MRR/ARR and the month-over-month delta in a single confident sentence."
+  - title: Growth Trend
+    layout: chart
+    content_type: chart
+    metrics_needed: [mrr, arr]
+    narrative_prompt: "Describe trailing growth shape and any acceleration or deceleration."
+  - title: Cohort Retention
+    layout: chart
+    content_type: chart
+    metrics_needed: [gross_retention, net_retention]
+    narrative_prompt: "Explain gross vs net retention and what it implies about expansion vs churn."
+  - title: Cash Position
+    layout: 3_kpi
+    content_type: metric
+    metrics_needed: [burn_rate, runway_months]
+    narrative_prompt: "State burn, runway, and any planned changes in spend posture."
+  - title: Top Customers
+    layout: table
+    content_type: list
+    metrics_needed: [arr]
+    narrative_prompt: "Highlight top accounts, concentration risk, and recent expansions."
+  - title: Product & Roadmap
+    layout: narrative
+    content_type: text
+    metrics_needed: []
+    narrative_prompt: "Summarize shipped this period and the next 2 roadmap bets."
+  - title: The Ask
+    layout: closing
+    content_type: list
+    metrics_needed: []
+    narrative_prompt: "State 2-3 specific asks (intros, hires, capital, advice)."

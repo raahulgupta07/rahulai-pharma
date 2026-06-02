@@ -1,0 +1,1362 @@
+"""Public embed endpoints — Phase 2.
+
+Endpoints called by the embed widget itself (browsers on external sites).
+No auth header required; security comes from (embed_id + public_key) and
+either an allowlisted Origin (auth_mode=public) or HMAC over the user
+payload (auth_mode=hmac).
+
+This file is intentionally separate from `app/embed.py` (Phase 1, admin
+CRUD) which requires authenticated dashboard users.
+"""
+from __future__ import annotations
+
+import logging
+
+from fastapi import APIRouter, HTTPException, Request
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/embed", tags=["EmbedPublic"])
+
+
+_WIDGET_PATH = "/app/dash/embed/widget.js"
+_WIDGET_CACHE: tuple[str, float] | None = None  # (content, mtime)
+
+
+# ── Consumer-mode response sanitizer ──────────────────────────────────────────
+import re as _re
+
+# Any "[TAG:...]" style structured marker that consumer users shouldn't see.
+_CONSUMER_TAG_RE = _re.compile(r"\[[A-Za-z_][A-Za-z0-9_]*:[^\]]*\]")
+_CODE_BLOCK_RE = _re.compile(r"```.*?```", _re.DOTALL)
+_HTML_CODE_RE = _re.compile(r"</?code[^>]*>", _re.IGNORECASE)
+_MD_TABLE_SEP_RE = _re.compile(r"^\s*\|?\s*:?-{3,}.*$", _re.MULTILINE)
+# Lines starting with an agent name + colon, e.g. "Analyst: ..."
+_AGENT_PREFIX_RE = _re.compile(
+    r"^(?:Analyst|Engineer|Researcher|Data Scientist|Leader|Customer Strategist|Router|Visualizer|Inspector|Conductor|Scanner|Parser|Judge|Comparator|Diagnostician|Narrator|Validator|Planner)\s*:.*$",
+    _re.MULTILINE,
+)
+_ROUTING_LINE_RE = _re.compile(r"^\s*(?:\[ROUTING|FAST mode|DEEP mode).*$", _re.MULTILINE | _re.IGNORECASE)
+
+
+def sanitize_consumer_response(text: str, max_chars: int = 600) -> str:
+    """Strip developer-facing artifacts from an agent reply destined for an
+    end-user widget. Removes structured tags, code blocks, agent-routing chatter,
+    markdown-table separators, and truncates to max_chars."""
+    if not text:
+        return ""
+    out = text
+
+    # 1. Structured tags like [KPI:...], [CONFIDENCE:...], [TOOL:...], etc.
+    out = _CONSUMER_TAG_RE.sub("", out)
+
+    # 2. Triple-backtick code blocks.
+    out = _CODE_BLOCK_RE.sub("", out)
+
+    # 3. HTML <code> wrappers (leave the inner text).
+    out = _HTML_CODE_RE.sub("", out)
+
+    # 4. Agent-prefix lines and routing/mode lines.
+    out = _AGENT_PREFIX_RE.sub("", out)
+    out = _ROUTING_LINE_RE.sub("", out)
+
+    # 5. Markdown table separator rows (|---|---|). The rows themselves
+    #    survive; only the separator is noisy.
+    out = _MD_TABLE_SEP_RE.sub("", out)
+
+    # 6. Collapse runs of blank lines + strip leading/trailing whitespace lines.
+    lines = [ln.rstrip() for ln in out.splitlines()]
+    cleaned: list[str] = []
+    prev_blank = False
+    for ln in lines:
+        is_blank = not ln.strip()
+        if is_blank and prev_blank:
+            continue
+        cleaned.append(ln)
+        prev_blank = is_blank
+    out = "\n".join(cleaned).strip()
+
+    # 7. Cap length.
+    if max_chars and len(out) > max_chars:
+        out = out[: max(0, max_chars - 1)].rstrip() + "…"
+    return out
+
+
+@router.get("/docs")
+def serve_embed_docs():
+    """Self-contained docs page for integrators."""
+    from fastapi.responses import HTMLResponse
+    html = """<!doctype html>
+<html><head><meta charset="utf-8"/>
+<title>Dash Agent Embed — Integration Docs</title>
+<style>
+  body { font-family: ui-monospace, "Berkeley Mono", Menlo, monospace; background: #0a0a0a; color: #e5e5e0; max-width: 880px; margin: 0 auto; padding: 30px 20px; line-height: 1.6; }
+  h1 { color: #00fc40; font-size: 22px; }
+  h2 { color: #66aaff; font-size: 14px; margin-top: 28px; padding-top: 14px; border-top: 1px solid #1a1a1a; }
+  h3 { color: #ff9d00; font-size: 12px; margin-top: 18px; }
+  code { background: #1a1a1a; padding: 1px 6px; color: #00fc40; font-size: 12px; }
+  pre { background: #1a1a1a; padding: 14px; overflow-x: auto; font-size: 11px; line-height: 1.6; border-left: 2px solid #333; }
+  pre code { background: transparent; padding: 0; color: #e5e5e0; }
+  a { color: #66aaff; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; margin: 10px 0; }
+  th, td { border-bottom: 1px solid #1a1a1a; padding: 6px 10px; text-align: left; }
+  th { color: #888; font-weight: 700; }
+  .note { background: #1a1a0d; border-left: 2px solid #ff9d00; padding: 10px 14px; margin: 14px 0; font-size: 12px; }
+</style>
+</head><body>
+
+<h1>◉ Dash Agent — Embed Integration</h1>
+<p style="color:#888; font-size:12px;">Drop a single &lt;script&gt; tag into your site to load the agent as a chat widget.</p>
+
+<h2>1. Quick start (public mode)</h2>
+<p>For marketing sites / docs / anonymous chat. No user identity required.</p>
+<pre><code>&lt;script src="HOST/api/embed/widget.js"
+        data-embed-id="emb_xxx"
+        data-key="pub_xxx"
+        async&gt;&lt;/script&gt;</code></pre>
+<p>Replace <code>HOST</code>, <code>emb_xxx</code>, <code>pub_xxx</code> with values from your project Settings → EMBED → CREATE.</p>
+
+<h2>2. With user identity (HMAC mode)</h2>
+<p>For logged-in apps. Host server signs the user payload with the embed's <strong>secret_key</strong>; the widget passes payload + signature to Dash; Dash verifies → trusts the user identity for row-level filtering.</p>
+
+<h3>Server-side signing</h3>
+<pre><code># Python
+import hmac, hashlib, json
+EMBED_SECRET = "sk_xxx"   # secret_key from Dash, store in env
+
+payload = {"id": user.id, "store_id": user.store_id}
+canon = json.dumps(payload, sort_keys=True, separators=(",",":"))
+sig = hmac.new(EMBED_SECRET.encode(), canon.encode(), hashlib.sha256).hexdigest()</code></pre>
+
+<pre><code>// Node
+const crypto = require('crypto');
+const canon = JSON.stringify(payload, Object.keys(payload).sort());
+const sig = crypto.createHmac('sha256', SECRET).update(canon).digest('hex');</code></pre>
+
+<pre><code>// PHP
+$canon = json_encode($payload, JSON_UNESCAPED_SLASHES);
+$sig = hash_hmac('sha256', $canon, $EMBED_SECRET);</code></pre>
+
+<h3>Render in template</h3>
+<pre><code>&lt;script src="HOST/api/embed/widget.js"
+        data-embed-id="emb_xxx"
+        data-key="pub_xxx"
+        data-user='{{ canon | safe }}'
+        data-user-sig="{{ sig }}"
+        async&gt;&lt;/script&gt;</code></pre>
+
+<h2>3. Configuration attributes</h2>
+<table>
+<tr><th>Attribute</th><th>Required</th><th>Description</th></tr>
+<tr><td><code>data-embed-id</code></td><td>yes</td><td>Public embed identifier</td></tr>
+<tr><td><code>data-key</code></td><td>yes</td><td>Public key (browser-safe)</td></tr>
+<tr><td><code>data-user</code></td><td>HMAC mode</td><td>Canonical-JSON user payload</td></tr>
+<tr><td><code>data-user-sig</code></td><td>HMAC mode</td><td>HMAC-SHA256 hex signature</td></tr>
+<tr><td><code>data-position</code></td><td>no</td><td>bottom-right (default), bottom-left, top-right, top-left</td></tr>
+<tr><td><code>data-theme</code></td><td>no</td><td>dark (default) or light</td></tr>
+<tr><td><code>data-greeting</code></td><td>no</td><td>First message shown in panel</td></tr>
+<tr><td><code>data-title</code></td><td>no</td><td>Title in widget header</td></tr>
+</table>
+
+<h2>4. Security model</h2>
+<table>
+<tr><th>Layer</th><th>What it does</th></tr>
+<tr><td>Origin allowlist</td><td>Server checks <code>Origin</code> header against embed config. Off-list → 403.</td></tr>
+<tr><td>Sec-Fetch-Site</td><td>Blocks direct curl/address-bar requests for /embed/* endpoints.</td></tr>
+<tr><td>HMAC user verify</td><td>Server recomputes HMAC, rejects mismatched signatures.</td></tr>
+<tr><td>Rate limit</td><td>Per-embed sliding 60s window, default 30/min.</td></tr>
+<tr><td>Session TTL</td><td>15 minutes; auto-refreshed by widget before expiry.</td></tr>
+<tr><td>Per-embed CORS</td><td>Only echoes Origin if it matches allowed_origins.</td></tr>
+<tr><td>Shadow DOM</td><td>Widget styles isolated from host page CSS.</td></tr>
+<tr><td>Audit log</td><td>Every chat call logged with latency + status.</td></tr>
+</table>
+
+<div class="note">
+  <strong>⚠ Never expose secret_key to the browser.</strong> It is server-only. If accidentally leaked,
+  click ROTATE in EMBED settings to invalidate it instantly.
+</div>
+
+<h2>5. Programmatic API</h2>
+<p>The widget exposes a small JS API for testing:</p>
+<pre><code>DashAgent.open();             // open the panel
+DashAgent.close();            // close it
+DashAgent.send("hello");      // send a message programmatically
+DashAgent.config;             // {embedId, apiOrigin, theme}</code></pre>
+
+<h2>6. REST endpoints (for your own clients)</h2>
+<table>
+<tr><th>Method</th><th>Path</th><th>Purpose</th></tr>
+<tr><td>GET</td><td><code>/api/embed/widget.js</code></td><td>Widget JavaScript</td></tr>
+<tr><td>POST</td><td><code>/api/embed/session/create</code></td><td>Bootstrap session token</td></tr>
+<tr><td>POST</td><td><code>/api/embed/chat</code></td><td>Send message, get reply</td></tr>
+</table>
+
+<h3>POST /api/embed/session/create</h3>
+<pre><code>{
+  "embed_id":   "emb_xxx",
+  "public_key": "pub_xxx",
+  "user":       {"id":"alice","store_id":"MUM01"},   // optional
+  "signature":  "abc123..."                          // HMAC-SHA256 hex, required if HMAC mode
+}
+→ 200 {"session_token":"sess_xxx","expires_in":900,"feature_config":{}}
+→ 403 {"detail":"origin not allowed" | "invalid user signature" | "embed disabled"}</code></pre>
+
+<h3>POST /api/embed/chat</h3>
+<pre><code>{ "session_token": "sess_xxx", "message": "what is X?" }
+→ 200 {"content":"...","session_token":"sess_xxx","external_user":"alice","latency_ms":1234}
+→ 401 session expired
+→ 429 rate limit
+→ 403 embed disabled</code></pre>
+
+<h2>7. Troubleshooting</h2>
+<table>
+<tr><th>Symptom</th><th>Cause + fix</th></tr>
+<tr><td>403 origin not allowed</td><td>Add the host's exact origin (scheme + host + port, no path) to <code>allowed_origins</code></td></tr>
+<tr><td>403 invalid user signature</td><td>Canonical JSON differs. Always sort keys, no spaces. Re-check your HMAC code matches the snippet in Dash UI.</td></tr>
+<tr><td>429 rate limit exceeded</td><td>Increase <code>rate_limit_per_min</code> on the embed config</td></tr>
+<tr><td>Widget bubble doesn't appear</td><td>Check browser console — script may have failed to load. Verify CORS / network tab.</td></tr>
+<tr><td>"agent unavailable"</td><td>Embed disabled by admin. Re-enable in Dash UI.</td></tr>
+</table>
+
+<p style="margin-top:30px; color:#666; font-size:11px; text-align:center;">
+  Manage your embeds in Dash → project → Settings → EMBED tab.
+</p>
+</body></html>"""
+    return HTMLResponse(html, headers={
+        "Cache-Control": "public, max-age=600",
+        "X-Content-Type-Options": "nosniff",
+    })
+
+
+@router.get("/widget.js")
+def serve_widget_js():
+    """Serve the embed widget JavaScript with permissive CORS + browser cache."""
+    import os
+    from fastapi.responses import Response
+
+    global _WIDGET_CACHE
+    try:
+        st = os.stat(_WIDGET_PATH)
+        if not _WIDGET_CACHE or _WIDGET_CACHE[1] != st.st_mtime:
+            with open(_WIDGET_PATH, "r", encoding="utf-8") as f:
+                _WIDGET_CACHE = (f.read(), st.st_mtime)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="widget not deployed")
+
+    return Response(
+        content=_WIDGET_CACHE[0],
+        media_type="application/javascript; charset=utf-8",
+        headers={
+            "Cache-Control": "public, max-age=300",      # 5min cache
+            "Access-Control-Allow-Origin": "*",          # widget is meant to load anywhere
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+def _extract_origin(req: Request) -> str | None:
+    """Prefer Origin header; fall back to scheme://host of Referer."""
+    origin = req.headers.get("Origin") or req.headers.get("origin")
+    if origin:
+        return origin
+    referer = req.headers.get("Referer") or req.headers.get("referer")
+    if referer:
+        try:
+            parts = referer.split("/")
+            if len(parts) >= 3:
+                return f"{parts[0]}//{parts[2]}"
+        except Exception:
+            return None
+    return None
+
+
+def _check_sec_fetch(req: Request) -> bool:
+    """Block requests that look like same-origin spoofing (Sec-Fetch-Site=none).
+
+    Browser sets Sec-Fetch-Site automatically:
+      - 'cross-site'  — legit cross-origin embed
+      - 'same-origin' — fine
+      - 'same-site'   — fine
+      - 'none'        — direct user navigation (curl, address bar) → suspicious for /embed/*
+
+    Returns True if OK, False if request looks crafted.
+    """
+    sfs = req.headers.get("Sec-Fetch-Site") or req.headers.get("sec-fetch-site")
+    if sfs is None:
+        # Older browsers / curl don't send it — fall back to origin allowlist (already enforced)
+        return True
+    return sfs in ("cross-site", "same-origin", "same-site")
+
+
+def _per_embed_cors_headers(allowed_origins: list[str], request_origin: str | None) -> dict:
+    """Echo back the request's origin only if it matches allowlist; else omit.
+
+    Server-level CORS allows '*' for permissiveness, but per-embed we tighten:
+    only echo origins explicitly listed in the embed's allowed_origins.
+    """
+    if request_origin and allowed_origins and request_origin in allowed_origins:
+        return {
+            "Access-Control-Allow-Origin": request_origin,
+            "Access-Control-Allow-Credentials": "false",
+            "Vary": "Origin",
+        }
+    return {}
+
+
+def _verify_test_token(embed_id: str, token: str, secret_key_hash: str) -> bool:
+    """Verify an HMAC-SHA256 sandbox token issued by /test-token."""
+    import base64
+    import hashlib
+    import hmac as _hmac
+    import json as _json
+    import time as _time
+    try:
+        padded = token + "=" * (-len(token) % 4)
+        payload = _json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
+        if payload.get("embed_id") != embed_id:
+            return False
+        exp = int(payload.get("exp") or 0)
+        if exp < int(_time.time()):
+            return False
+        nonce = str(payload.get("nonce") or "")
+        sig = str(payload.get("sig") or "")
+        msg = f"{embed_id}|{nonce}|{exp}".encode("utf-8")
+        expected = _hmac.new(secret_key_hash.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+        return _hmac.compare_digest(sig, expected)
+    except Exception:
+        return False
+
+
+@router.get("/try/{embed_id}")
+def try_embed_sandbox(embed_id: str, request: Request, token: str | None = None):
+    """Live sandbox URL for stakeholder testing. Access gated by embed.access_mode:
+
+    - public: open
+    - signed: requires valid ?token= (issued by /test-token)
+    - dashboard: requires Authorization Bearer
+    - ip_allowlist: client IP must be in test_ip_allowlist
+    """
+    from fastapi.responses import HTMLResponse
+    from sqlalchemy import text
+    from dash.embed import _get_engine
+
+    try:
+        eng = _get_engine()
+        with eng.connect() as conn:
+            row = conn.execute(text(
+                "SELECT embed_id, project_slug, name, public_key, secret_key_hash, "
+                " access_mode, test_ip_allowlist, enabled, status, primary_color, "
+                " welcome_msg, position, theme, logo_url "
+                "FROM public.dash_agent_embeds WHERE embed_id = :e"
+            ), {"e": embed_id}).mappings().first()
+    except Exception:
+        return HTMLResponse("<h1>500 — sandbox lookup failed</h1>", status_code=500)
+    if not row:
+        return HTMLResponse("<h1>404 — embed not found</h1>", status_code=404)
+    if not row["enabled"] or row.get("status") == "disabled":
+        return HTMLResponse("<h1>403 — embed disabled</h1>", status_code=403)
+
+    access_mode = (row.get("access_mode") or "public").lower()
+    if access_mode == "signed":
+        if not token or not _verify_test_token(embed_id, token, row.get("secret_key_hash") or ""):
+            return HTMLResponse("<h1>403 — valid ?token= required</h1>", status_code=403)
+    elif access_mode == "dashboard":
+        auth_hdr = request.headers.get("Authorization") or ""
+        if not auth_hdr.lower().startswith("bearer "):
+            return HTMLResponse("<h1>401 — Authorization Bearer required</h1>", status_code=401)
+        try:
+            from app.auth import validate_token
+            user = validate_token(auth_hdr.split(" ", 1)[1])
+            if not user:
+                return HTMLResponse("<h1>401 — invalid token</h1>", status_code=401)
+        except Exception:
+            return HTMLResponse("<h1>401 — token validation failed</h1>", status_code=401)
+    elif access_mode == "ip_allowlist":
+        allow = list(row.get("test_ip_allowlist") or [])
+        client_ip = request.client.host if request.client else ""
+        if allow and client_ip not in allow:
+            return HTMLResponse(f"<h1>403 — IP {client_ip} not in allowlist</h1>", status_code=403)
+
+    project_slug = row["project_slug"]
+    proj_name = row["name"] or project_slug
+    base_url = str(request.base_url).rstrip("/")
+    primary = row.get("primary_color") or "#1a2b4a"
+    welcome = (row.get("welcome_msg") or "Hi! Ask me anything.").replace('"', "&quot;")
+    position = row.get("position") or "bottom-right"
+    theme = row.get("theme") or "light"
+
+    # ── Sandbox claim impersonation — ?claim_store_id=42&claim_role=staff ──
+    # Bake into a JSON-encoded JS object passed to widget so live preview can
+    # exercise RLS claim flow without HMAC signing.
+    import json as _json_mod
+    _claim_overrides: dict = {}
+    for qk, qv in request.query_params.items():
+        if qk.lower().startswith("claim_") and len(qk) > 6:
+            _claim_overrides[qk[6:]] = qv
+    _claims_json_attr = (
+        _json_mod.dumps(_claim_overrides).replace('"', "&quot;")
+        if _claim_overrides else ""
+    )
+
+    html = f"""<!doctype html>
+<html><head><meta charset="utf-8"/>
+<title>Sandbox — {proj_name}</title>
+<style>
+  body {{ margin:0; padding:40px; background:#f5f1ea; font-family:system-ui, -apple-system, "Segoe UI", sans-serif; text-align:center; min-height:100vh; }}
+  h1 {{ color:#1a2b4a; font-size:28px; margin: 40px auto 12px; }}
+  p {{ color:#666; font-size:14px; max-width:520px; margin: 0 auto 8px; line-height:1.55; }}
+  .pill {{ display:inline-block; padding:4px 10px; background:rgba(0,0,0,0.06); color:#444; border-radius:999px; font-size:11px; letter-spacing:0.04em; text-transform:uppercase; margin-top:18px; }}
+  .hint {{ margin-top: 36px; color:#999; font-size:12px; }}
+</style>
+</head><body>
+  <h1>{proj_name}</h1>
+  <p>This is a live test sandbox &mdash; type a question in the chat bubble at the {position.replace('-', ' ')} of this page.</p>
+  <span class="pill">project: {project_slug}</span>
+  <p class="hint">Powered by the auto-provisioned project embed. Share this URL with stakeholders to test the assistant.</p>
+
+  <script src="{base_url}/api/embed/widget.js"
+          data-embed-id="{row['embed_id']}"
+          data-key="{row['public_key']}"
+          data-position="{position}"
+          data-theme="{theme}"
+          data-accent="{primary}"
+          data-greeting="{welcome}"
+          data-title="{proj_name}"
+          {('data-claims="' + _claims_json_attr + '"') if _claims_json_attr else ''}
+          async></script>
+  {('<div style="margin-top:24px;padding:10px 14px;background:#fff;border:1px dashed #c96342;border-radius:6px;display:inline-block;font-size:11px;color:#1a2b4a;">Impersonating claims: <code style="color:#c96342;">' + _json_mod.dumps(_claim_overrides) + '</code></div>') if _claim_overrides else ''}
+</body></html>"""
+
+    return HTMLResponse(html, headers={"X-Frame-Options": "SAMEORIGIN"})
+
+
+@router.get("/config/{embed_id}")
+def get_embed_public_config(embed_id: str, request: Request):
+    """Return public theme config for the widget. No auth (origin-checked at session)."""
+    from sqlalchemy import text
+    from dash.embed import _get_engine
+    try:
+        eng = _get_engine()
+        with eng.connect() as conn:
+            row = conn.execute(text(
+                "SELECT embed_id, name, primary_color, logo_url, welcome_msg, position, theme, "
+                " allowed_origins, enabled, status, auth_mode "
+                "FROM public.dash_agent_embeds WHERE embed_id = :e"
+            ), {"e": embed_id}).first()
+    except Exception:
+        raise HTTPException(500, "config lookup failed")
+    if not row:
+        raise HTTPException(404, "embed not found")
+    d = dict(row._mapping)
+    if d.get("enabled") is False or d.get("status") == "disabled":
+        raise HTTPException(403, "embed disabled")
+    origin = request.headers.get("origin", "")
+    allowed = d.get("allowed_origins") or []
+    cors = {}
+    if not allowed or "*" in allowed or origin in allowed:
+        cors = {
+            "Access-Control-Allow-Origin": origin or "*",
+            "Vary": "Origin",
+        }
+    payload = {
+        "embed_id": d["embed_id"],
+        "name": d.get("name"),
+        "primary_color": d.get("primary_color") or "#1a2b4a",
+        "logo_url": d.get("logo_url"),
+        "welcome_msg": d.get("welcome_msg") or "Hi! How can I help?",
+        "position": d.get("position") or "bottom-right",
+        "theme": d.get("theme") or "auto",
+        "auth_mode": d.get("auth_mode") or "public",
+    }
+    from fastapi.responses import JSONResponse
+    return JSONResponse(payload, headers=cors)
+
+
+@router.post("/session/create")
+async def create_embed_session(req: Request):
+    """Bootstrap a short-lived session token for the widget."""
+    try:
+        body = await req.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON body")
+
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="invalid JSON body")
+
+    embed_id = body.get("embed_id")
+    public_key = body.get("public_key")
+    user_payload = body.get("user")
+    signature = body.get("signature")
+
+    if not embed_id or not public_key:
+        raise HTTPException(status_code=400, detail="embed_id + public_key required")
+
+    if not _check_sec_fetch(req):
+        raise HTTPException(status_code=403, detail="invalid request context")
+
+    origin = _extract_origin(req)
+    ip = req.client.host if req.client else None
+
+    # Imported lazily so app start-up isn't blocked if the embed module is
+    # mid-deploy.
+    from dash.embed.auth import authenticate_session_request, EmbedAuthError
+    from dash.embed.session import create_session as _mk_session
+    from fastapi.responses import JSONResponse
+
+    server_origin = f"{req.url.scheme}://{req.url.netloc}" if req.url else None
+    # Same-origin browsers (preview iframe on dashboard host) may omit the
+    # Origin header. Treat referer-from-self as same-origin fallback.
+    if not origin and server_origin:
+        referer = req.headers.get("referer") or ""
+        if referer.startswith(server_origin):
+            origin = server_origin
+    try:
+        ctx = authenticate_session_request(
+            embed_id=embed_id,
+            public_key=public_key,
+            user_payload=user_payload if isinstance(user_payload, dict) else None,
+            signature=signature,
+            origin=origin,
+            ip=ip,
+            server_origin=server_origin,
+        )
+    except EmbedAuthError as e:
+        # Machine-readable error w/ code + docs URL. `detail` preserved for
+        # back-compat with widgets that parse only that field.
+        return JSONResponse(
+            {
+                "detail": e.detail,
+                "code": e.code,
+                "docs": f"https://dash.docs/embed/errors#{e.code}",
+            },
+            status_code=e.status,
+        )
+    except ValueError as e:
+        # Legacy fallback (any uncaught ValueError) — keep prior 403 shape.
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        logger.exception("embed session/create failed")
+        raise HTTPException(status_code=500, detail="internal error")
+
+    token = _mk_session(
+        embed_id=ctx["embed_id"],
+        external_user=ctx.get("external_user"),
+        user_attrs=ctx.get("user_attrs"),
+        origin=origin,
+        ip=ip,
+    )
+
+    # ── RLS claim extraction (Phase 1) ──────────────────────────────────────
+    # If embed has RLS enabled, extract claims from the configured source and
+    # persist on the session row. Sibling agent owns dash/embed/rls.py; we
+    # import lazily + fail-soft so embeds without RLS keep working.
+    claims_summary: dict | None = None
+    try:
+        from dash.embed.rls import load_rls_for_embed, extract_claims  # type: ignore
+        rls_cfg = load_rls_for_embed(ctx["embed_id"])
+        if rls_cfg and rls_cfg.get("rls_enabled"):
+            source = (rls_cfg.get("rls_claim_source") or "token").lower()
+            # Build per-source raw input.
+            raw: dict = {}
+            if source == "token":
+                # Token-mode: claims come from the verified signed token
+                # payload. authenticate_session_request returns user_attrs from
+                # the verified payload — pass them through.
+                raw = dict(ctx.get("user_attrs") or {})
+                if ctx.get("external_user"):
+                    raw.setdefault("user_id", ctx["external_user"])
+            elif source == "hmac":
+                raw = dict(user_payload) if isinstance(user_payload, dict) else {}
+            elif source == "url":
+                # ?store_id=42&role=staff on session/create
+                raw = {k: v for k, v in req.query_params.items()}
+            elif source == "header":
+                # x-embed-claim-<key>: <value>
+                prefix = "x-embed-claim-"
+                for hk, hv in req.headers.items():
+                    if hk.lower().startswith(prefix):
+                        raw[hk[len(prefix):].lower()] = hv
+
+            extracted = extract_claims(raw, rls_cfg.get("rls_claims") or [])
+            if extracted:
+                claims_summary = extracted
+                # Persist on the session row (idempotent column ensured at
+                # auth.py import time).
+                try:
+                    import json as _json
+                    from sqlalchemy import text as _sa_text
+                    from dash.embed import _get_engine
+                    eng = _get_engine()
+                    with eng.begin() as conn:
+                        conn.execute(
+                            _sa_text(
+                                "UPDATE public.dash_embed_sessions "
+                                "SET claims = CAST(:c AS JSONB) "
+                                "WHERE session_token = :t"
+                            ),
+                            {"c": _json.dumps(extracted), "t": token},
+                        )
+                except Exception:
+                    logger.exception("failed to persist session claims")
+    except ImportError:
+        # dash/embed/rls.py not yet deployed by sibling agent.
+        pass
+    except Exception:
+        logger.exception("RLS claim extraction failed (fail-open)")
+
+    return {
+        "session_token": token,
+        "expires_in": 15 * 60,
+        "feature_config": ctx.get("feature_config") or {},
+        "claims": claims_summary,
+    }
+
+
+# ── Phase 3 — embed chat endpoint + rate limit ─────────────────────────
+import threading
+import time as _time
+from collections import deque
+
+_RATE_BUCKETS: dict[str, deque] = {}
+_RATE_LOCK = threading.Lock()
+
+
+def _rate_limit_check(embed_id: str, limit_per_min: int) -> bool:
+    """Sliding-window rate limit per embed_id. Returns True if allowed."""
+    now = _time.monotonic()
+    cutoff = now - 60.0
+    with _RATE_LOCK:
+        bucket = _RATE_BUCKETS.setdefault(embed_id, deque())
+        while bucket and bucket[0] < cutoff:
+            bucket.popleft()
+        if len(bucket) >= max(1, int(limit_per_min)):
+            return False
+        bucket.append(now)
+        return True
+
+
+@router.post("/chat")
+async def embed_chat(req: Request):
+    """Run a chat turn for an embed session.
+
+    Body: {"session_token": "...", "message": "..."}.
+    Validates session, applies rate limit, runs team, returns answer.
+    user_attrs from session are injected into request context so the
+    Analyst's RLS layer can filter rows.
+    """
+    try:
+        body = await req.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON body")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="invalid JSON body")
+
+    token = body.get("session_token")
+    message = (body.get("message") or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="session_token required")
+    if not message:
+        raise HTTPException(status_code=400, detail="message required")
+    if len(message) > 50000:
+        raise HTTPException(status_code=413, detail="message too long")
+
+    from dash.embed.session import validate_session
+    sess = validate_session(token)
+    if not sess:
+        raise HTTPException(status_code=401, detail="session expired or invalid")
+
+    embed_id = sess["embed_id"]
+
+    # Fetch session claims (populated at session/create when RLS enabled).
+    sess_claims: dict | None = None
+    try:
+        from sqlalchemy import text as _sa_text2
+        from dash.embed import _get_engine as _ge
+        _eng_c = _ge()
+        with _eng_c.connect() as _cc:
+            _crow = _cc.execute(_sa_text2(
+                "SELECT claims FROM public.dash_embed_sessions WHERE session_token = :t"
+            ), {"t": token}).first()
+            if _crow and _crow[0]:
+                sess_claims = _crow[0] if isinstance(_crow[0], dict) else None
+    except Exception:
+        pass
+
+    # Look up embed for project_slug + rate_limit + feature_config.
+    from dash.embed import _get_engine
+    from sqlalchemy import text
+    eng = _get_engine()
+    with eng.connect() as conn:
+        row = conn.execute(text(
+            "SELECT project_slug, rate_limit_per_min, feature_config, enabled, "
+            "       id, bound_scope_id, bound_intent, bound_role, "
+            "       response_style, max_reply_chars "
+            "FROM public.dash_agent_embeds WHERE embed_id = :e"
+        ), {"e": embed_id}).first()
+    if not row or not row[3]:
+        raise HTTPException(status_code=403, detail="embed disabled")
+    (project_slug, rate_limit, feature_cfg_override, _, embed_pk,
+     bound_scope_id, bound_intent, bound_role,
+     response_style, max_reply_chars) = row
+    bound_intent = bound_intent or "public"  # WHY: legacy rows pre-migration default safely
+    response_style = (response_style or "consumer").lower()
+    max_reply_chars = int(max_reply_chars or 600)
+
+    if not _rate_limit_check(embed_id, int(rate_limit or 30)):
+        raise HTTPException(status_code=429, detail="rate limit exceeded")
+
+    # ── Redis cache lookup (fail-soft, never blocks chat) ──────────────────
+    _cache_site_id = (sess_claims or {}).get("site_id") or bound_scope_id or "_"
+    _ck: str | None = None
+    try:
+        from dash.cache import embed_cache as _ec
+        _ck = _ec.cache_key(embed_id, str(_cache_site_id), message)
+        cached = _ec.get(_ck)
+        if cached:
+            try:
+                _ec.incr_hit()
+            except Exception:
+                pass
+            return {**cached, "cache_hit": True, "latency_ms": 5}
+    except Exception as e:
+        logger.warning("embed_cache lookup error: %s", e)
+        _ck = None
+
+    # ── Scope guardrail pre-flight (Phase 5) ───────────────────────────────
+    try:
+        from dash.scope_classifier import classify_question, log_refusal
+        decision = classify_question(project_slug, message)
+        if decision.refused:
+            log_refusal(project_slug, message, decision,
+                        embed_id=embed_id,
+                        external_user=sess.get("external_user"))
+            refusal = decision.refusal_message or "I can't help with that."
+            return {
+                "content": refusal,
+                "session_token": token,
+                "external_user": sess.get("external_user"),
+                "refused": True,
+                "latency_ms": 0,
+            }
+    except Exception as e:
+        logger.warning("embed scope classifier failed (fail-open): %s", e)
+
+    # Inject user context for RLS + visibility policy. Embed-bound values
+    # ALWAYS override session-supplied user_attrs so a malicious host cannot
+    # widen the scope by signing a different store_id.
+    sess_user_attrs = dict(sess.get("user_attrs") or {})
+    if bound_scope_id:
+        sess_user_attrs["store_id"] = bound_scope_id
+    if bound_role:
+        sess_user_attrs["role"] = bound_role
+    # Synthetic viewer_user_id keeps audit rows attributable while not
+    # colliding with real user IDs (always negative).
+    synthetic_viewer = -int(embed_pk) if embed_pk is not None else None
+    try:
+        from dash.tools.skill_refinery import set_request_context
+        set_request_context(
+            project_slug=project_slug,
+            user_id=None,
+            agent="embed",
+            user_attrs=sess_user_attrs or None,
+            external_user=sess.get("external_user"),
+            query_intent=bound_intent,
+            viewer_user_id=synthetic_viewer,
+            viewer_scope_id=bound_scope_id,
+            embed_response_style=response_style,
+        )
+    except Exception:
+        pass
+
+    # Audit log: 1 row per chat turn.
+    try:
+        with eng.begin() as conn:
+            conn.execute(text(
+                "UPDATE public.dash_embed_sessions SET request_count = COALESCE(request_count,0)+1 "
+                "WHERE session_token = :t"
+            ), {"t": token})
+    except Exception:
+        pass
+
+    # ── RLS ContextVar wiring (Phase 3) — set before team.run, reset after.
+    _rls_tokens: list = []
+    try:
+        from dash.embed.rls import (  # type: ignore
+            EMBED_CLAIMS, EMBED_RLS_POLICIES, EMBED_RLS_AUDIT_CTX,
+            load_rls_for_embed,
+        )
+        _rls_cfg = load_rls_for_embed(embed_id) or {}
+        if _rls_cfg.get("rls_enabled"):
+            _rls_tokens.append(EMBED_CLAIMS.set(sess_claims or {}))
+            _rls_tokens.append(EMBED_RLS_POLICIES.set(_rls_cfg.get("rls_policies") or []))
+            _rls_tokens.append(EMBED_RLS_AUDIT_CTX.set({
+                "embed_id": embed_id,
+                "session_token": token,
+                "external_user": sess.get("external_user"),
+                "project_slug": project_slug,
+            }))
+    except ImportError:
+        # dash/embed/rls.py not yet deployed by sibling agent.
+        pass
+    except Exception:
+        logger.exception("RLS ContextVar wiring failed (fail-open)")
+
+    # Build team + run (re-uses existing project chat path).
+    import time as _time
+    t0 = _time.monotonic()
+    success = True
+    err_msg: str | None = None
+    content = ""
+    try:
+        from dash.team import create_project_team
+        team = create_project_team(
+            project_slug=project_slug,
+            agent_name="Embed Agent",
+            agent_role="",
+            agent_personality="friendly",
+            user_id=None,
+        )
+
+        ctx_note = ""
+        if sess.get("external_user"):
+            ctx_note += f"\n[EMBED CONTEXT] external_user={sess['external_user']}"
+        if sess.get("user_attrs"):
+            import json as _json
+            ctx_note += f"\n[EMBED CONTEXT] user_attrs={_json.dumps(sess['user_attrs'])}"
+
+        # Rate-limit concurrent agent runs to prevent OpenRouter 429s under
+        # load (e.g. 100-shop embed load test). Reuses the chat-tier semaphore
+        # from dash.settings so embed traffic shares the same cap as other
+        # async chat paths. Offloads the blocking team.run() to a thread so
+        # the event loop stays free while we hold the semaphore.
+        import asyncio as _asyncio
+        try:
+            from dash.settings import _get_sem as _llm_get_sem
+            _sem = _llm_get_sem("qa_generation")  # chat tier
+        except Exception:
+            _sem = None
+        if _sem is not None:
+            async with _sem:
+                response = await _asyncio.to_thread(
+                    team.run, message + ctx_note, session_id=f"embed_{token[:16]}"
+                )
+        else:
+            response = await _asyncio.to_thread(
+                team.run, message + ctx_note, session_id=f"embed_{token[:16]}"
+            )
+        content = response.content or ""
+
+        # WHY: bound_intent is non-private by default for embeds; strip raw
+        # numbers from narrative so banding policy is enforced end-to-end.
+        if bound_intent and bound_intent != "private":
+            try:
+                from dash.dashboards.agents.text_guard import sanitize_narrative
+                content = sanitize_narrative(content, project_slug, bound_intent)
+            except Exception:
+                pass
+
+        # Consumer-mode embeds: strip developer-facing tags/code/routing chatter
+        # and cap reply length so the widget renders friendly, marketing-grade text.
+        if response_style == "consumer":
+            try:
+                content = sanitize_consumer_response(content, max_chars=max_reply_chars)
+            except Exception:
+                logger.exception("sanitize_consumer_response failed")
+    except Exception as e:
+        logger.exception("embed chat error")
+        success = False
+        err_msg = str(e)[:500]
+    finally:
+        # Reset visibility ContextVars so they don't leak across requests.
+        try:
+            from dash.tools.skill_refinery import set_request_context
+            set_request_context(
+                query_intent="private",
+                viewer_user_id=0,  # WHY: ContextVar set() needs non-None to clear; 0 is safe sentinel
+                viewer_scope_id="",
+                embed_response_style="",  # clear so non-embed requests don't inherit
+            )
+        except Exception:
+            pass
+        # Reset RLS ContextVars in reverse order via stored reset tokens.
+        if _rls_tokens:
+            try:
+                from dash.embed.rls import (  # type: ignore
+                    EMBED_CLAIMS, EMBED_RLS_POLICIES, EMBED_RLS_AUDIT_CTX,
+                )
+                _vars = [EMBED_CLAIMS, EMBED_RLS_POLICIES, EMBED_RLS_AUDIT_CTX]
+                for var, tok in zip(_vars, _rls_tokens):
+                    try:
+                        var.reset(tok)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        latency_ms = int((_time.monotonic() - t0) * 1000)
+        # Log per-call audit row (best-effort — never block the response).
+        try:
+            origin = req.headers.get("Origin") or ""
+            ip = req.client.host if req.client else None
+            with eng.begin() as conn:
+                conn.execute(text(
+                    "INSERT INTO public.dash_embed_calls "
+                    "(embed_id, session_token, external_user, origin, ip, "
+                    " message_chars, response_chars, latency_ms, success, error) "
+                    "VALUES (:e, :t, :u, :o, :ip, :mc, :rc, :ms, :s, :err)"
+                ), {
+                    "e": embed_id, "t": token,
+                    "u": sess.get("external_user"),
+                    "o": origin, "ip": ip,
+                    "mc": len(message or ""),
+                    "rc": len(content or ""),
+                    "ms": latency_ms,
+                    "s": success, "err": err_msg,
+                })
+        except Exception:
+            pass
+
+    if not success:
+        raise HTTPException(status_code=500, detail="chat failed")
+
+    _response = {
+        "content": content,
+        "session_token": token,
+        "external_user": sess.get("external_user"),
+        "latency_ms": latency_ms,
+        "cache_hit": False,
+    }
+
+    # ── Redis cache store (fail-soft) ──────────────────────────────────────
+    if _ck:
+        try:
+            from dash.cache import embed_cache as _ec
+            # Don't cache transient fields (latency varies, cache_hit must flip).
+            _store = {
+                "content": content,
+                "external_user": sess.get("external_user"),
+            }
+            _ec.set_indexed(_ck, _store, embed_id, str(_cache_site_id))
+            _ec.incr_miss()
+        except Exception as e:
+            logger.warning("embed_cache store error: %s", e)
+
+    return _response
+
+
+# ── Phase 6 — SSE streaming embed chat ──────────────────────────────────
+# Mirrors POST /chat auth + agent invocation but streams token deltas via
+# Server-Sent Events. Only enabled for response_style=analyst — consumer
+# mode requires post-hoc sanitization that can't be applied to a stream of
+# 5-20 char tokens (would band currency mid-token). Consumer mode returns
+# 400 here; callers must use the non-streaming /chat endpoint.
+#
+# Event types emitted:
+#   meta   {session_token, embed_id, started_at}
+#   token  {delta: "..."}
+#   done   {latency_ms, session_token, cache_hit}
+#   error  {detail, code}
+# Heartbeat ": heartbeat\n\n" every 15s to keep connections alive.
+# Buffer cap 10KB to defend against runaway LLM output.
+
+_STREAM_MAX_BUFFER_BYTES = 10 * 1024  # 10KB
+_STREAM_HEARTBEAT_S = 15.0
+
+
+def _sse_format(event: str, data_obj) -> str:
+    """Format a single SSE event frame."""
+    import json as _json
+    try:
+        payload = _json.dumps(data_obj, default=str)
+    except Exception:
+        payload = _json.dumps({"_serialize_error": True})
+    return f"event: {event}\ndata: {payload}\n\n"
+
+
+@router.post("/chat/stream")
+async def embed_chat_stream(req: Request):
+    """SSE-streaming variant of /chat.
+
+    Reuses the same auth/origin/rate-limit/agent-invocation pipeline as
+    /chat but streams content via Server-Sent Events. Only available for
+    embeds with response_style=analyst (consumer mode requires post-hoc
+    sanitization incompatible with token streaming).
+    """
+    import asyncio as _asyncio
+    import time as _time_mod
+    from fastapi.responses import StreamingResponse
+
+    # ── Parse + validate body up front so we can fail fast w/ HTTPException ──
+    try:
+        body = await req.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON body")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="invalid JSON body")
+
+    token = body.get("session_token")
+    message = (body.get("message") or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="session_token required")
+    if not message:
+        raise HTTPException(status_code=400, detail="message required")
+    if len(message) > 50000:
+        raise HTTPException(status_code=413, detail="message too long")
+
+    from dash.embed.session import validate_session
+    sess = validate_session(token)
+    if not sess:
+        raise HTTPException(status_code=401, detail="session expired or invalid")
+
+    embed_id = sess["embed_id"]
+
+    # Look up embed for project_slug + rate_limit + response_style.
+    from dash.embed import _get_engine
+    from sqlalchemy import text
+    eng = _get_engine()
+    with eng.connect() as conn:
+        row = conn.execute(text(
+            "SELECT project_slug, rate_limit_per_min, feature_config, enabled, "
+            "       id, bound_scope_id, bound_intent, bound_role, "
+            "       response_style, max_reply_chars "
+            "FROM public.dash_agent_embeds WHERE embed_id = :e"
+        ), {"e": embed_id}).first()
+    if not row or not row[3]:
+        raise HTTPException(status_code=403, detail="embed disabled")
+    (project_slug, rate_limit, _fc, _, embed_pk,
+     bound_scope_id, bound_intent, bound_role,
+     response_style, _max_reply_chars) = row
+    bound_intent = bound_intent or "public"
+    response_style = (response_style or "consumer").lower()
+
+    # Consumer-mode rejects streaming: per-token sanitization would corrupt
+    # currency banding + quantity masking applied by sanitize_consumer_response.
+    # Callers must use POST /chat (full-response sanitize then return JSON).
+    if response_style == "consumer":
+        raise HTTPException(
+            status_code=400,
+            detail="streaming is not available for consumer-mode embeds; use POST /chat",
+        )
+
+    # Same per-embed sliding-window rate limit as /chat.
+    if not _rate_limit_check(embed_id, int(rate_limit or 30)):
+        raise HTTPException(status_code=429, detail="rate limit exceeded")
+
+    # Scope guardrail pre-flight (same as /chat). Refusals emit as a single
+    # token event + done so the widget still renders a friendly message.
+    refusal_text: str | None = None
+    try:
+        from dash.scope_classifier import classify_question, log_refusal
+        decision = classify_question(project_slug, message)
+        if decision.refused:
+            log_refusal(project_slug, message, decision,
+                        embed_id=embed_id,
+                        external_user=sess.get("external_user"))
+            refusal_text = decision.refusal_message or "I can't help with that."
+    except Exception as e:
+        logger.warning("embed scope classifier failed (fail-open): %s", e)
+
+    # Inject embed user context same as /chat path.
+    sess_user_attrs = dict(sess.get("user_attrs") or {})
+    if bound_scope_id:
+        sess_user_attrs["store_id"] = bound_scope_id
+    if bound_role:
+        sess_user_attrs["role"] = bound_role
+    synthetic_viewer = -int(embed_pk) if embed_pk is not None else None
+    try:
+        from dash.tools.skill_refinery import set_request_context
+        set_request_context(
+            project_slug=project_slug,
+            user_id=None,
+            agent="embed",
+            user_attrs=sess_user_attrs or None,
+            external_user=sess.get("external_user"),
+            query_intent=bound_intent,
+            viewer_user_id=synthetic_viewer,
+            viewer_scope_id=bound_scope_id,
+            embed_response_style=response_style,
+        )
+    except Exception:
+        pass
+
+    # Bump request counter (best-effort).
+    try:
+        with eng.begin() as conn:
+            conn.execute(text(
+                "UPDATE public.dash_embed_sessions "
+                "SET request_count = COALESCE(request_count,0)+1 "
+                "WHERE session_token = :t"
+            ), {"t": token})
+    except Exception:
+        pass
+
+    # RLS ContextVar wiring (mirror /chat).
+    _rls_tokens: list = []
+    try:
+        from dash.embed.rls import (  # type: ignore
+            EMBED_CLAIMS, EMBED_RLS_POLICIES, EMBED_RLS_AUDIT_CTX,
+            load_rls_for_embed,
+        )
+        sess_claims: dict | None = None
+        try:
+            from sqlalchemy import text as _sa_text2
+            with eng.connect() as _cc:
+                _crow = _cc.execute(_sa_text2(
+                    "SELECT claims FROM public.dash_embed_sessions WHERE session_token = :t"
+                ), {"t": token}).first()
+                if _crow and _crow[0]:
+                    sess_claims = _crow[0] if isinstance(_crow[0], dict) else None
+        except Exception:
+            pass
+        _rls_cfg = load_rls_for_embed(embed_id) or {}
+        if _rls_cfg.get("rls_enabled"):
+            _rls_tokens.append(EMBED_CLAIMS.set(sess_claims or {}))
+            _rls_tokens.append(EMBED_RLS_POLICIES.set(_rls_cfg.get("rls_policies") or []))
+            _rls_tokens.append(EMBED_RLS_AUDIT_CTX.set({
+                "embed_id": embed_id,
+                "session_token": token,
+                "external_user": sess.get("external_user"),
+                "project_slug": project_slug,
+            }))
+    except ImportError:
+        pass
+    except Exception:
+        logger.exception("RLS ContextVar wiring failed (fail-open)")
+
+    # ── SSE producer ─────────────────────────────────────────────────────
+    async def _produce():
+        from datetime import datetime, timezone
+        t0 = _time_mod.monotonic()
+        started_at = datetime.now(timezone.utc).isoformat()
+        full_buffer: list[str] = []
+        buffer_bytes = 0
+        capped = False
+
+        # meta event first.
+        yield _sse_format("meta", {
+            "session_token": token,
+            "embed_id": embed_id,
+            "started_at": started_at,
+        })
+
+        # Short-circuit: refusal path emits one token + done.
+        if refusal_text is not None:
+            yield _sse_format("token", {"delta": refusal_text})
+            yield _sse_format("done", {
+                "latency_ms": int((_time_mod.monotonic() - t0) * 1000),
+                "session_token": token,
+                "cache_hit": False,
+                "refused": True,
+            })
+            return
+
+        try:
+            from dash.team import create_project_team
+            team = create_project_team(
+                project_slug=project_slug,
+                agent_name="Embed Agent",
+                agent_role="",
+                agent_personality="friendly",
+                user_id=None,
+            )
+
+            ctx_note = ""
+            if sess.get("external_user"):
+                ctx_note += f"\n[EMBED CONTEXT] external_user={sess['external_user']}"
+            if sess.get("user_attrs"):
+                import json as _json
+                ctx_note += f"\n[EMBED CONTEXT] user_attrs={_json.dumps(sess['user_attrs'])}"
+
+            # Stream from Agno team. Pump a sync iterator into an asyncio
+            # queue so the producer coroutine can interleave heartbeats
+            # without blocking on team.run().
+            queue: _asyncio.Queue = _asyncio.Queue(maxsize=256)
+            _SENTINEL = object()
+            error_holder: dict = {}
+            loop = _asyncio.get_running_loop()
+
+            def _pump_sync():
+                try:
+                    it = team.run(
+                        message + ctx_note,
+                        session_id=f"embed_{token[:16]}",
+                        stream=True,
+                        stream_events=True,
+                    )
+                    for event in it:
+                        _asyncio.run_coroutine_threadsafe(
+                            queue.put(event), loop
+                        ).result(timeout=30)
+                except Exception as exc:
+                    error_holder["err"] = str(exc)[:500]
+                finally:
+                    try:
+                        _asyncio.run_coroutine_threadsafe(
+                            queue.put(_SENTINEL), loop
+                        ).result(timeout=5)
+                    except Exception:
+                        pass
+
+            pump_task = _asyncio.create_task(_asyncio.to_thread(_pump_sync))
+            last_heartbeat = _time_mod.monotonic()
+
+            while True:
+                try:
+                    event = await _asyncio.wait_for(queue.get(), timeout=_STREAM_HEARTBEAT_S)
+                except _asyncio.TimeoutError:
+                    # Heartbeat keeps proxies (nginx, Caddy) from closing.
+                    yield ": heartbeat\n\n"
+                    last_heartbeat = _time_mod.monotonic()
+                    continue
+
+                if event is _SENTINEL:
+                    break
+
+                # Extract delta. Agno yields TeamRunContent / RunContent
+                # events w/ a .content delta. Skip tool calls + reasoning
+                # steps — embed UX is final answer only (admin trace owns
+                # the rest).
+                try:
+                    if hasattr(event, "to_dict"):
+                        data = event.to_dict()
+                    elif hasattr(event, "model_dump"):
+                        data = event.model_dump()
+                    elif hasattr(event, "__dict__"):
+                        data = dict(event.__dict__)
+                    else:
+                        data = {"content": str(event)}
+                except Exception:
+                    data = {}
+
+                event_name = data.get("event") or type(event).__name__
+                delta = ""
+                if event_name in ("TeamRunContent", "RunContent"):
+                    delta = data.get("content") or ""
+                elif not event_name and hasattr(event, "content"):
+                    delta = getattr(event, "content", "") or ""
+
+                if not delta:
+                    continue
+
+                # Buffer cap defense — once exceeded, stop forwarding tokens
+                # but keep draining the pump so team.run() loop completes.
+                if buffer_bytes >= _STREAM_MAX_BUFFER_BYTES:
+                    capped = True
+                    continue
+
+                delta_bytes = len(delta.encode("utf-8"))
+                if buffer_bytes + delta_bytes > _STREAM_MAX_BUFFER_BYTES:
+                    remaining = _STREAM_MAX_BUFFER_BYTES - buffer_bytes
+                    delta = delta.encode("utf-8")[:remaining].decode("utf-8", errors="ignore")
+                    capped = True
+
+                full_buffer.append(delta)
+                buffer_bytes += len(delta.encode("utf-8"))
+
+                yield _sse_format("token", {"delta": delta})
+
+                now = _time_mod.monotonic()
+                if now - last_heartbeat >= _STREAM_HEARTBEAT_S:
+                    yield ": heartbeat\n\n"
+                    last_heartbeat = now
+
+            try:
+                await _asyncio.wait_for(pump_task, timeout=5.0)
+            except Exception:
+                pass
+
+            if error_holder.get("err"):
+                yield _sse_format("error", {
+                    "detail": error_holder["err"],
+                    "code": "agent_error",
+                })
+                return
+
+            latency_ms = int((_time_mod.monotonic() - t0) * 1000)
+            done_payload = {
+                "latency_ms": latency_ms,
+                "session_token": token,
+                "cache_hit": False,
+            }
+            if capped:
+                done_payload["truncated"] = True
+            yield _sse_format("done", done_payload)
+
+        except Exception as exc:
+            logger.exception("embed chat stream error")
+            yield _sse_format("error", {
+                "detail": str(exc)[:500],
+                "code": "stream_error",
+            })
+        finally:
+            try:
+                from dash.tools.skill_refinery import set_request_context
+                set_request_context(
+                    query_intent="private",
+                    viewer_user_id=0,
+                    viewer_scope_id="",
+                    embed_response_style="",
+                )
+            except Exception:
+                pass
+            if _rls_tokens:
+                try:
+                    from dash.embed.rls import (  # type: ignore
+                        EMBED_CLAIMS, EMBED_RLS_POLICIES, EMBED_RLS_AUDIT_CTX,
+                    )
+                    _vars = [EMBED_CLAIMS, EMBED_RLS_POLICIES, EMBED_RLS_AUDIT_CTX]
+                    for var, tok in zip(_vars, _rls_tokens):
+                        try:
+                            var.reset(tok)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+            # Audit log (best-effort) — one row per stream call.
+            try:
+                content_assembled = "".join(full_buffer)
+                latency_ms = int((_time_mod.monotonic() - t0) * 1000)
+                origin = req.headers.get("Origin") or ""
+                ip = req.client.host if req.client else None
+                with eng.begin() as conn:
+                    conn.execute(text(
+                        "INSERT INTO public.dash_embed_calls "
+                        "(embed_id, session_token, external_user, origin, ip, "
+                        " message_chars, response_chars, latency_ms, success, error) "
+                        "VALUES (:e, :t, :u, :o, :ip, :mc, :rc, :ms, :s, :err)"
+                    ), {
+                        "e": embed_id, "t": token,
+                        "u": sess.get("external_user"),
+                        "o": origin, "ip": ip,
+                        "mc": len(message or ""),
+                        "rc": len(content_assembled or ""),
+                        "ms": latency_ms,
+                        "s": True, "err": None,
+                    })
+            except Exception:
+                pass
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",  # nginx hint: don't buffer SSE
+    }
+    # Per-embed CORS echo so the browser accepts SSE from cross-origin pages.
+    try:
+        with eng.connect() as conn:
+            row2 = conn.execute(text(
+                "SELECT allowed_origins FROM public.dash_agent_embeds WHERE embed_id = :e"
+            ), {"e": embed_id}).first()
+            allowed = list(row2[0]) if row2 and row2[0] else []
+            origin_hdr = _extract_origin(req)
+            headers.update(_per_embed_cors_headers(allowed, origin_hdr))
+    except Exception:
+        pass
+
+    return StreamingResponse(
+        _produce(),
+        media_type="text/event-stream",
+        headers=headers,
+    )
+

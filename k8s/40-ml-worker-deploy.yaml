@@ -1,0 +1,109 @@
+# OPT-IN (2026 trim): ml-worker is default-OFF. dash-ml image is not built by
+# default. Build via ml_worker/Dockerfile (and push it to your registry) then
+# `kubectl apply` this file ONLY if AutoML/heavy-ML pre-train is needed.
+# Applying it without the image built first will ImagePullBackOff.
+# ===========================================================================
+# dash-ml-worker Deployment
+# ---------------------------------------------------------------------------
+# Purpose: Background worker that polls `dash_ml_jobs` and trains heavy
+# ML models (forecast, classify, anomaly, etc.) in isolation so chat is
+# never blocked. Mirrors compose service `dash-ml`.
+#
+# Image: built from `ml_worker/Dockerfile` (separate from main api image —
+# it bundles sklearn/lightgbm/statsforecast and is much smaller). Replicas
+# kept at 1 because the worker uses a SELECT ... FOR UPDATE SKIP LOCKED
+# style poll on the jobs table; horizontal scaling needs DB-level locking
+# to be re-validated before raising replicas.
+#
+# Dependencies (must exist in same namespace before applying):
+#   - ConfigMap : dash-config       (DB_HOST=dash-pgbouncer, DB_PORT,
+#                                    DB_USER, DB_DATABASE, DEEP_MODEL,
+#                                    CHAT_MODEL, LITE_MODEL)
+#   - Secret    : dash-secrets      (DB_PASS, OPENROUTER_API_KEY)
+#   - Secret    : registry-secret   (imagePullSecret)
+#   - PVC       : dash-knowledge-data (shared with dash-api, RWX)
+#   - Service   : dash-pgbouncer    (DB pooler)
+#
+# Resource sizing rationale:
+#   compose.yaml memory limit = 1G. K8s mirrors that as `limits.memory=1Gi`.
+#   Requests are kept at 512Mi/250m so the pod schedules easily; bursty
+#   training jobs can use up to the limit. ml_worker enforces a 5-minute
+#   per-job SIGALRM timeout and 100K row LIMIT to stay within the cap.
+# ===========================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dash-ml-worker
+  labels:
+    app: dash-ml-worker
+    component: ml-worker
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate  # only one worker at a time
+  selector:
+    matchLabels:
+      app: dash-ml-worker
+  template:
+    metadata:
+      labels:
+        app: dash-ml-worker
+        component: ml-worker
+    spec:
+      # TODO: replace `registry-secret` with your registry's pull secret name.
+      imagePullSecrets:
+        - name: registry-secret
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      restartPolicy: Always
+      containers:
+        - name: dash-ml-worker
+          # TODO: replace `dash-ml:latest` with the fully qualified image
+          # path, e.g. ghcr.io/your-org/dash-ml:v1.2.3.
+          image: dash-ml:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: dash-config
+            - secretRef:
+                name: dash-secrets
+          env:
+            # ml_worker/main.py reads DATABASE_URL directly (mirrors compose).
+            - name: DATABASE_URL
+              value: "postgresql://$(DB_USER):$(DB_PASS)@$(DB_HOST):$(DB_PORT)/$(DB_DATABASE)"
+          volumeMounts:
+            - name: knowledge
+              mountPath: /app/knowledge
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          # TODO: ml_worker has no HTTP health endpoint. Replace this with
+          # an exec probe once the worker writes a heartbeat file, e.g.:
+          #   exec:
+          #     command: ["cat", "/tmp/ml_worker.alive"]
+          # For now we use a TCP-style placeholder that always succeeds via
+          # a trivial exec on `python` to confirm the container is alive.
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pgrep -f 'python.*main.py' >/dev/null"]
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: knowledge
+          persistentVolumeClaim:
+            claimName: dash-knowledge-data
+      terminationGracePeriodSeconds: 60

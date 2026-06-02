@@ -1,0 +1,27 @@
+# ===========================================================================
+# dash-api Service
+# ---------------------------------------------------------------------------
+# Purpose: ClusterIP Service fronting the dash-api Deployment.
+# Mirrors compose port mapping `8001:8000` — Service exposes 8001 externally
+# (within-cluster) and forwards to container port 8000. An Ingress / Caddy
+# (separate manifest) terminates TLS and routes public traffic here.
+#
+# Dependencies:
+#   - Deployment: dash-api (see 30-api-deploy.yaml)
+# ===========================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: dash-api
+  labels:
+    app: dash-api
+    component: api
+spec:
+  type: ClusterIP
+  selector:
+    app: dash-api
+  ports:
+    - name: http
+      port: 8001
+      targetPort: 8000
+      protocol: TCP

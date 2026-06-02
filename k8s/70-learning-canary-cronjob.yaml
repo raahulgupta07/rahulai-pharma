@@ -1,0 +1,65 @@
+# Weekly dry-run canary. Detects regressions in heuristic layer at $0 cost
+# (no LLM calls). Runs every Sunday at 05:00 UTC.
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dash-learning-canary
+  namespace: dash
+  labels: {app: dash, component: learning}
+spec:
+  # Sundays at 05:00 UTC — after the daily run completes.
+  schedule: "0 5 * * 0"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels: {app: dash, component: learning}
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: trigger
+            image: curlimages/curl:8
+            command: ["/bin/sh","-c"]
+            args:
+            - |
+              set -e
+              echo "Triggering weekly dry-run canary..."
+              SLUGS=$(curl -fsS \
+                -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+                "${DASH_API}/api/learning/projects/optin" \
+                | tr -d '\n' | sed 's/.*"slugs":\[\([^]]*\)\].*/\1/' \
+                | tr -d '"' | tr ',' '\n' | grep -v '^$')
+              for slug in $SLUGS; do
+                echo "  -> canary: $slug"
+                curl -fsS -X POST \
+                  -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+                  "${DASH_API}/api/learning/cycle/${slug}?dry_run=true" \
+                  --max-time 600 \
+                  -o /tmp/canary_${slug}.log \
+                  || echo "    [warn] canary for $slug failed"
+              done
+              echo "Triggering central canary..."
+              curl -fsS -X POST \
+                -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+                "${DASH_API}/api/learning/cycle/central?dry_run=true" \
+                --max-time 600 \
+                || echo "  [warn] central canary failed"
+              echo "Done."
+            env:
+            - name: DASH_API
+              value: "http://dash-api.dash.svc.cluster.local:8000"
+            - name: ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: dash-secrets
+                  key: ADMIN_API_TOKEN
+            resources:
+              requests: {cpu: 50m, memory: 64Mi}
+              limits: {cpu: 200m, memory: 128Mi}

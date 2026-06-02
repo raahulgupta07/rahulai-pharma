@@ -1,0 +1,28 @@
+# PersistentVolumeClaim: dash-caddy-data
+# Caddy stores ACME account keys, issued certificates, OCSP staples and
+# challenge state under /data (and ephemeral runtime config under /config).
+# Losing this volume forces re-issuance and risks Let's Encrypt rate limits,
+# so it must be persistent across pod restarts.
+#
+# RWO is sufficient because only one Caddy replica writes at a time when
+# clustered behind a Service; for true multi-writer HA, switch to RWX
+# (e.g. NFS / EFS) and enable Caddy's storage_clean_interval.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dash-caddy-data
+  namespace: dash
+  labels:
+    app: dash-caddy
+    component: reverse-proxy
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  # TODO (Group K8S): set storageClassName to the cluster default
+  # (e.g. "gp3", "standard-rwo", "longhorn"). Leaving unset uses the
+  # cluster's default StorageClass.
+  # storageClassName: gp3

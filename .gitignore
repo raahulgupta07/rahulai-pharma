@@ -1,0 +1,89 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[codz]
+*$py.class
+
+# Packaging / build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Type checking / linting
+.mypy_cache/
+.dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+.cache
+
+# =========================
+# Virtual envs + secrets
+# =========================
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.production
+.env.bak
+.env.backup
+.env.local
+.env.staging
+.env.development
+.env.dev
+.env.stage
+.env.prod
+.env.test
+.env.*.local
+*.env.bak
+.envrc
+
+# =========================
+# Jupyter / notebooks
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# IDEs / editors
+# =========================
+.idea/
+.vscode/
+
+# =========================
+# OS cruft
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Frontend
+# =========================
+node_modules/
+frontend/node_modules/
+frontend/.svelte-kit/
+frontend/build/
+
+# =========================
+# Project-specific
+# =========================
+tmp
+.claude
+.local
+knowledge/
+
+# Optional: local PyPI creds (uncomment if you ever create it)
+# .pypirc
+# Generated million-row scale fixture (gen_million.py)
+tests/fixtures/edge_cases/million_row.csv

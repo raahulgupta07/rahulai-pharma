@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dash Embed — Demo Host Site</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 20px; line-height: 1.6; color: #222; }
+    h1 { color: #007518; }
+    code { background: #f1f1ee; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+    pre { background: #1a1a1a; color: #e5e5e0; padding: 14px; overflow-x: auto; border-radius: 4px; }
+    .note { background: #fffae6; border-left: 4px solid #ff9d00; padding: 10px 14px; margin: 14px 0; }
+  </style>
+</head>
+<body>
+  <h1>Acme Corp — Pretend Host Site</h1>
+  <p>This page is the customer's website. The Dash agent widget loads via a single <code>&lt;script&gt;</code> tag at the bottom and appears as a floating bubble in the lower-right corner.</p>
+
+  <h2>How it loads</h2>
+  <pre>&lt;script src="DASH_API/api/embed/widget.js"
+        data-embed-id="emb_xxx"
+        data-key="pub_xxx"
+        
+        data-user-sig="HMAC_FROM_SERVER"
+        async&gt;&lt;/script&gt;</pre>
+
+  <div class="note">
+    <strong>Test instructions</strong>
+    <ol>
+      <li>Edit this file: replace <code>emb_ad6v0yFgBGeIoVDTyzCt9A</code>, <code>pub_hb9u9MPJpUFxmXkCjXEqNUYfs6uH3g6n</code>, <code>USER_SIG</code> with values from <code>POST /api/projects/.../embeds</code>.</li>
+      <li>Open via <code>file://</code> or any local HTTP server.</li>
+      <li>Click the green ◉ bubble bottom-right.</li>
+      <li>Ask "what is 2+2?" — agent replies inside the panel.</li>
+    </ol>
+  </div>
+
+  <h2>Features demonstrated</h2>
+  <ul>
+    <li>Shadow DOM isolation — host CSS doesn't leak into widget</li>
+    <li>Single floating bubble + collapsible panel</li>
+    <li>Origin-allowlist enforced server-side</li>
+    <li>HMAC user payload signing (secure user identity)</li>
+    <li>Rate limit per embed</li>
+    <li>Mobile fullscreen (resize window &lt; 480px)</li>
+  </ul>
+
+  <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
+
+  <!-- ▼▼▼  REPLACE THESE THREE VALUES BEFORE TESTING  ▼▼▼ -->
+  <script src="https://localhost/api/embed/widget.js"
+          data-embed-id="emb_ad6v0yFgBGeIoVDTyzCt9A"
+          data-key="pub_hb9u9MPJpUFxmXkCjXEqNUYfs6uH3g6n"
+          
+          
+          data-position="bottom-right"
+          data-theme="dark"
+          data-greeting="Try a public embed — no auth"
+          data-title="Pharma"
+          async></script>
+</body>
+</html>

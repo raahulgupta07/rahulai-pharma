@@ -1,0 +1,55 @@
+{{- if .Values.skillRefinery.cronEnabled }}
+{{- $fullName := include "dash.fullname" . -}}
+{{- $ns := .Values.namespace -}}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $fullName }}-skill-refinery-daily
+  namespace: {{ $ns }}
+  labels:
+    app: dash
+    component: skill-refinery
+spec:
+  schedule: {{ .Values.skillRefinery.schedule | default "0 3 * * *" | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: {{ default 3600 .Values.skillRefinery.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            app: dash
+            component: skill-refinery
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: trigger
+            image: curlimages/curl:8
+            command: ["/bin/sh","-c"]
+            args:
+            - |
+              set -e
+              echo "[skill-refinery] dispatching cycle-all"
+              curl -fsS -X POST \
+                -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+                "${DASH_API}/api/projects/refine-tools/cycle-all" \
+                --max-time 1800 \
+                || { echo "[error] skill-refinery cycle failed"; exit 1; }
+              echo "Done."
+            env:
+            - name: DASH_API
+              value: "http://{{ $fullName }}-api.{{ $ns }}.svc.cluster.local:8000"
+            - name: ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $fullName }}-secrets
+                  key: ADMIN_API_TOKEN
+            resources:
+              requests: {cpu: 100m, memory: 128Mi}
+              limits:   {cpu: 500m, memory: 256Mi}
+{{- end }}

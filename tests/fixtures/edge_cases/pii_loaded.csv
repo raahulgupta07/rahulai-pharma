@@ -1,0 +1,13 @@
+contact_id,full_name,email,phone,ssn,address
+PII-001,Alice Johnson,alice.johnson@example.com,555-234-5678,123-45-6789,"123 Main St, Springfield, IL 62701"
+PII-002,Bob Smith,bob.smith@gmail.com,(555) 345-6789,234-56-7890,"456 Oak Ave, Portland, OR 97201"
+PII-003,Charlie Davis,charlie.d@yahoo.com,555.456.7890,345-67-8901,"789 Pine Rd, Austin, TX 78701"
+PII-004,Diana Lee,diana.lee@outlook.com,+1-555-567-8901,456-78-9012,"321 Elm St, Seattle, WA 98101"
+PII-005,Edward Brown,e.brown@hotmail.com,5556789012,567-89-0123,"654 Maple Dr, Boston, MA 02108"
+PII-006,Fiona Garcia,fiona.g@example.org,555-789-0123,678-90-1234,"987 Cedar Ln, Denver, CO 80202"
+PII-007,George Martinez,g.martinez@example.net,(555) 890-1234,789-01-2345,"147 Birch Ct, Miami, FL 33101"
+PII-008,Helen Wilson,helen.w@example.com,555-901-2345,890-12-3456,"258 Spruce Way, Chicago, IL 60601"
+PII-009,Ian Thomas,ian.thomas@example.com,555.012.3456,901-23-4567,"369 Willow Pl, Atlanta, GA 30301"
+PII-010,Julia Anderson,julia.a@example.com,+1 555 123 4567,012-34-5678,"741 Aspen Blvd, Phoenix, AZ 85001"
+PII-011,Kevin Roberts,kevin.r@example.com,555-234-5670,123-45-0987,"852 Cherry St, Dallas, TX 75201"
+PII-012,Laura Wright,laura.w@example.com,(555) 345-6701,234-56-1098,"963 Walnut Ave, San Diego, CA 92101"

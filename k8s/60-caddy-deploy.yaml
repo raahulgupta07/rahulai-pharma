@@ -1,0 +1,115 @@
+# Deployment: dash-caddy
+# Edge reverse proxy fronting dash-api. Terminates TLS (auto-provisioned by
+# Caddy via ACME when exposed by LoadBalancer/NodePort) and forwards to the
+# dash-api ClusterIP Service on port 8000.
+#
+# Replicas: 2 for HA. Note: Caddy's on-disk certificate store assumes a
+# single writer; with RWO PVC only one replica should be active at a time
+# (use a RollingUpdate with maxSurge=0, maxUnavailable=1) OR move to a
+# shared storage backend (RWX / S3) for true active-active.
+#
+# Security:
+#   - runAsNonRoot is intentionally false because Caddy binds privileged
+#     ports 80/443. The capability NET_BIND_SERVICE is granted explicitly
+#     while all other capabilities are dropped — this is the minimum
+#     needed and equivalent to the alpine image's default.
+#   - readOnlyRootFilesystem cannot be true because Caddy writes to
+#     /data and /config (mounted from the PVC) and to /tmp.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dash-caddy
+  namespace: dash
+  labels:
+    app: dash-caddy
+    component: reverse-proxy
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: dash-caddy
+  template:
+    metadata:
+      labels:
+        app: dash-caddy
+        component: reverse-proxy
+    spec:
+      serviceAccountName: dash-sa
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        # Caddy needs to bind 80/443. Setting runAsNonRoot:false here, but
+        # dropping all capabilities and re-adding only NET_BIND_SERVICE in
+        # the container securityContext below.
+        runAsNonRoot: false
+        fsGroup: 0
+      containers:
+        - name: caddy
+          image: caddy:2-alpine
+          imagePullPolicy: IfNotPresent
+          args: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+            - name: https
+              containerPort: 443
+              protocol: TCP
+          env:
+            - name: DOMAIN
+              value: "dash.example.com"  # TODO: override per-env
+          volumeMounts:
+            - name: caddyfile
+              mountPath: /etc/caddy/Caddyfile
+              subPath: Caddyfile
+              readOnly: true
+            - name: caddy-data
+              mountPath: /data
+            - name: caddy-config
+              mountPath: /config
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["NET_BIND_SERVICE"]
+            readOnlyRootFilesystem: false
+      volumes:
+        - name: caddyfile
+          configMap:
+            name: dash-caddyfile
+            items:
+              - key: Caddyfile
+                path: Caddyfile
+        - name: caddy-data
+          persistentVolumeClaim:
+            claimName: dash-caddy-data
+        - name: caddy-config
+          emptyDir: {}

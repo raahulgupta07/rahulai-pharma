@@ -1,0 +1,20 @@
+# ClusterIP service for the PgBouncer pooler.
+# This is the host that dash-api / dash-ml connect to (DB_HOST=dash-pgbouncer, DB_PORT=6432).
+apiVersion: v1
+kind: Service
+metadata:
+  name: dash-pgbouncer
+  namespace: dash
+  labels:
+    app: dash
+    component: pgbouncer
+spec:
+  type: ClusterIP
+  selector:
+    app: dash
+    component: pgbouncer
+  ports:
+    - name: pgbouncer
+      port: 6432
+      targetPort: 6432
+      protocol: TCP

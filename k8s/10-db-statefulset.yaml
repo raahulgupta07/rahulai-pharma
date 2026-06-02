@@ -1,0 +1,98 @@
+# PostgreSQL 18 with pgvector — single replica StatefulSet.
+# Mirrors compose.yaml `dash-db` service. Pooling/scaling is handled by PgBouncer.
+# scram-sha-256 auth, transaction/statement timeouts, max_connections=300.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: dash-db
+  namespace: dash
+  labels:
+    app: dash
+    component: db
+spec:
+  serviceName: dash-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dash
+      component: db
+  template:
+    metadata:
+      labels:
+        app: dash
+        component: db
+    spec:
+      # postgres image performs chown on the data dir at init; needs to start as root.
+      securityContext:
+        runAsNonRoot: false
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg18-trixie
+          imagePullPolicy: IfNotPresent
+          args:
+            - "-c"
+            - "max_connections=300"
+            - "-c"
+            - "password_encryption=scram-sha-256"
+            - "-c"
+            - "idle_in_transaction_session_timeout=60000"
+            - "-c"
+            - "statement_timeout=120000"
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: dash-config
+                  key: DB_USER
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: dash-config
+                  key: DB_DATABASE
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: dash-secrets
+                  key: DB_PASS
+            - name: POSTGRES_INITDB_ARGS
+              value: "--auth-host=scram-sha-256 --auth-local=scram-sha-256 -E UTF8"
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: dash-db-data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "2"
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+      volumes:
+        - name: dash-db-data
+          persistentVolumeClaim:
+            claimName: dash-db-data

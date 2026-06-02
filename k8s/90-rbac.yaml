@@ -1,0 +1,39 @@
+# RBAC for dash-sa (namespace-scoped only).
+#
+# Scope: get / list / watch on ConfigMaps and Secrets in the `dash`
+# namespace. This is the minimum needed for an in-process config-reload
+# loop (e.g. watching a ConfigMap for feature flags). NO write access,
+# NO cluster-scoped resources, NO cluster-admin.
+#
+# If runtime config reload is not used, this Role + RoleBinding can be
+# deleted entirely without affecting the workload.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dash-role
+  namespace: dash
+  labels:
+    app: dash
+    component: rbac
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dash-rolebinding
+  namespace: dash
+  labels:
+    app: dash
+    component: rbac
+subjects:
+  - kind: ServiceAccount
+    name: dash-sa
+    namespace: dash
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dash-role

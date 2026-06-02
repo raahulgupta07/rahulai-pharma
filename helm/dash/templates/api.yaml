@@ -1,0 +1,180 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dash-api
+  labels:
+    {{- include "dash.labels" . | nindent 4 }}
+    component: api
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount.api }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: dash-api
+  template:
+    metadata:
+      labels:
+        {{- include "dash.selectorLabels" . | nindent 8 }}
+        app: dash-api
+        component: api
+    spec:
+      serviceAccountName: {{ include "dash.serviceAccountName" . }}
+      {{- with (concat (default (list) .Values.imagePullSecrets) (default (list) .Values.image.pullSecrets)) }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ .name | default . }}
+        {{- end }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: dash-api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["uvicorn"]
+          args:
+            - "app.main:app"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8000"
+            - "--workers"
+            - "$(WORKERS)"
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: dash-config
+            - secretRef:
+                name: dash-secrets
+          # Daemons run in dedicated dash-daemon deployment (replicas=1)
+          # when daemon.enabled=true. On single-node dev where daemon.enabled
+          # is false, leave DAEMONS_DISABLED unset so the API pod still runs
+          # daemons via worker_rank=0.
+          env:
+            - name: PYTHONPATH
+              value: /app
+            - name: AGENTOS_URL
+              value: http://127.0.0.1:8000
+            {{- if .Values.daemon.enabled }}
+            - name: DAEMONS_DISABLED
+              value: "1"
+            {{- end }}
+          volumeMounts:
+            - name: knowledge
+              mountPath: /app/knowledge
+            - name: migrations
+              mountPath: /app/db/migrations
+              readOnly: true
+          resources:
+            {{- toYaml .Values.resources.api | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 5
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: knowledge
+          persistentVolumeClaim:
+            claimName: dash-knowledge-data
+        - name: migrations
+          configMap:
+            name: dash-migrations
+            optional: true
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dash-api
+  labels:
+    {{- include "dash.labels" . | nindent 4 }}
+    component: api
+spec:
+  type: ClusterIP
+  selector:
+    app: dash-api
+  ports:
+    - name: http
+      port: 8001
+      targetPort: 8000
+      protocol: TCP
+{{- if .Values.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: dash-api
+  labels:
+    {{- include "dash.labels" . | nindent 4 }}
+    component: api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: dash-api
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPU }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetMemory }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+      selectPolicy: Max
+{{- end }}

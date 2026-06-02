@@ -1,0 +1,48 @@
+.DS_Store
+
+docs
+.git
+.github
+
+# Cache
+.mypy_cache
+.ruff_cache
+.pytest_cache
+*__pycache__*
+**/__pycache__
+*.egg-info
+*.pyc
+*.pyo
+
+# Machine specific
+.idea
+.vscode
+
+# Ignore .env files
+.env
+.env.production
+.envrc
+
+# Virtualenvs
+.venv
+venv*
+aienv*
+
+.ipynb_checkpoints
+
+# SvelteKit caches — frontend is built fresh inside Docker
+frontend/.svelte-kit
+frontend/node_modules
+frontend/build
+
+# Test artifacts + local data
+tests/__pycache__
+htmlcov
+.coverage
+coverage.xml
+*.log
+
+# Local DB / knowledge dumps (mounted at runtime)
+knowledge_data
+pgdata
+caddy_data

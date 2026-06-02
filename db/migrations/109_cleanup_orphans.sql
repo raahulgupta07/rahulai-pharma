@@ -1,0 +1,12 @@
+-- Cleanup orphan ML tables left over after the LLM-native ML pivot
+-- (ml_worker container + dash/automl/ + mlforecast_engine deleted).
+-- Grep verified before drop: only dash_ml_jobs has ZERO remaining writers.
+--   dash_ml_jobs        — no INSERTs anywhere (enqueue path removed from
+--                          dash/tools/ml_models.py auto_create_models; see
+--                          comment at line 143 marking it REMOVED).
+--   dash_ml_experiments — STILL WRITTEN by _save_experiment() in
+--                          dash/tools/ml_models.py:232. KEEP.
+--   dash_ml_models      — STILL WRITTEN by _save_model() in
+--                          dash/tools/ml_models.py:172 and
+--                          ml_worker/main.py:130. KEEP.
+DROP TABLE IF EXISTS public.dash_ml_jobs CASCADE;

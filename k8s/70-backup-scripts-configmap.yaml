@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dash-backup-scripts
+  namespace: dash
+data:
+  backup.sh: |
+    # Populate at deploy time. Use this kubectl command to load both scripts:
+    #
+    #   kubectl create configmap dash-backup-scripts -n dash \
+    #     --from-file=scripts/backup.sh \
+    #     --from-file=scripts/restore.sh \
+    #     --dry-run=client -o yaml | kubectl apply -f -
+    #
+    # The placeholder below is replaced when the configmap is recreated.
+    echo "dash-backup-scripts ConfigMap not populated. Run kubectl create configmap with --from-file."
+    exit 1
+  restore.sh: |
+    echo "dash-backup-scripts ConfigMap not populated. Run kubectl create configmap with --from-file."
+    exit 1

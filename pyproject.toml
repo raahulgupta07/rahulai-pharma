@@ -1,0 +1,51 @@
+[project]
+name = "dash"
+version = "1.0.0"
+description = "A self-learning data agent that delivers insights, not just SQL results"
+requires-python = ">=3.12,<4"
+readme = "README.md"
+license-files = ["LICENSE"]
+authors = [{ name = "Agno", email = "hello@agno.com" }]
+
+dependencies = [
+  "agno[os]",
+  "aiohttp",
+  "mcp",
+  "openai",
+  "pandas",
+  "pgvector",
+  "psycopg[binary]",
+  "openpyxl",
+  "slack-sdk",
+]
+
+[project.optional-dependencies]
+dev = ["mypy", "python-dotenv", "ruff"]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["dash*", "db*", "app*", "evals*", "scripts*"]
+
+[tool.ruff]
+line-length = 120
+exclude = [".venv*"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "F403"]
+
+[tool.mypy]
+check_untyped_defs = true
+no_implicit_optional = true
+warn_unused_configs = true
+plugins = ["pydantic.mypy"]
+exclude = [".venv*"]
+
+[[tool.mypy.overrides]]
+module = ["pgvector.*", "agno.*", "pandas.*", "httpx.*", "openai.*", "slack_sdk.*", "sqlalchemy.*"]
+ignore_missing_imports = true
+
+[tool.uv.pip]
+no-annotate = true

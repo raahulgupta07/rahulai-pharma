@@ -1,0 +1,55 @@
+# =============================================================================
+# Production overrides for Dash.
+# Replace TODO markers (registry, storage class, hostname) before applying.
+# =============================================================================
+
+image:
+  repository: your-registry.example.com/dash
+  tag: v1.0.0
+  pullSecrets:
+    - name: dash-registry
+
+# ml-worker stays OPT-IN in prod (default OFF). Flip enabled=true only after the
+# dash-ml image is built+pushed to your registry, else the pod ImagePullBackOffs.
+mlWorker:
+  enabled: false
+  image:
+    repository: your-registry.example.com/dash-ml
+    tag: v1.0.0
+
+config:
+  domain: dash.example.com
+  corsOrigins: "https://dash.example.com"
+
+storage:
+  db:
+    storageClassName: managed-premium    # TODO: confirm with your IT
+  knowledge:
+    storageClassName: azurefile-csi      # TODO: confirm RWX class with your IT
+  caddy:
+    storageClassName: managed-premium    # TODO: confirm
+
+ingress:
+  hosts:
+    - host: dash.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: dash-prod-tls
+      hosts: [dash.example.com]
+
+# Daemon host — production keeps singleton enabled with default resources.
+daemon:
+  enabled: true
+  resources:
+    requests: {cpu: "200m", memory: "1Gi"}
+    limits: {cpu: "500m", memory: "2Gi"}
+  nodeSelector: {}
+  tolerations: []
+
+# Secrets — provide via --set or External Secrets Operator. Do NOT commit.
+# secrets:
+#   openrouterApiKey: ""
+#   dbPass: ""
+#   superAdminPass: ""

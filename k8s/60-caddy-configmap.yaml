@@ -1,0 +1,67 @@
+# ConfigMap: dash-caddyfile
+# Holds the Caddyfile mounted at /etc/caddy/Caddyfile inside the dash-caddy
+# Deployment. Caddy auto-provisions TLS via ACME (Let's Encrypt) and reverse
+# proxies to the in-cluster dash-api Service on port 8000.
+#
+# TODO (Group K8S):
+#   - Replace ${DOMAIN} placeholder with the actual public hostname
+#     (e.g. dash.example.com). When using cert-manager + Ingress instead of
+#     Caddy LB, this ConfigMap is unused but kept for non-K8S deploys.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dash-caddyfile
+  namespace: dash
+  labels:
+    app: dash-caddy
+    component: reverse-proxy
+data:
+  Caddyfile: |
+    # ---------------------------------------------------------------
+    # Caddy reverse proxy for dash-api
+    # Mirrors the repo-root Caddyfile; ${DOMAIN} kept as a placeholder
+    # so an init container or envsubst can render the final value at
+    # rollout time.
+    # ---------------------------------------------------------------
+    {
+        email admin@${DOMAIN}
+        # Use ACME production by default; flip to acme_ca for staging
+        # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+        admin off
+    }
+
+    ${DOMAIN} {
+        encode zstd gzip
+
+        # Health endpoint (no auth, no logging spam)
+        @health path /healthz /readyz
+        handle @health {
+            reverse_proxy dash-api.dash.svc.cluster.local:8000
+        }
+
+        # Main reverse proxy to the FastAPI service
+        reverse_proxy dash-api.dash.svc.cluster.local:8000 {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            transport http {
+                read_timeout 300s
+                write_timeout 300s
+            }
+        }
+
+        # Security headers
+        header {
+            Strict-Transport-Security "max-age=31536000; includeSubDomains"
+            X-Content-Type-Options "nosniff"
+            X-Frame-Options "DENY"
+            Referrer-Policy "strict-origin-when-cross-origin"
+            -Server
+        }
+
+        log {
+            output stdout
+            format json
+        }
+    }

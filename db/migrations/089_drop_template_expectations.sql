@@ -1,0 +1,34 @@
+-- 089_drop_template_expectations.sql
+--
+-- After dash/scripts/materialize_templates.py has run, the contents of
+-- `dash.dash_template_expectations` (and the related per-project binding
+-- table `dash.dash_template_bindings`) are redundant — all template
+-- knowledge / rules / workflows have been baked directly into per-project
+-- artifacts (dash_company_brain, dash_business_rules_db,
+-- dash_autonomous_workflows). The new `dash/learning/template_generator.py`
+-- now generates per-project agent templates on-demand from the LLM and
+-- writes straight into those same artifact tables, so the static template
+-- expectations table is no longer read by any code path.
+--
+-- Tables dropped (confirmed via \dt dash.*template* on 2026-05-18):
+--   * dash.dash_template_expectations  -- 5 rows, content already materialized
+--   * dash.dash_template_bindings      -- per-project binding rows, redundant
+--
+-- Idempotent: DROP TABLE IF EXISTS + CASCADE so re-applying this migration
+-- against a DB that has already been migrated is a no-op.
+--
+-- Apply method:
+--   - Auto-applied on next dash-api restart by the migration runner
+--     (`dash/db_runner/migrate.py`). No manual action required.
+--   - To force-apply via the admin endpoint:
+--       POST /api/admin/migrations/apply-pending  (super-admin token)
+--   - To force-apply via psql (last resort):
+--       docker exec -i dash-db psql -U ai -d ai \
+--         < db/migrations/089_drop_template_expectations.sql
+--       docker exec dash-db psql -U ai -d ai -c \
+--         "INSERT INTO public.dash_migrations(filename) \
+--          VALUES ('089_drop_template_expectations.sql') \
+--          ON CONFLICT DO NOTHING;"
+
+DROP TABLE IF EXISTS dash.dash_template_expectations CASCADE;
+DROP TABLE IF EXISTS dash.dash_template_bindings CASCADE;

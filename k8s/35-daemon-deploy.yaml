@@ -1,0 +1,123 @@
+# ===========================================================================
+# dash-daemon Deployment (singleton)
+# ---------------------------------------------------------------------------
+# Hosts in-process background daemons (cost_guard, auto-campaign, dream
+# cycles, ab-revert, benchmark sync, ontology cluster, sim-cleanup, etc).
+# Multi-replica dash-api pods have DAEMONS_DISABLED=1 set so only this pod
+# runs daemons → no duplicate cron, no race conditions.
+#
+# Hard constraints:
+#   * replicas: 1 (singleton — no HPA)
+#   * strategy: Recreate (never 2 daemon-host pods at once)
+#   * WORKERS=1, WORKER_RANK=0 (single daemon-host worker)
+#   * DAEMONS_DISABLED is UNSET here
+#   * No Service (no inbound traffic)
+# ===========================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dash-daemon
+  labels:
+    app: dash-daemon
+    component: daemon
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: dash-daemon
+  template:
+    metadata:
+      labels:
+        app: dash-daemon
+        component: daemon
+    spec:
+      imagePullSecrets:
+        - name: registry-secret
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: dash-daemon
+          image: dash:latest
+          imagePullPolicy: IfNotPresent
+          command: ["uvicorn"]
+          args:
+            - "app.main:app"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8000"
+            - "--workers"
+            - "1"
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: dash-config
+            - secretRef:
+                name: dash-secrets
+          # DAEMONS_DISABLED intentionally UNSET. WORKERS forced to 1.
+          env:
+            - name: PYTHONPATH
+              value: /app
+            - name: AGENTOS_URL
+              value: http://127.0.0.1:8000
+            - name: WORKERS
+              value: "1"
+            - name: WORKER_RANK
+              value: "0"
+          volumeMounts:
+            - name: knowledge
+              mountPath: /app/knowledge
+            - name: migrations
+              mountPath: /app/db/migrations
+              readOnly: true
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "1Gi"
+            limits:
+              cpu: "500m"
+              memory: "2Gi"
+          startupProbe:
+            httpGet:
+              path: /api/health/daemons
+              port: 8000
+            periodSeconds: 5
+            failureThreshold: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /api/health/daemons
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health/daemons
+              port: 8000
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: knowledge
+          persistentVolumeClaim:
+            claimName: dash-knowledge-data
+        - name: migrations
+          configMap:
+            name: dash-migrations
+            optional: true
+      terminationGracePeriodSeconds: 30

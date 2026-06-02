@@ -1,0 +1,33 @@
+# Non-secret configuration shared by dash-api, dash-pgbouncer, dash-db, dash-ml.
+# Mirrors compose.yaml environment defaults. Secrets live in 02-secret.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dash-config
+  namespace: dash
+  labels:
+    app: dash
+data:
+  # Networking / public surface
+  DOMAIN: "localhost"
+  CORS_ORIGINS: "*"
+
+  # API runtime
+  WORKERS: "8"
+  RATE_LIMIT: "500/minute"
+  AGNO_DEBUG: "False"
+
+  # 3-model architecture (see CLAUDE.md)
+  CHAT_MODEL: "google/gemini-3-flash-preview"
+  DEEP_MODEL: "openai/gpt-5.4-mini"
+  LITE_MODEL: "google/gemini-3.1-flash-lite-preview"
+  EMBEDDING_MODEL: "google/gemini-embedding-2-preview"
+
+  # Admin
+  SUPER_ADMIN: "admin"
+
+  # Database — application connects through PgBouncer
+  DB_USER: "ai"
+  DB_DATABASE: "ai"
+  DB_HOST: "dash-pgbouncer"
+  DB_PORT: "6432"

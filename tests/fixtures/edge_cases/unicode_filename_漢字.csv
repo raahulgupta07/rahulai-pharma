@@ -1,0 +1,11 @@
+product_code,name,unit_price,stock_qty
+P-001,Widget Alpha,12.50,150
+P-002,Widget Beta,18.75,89
+P-003,Gadget Gamma,25.00,42
+P-004,Gizmo Delta,8.99,234
+P-005,Device Epsilon,45.50,17
+P-006,Tool Zeta,33.25,68
+P-007,Item Eta,9.99,512
+P-008,Part Theta,22.40,93
+P-009,Component Iota,15.80,178
+P-010,Module Kappa,67.30,29

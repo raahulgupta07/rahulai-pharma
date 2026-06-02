@@ -1,0 +1,150 @@
+# Migration Drift Allowlist
+# ============================================================
+# Each line: one fully-qualified table/view reference (schema.name).
+# Lines starting with `#` and blank lines are ignored.
+#
+# A reference is allowlisted when the code SELECTs/INSERTs/UPDATEs/JOINs it,
+# but no migration in db/migrations/*.sql creates a matching CREATE TABLE /
+# CREATE VIEW / CREATE MATERIALIZED VIEW.
+#
+# Add an entry here ONLY if the missing table is intentional (dormant feature,
+# parked vertical, external/pg-internal table, etc). If a new ref shows up that
+# represents a real bug (e.g. forgotten migration), DO NOT add to allowlist —
+# fix the migration instead.
+#
+# Format: schema.table_name   (one per line, lowercase)
+# ============================================================
+
+
+# --- Postgres / PgBouncer internals (always present, never in our migrations) ---
+# Wildcards: information_schema.*, pg_* (handled by glob match in checker)
+information_schema.tables
+information_schema.columns
+information_schema.routines
+information_schema.schemata
+information_schema.table_constraints
+information_schema.key_column_usage
+information_schema.referential_constraints
+information_schema.views
+
+
+# --- Dream tier (DEEP self-learning, parked) ---
+# Modules exist in dash/learning/ but never auto-fire in Compose deploy.
+# Only invoked via K8s CronJobs or manual admin curl. See CLAUDE.md 2026-05-22 trim session.
+public.dash_dream_runs
+public.dash_dream_findings
+public.dash_dream_insights
+public.dash_dream_reflection_tree
+public.dash_dream_digests
+public.dash_dream_personas
+public.dash_dream_lite_runs
+public.dash_dream_precompute_cache
+public.dash_dream_skill_patches
+public.dash_anti_patterns
+public.dash_finding_retention
+public.dash_finding_promotions
+dash.dash_dream_runs
+dash.dash_dream_findings
+dash.dash_dream_reflection_tree
+dash.dash_anti_patterns
+
+
+# --- Governance stubs (planned but not migrated) ---
+# Gov tables referenced in app/governance code but never created.
+dash.gov_policies
+dash.gov_audit
+dash.gov_approvals
+dash.gov_data_classifications
+
+
+# --- Telemetry stubs (placeholder schema, not migrated) ---
+dash.tel_events
+dash.tel_metrics
+dash.tel_traces
+
+
+# --- Sim Lab feature (gated by SIM_LAB_ENABLED, default OFF) ---
+# Sim tables created only when feature flag enabled + manual provision.
+dash.sim_projects
+dash.sim_steps
+dash.sim_graph_nodes
+dash.sim_graph_edges
+dash.agent_memory_events
+dash.agent_simulations
+dash.user_agents
+dash.monthly_mrr
+
+
+# --- Agno framework internals ---
+# Agno-managed tables in ai schema, created by agno on first agent run.
+ai.agno_sessions
+ai.agno_team_sessions
+ai.dash_vectors
+ai.dash_skill_library
+
+
+# --- Workforce + AutoML chassis (deleted in 2026-05-23 trim session) ---
+# Tables dropped via migrations 110/111 but some stale refs may linger.
+public.dash_ml_models
+public.dash_ml_experiments
+dash.dash_ml_jobs
+
+
+# --- Autosim / sim_router (deleted, but stale string refs in app/learning.py) ---
+dash.autosim_runs
+dash.autosim_results
+
+
+# --- Per-project user data schemas (created dynamically, not in migrations) ---
+# Project schemas like proj_demo_* are created at runtime via CREATE SCHEMA.
+# Wildcards: proj_*, user_proj_*, user_demo (handled by glob match in checker)
+
+
+# --- External provider / connector test tables (not platform-managed) ---
+dash.dash_test_fabric
+dash.dash_test_bigquery
+
+
+# --- Legacy compat views (may have been renamed in later migrations) ---
+dash.dash_skill_library
+dash.dash_workflow_run_history
+
+
+# --- Schema-prefix drift (Phase 0 audit baseline, 2026-05-27) ---
+# Code uses dash.X but live table is public.X (or vice-versa). See CLAUDE.md
+# 2026-05-25 'Schema-prefix purge' session — 33 occurrences swapped, but a few
+# residual refs remain. Allowlisting baseline; new instances should be fixed
+# at PR review, not added here.
+public.dash_skill_library
+public.dash_workflow_run_history
+public.dash_custom_agents
+public.dash_minions
+public.dash_skill_invocations
+dash.dash_template_expectations
+dash.dash_tool_patches
+dash.dash_chat_sessions
+dash.dash_charts
+dash.dash_customer_scores
+dash.dash_memories
+dash.dash_metrics
+dash.dash_columns_meta
+dash.dash_chat_messages
+dash.dash_tables_meta
+dash.dash_resource_registry
+
+
+# --- Agno framework tables (managed by Agno, not our migrations) ---
+ai.dash_knowledge
+ai.dash_learnings
+
+
+# --- Recently-added panels referencing not-yet-migrated tables ---
+# Graph/Dataview/Telemetry panels (2026-05-26 Obsidian session) reference
+# tables planned for future migrations. Allowlist until those land.
+dash.agent_audit_log
+
+
+# --- Module-docstring false positives (require manual review if added) ---
+# `dash.embed` appears in a docstring referencing a Python module path that
+# happens to match a string-literal-bearing line. Safe to allowlist.
+dash.embed

@@ -1,0 +1,41 @@
+# Service: dash-caddy
+# Exposes the Caddy reverse proxy publicly. Default type is LoadBalancer so
+# Caddy can complete ACME HTTP-01 / TLS-ALPN-01 challenges directly. If the
+# cluster does not provision external LBs (bare metal, kind, on-prem without
+# MetalLB) switch to NodePort and front it with an external load balancer.
+#
+# When using the Ingress resource (k8s/60-ingress.yaml) instead, this Service
+# can be downgraded to ClusterIP — Caddy is only useful for non-K8S deploys
+# in that case.
+#
+# TODO (Group K8S):
+#   - Confirm cloud LB annotations (AWS NLB / GCP LB / Azure ILB) per cluster
+#   - Set externalTrafficPolicy: Local if you want client IP preservation
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dash-caddy
+  namespace: dash
+  labels:
+    app: dash-caddy
+    component: reverse-proxy
+  # annotations:
+  #   service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+spec:
+  type: LoadBalancer
+  # type: NodePort   # Fallback when the cluster has no LB provisioner
+  selector:
+    app: dash-caddy
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+      # nodePort: 30080   # uncomment when type=NodePort
+    - name: https
+      port: 443
+      targetPort: 443
+      protocol: TCP
+      # nodePort: 30443
+  externalTrafficPolicy: Local

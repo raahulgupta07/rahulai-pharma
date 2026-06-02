@@ -1,0 +1,50 @@
+# Ingress: dash
+# Preferred ingress path when the cluster already runs an ingress controller
+# (nginx-ingress in this manifest). cert-manager issues + renews the TLS
+# cert into the `dash-tls` Secret via the referenced ClusterIssuer.
+#
+# Why prefer Ingress over the Caddy LoadBalancer Service?
+#   - Single shared LB IP (cost) across all apps in the cluster.
+#   - Centralised WAF / rate-limit / observability via the controller.
+#   - Cert-manager handles ACME without the per-app PVC dance Caddy needs.
+# Caddy is still kept for non-K8S deployments (docker compose, single VM)
+# and as a fallback when the cluster lacks an ingress controller.
+#
+# TODO (Group K8S):
+#   - Confirm ingressClassName matches the deployed controller
+#     (`kubectl get ingressclass`).
+#   - Confirm the ClusterIssuer name (`kubectl get clusterissuer`).
+#   - Replace dash.example.com with the real production hostname.
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dash
+  namespace: dash
+  labels:
+    app: dash-api
+    component: ingress
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: 250m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - dash.example.com
+      secretName: dash-tls
+  rules:
+    - host: dash.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dash-api
+                port:
+                  number: 8000

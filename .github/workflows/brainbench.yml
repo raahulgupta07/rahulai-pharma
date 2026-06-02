@@ -1,0 +1,107 @@
+name: BrainBench Regression
+
+on:
+  pull_request:
+    types: [labeled, synchronize, reopened]
+  schedule:
+    - cron: '0 6 * * *'  # daily 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  brainbench:
+    # Run on PRs only if the `needs-brainbench` label is set; always on schedule/manual
+    if: |
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'needs-brainbench')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18-trixie
+        env:
+          POSTGRES_USER: ai
+          POSTGRES_PASSWORD: ai
+          POSTGRES_DB: ai
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ai"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+
+    env:
+      DASH_API_URL: http://localhost:8000
+      DASH_DB_URL: postgresql://ai:ai@localhost:5432/ai
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      DB_USER: ai
+      DB_PASS: ai
+      DB_DATABASE: ai
+      DASH_API_TOKEN: ${{ secrets.DASH_API_TOKEN }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_LEARNING_WEBHOOK }}
+      JUNIT_XML: brainbench-junit.xml
+      TOP_N: '10'
+      FAIL_DELTA: '-0.3'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install minimal deps
+        run: |
+          pip install --upgrade pip
+          pip install sqlalchemy psycopg[binary]
+
+      - name: Start dash-api (test mode)
+        run: |
+          # Build and run via docker compose so all 16 layers + agents wire up
+          docker compose -f compose.yaml up -d dash-pgbouncer dash-api || true
+          # Wait for healthcheck
+          for i in $(seq 1 60); do
+            if curl -fsS $DASH_API_URL/health >/dev/null 2>&1; then
+              echo "dash-api up"; break
+            fi
+            sleep 5
+          done
+          curl -fsS $DASH_API_URL/health || (docker compose logs dash-api && exit 1)
+
+      - name: Run BrainBench regression
+        id: bench
+        continue-on-error: true
+        run: |
+          python3 scripts/brainbench_regression.py | tee bench.out
+          echo "exit=$?" >> $GITHUB_OUTPUT
+
+      - name: Publish JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brainbench-junit
+          path: brainbench-junit.xml
+
+      - name: Comment PR with summary
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const out = fs.existsSync('bench.out') ? fs.readFileSync('bench.out','utf8') : '(no output)';
+            const code = '${{ steps.bench.outputs.exit }}' || '0';
+            const status = code === '0' ? '✅ PASS' : (code === '2' ? '❌ REGRESSION' : '⚠️ ERROR');
+            const body = `### BrainBench Regression — ${status}\n\n<details><summary>Summary table</summary>\n\n\`\`\`\n${out.slice(-4000)}\n\`\`\`\n</details>`;
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+
+      - name: Fail build on regression
+        if: steps.bench.outputs.exit == '2'
+        run: |
+          echo "::error::BrainBench regression detected — blocking merge"
+          exit 1

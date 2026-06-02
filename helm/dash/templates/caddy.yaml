@@ -1,0 +1,128 @@
+{{- if .Values.caddy.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dash-caddyfile
+  labels:
+    {{- include "dash.labels" . | nindent 4 }}
+    component: reverse-proxy
+data:
+  Caddyfile: |
+    {
+        email admin@{{ .Values.config.domain }}
+        admin off
+    }
+
+    {{ .Values.config.domain }} {
+        encode zstd gzip
+
+        @health path /healthz /readyz
+        handle @health {
+            reverse_proxy dash-api.{{ .Values.namespace }}.svc.cluster.local:8000
+        }
+
+        reverse_proxy dash-api.{{ .Values.namespace }}.svc.cluster.local:8000 {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            transport http {
+                read_timeout 300s
+                write_timeout 300s
+            }
+        }
+
+        header {
+            Strict-Transport-Security "max-age=31536000; includeSubDomains"
+            X-Content-Type-Options "nosniff"
+            X-Frame-Options "DENY"
+            Referrer-Policy "strict-origin-when-cross-origin"
+            -Server
+        }
+
+        log {
+            output stdout
+            format json
+        }
+    }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dash-caddy-data
+  labels:
+    {{- include "dash.labels" . | nindent 4 }}
+    component: reverse-proxy
+spec:
+  accessModes:
+    - {{ .Values.storage.caddy.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.caddy.size }}
+  {{- if .Values.storage.caddy.storageClassName }}
+  storageClassName: {{ .Values.storage.caddy.storageClassName | quote }}
+  {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dash-caddy
+  labels:
+    {{- include "dash.labels" . | nindent 4 }}
+    component: reverse-proxy
+spec:
+  replicas: {{ .Values.replicaCount.caddy }}
+  selector:
+    matchLabels:
+      app: dash-caddy
+  template:
+    metadata:
+      labels:
+        {{- include "dash.selectorLabels" . | nindent 8 }}
+        app: dash-caddy
+        component: reverse-proxy
+    spec:
+      serviceAccountName: {{ include "dash.serviceAccountName" . }}
+      containers:
+        - name: caddy
+          image: "{{ .Values.caddy.image.repository }}:{{ .Values.caddy.image.tag }}"
+          imagePullPolicy: {{ .Values.caddy.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+            - name: https
+              containerPort: 443
+          volumeMounts:
+            - name: caddyfile
+              mountPath: /etc/caddy
+              readOnly: true
+            - name: caddy-data
+              mountPath: /data
+          resources:
+            {{- toYaml .Values.resources.caddy | nindent 12 }}
+      volumes:
+        - name: caddyfile
+          configMap:
+            name: dash-caddyfile
+        - name: caddy-data
+          persistentVolumeClaim:
+            claimName: dash-caddy-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dash-caddy
+  labels:
+    {{- include "dash.labels" . | nindent 4 }}
+    component: reverse-proxy
+spec:
+  type: LoadBalancer
+  selector:
+    app: dash-caddy
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+    - name: https
+      port: 443
+      targetPort: 443
+{{- end }}

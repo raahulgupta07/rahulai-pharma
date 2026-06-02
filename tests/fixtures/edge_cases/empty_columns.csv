@@ -1,0 +1,13 @@
+employee_id,name,middle_name,department,deprecated_field
+E-3001,Alice Johnson,,Engineering,
+E-3002,Bob Smith,,Sales,
+E-3003,Charlie Davis,,Engineering,
+E-3004,Diana Lee,,Marketing,
+E-3005,Edward Brown,,Operations,
+E-3006,Fiona Garcia,,Engineering,
+E-3007,George Martinez,,Sales,
+E-3008,Helen Wilson,,Marketing,
+E-3009,Ian Thomas,,Operations,
+E-3010,Julia Anderson,,Engineering,
+E-3011,Kevin Roberts,,Sales,
+E-3012,Laura Wright,,Marketing,

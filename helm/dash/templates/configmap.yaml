@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dash-config
+  labels:
+    {{- include "dash.labels" . | nindent 4 }}
+data:
+  # Networking / public surface
+  DOMAIN: {{ .Values.config.domain | quote }}
+  CORS_ORIGINS: {{ .Values.config.corsOrigins | quote }}
+
+  # API runtime
+  WORKERS: {{ .Values.config.workers | quote }}
+  RATE_LIMIT: {{ .Values.config.rateLimit | quote }}
+  AGNO_DEBUG: {{ .Values.config.agnoDebug | quote }}
+
+  # 3-model architecture
+  CHAT_MODEL: {{ .Values.config.chatModel | quote }}
+  DEEP_MODEL: {{ .Values.config.deepModel | quote }}
+  LITE_MODEL: {{ .Values.config.liteModel | quote }}
+  EMBEDDING_MODEL: {{ .Values.config.embeddingModel | quote }}
+
+  # Admin
+  SUPER_ADMIN: {{ .Values.config.superAdmin | quote }}
+
+  # Database — application connects through PgBouncer
+  DB_USER: {{ .Values.config.dbUser | quote }}
+  DB_DATABASE: {{ .Values.config.dbDatabase | quote }}
+  DB_HOST: {{ .Values.config.dbHost | quote }}
+  DB_PORT: {{ .Values.config.dbPort | quote }}

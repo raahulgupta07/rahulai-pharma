@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: dash-db
+  labels:
+    {{- include "dash.labels" . | nindent 4 }}
+    component: db
+spec:
+  type: ClusterIP
+  selector:
+    app: dash
+    component: db
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+      protocol: TCP

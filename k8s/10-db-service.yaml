@@ -1,0 +1,20 @@
+# ClusterIP service fronting the dash-db StatefulSet.
+# Only PgBouncer should connect here directly; application traffic goes via dash-pgbouncer:6432.
+apiVersion: v1
+kind: Service
+metadata:
+  name: dash-db
+  namespace: dash
+  labels:
+    app: dash
+    component: db
+spec:
+  type: ClusterIP
+  selector:
+    app: dash
+    component: db
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+      protocol: TCP

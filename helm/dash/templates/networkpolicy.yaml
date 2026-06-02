@@ -1,0 +1,88 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dash-default-deny
+  labels:
+    {{- include "dash.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dash-api-allow-ingress
+  labels:
+    {{- include "dash.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: dash-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressNamespaceLabel | quote }}
+        - podSelector:
+            matchLabels:
+              app: dash-caddy
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dash-pgbouncer-allow-api
+  labels:
+    {{- include "dash.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: dash
+      component: pgbouncer
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: dash-api
+        # ml-worker is OPT-IN (default OFF, mlWorker.enabled=false). This
+        # podSelector is harmless when ml-worker isn't deployed (no pod carries
+        # the label, so it matches nothing). Kept inline so the egress path
+        # works automatically if mlWorker.enabled is flipped to true.
+        - podSelector:
+            matchLabels:
+              app: dash-ml-worker
+      ports:
+        - protocol: TCP
+          port: 6432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dash-db-allow-pgbouncer
+  labels:
+    {{- include "dash.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: dash
+      component: db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: dash
+              component: pgbouncer
+      ports:
+        - protocol: TCP
+          port: 5432
+{{- end }}

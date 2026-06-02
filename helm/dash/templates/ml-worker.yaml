@@ -1,0 +1,72 @@
+{{- if .Values.mlWorker.enabled }}
+# OPT-IN (2026 trim): only rendered when mlWorker.enabled=true. The dash-ml
+# image is not built by default — build+push ml_worker/Dockerfile first.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dash-ml-worker
+  labels:
+    {{- include "dash.labels" . | nindent 4 }}
+    component: ml-worker
+spec:
+  replicas: {{ .Values.replicaCount.mlWorker }}
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: dash-ml-worker
+  template:
+    metadata:
+      labels:
+        {{- include "dash.selectorLabels" . | nindent 8 }}
+        app: dash-ml-worker
+        component: ml-worker
+    spec:
+      serviceAccountName: {{ include "dash.serviceAccountName" . }}
+      {{- with (concat (default (list) .Values.imagePullSecrets) (default (list) .Values.image.pullSecrets)) }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ .name | default . }}
+        {{- end }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      restartPolicy: Always
+      containers:
+        - name: dash-ml-worker
+          image: "{{ .Values.mlWorker.image.repository }}:{{ .Values.mlWorker.image.tag }}"
+          imagePullPolicy: {{ .Values.mlWorker.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: dash-config
+            - secretRef:
+                name: dash-secrets
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://$(DB_USER):$(DB_PASS)@$(DB_HOST):$(DB_PORT)/$(DB_DATABASE)"
+          volumeMounts:
+            - name: knowledge
+              mountPath: /app/knowledge
+          resources:
+            {{- toYaml .Values.resources.mlWorker | nindent 12 }}
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pgrep -f 'python.*main.py' >/dev/null"]
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: knowledge
+          persistentVolumeClaim:
+            claimName: dash-knowledge-data
+      terminationGracePeriodSeconds: 60
+{{- end }}

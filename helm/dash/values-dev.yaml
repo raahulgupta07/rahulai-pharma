@@ -1,0 +1,86 @@
+# =============================================================================
+# Dev cluster overrides for Dash.
+# Lighter resource requests, no autoscaling, smaller volumes.
+# Use: helm install dash ./helm/dash -f helm/dash/values-dev.yaml
+# =============================================================================
+
+image:
+  repository: dash
+  tag: latest
+  pullPolicy: Always
+
+# ml-worker stays OPT-IN on dev too (default OFF). dash-ml image is not built
+# by default; flip enabled=true only after building ml_worker/Dockerfile locally.
+mlWorker:
+  enabled: false
+  image:
+    repository: dash-ml
+    tag: latest
+    pullPolicy: Always
+
+# Single-replica everything for dev
+replicaCount:
+  api: 1
+  mlWorker: 1
+  caddy: 1
+
+# No autoscaling on dev
+autoscaling:
+  enabled: false
+
+# Tight resource requests so it fits a small dev node
+resources:
+  api:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 1,    memory: 1Gi }
+  mlWorker:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+  db:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 1,    memory: 1Gi }
+  pgbouncer:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 200m, memory: 128Mi }
+  caddy:
+    requests: { cpu: 50m, memory: 32Mi }
+    limits:   { cpu: 200m, memory: 128Mi }
+
+# Smaller volumes for dev
+storage:
+  db:
+    size: 5Gi
+  knowledge:
+    size: 5Gi
+  caddy:
+    size: 1Gi
+
+config:
+  domain: dash.dev.local
+  corsOrigins: "*"
+  workers: 2
+  agnoDebug: "True"
+
+ingress:
+  enabled: true
+  hosts:
+    - host: dash.dev.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Skip NetworkPolicy on dev for easier debugging
+networkPolicy:
+  enabled: false
+
+# Single-node dev: skip the daemon-host singleton (one API pod already runs
+# daemons via worker_rank=0 since DAEMONS_DISABLED isn't set on dev).
+daemon:
+  enabled: false
+
+# Secrets — provide via --set on the CLI or use a dev .env loader.
+# secrets:
+#   openrouterApiKey: ""
+#   dbPass: ""
+#   superAdminPass: ""

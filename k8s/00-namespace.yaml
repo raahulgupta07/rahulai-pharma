@@ -1,0 +1,9 @@
+# Namespace for the Dash platform.
+# All Dash resources (db, pgbouncer, api, ml worker, caddy) live here.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dash
+  labels:
+    app: dash
+    env: prod

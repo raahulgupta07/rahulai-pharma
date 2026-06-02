@@ -1,0 +1,38 @@
+#!/bin/sh
+# Layer 1 of stale-image defense (Caveat #5).
+#
+# Triggered after `git checkout` or `git pull --rebase` etc. If any tracked
+# source files changed between the previous HEAD ($1) and the new HEAD ($2),
+# emit an amber warning reminding the developer to rebuild the Docker image.
+#
+# $1 = ref of prev HEAD, $2 = ref of new HEAD, $3 = flag (1=branch checkout)
+
+prev=$1
+new=$2
+flag=$3
+
+# Only act on branch checkouts (flag=1). File checkouts (flag=0) shouldn't warn.
+[ "$flag" = "1" ] || exit 0
+[ "$prev" = "$new" ] && exit 0
+
+# Source paths that, if changed, require a rebuild to actually reach prod.
+WATCH_PATHS='frontend/src app/ dash/ ml_worker/ requirements.txt Dockerfile'
+
+changed=$(git diff --name-only "$prev" "$new" -- $WATCH_PATHS 2>/dev/null)
+
+if [ -n "$changed" ]; then
+  AMBER='\033[33m'
+  BOLD='\033[1m'
+  NC='\033[0m'
+  count=$(echo "$changed" | wc -l | tr -d ' ')
+  printf "\n${AMBER}${BOLD}⚠ Source changed (${count} file(s)). Run: make rebuild${NC}\n" >&2
+  printf "${AMBER}  Watched paths: ${WATCH_PATHS}${NC}\n" >&2
+  # First 5 changed files for context
+  echo "$changed" | head -5 | sed 's/^/    /' >&2
+  if [ "$count" -gt 5 ]; then
+    printf "    ... and %d more\n" "$((count - 5))" >&2
+  fi
+  printf "\n"
+fi
+
+exit 0

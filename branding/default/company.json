@@ -1,0 +1,16 @@
+{
+  "name": "CityAgent Insights",
+  "full_name": "CityAgent Insights — AI Data Agents",
+  "domain": "localhost",
+  "support_email": "support@cityagent.ai",
+  "tagline": "Self-learning AI agents for your data",
+  "logo_url": "/api/branding/logo.svg",
+  "favicon_url": "/api/branding/favicon.ico",
+  "theme": {
+    "primary_color": "#c96342",
+    "background_color": "#faf9f5",
+    "accent_color": "#c96342"
+  },
+  "footer_text": "Built with CityAgent Insights",
+  "show_powered_by": false
+}

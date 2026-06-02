@@ -1,0 +1,4 @@
+/* Override default theme variables. Loaded after main CSS. */
+:root {
+  /* (overrides go here per tenant) */
+}

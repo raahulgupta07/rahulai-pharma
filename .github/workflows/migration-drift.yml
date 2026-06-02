@@ -1,0 +1,38 @@
+name: migration-drift
+
+# Catches PRs where code adds `SELECT ... FROM dash.foo` but no migration
+# creates `dash.foo`. Prevents bugs like mig 092 missing all session
+# (workflow_runner crashed because the table it queried never existed).
+#
+# Allowlist for legitimate dormant / external refs lives in
+# scripts/drift_allowlist.txt — see that file for conventions.
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "app/**/*.py"
+      - "dash/**/*.py"
+      - "ml_worker/**/*.py"
+      - "db/migrations/*.sql"
+      - "scripts/check_migration_drift.py"
+      - "scripts/drift_allowlist.txt"
+      - ".github/workflows/migration-drift.yml"
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  migration-drift:
+    name: migration-drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run drift check
+        run: python3 scripts/check_migration_drift.py --report

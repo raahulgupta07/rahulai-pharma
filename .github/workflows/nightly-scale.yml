@@ -1,0 +1,53 @@
+name: Nightly scale test (million-row)
+
+on:
+  schedule:
+    - cron: '0 7 * * *'   # 07:00 UTC daily
+  workflow_dispatch:
+
+# 2026-05-25 — runs on paid larger runner, generates 1M-row CSV, asserts
+# upload <2min, training <20min, memories >= 1. Verifies hot-paths handle
+# real scale, not the 5K stand-in fixture used in PR-gate.
+
+jobs:
+  scale:
+    name: 1M-row end-to-end
+    runs-on: ubuntu-latest-16-cores
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+
+      - name: Generate million-row fixture
+        run: python tests/fixtures/edge_cases/gen_million.py
+
+      - name: Boot Dash stack
+        run: |
+          docker compose -f compose.yaml up -d --build dash-db dash-pgbouncer dash-api
+          for i in $(seq 1 90); do
+            curl -fsS http://localhost:8001/api/health > /dev/null 2>&1 && break
+            sleep 10
+          done
+          curl -fsS http://localhost:8001/api/health
+
+      - name: Install pytest
+        run: pip install pytest requests
+
+      - name: Run million-row scale assertion
+        env:
+          DASH_API_BASE: http://localhost:8001/api
+          DASH_TEST_USER: demo
+          DASH_TEST_PASS: demo
+        run: pytest tests/test_e2e.py -k million -v -s --tb=short
+
+      - name: Capture logs on failure
+        if: failure()
+        run: docker compose -f compose.yaml logs dash-api --tail=500
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f compose.yaml down -v
