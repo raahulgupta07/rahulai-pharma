@@ -438,6 +438,7 @@ import AnswerCard from './AnswerCard.svelte';
             }
             return names.size;
           })()}
+          {#if false}<!-- chat-only product: no answer tabs; SQL/data live in the collapsed steps trace -->
           <div class="response-tabs-top">
             <button class:active={currentTabA === 'insight'} onclick={() => { onTrackPreference?.('tab_click', 'insight'); updateMessage(i, { activeTab: 'insight' }); }}>Insight{insightCountA > 0 ? ` (${insightCountA})` : ''}</button>
             {#if tabEnabled('data')}
@@ -453,6 +454,7 @@ import AnswerCard from './AnswerCard.svelte';
               <button class:active={currentTabA === 'sources'} onclick={() => { onTrackPreference?.('tab_click', 'sources'); updateMessage(i, { activeTab: 'sources' }); }}>Sources{sourceCountA > 0 ? ` (${sourceCountA})` : ''}</button>
             {/if}
           </div>
+          {/if}
 
           <!-- INSIGHT tab content (default) -->
           {#if currentTabA === 'insight'}

@@ -2408,8 +2408,8 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
       {/if}
 
       {#if messages.length === 0}
-        <!-- Issue #20 — first-chat template prompt banner -->
-        {#if !templateSkipped && agentTplStatus && agentTplStatus.applied === false}
+        <!-- Issue #20 — first-chat template prompt banner (hidden: single-agent product) -->
+        {#if false}
           <div class="tpl-prompt-banner" style="max-width: 720px; margin: 24px auto 0; padding: 14px 18px; border: 1px solid rgba(201,99,66,0.30); background: rgba(201,99,66,0.06); border-radius: 0; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
             <div style="font-size: 12px; color: var(--pw-ink); flex: 1 1 280px;">
               <Icon name="lightbulb" size={14} /> <strong>Get domain-specific intelligence</strong> — apply a template
@@ -2458,6 +2458,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
             </div>
           </div>
           <!-- Design A: 4 starter cards in 2x2 grid, ChatGPT-style -->
+          <div style="text-transform:uppercase; letter-spacing:0.08em; font-size:11px; font-weight:700; color:var(--pw-muted); margin-bottom:10px; text-align:center;">Try asking</div>
           <div class="starter-grid">
             {#each (dynamicSuggestions || []).slice(0, 4) as prompt, i}
               <button class="starter-card" onclick={() => send(prompt)} disabled={isStreaming}>
