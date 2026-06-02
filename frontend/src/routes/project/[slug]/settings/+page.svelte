@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte';
+  import AgentFlow from '$lib/AgentFlow.svelte';
  import { onMount, onDestroy } from 'svelte';
  import { page } from '$app/state';
  import { base } from '$app/paths';
@@ -6909,6 +6910,18 @@ function signUserJWT($user) {
     {@const _castedCount = (detail?.tables || []).filter((t: any) => _isCasted(t.name)).length}
 
     {#if activeTab === 'datasets'}
+    <!-- ═══ ANIMATED AGENT FLOW ═══ -->
+    <AgentFlow
+      processing={isTraining || trainStepsRunStatus === 'running'}
+      docs={docs.length}
+      chunks={detail?.knowledge_vectors || 0}
+      graph={kgTriples.length}
+      edges={[...(lineage?.relationships || []), ...relationships].length}
+      wiki={docs.length}
+      memory={brainMemories.length}
+      datasets={detail?.tables?.length || 0}
+    />
+
     <!-- ═══ ONE COMPACT COCKPIT HEADER ═══ -->
     {#if isTrained}
       <section class="set-section cp-band">
