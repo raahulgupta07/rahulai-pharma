@@ -855,7 +855,7 @@
  let lockedSlug = $state<string | null>(null);
  let productName = $state('Dash');
  const chatHref = $derived(singleAgent && lockedSlug ? `/ui/project/${lockedSlug}` : '/ui/chat');
- const agentBrainHref = $derived(singleAgent && lockedSlug ? `/ui/project/${lockedSlug}/settings` : '/ui/projects');
+ const agentBrainHref = $derived(singleAgent && lockedSlug ? `/ui/project/${lockedSlug}/settings#datasets` : '/ui/projects');
  const uploadHref = $derived(singleAgent && lockedSlug ? `/ui/project/${lockedSlug}/settings#upload` : '/ui/projects');
  let showDashPicker = $state(false);
 

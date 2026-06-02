@@ -4853,7 +4853,7 @@ function signUserJWT($user) {
 
  onMount(async () => {
  // Top-nav Upload link changes the hash while already on this page — switch tab.
- const _onHash = () => { const h = window.location.hash.slice(1); if (h && h !== activeTab) activeTab = h; };
+ const _onHash = () => { let h = window.location.hash.slice(1); if (!h || h === 'cockpit') h = 'datasets'; if (h !== activeTab) activeTab = h; };
  window.addEventListener('hashchange', _onHash);
  // Critical: wait only for project detail so shell + tabs render fast.
  await loadDetail();
