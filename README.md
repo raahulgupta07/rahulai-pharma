@@ -19,6 +19,33 @@ Top nav: **Chat · Agent Brain · Upload · Company Brain · Admin**
 
 ---
 
+## Pharmacy capabilities
+
+Primary persona = **pharmacy counter staff**. The chat answers branch-scoped medicine questions:
+
+| Staff asks | Backed by |
+|---|---|
+| "is X in stock at my branch?" / "do we have X" | `stock_check` (relational, branch-scoped) |
+| "find `<salt>`" (e.g. paracetamol) | `stock_check` by generic_name |
+| "X is out of stock — alternatives?" | **Apache AGE graph** `find_substitutes` (same-salt traversal) |
+| "what do we have for `<condition>`" | `alternatives_for_indication` |
+| "tell me about `<drug>` and related" | `drug_relationships` |
+
+- **Branch scoping:** each login is bound to a branch (`dash_users.site_code`); the chat injects `## SHOP CONTEXT` so "stock" = their branch, with other branches shown as a transfer hint. 53 sites in the demo data.
+- **Apache AGE knowledge graph** lives in `cp-db` (PostgreSQL 18 + AGE + pgvector). Graph `citypharma`: 4,892 Article nodes + 41,042 `SUBSTITUTE_OF` edges (same generic molecule). Stock (106k rows) stays relational, joined by `article_code`. Built by `scripts/build_pharma_graph.py`. Tools in `dash/tools/pharma_graph_tool.py` + `pharma_shop_tool.py`.
+- **Output = shop medicine-finder** (name · salt · branch stock · cost · substitutes), not analyst KPI cards — for stock/find/substitute queries.
+
+> ⚠️ **AGE durability landmine:** `age.so` lives in the cp-db container fs + `shared_preload_libraries='age'`. `docker restart cp-db` is safe; **recreating cp-db WITHOUT a baked-AGE image breaks postgres boot.** Insurance: `cp-db-age:pg18` snapshot + `db/Dockerfile.age`. Do NOT recreate cp-db until that image is wired (see CLAUDE.md → "Apache AGE graph").
+
+**Data gaps (data, not code):** no retail/MRP price (only cost `weighted_cost_price`); pack/strength is inside the brand string; `dosage` = Burmese patient instructions; no UI yet to self-pick "my branch" (set `dash_users.site_code` per login).
+
+### Ingestion paths
+- **File upload** (`POST /api/upload`) — CSV/Excel/etc → train.
+- **DB connector** (`/api/connectors/*`) — PostgreSQL / MySQL / Microsoft Fabric: test → pick tables → sync → train.
+- **SFTP — not implemented** (no `paramiko`). Build if pull-from-SFTP is needed.
+
+---
+
 ## Stack
 
 | Layer | Tech |
