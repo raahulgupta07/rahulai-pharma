@@ -984,10 +984,11 @@ from app.schedules import router as schedules_router
 from app.learning import router as learning_router, templates_router as visibility_templates_router, marketplace_router as skill_marketplace_router, admin_router as engines_admin_router
 # Industry preset agent template API removed.
 agent_templates_router = None
-from app.sharepoint import router as sharepoint_router
 from app.connectors import router as connectors_router
-from app.gdrive import router as gdrive_router
-from app.onedrive import router as onedrive_router
+# pruned: sharepoint/gdrive/onedrive connectors (single-agent, file upload is the path)
+sharepoint_router = None
+gdrive_router = None
+onedrive_router = None
 try:
     from app.embed import router as embed_router
 except ImportError:
@@ -1160,10 +1161,7 @@ app.include_router(visibility_templates_router)
 app.include_router(skill_marketplace_router)
 if agent_templates_router is not None:
     app.include_router(agent_templates_router)
-app.include_router(sharepoint_router)
 app.include_router(connectors_router)
-app.include_router(gdrive_router)
-app.include_router(onedrive_router)
 if embed_router is not None:
     app.include_router(embed_router)
 if embed_blueprints_router is not None:
