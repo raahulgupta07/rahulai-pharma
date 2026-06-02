@@ -2341,11 +2341,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
   <!-- Main chat -->
   <div class="flex flex-col" style="flex: 1 1 100%; width: 100%; min-width: 0; max-width: 100%; position: relative; padding-right: {splitMode ? 'min(48vw, 900px)' : '0'}; transition: padding-right 0.25s ease;">
 
-  <!-- Dashboard panel toggle -->
-  <button class="panel-toggle-btn" class:panel-active={dashboardPanelOpen} onclick={() => { if (dashboardPanelOpen && unsavedDashboardId) { discardDashboard(); } else { dashboardPanelOpen = !dashboardPanelOpen; if (!dashboardPanelOpen) activeDashboardId = null; } }} title="Toggle dashboard panel">
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="0"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="9" y1="9" x2="21" y2="9"/></svg>
-    DASH
-  </button>
+  <!-- Dashboard panel toggle removed — chat-only product -->
 
   <!-- Drift bell -->
   {#if !dashPanelOpen}
@@ -2771,46 +2767,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
             </button>
           {/if}
 
-          <!-- Segment 5: Actions — Dashboard + Presentation icons -->
-          <div class="composer-seg composer-actions">
-            <!-- DASHBOARD icon (4-panel grid w/ chart bars, teal accent) -->
-            <button class="cmp-icon-btn cmp-dash" onclick={openDeepDashboard} title="Build dashboard" aria-label="Build dashboard" disabled={dashDeepening || messages.length < 2}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="3" width="8" height="8" rx="1"/>
-                <rect x="13" y="3" width="8" height="5" rx="1"/>
-                <rect x="13" y="10" width="8" height="11" rx="1"/>
-                <rect x="3" y="13" width="8" height="8" rx="1"/>
-              </svg>
-              <span class="cmp-icon-label">Dashboard</span>
-            </button>
-            <!-- PRESENTATION icon (slide w/ play-triangle, PowerPoint-orange tile) -->
-            <button class="cmp-icon-btn cmp-pres" onclick={startDeepDeck} disabled={messages.length < 2 || deepDeckOpen} aria-label="Build presentation" title="Build presentation">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="3" width="18" height="14" rx="2"/>
-                <path d="M3 17h18M12 17v4M8 21h8"/>
-                <polygon points="10,8 10,14 15,11" fill="currentColor" stroke="none"/>
-              </svg>
-              <span class="cmp-icon-label">Slides</span>
-            </button>
-            <!-- EXCEL icon (spreadsheet grid, Excel-green) -->
-            <button class="cmp-icon-btn cmp-excel" onclick={exportExcelChat} disabled={excelBusy || messages.length < 2} aria-label="Export to Excel" title="Export chat to Excel">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                <path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>
-              </svg>
-              <span class="cmp-icon-label">{excelBusy ? 'Exporting…' : 'Excel'}</span>
-            </button>
-            <!-- RESEARCH icon (file w/ magnifying glass, violet/purple accent) -->
-            <button class="cmp-icon-btn cmp-research" onclick={exportResearchChat} disabled={researchBusy || messages.length < 1} aria-label="Download deep research" title="Download deep research PDF">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h7"/>
-                <polyline points="14 2 14 8 20 8"/>
-                <circle cx="16.5" cy="16.5" r="2.5"/>
-                <line x1="18.5" y1="18.5" x2="21" y2="21"/>
-              </svg>
-              <span class="cmp-icon-label">{researchBusy ? 'Researching…' : 'Research'}</span>
-            </button>
-          </div>
+          <!-- composer actions (Dashboard/Slides/Excel/Research) removed — chat-only product -->
         </div>
       </div>
       {#if !splitMode && dashVersions.length > 0}
