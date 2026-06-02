@@ -3304,10 +3304,11 @@ function signUserJWT($user) {
  }
 
  $effect(() => {
- if (activeTab === 'datasets' && !extractionPlansLoaded) {
+ const _onDataTab = activeTab === 'datasets' || activeTab === 'upload';
+ if (_onDataTab && !extractionPlansLoaded) {
    loadExtractionPlans();
  }
- if (activeTab === 'datasets' && !inspectsBatchLoaded && (detail?.tables?.length || 0) > 0) {
+ if (_onDataTab && !inspectsBatchLoaded && (detail?.tables?.length || 0) > 0) {
  inspectsBatchLoaded = true;
  const tables = detail?.tables || [];
  const init: Record<string, boolean> = { ...tableCardOpen };
@@ -4732,6 +4733,7 @@ function signUserJWT($user) {
 
  const tabs = [
  { id: 'datasets', label: 'COCKPIT' },
+ { id: 'upload', label: 'UPLOAD' },
  { id: 'data-quality', label: 'DATA QUALITY', icon: '' },
  { id: 'knowledge', label: 'KNOWLEDGE' },
  { id: 'rules', label: 'RULES' },
@@ -6177,6 +6179,7 @@ function signUserJWT($user) {
     {@const groups = [
       { label: 'Workspace', icon: 'workspace', items: [
         { id: 'datasets', label: 'Cockpit' },
+        { id: 'upload', label: 'Upload' },
         { id: 'data-quality', label: 'Data Quality' },
         { id: 'knowledge', label: 'Knowledge' },
         { id: 'training', label: 'Training' },
@@ -6892,7 +6895,7 @@ function signUserJWT($user) {
     </section>
 
   <!-- ═══ DATASETS (merged with Cockpit) ═══ -->
-  {:else if activeTab === 'datasets'}
+  {:else if activeTab === 'datasets' || activeTab === 'upload'}
     {@const _totalTables = detail?.tables?.length || 0}
     {@const _totalDocs = docs.length}
     {@const _totalRows = (detail?.tables || []).reduce((s: number, t: any) => s + (t.rows || 0), 0)}
@@ -6901,6 +6904,7 @@ function signUserJWT($user) {
     {@const _connectedSources = spSources.length + gdSources.length + dbSources.length + odSources.length}
     {@const _castedCount = (detail?.tables || []).filter((t: any) => _isCasted(t.name)).length}
 
+    {#if activeTab === 'datasets'}
     <!-- ═══ ONE COMPACT COCKPIT HEADER ═══ -->
     {#if isTrained}
       <section class="set-section cp-band">
@@ -7075,7 +7079,9 @@ function signUserJWT($user) {
         {/if}
       </section>
     {/if}
+    {/if}<!-- end cockpit summary (datasets-only) -->
 
+    {#if activeTab === 'upload'}
     <input type="file" accept=".csv,.xlsx,.xls,.json,.sql,.md,.txt,.py,.pptx,.docx,.pdf,.jpg,.jpeg,.png,.tiff,.bmp,.gif,.webp,.parquet,.ods,.xml,.html,.htm,.zip,.eml" multiple onchange={(e) => { const files = (e.target as HTMLInputElement).files; if (files && files.length > 0) routeUpload(files); }} bind:this={fileInputEl} style="display: none;" />
 
     {#if canEdit}
@@ -8513,6 +8519,7 @@ function signUserJWT($user) {
     {/if}
 
   <!-- ═══ DATA QUALITY ═══ -->
+    {/if}<!-- end upload tab -->
   {:else if activeTab === 'data-quality'}
     {@const _dqIssues = dqFilteredIssues()}
     {@const _dqAllTables = dqData?.by_table ? Object.keys(dqData.by_table).sort() : []}
