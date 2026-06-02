@@ -6296,7 +6296,7 @@ function signUserJWT($user) {
     </div>
   </div>
 
-  {#if (activeTab === 'cockpit' || activeTab === 'datasets') && (isTraining || trainStepsRunStatus === 'running' || trainSteps.some(s => s.status === 'done'))}
+  {#if (activeTab === 'cockpit' || activeTab === 'datasets' || activeTab === 'upload') && (isTraining || trainStepsRunStatus === 'running' || trainSteps.some(s => s.status === 'done'))}
   <div style="margin-bottom: 12px; padding: 10px 14px; border: 2px solid var(--pw-ink); background: var(--pw-surface); font-family: var(--pw-font-body);">
     <div style="display: flex; align-items: center; gap: 10px;">
       <div style="flex: 1; height: 4px; background: var(--pw-bg-alt); border: 1px solid var(--pw-muted);">
@@ -7123,7 +7123,19 @@ function signUserJWT($user) {
         </div>
       {/if}
 
-      <!-- Connected sources -->
+      <!-- Train (minimal Upload tab) -->
+      {#if _totalTables > 0 || _totalDocs > 0 || stageBatchId}
+        <div class="ds-section-head" style="margin-top:18px;">
+          <h3 class="ds-section-title">Train the agent</h3>
+          <button class="ds-btn ds-btn-sm ds-btn-primary" onclick={() => { openQualityReview(); }} disabled={!!trainingTable || isTraining}>
+            <Icon name="zap" size={13} /> {isTraining ? 'Training…' : 'Train all'}
+          </button>
+        </div>
+        <p class="cp-hdr-meta" style="margin-top:4px;">Training updates the agent's brain — knowledge, definitions, Q&A — from your uploaded data.</p>
+      {/if}
+
+      {#if false}
+      <!-- Connected sources (hidden on Upload tab) -->
       <div class="ds-section-head">
         <h3 class="ds-section-title">Connected sources <span class="ds-count">({_connectedSources})</span></h3>
         <div class="ds-chip-row">
@@ -8522,6 +8534,7 @@ function signUserJWT($user) {
     {/if}
 
   <!-- ═══ DATA QUALITY ═══ -->
+      {/if}<!-- end hidden legacy: sources/files/table details -->
     {/if}<!-- end upload tab -->
   {:else if activeTab === 'data-quality'}
     {@const _dqIssues = dqFilteredIssues()}
