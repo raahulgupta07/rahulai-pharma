@@ -6183,7 +6183,6 @@ function signUserJWT($user) {
     {@const groups = [
       { label: 'Workspace', icon: 'workspace', items: [
         { id: 'datasets', label: 'Cockpit' },
-        { id: 'upload', label: 'Upload' },
         { id: 'data-quality', label: 'Data Quality' },
         { id: 'knowledge', label: 'Knowledge' },
         { id: 'training', label: 'Training' },
