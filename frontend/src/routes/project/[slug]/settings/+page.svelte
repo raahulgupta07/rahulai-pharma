@@ -6174,7 +6174,8 @@ function signUserJWT($user) {
  });
 </script>
 
-<div class="set-shell">
+<div class="set-shell" class:set-shell-norail={activeTab === 'upload'}>
+  {#if activeTab !== 'upload'}
   <aside class="set-rail">
     {#if !loading}
     {@const railTabs = tabs}
@@ -6268,6 +6269,7 @@ function signUserJWT($user) {
     {/each}
     {/if}
   </aside>
+  {/if}
 
   <main class="set-main">
 
@@ -7120,6 +7122,14 @@ function signUserJWT($user) {
           <span>Google Drive is not configured. <code>GOOGLE_CLIENT_ID</code> / <code>GOOGLE_CLIENT_SECRET</code> must be set by an administrator.</span>
           <a href="/ui/command-center?tab=integrations" target="_blank" rel="noopener" class="ds-warn-link">Open integrations →</a>
           <button onclick={() => { gdSetupWarning = false; }} class="ds-warn-close" aria-label="Dismiss"><Icon name="x" size={14} /></button>
+        </div>
+      {/if}
+
+      <!-- Loaded files summary -->
+      {#if _totalTables > 0 || _totalDocs > 0}
+        <div class="cp-hdr-meta" style="margin-top:14px;">
+          Loaded: {[...(detail?.tables || []).map((t: any) => t.name), ...docs.map((d: any) => d.name || d.filename)].filter(Boolean).join('  ·  ')}
+          {#if _totalRows > 0} · {_totalRows.toLocaleString()} rows{/if}
         </div>
       {/if}
 
@@ -17759,6 +17769,8 @@ function signUserJWT($user) {
  background: var(--pw-bg);
  font-family: var(--pw-font-body);
  }
+ /* Upload tab = standalone full-width (no left rail) */
+ .set-shell-norail { grid-template-columns: 1fr; }
  /* Right column must scroll independently now that .set-shell clips overflow */
  .set-main {
  overflow-y: auto;
