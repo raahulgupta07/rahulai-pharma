@@ -1034,6 +1034,29 @@ async def project_chat(slug: str, request: Request):
     except Exception as _e:
         logging.debug(f"training-qa rank skipped: {_e}")
 
+    # SHOP CONTEXT — bind counter staff to their branch (CityPharma single-agent).
+    # Stock/availability/substitute answers default to this branch; other branches = transfer hint.
+    try:
+        _uid_shop = (user.get("user_id") or user.get("id")) if user else None
+        if _uid_shop:
+            from sqlalchemy import text as _sqltext
+            from db import get_sql_engine as _gse_shop
+            with _gse_shop().connect() as _shc:
+                _srow = _shc.execute(
+                    _sqltext("SELECT site_code FROM public.dash_users WHERE id = :uid"),
+                    {"uid": _uid_shop}).fetchone()
+            _site = _srow[0] if _srow else None
+            if _site:
+                context_msg = (
+                    "## SHOP CONTEXT (pharmacy counter)\n"
+                    f"You assist counter staff at branch site_code = {_site}. For stock / availability / "
+                    f"'do we have X' / 'find <salt>' / substitute questions, ALWAYS pass site_code='{_site}' to "
+                    "stock_check / find_substitutes so stock means THIS branch. List other branches only as a "
+                    "transfer option.\n\n"
+                ) + context_msg
+    except Exception as _she:
+        logging.debug(f"shop context skipped: {_she}")
+
     # Follow-up context: when scope-gate bypass detected a short pronoun-question,
     # prepend the prior Q+A pair so the agent has context to resolve "this/that".
     # Without this, agent sees "Show me the data behind this" alone → may still

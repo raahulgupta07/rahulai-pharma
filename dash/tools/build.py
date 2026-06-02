@@ -539,7 +539,12 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
                     alternatives_for_indication as _pg_alt,
                     drug_relationships as _pg_rel,
                 )
+                from dash.tools.pharma_shop_tool import stock_check as _pg_stock
                 import json as _pgj
+
+                @tool(name="stock_check", description="SHOP COUNTER: look up medicines by brand name OR salt (generic), scoped to the staff member's branch. Returns matches with your-branch stock, in-stock flag, cost, and other branches that have it. Args: query (str — brand or salt), site_code (str — the branch from SHOP CONTEXT), limit (int, optional). Use this for 'is X in stock', 'find <salt>', 'do we have <medicine>'.")
+                def _stock_tool(query: str = "", site_code: str = "", limit: int = 15) -> str:
+                    return _pgj.dumps(_pg_stock(query, site_code, limit))
 
                 @tool(name="find_substitutes", description="Find substitute drugs (same generic molecule) for an out-of-stock article, with current stock. Args: article_code (int, optional), brand_name (str, optional), site_code (str, optional), in_stock_only (bool, optional). Uses the pharma knowledge graph (Apache AGE).")
                 def _subs_tool(article_code: int = 0, brand_name: str = "", site_code: str = "", in_stock_only: bool = False) -> str:
@@ -553,11 +558,12 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
                 def _rel_tool(article_code: int = 0, brand_name: str = "") -> str:
                     return _pgj.dumps(_pg_rel(article_code, brand_name))
 
+                tools.append(_stock_tool)
                 tools.append(_subs_tool)
                 tools.append(_alt_tool)
                 tools.append(_rel_tool)
                 import logging as _pgl
-                _pgl.getLogger(__name__).info("pharma graph tools enabled: +3 (find_substitutes, alternatives_for_indication, drug_relationships)")
+                _pgl.getLogger(__name__).info("pharma graph+shop tools enabled: +4 (stock_check, find_substitutes, alternatives_for_indication, drug_relationships)")
             except Exception as _pge:
                 import logging as _pgl
                 _pgl.getLogger(__name__).warning(f"pharma graph tools not loaded: {_pge}")
