@@ -81,13 +81,20 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  llm: { label: 'LLM config', subtitle: 'OpenRouter API keys (encrypted) + models — hot reload, no restart' },
  };
 
- const railGroups: { label: string; items: string[] }[] = [
+ // Single-agent product hides multi-project grids (Projects + Schemas).
+ let singleAgent = $state(false);
+ const _railGroupsBase: { label: string; items: string[] }[] = [
  { label: 'Overview', items: ['stats','health','architecture'] },
  { label: 'People', items: ['users','projects','chatLogs'] },
  { label: 'Data', items: ['schemas','integrations','connectors','drift'] },
  { label: 'System', items: ['traces','fed-admin','logs','admin-settings','channels','mcp','llm'] },
  { label: 'Trust & Governance', items: ['accuracy','golden','mdl','diff','scope-audit','approvals','actions','metricflow','dataview','packs'] },
  ];
+ const railGroups = $derived(
+ singleAgent
+ ? _railGroupsBase.map(g => ({ ...g, items: g.items.filter(i => i !== 'projects' && i !== 'schemas') }))
+ : _railGroupsBase
+ );
 
  // Sub-tabs for the 3 expandable parents in the LEFT RAIL Governance group
  const govSubs = [
@@ -1109,7 +1116,11 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  });
 
  onMount(() => {
- const initial = _initialTab();
+ // Product flag — hide multi-project grids in single-agent mode
+ fetch('/api/flags').then(r => r.ok ? r.json() : null).then(f => { if (f) singleAgent = !!f.single_agent; }).catch(() => {});
+ let initial = _initialTab();
+ // If a deep-link landed on a hidden grid, fall back to stats
+ if (initial === 'projects' || initial === 'schemas') initial = 'stats';
  switchTab(initial);
  _tabInited = true;
  loadAdminSettings();
