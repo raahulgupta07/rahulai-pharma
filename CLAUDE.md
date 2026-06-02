@@ -1,5 +1,59 @@
 # CLAUDE.md
 
+> **This product = CityPharma** (single-agent fork of Dash). Read the CityPharma section below FIRST — it overrides the multi-tenant assumptions in the long inherited Dash log that follows. The Dash session log is kept for platform internals (training pipeline, 13 context layers, security, gotchas) but most multi-project features described there are PRUNED or LOCKED here.
+
+---
+
+## CityPharma — single-agent product (READ FIRST)
+
+**What this is.** A pharma analytics product = ONE hardcoded **CityPharma Analyst** agent over ONE locked workspace (`proj_demo_citypharma`). No project creation, no agent builder, no multi-tenant switching. Forked from Dash, locked + pruned. Product overview + deploy: see `README.md`.
+
+### Single-agent lock
+- `.env`: `SINGLE_AGENT_MODE=1`, `LOCKED_PROJECT_SLUG=proj_demo_citypharma`, `PRODUCT_NAME=CityPharma`.
+- `dash/single_agent.py` — `is_single_agent()`, `locked_slug()`, `product_name()`, `resolve_slug()`, `guard_no_project_management()`.
+- `GET /api/flags` (public, in `SKIP_PATHS`) returns `single_agent`/`locked_slug`/`product_name`. Frontend `+layout.svelte` fetches on mount → 4-item nav + redirects `root/home/projects/chat` → locked chat.
+- `app/projects.py`: create/delete/duplicate → `guard_no_project_management`; `list_projects` scoped to locked slug.
+- Slug kept as `proj_demo_citypharma` internally (brand = `PRODUCT_NAME`) — avoided renaming 111k rows + FKs.
+
+### Infra (cp-* containers, NOT dash-*)
+- Containers: `cp-db cp-pgbouncer cp-api cp-redis cp-caddy cp-ml cp-mcp cp-backup`. Compose **service names kept** (`dash-db`, `dash-api` — internal DNS), only `container_name` renamed to `cp-*` (global, avoids clash with a live Dash on the same host).
+- Ports: cp-api `127.0.0.1:8011:8000`; caddy `8090:80` / `8453:443`. (A separate citymart-geo runs on :8000.)
+- Login: `demo` / `demo@2026` (super-admin). Login response field is `token` (not `access_token`); frontend stores `localStorage.dash_token`.
+- Reload: gunicorn `app.main:app`. Workers default to `cpu_count` (~14) — `WORKERS=2` in .env is NOT wired into `scripts/gunicorn_conf.py` default → slow 30-60s cold boot.
+
+### Deploy = hot-copy (image is stale)
+```
+cd frontend && npm run build && docker cp build/. cp-api:/app/frontend/build/   # frontend
+docker cp app/<f>.py cp-api:/app/app/<f>.py                                       # backend
+```
+**Gotchas (each bit us this session):**
+1. **`kill -HUP 1` graceful reload does NOT re-run FastAPI lifespan.** It reloads workers but lifespan startup (migrations, daemons, init hooks) keeps old in-memory state. A broken lifespan import PASSES an HUP reload and only crashes on **full container restart**. → After deleting/renaming backend modules, validate with a full restart, never just HUP.
+2. **Hot-copies are ephemeral.** Image is stale vs the running container. `docker compose up -d --force-recreate cp-api` reverts to the old baked image and **wipes all hot-copies** (font, AgentFlow, prune — everything this session). DO NOT recreate cp-api until the image is rebuilt.
+3. **Durable** = `docker compose build cp-api` (bakes current source). Only then is force-recreate safe.
+4. **Chat endpoint is form-encoded** (`-F "message=..."`), not JSON. `app/projects.py:843` reads `form.get("message")`.
+5. Routers in `app/main.py` are **try/except guarded** → deleting a guarded router file just unregisters it (boot-safe). But **lifespan-body imports are NOT guarded** (e.g. `init_sharepoint` at line ~292) — those crash startup.
+
+### UI shape (single-agent revamp)
+- Top nav: **Chat · Agent Brain · Upload · Company Brain · Admin**. "Agent Brain" = the full project Settings page (all tabs). Upload = standalone minimal page (dropzone + Train, no rail). Ontology merged into Company Brain.
+- Composer: Dashboard/Slides/Excel/Research buttons + DASH pill REMOVED.
+- Chat output: clean Compass-style answer card, NO INSIGHT/DATA/SQL/CHART/SOURCES tabs — SQL in a collapsed "✓ N steps · expand" trace. Code in `frontend/src/lib/chat/ChatMessageList.svelte` + `AnswerCard.svelte`.
+- Cockpit: animated **Agent Flow** diagram (`frontend/src/lib/AgentFlow.svelte`) — always-alive (dashes drift, traveling packets, crew-dot pulse), faster when `processing`. Docs→Crew→5 stores→Chat Lanes→Answer. No fill bars (removed per user).
+- Admin: Projects/Schemas multi-project grids hidden when `single_agent`.
+- **Single font family** — `app.css` `--pw-serif` aliases the Inter sans stack; `AgentFlow .box-num` + `AnswerCard .action-title/.kpi-value` use `--pw-font-body`. No serif anywhere (user wanted uniform).
+
+### Prune (2026-06) — single-agent cleanup, on `main`
+Fork inherited ~130 routers / 1118 routes of multi-tenant Dash. Cut the dead surface, **routes 1118 → 825**, tool stays healthy + chat works. Phased, git-revertible (`prune-dead` branch → merged to `main`).
+- **Deleted 9 dead-UI route dirs**: agent-os, os, channels, skills, dashboard-studio, presentations, scope-picker, mcp, embed-templates.
+- **Cut sharepoint/gdrive/onedrive** connector surface from `main.py` (kept DB `connectors`). Guarded the lifespan `init_*` (this is the crash that taught gotcha #1).
+- **Deleted 39 router files** (all main.py-only, guarded → boot-safe): agents_api, agent_os_admin_api, agent_os_workflows, agent_schedules_api, skill_drafts_api, packs_api, vertical_packs_api, channels_api, mrr_analytics, attribution, campaigns, customer_360, venture_api, market_api, user_agent_engine, slides_api, deep_deck_api, deck_distribution, dashboard_to_deck, mcp_api, hitl_api, hitl_requests_api, approval_api, governance_api, links_api, journal_api, canvas_api, graph_api, dataview_api, entity_linker_api, linker_api, resolver_api, connectors_test_federation, federation_health_api, connector_obo_api, admin_connectors, connectors_v2.
+- **KEPT — do NOT delete** (lazy-imported into the chat hot path, pure-Python, zero image gain, surface already gone): `dash/templates`, `dash/verticals`, `dash/agentic`. `dash/agentic` is **live infra** (run-context/hooks/agentic memory used by tools/memory/workflows), NOT the Agent-OS builder — mislabeled in earlier audits. `dream_lite` fires per-chat (only the Dream DEEP tier is dormant). `hippo_rag` is referenced by `instructions.py` (hot path) — leave it.
+- **Skipped (user chose "stop safe")**: Phase 5 image shrink (delete `skills_cowork` +360MB / `pptx_renderer` + Dockerfile + rebuild). Image still ~3GB. Would fold in naturally on the next durable rebuild.
+- **KEEP — core product**: auth, projects(locked), upload/upload_stream, learning, brain/brain_versions, metrics_api, rules/suggested_rules, scores, dashboards_api, embeddings_api/retrieval_api, training_api/training_queue_api, drift_api, sql_validator_api, golden_api+accuracy_api, export, traces/telemetry, core agents, AgentFlow cockpit.
+
+### Reverse-coupling rule (learned the hard way)
+A router file is boot-safe to delete ONLY if it's imported nowhere but `main.py` AND has no unguarded lifespan init. Check both: `grep -rln "app\.<name>" app dash | grep -v main.py` (must be empty) AND scan the `lifespan` body (160–~899 in main.py) for `from app.<name> import` / `init_<name>()`. The router-registration block (917+) is guarded; the lifespan body is not.
+
+---
 ## 2026-05-27 (latest+++++) — Queue finalizer + zero-touch schema drift (lazy profile_v2 + unknown-table prompt rule)
 
 Two-part turn after scaling-sprint session. Closed three remaining gaps:
