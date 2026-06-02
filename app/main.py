@@ -289,14 +289,13 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
     except Exception as _bp_e:
         import logging as _bp_log
         _bp_log.getLogger(__name__).warning(f"rls_blueprints seed skipped: {_bp_e}")
-    from app.sharepoint import init_sharepoint
-    init_sharepoint()
-    from app.connectors import init_connectors
-    init_connectors()
-    from app.gdrive import init_gdrive
-    init_gdrive()
-    from app.onedrive import init_onedrive
-    init_onedrive()
+    try:
+        from app.connectors import init_connectors
+        init_connectors()
+    except Exception as _conn_e:
+        import logging as _cl
+        _cl.getLogger(__name__).warning(f"connectors init skipped: {_conn_e}")
+    # pruned: sharepoint/gdrive/onedrive init removed (single-agent)
     try:
         from app.brain import init_brain
         init_brain()
