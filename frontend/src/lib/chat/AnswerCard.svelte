@@ -632,7 +632,7 @@
   }
 
   .action-title {
-    font-family: 'Cormorant Garamond', 'Source Serif Pro', Georgia, serif;
+    font-family: var(--pw-font-body);
     font-size: 24px;
     line-height: 1.2;
     font-weight: 600;
@@ -713,7 +713,7 @@
     color: var(--pw-ink-muted, #7a6f60);
   }
   .kpi-value {
-    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-family: var(--pw-font-body);
     font-size: 32px;
     line-height: 1.1;
     margin-top: 2px;

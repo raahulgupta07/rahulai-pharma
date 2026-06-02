@@ -75,7 +75,8 @@
   --pw-error-soft: #f5dada;
 
   --pw-sans: 'Inter', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
-  --pw-serif: 'EB Garamond', 'Tiempos', 'Tiempos Headline', Georgia, 'Times New Roman', serif;
+  /* Single-family platform: serif token aliases sans so headings + stats match body */
+  --pw-serif: 'Inter', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
   --pw-mono: 'JetBrains Mono', 'Söhne Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --pw-font-headline: var(--pw-serif);
   --pw-font-body: var(--pw-sans);

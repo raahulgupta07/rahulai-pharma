@@ -102,7 +102,7 @@
 
   .box { border:1px solid var(--pw-border); background:var(--pw-bg-alt); padding:12px 14px; }
   .box-cap { font-size:10px; font-weight:800; letter-spacing:0.08em; color:var(--pw-muted); text-transform:uppercase; }
-  .box-num { font-size:22px; font-weight:800; color:var(--pw-ink); font-family:var(--pw-font-head, serif); margin-top:2px; }
+  .box-num { font-size:22px; font-weight:800; color:var(--pw-ink); font-family:var(--pw-font-body); margin-top:2px; }
   .box-num.big { font-size:28px; }
   .box-sub { font-size:10.5px; color:var(--pw-muted); margin-top:2px; }
 
