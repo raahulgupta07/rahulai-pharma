@@ -528,6 +528,40 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
             tools.append(benchmark_tool)
             tools.append(correlation_tool)
 
+        # ── Pharma knowledge graph (Apache AGE) ────────────────────────────
+        # Drug-relationship traversal: substitutes (same generic), therapeutic
+        # alternatives by indication, neighbourhood. Stock joined relationally.
+        import os as _os
+        if project_slug and _os.getenv("PHARMA_GRAPH_DISABLED") != "1":
+            try:
+                from dash.tools.pharma_graph_tool import (
+                    find_substitutes as _pg_subs,
+                    alternatives_for_indication as _pg_alt,
+                    drug_relationships as _pg_rel,
+                )
+                import json as _pgj
+
+                @tool(name="find_substitutes", description="Find substitute drugs (same generic molecule) for an out-of-stock article, with current stock. Args: article_code (int, optional), brand_name (str, optional), site_code (str, optional), in_stock_only (bool, optional). Uses the pharma knowledge graph (Apache AGE).")
+                def _subs_tool(article_code: int = 0, brand_name: str = "", site_code: str = "", in_stock_only: bool = False) -> str:
+                    return _pgj.dumps(_pg_subs(article_code, brand_name, site_code, in_stock_only))
+
+                @tool(name="alternatives_for_indication", description="Find all articles that treat a given indication/condition, with stock. Args: indication (str), site_code (str, optional), in_stock_only (bool, optional). Uses the pharma knowledge graph.")
+                def _alt_tool(indication: str = "", site_code: str = "", in_stock_only: bool = False) -> str:
+                    return _pgj.dumps(_pg_alt(indication, site_code, in_stock_only))
+
+                @tool(name="drug_relationships", description="Show the graph neighbourhood of one drug: generic, category, indications, compositions, substitutes. Args: article_code (int, optional), brand_name (str, optional).")
+                def _rel_tool(article_code: int = 0, brand_name: str = "") -> str:
+                    return _pgj.dumps(_pg_rel(article_code, brand_name))
+
+                tools.append(_subs_tool)
+                tools.append(_alt_tool)
+                tools.append(_rel_tool)
+                import logging as _pgl
+                _pgl.getLogger(__name__).info("pharma graph tools enabled: +3 (find_substitutes, alternatives_for_indication, drug_relationships)")
+            except Exception as _pge:
+                import logging as _pgl
+                _pgl.getLogger(__name__).warning(f"pharma graph tools not loaded: {_pge}")
+
     tools.append(create_save_validated_query_tool(knowledge))
     tools.append(ReasoningTools())
 

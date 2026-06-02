@@ -1,0 +1,36 @@
+# cp-db with Apache AGE baked in (graph) + pgvector (vectors) on PostgreSQL 18.
+#
+# Why: AGE was installed into the running cp-db via apt+source-build (ephemeral —
+# lost on container recreate). With shared_preload_libraries='age', a recreate
+# WITHOUT this baked image = postgres fails to boot (missing age.so). This image
+# makes AGE durable.
+#
+# Build:   docker build -f db/Dockerfile.age -t cp-db-age:pg18 .
+# Use:     point the cp-db service `image:` at cp-db-age:pg18 (data volume unchanged).
+#          shared_preload_libraries='age' is already set in postgresql.auto.conf in
+#          the PGDATA volume, so no extra config needed.
+#
+# NOTE: recreating cp-db is data-safe (PGDATA is a named volume) but follows the
+#       same "don't recreate live until ready" caution as cp-api.
+
+FROM pgvector/pgvector:pg18-trixie
+
+USER root
+
+# Build Apache AGE (master = newest PG support) against PG18, then drop build deps.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        build-essential git flex bison postgresql-server-dev-18 ca-certificates; \
+    git clone --depth 1 https://github.com/apache/age.git /tmp/age; \
+    cd /tmp/age; \
+    make PG_CONFIG=/usr/bin/pg_config -j"$(nproc)"; \
+    make PG_CONFIG=/usr/bin/pg_config install; \
+    cd /; rm -rf /tmp/age; \
+    apt-get purge -y build-essential git flex bison postgresql-server-dev-18; \
+    apt-get autoremove -y; \
+    rm -rf /var/lib/apt/lists/*
+
+# AGE extension files + age.so now live in the image. Enable per-database with:
+#   CREATE EXTENSION IF NOT EXISTS age;
+# and (already persisted in PGDATA): ALTER SYSTEM SET shared_preload_libraries='age';

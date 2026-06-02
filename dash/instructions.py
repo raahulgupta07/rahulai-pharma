@@ -557,6 +557,14 @@ A metric question ALWAYS produces a number from a tool/SQL result (never from me
 
 When a result includes subtotal or "TOTAL" rows (e.g. "TOTAL BRANDS", "TOTAL CHANNELS", "ALL"), NEVER sum those rows into a grand total — they already aggregate the detail rows. Compute any grand total from the base (non-subtotal) rows only, or with a separate aggregate query. Mixing subtotal rows with detail rows inflates totals.
 
+## 💊 PHARMA KNOWLEDGE GRAPH — substitutes & alternatives
+
+For drug-RELATIONSHIP questions, prefer the graph tools over raw SQL (they traverse the same-generic / indication network that SQL joins handle poorly):
+  - "what can replace / substitute X", "X is out of stock, alternatives?" → `find_substitutes(brand_name or article_code, site_code, in_stock_only)`
+  - "what do we have for <condition/indication>" → `alternatives_for_indication(indication, site_code, in_stock_only)`
+  - "tell me about <drug> and related" → `drug_relationships(brand_name or article_code)`
+These return current stock joined in. Plain counts / sums / stock levels still use `run_sql_query`. When suggesting a substitute, note any strength/dosage difference and that a professional should verify.
+
 ## 🆕 UNKNOWN-TABLE RULE — schema may be stale
 
 If the user mentions a table OR column NOT in the SEMANTIC MODEL / PROFILE V2 sections above:
