@@ -23,7 +23,6 @@
     { label: 'MEMORY',   n: memory,   sub: 'facts' },
     { label: 'DATASETS', n: datasets, sub: datasets === 1 ? 'table' : 'tables' },
   ]);
-  const maxN = $derived(Math.max(1, ...stores.map(s => s.n)));
   const crew = ['enrich', 'graph', 'skill', 'memory', 'config', 'curate'];
 </script>
 
@@ -65,7 +64,6 @@
         <div class="box store">
           <div class="box-cap">{s.label}</div>
           <div class="box-num big">{s.n.toLocaleString()}</div>
-          <div class="store-fill"><span style="width:{Math.round((s.n / maxN) * 100)}%"></span></div>
           <div class="box-sub">{s.sub}</div>
         </div>
       {/each}
@@ -88,7 +86,6 @@
   <div class="legend">
     <span><span class="lg dot-run"></span> stage running</span>
     <span><span class="lg dot-idle"></span> idle</span>
-    <span><span class="lg fill"></span> store fill ∝ size</span>
   </div>
 </div>
 
@@ -150,14 +147,6 @@
 
   .stores { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
   .store { text-align:center; }
-  .store-fill { height:8px; background:var(--pw-bg); border:1px solid var(--pw-border); margin:6px 0 4px; overflow:hidden; position:relative; }
-  .store-fill span { display:block; height:100%; background:#9ec79b; position:relative; overflow:hidden; }
-  /* shimmer sweep across the green fill (always alive) */
-  .store-fill span::after { content:''; position:absolute; inset:0;
-    background:linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent);
-    transform:translateX(-100%); animation:shimmer 2.8s linear infinite; }
-  .aflow.running .store-fill span::after { animation-duration:1.4s; }
-  @keyframes shimmer { to { transform:translateX(100%); } }
 
   .lanes-row { display:flex; align-items:center; gap:14px; justify-content:center; margin-top:0; }
   .box-lanes { flex:1 1 auto; max-width:620px; }
@@ -188,7 +177,6 @@
   .lg { width:10px; height:10px; border-radius:50%; }
   .dot-run { background:var(--pw-accent); }
   .dot-idle { background:var(--pw-muted); }
-  .lg.fill { border-radius:2px; background:#9ec79b; }
 
   @media (max-width: 820px) {
     .stores, .stub-row { grid-template-columns:repeat(2,1fr); }
