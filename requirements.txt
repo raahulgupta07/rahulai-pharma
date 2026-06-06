@@ -116,21 +116,11 @@ pdfminer.six>=20221105
 pytesseract>=0.3.10
 chardet>=5.0
 langextract>=0.1.0
-prophet>=1.1
 bcrypt==4.2.1
 slowapi==0.1.9
-msal>=1.28.0
-google-auth>=2.0
-google-auth-oauthlib>=1.0
-google-api-python-client>=2.0
 pymysql>=1.1
-scipy
 joblib
 threadpoolctl
-scikit-learn
-lightgbm
-imbalanced-learn
-statsforecast
 fsspec
 narwhals
 optuna
@@ -138,10 +128,6 @@ alembic
 colorlog
 mako
 patsy
-statsmodels
-shap
-python-tds>=1.15.0
-sqlalchemy-pytds>=1.0.0
 APScheduler>=3.10
 tzlocal>=4.0
 sqlglot>=25.0.0
@@ -151,22 +137,7 @@ reportlab
 yfinance>=0.2
 exa-py>=1.0
 markitdown[pptx]>=0.0.1
-pyodbc==5.2.0
-azure-identity==1.19.0
-google-cloud-bigquery==3.27.0
-# connector transitive deps (uv pip sync gotcha — full closure required)
-google-resumable-media>=2.7.0
-google-cloud-core>=2.4.1
-google-api-core>=2.20.0
-google-crc32c>=1.5.0
-proto-plus>=1.24.0
-grpcio>=1.66.0
-grpcio-status>=1.66.0
-azure-core>=1.31.0
-msal>=1.31.0
-msal-extensions>=1.2.0
 requests>=2.32.0
-googleapis-common-protos>=1.63.2
 protobuf>=4.25.8
 pyasn1>=0.6.1
 pyasn1-modules>=0.4.0
@@ -177,3 +148,5 @@ defusedxml>=0.7
 pypdf>=4.3
 # Embed chat cache
 redis>=5.0
+# Federated auth — LDAP bind-search-bind (pyasn1 already present above; OIDC/SSO reuses pyjwt+httpx+cryptography)
+ldap3==2.9.1

@@ -166,6 +166,19 @@ PRODUCT_NAME=CityPharma
 
 ---
 
+## Authentication (local + LDAP + OIDC/SSO)
+
+Local username/password is always on. **LDAP** and **OIDC/SSO** are optional, off by default, OpenWebUI-modeled (`app/auth_federation.py`):
+
+- **LDAP / Active Directory** — `ldap3` bind-search-bind. Set `ENABLE_LDAP=true` + `LDAP_SERVER_HOST/PORT`, `LDAP_APP_DN`, `LDAP_APP_PASSWORD`, `LDAP_SEARCH_BASE`, `LDAP_ATTRIBUTE_FOR_USERNAME` (`sAMAccountName` on AD). Users auto-provision on first login.
+- **OIDC / SSO** — generic OpenID Connect with **state + nonce + PKCE + JWKS id_token verification**. Set `OPENID_PROVIDER_URL` (issuer) + `OAUTH_CLIENT_ID`/`OAUTH_CLIENT_SECRET`, or the Keycloak / `GOOGLE_*` / `MICROSOFT_*` built-ins. Callback = `{PUBLIC_URL}/api/auth/oidc/{provider}/callback`. Account-merge by email via `OAUTH_MERGE_ACCOUNTS_BY_EMAIL`.
+- **Access gate + branch binding** — `OAUTH_ALLOWED_ROLES` rejects users lacking an allowed role; an LDAP-group / OIDC-group → `site_code` map (edit at `/ui/auth-admin`) auto-binds federated users to their pharmacy branch (Shop-Counter mode).
+- **Config** — env (see `.env.example`) merged with a live super-admin editor at **`/ui/auth-admin`**. **Secrets stay in env only** (`LDAP_APP_PASSWORD`, `*_CLIENT_SECRET`) — never written to the DB. The login page shows enabled methods from `GET /api/auth/methods`.
+
+No DB migration needed (`auth_provider`/`external_id`/`site_code` columns already exist; only a transient `dash_oauth_flow` table is auto-created). Adding LDAP pulls a new dep (`ldap3`) → deploy must **rebuild the image**, not hot-copy.
+
+---
+
 ## Run
 
 ```bash

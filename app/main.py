@@ -249,6 +249,13 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
 
     from app.auth import init_auth
     init_auth()
+    # Federated-auth transient flow store (OAuth state/nonce/PKCE). Guarded.
+    try:
+        from app.auth_federation import init_federation
+        init_federation()
+    except Exception as _fed_e:
+        import logging as _fed_log
+        _fed_log.getLogger(__name__).warning(f"init_federation skipped: {_fed_e}")
     # DB migration auto-runner: applies db/migrations/*.sql files in lexical
     # order, tracked in public.dash_migrations. Multi-worker safe via
     # pg_advisory_lock. Failures log + continue unless RAISE_ON_MIGRATION_FAIL=1.
@@ -419,6 +426,20 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
     except Exception as _e:
         import logging as _gd_log
         _gd_log.getLogger(__name__).warning(f"golden_drift not started: {_e}")
+
+    # Chemist clinical-eval daemon (24h). Runs the golden forward+inverse eval and
+    # refreshes Dashboard 🧪 "Clinical accuracy %". Disable: CHEMIST_EVAL_DISABLED=1.
+    try:
+        if not _should_run_daemons():
+            raise RuntimeError("daemons disabled")
+        import asyncio as _asyncio_ce
+        from dash.cron.chemist_eval_daemon import chemist_eval_loop as _chemist_eval_loop
+        _asyncio_ce.create_task(_chemist_eval_loop())
+        import logging as _ce_log
+        _ce_log.getLogger(__name__).info("chemist_eval daemon started (24h)")
+    except Exception as _e:
+        import logging as _ce_log
+        _ce_log.getLogger(__name__).warning(f"chemist_eval not started: {_e}")
 
     # Ontology auto-cluster daemon (~6h cadence). Mirrors reembed_loop pattern.
     # default OFF (Phase-1 trim: pure-burn daemon, output not consumed). Set ONTOLOGY_CLUSTER_ENABLED=1 to re-enable.
@@ -805,6 +826,17 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
             logger.info("training_queue worker started")
     except Exception as _e:
         logger.warning(f"training_queue worker not started: {_e}")
+    # Auto-train daemon — watches for data changes (new tables / row deltas)
+    # and enqueues retraining every AUTO_TRAIN_POLL_INTERVAL_S (default 900s).
+    # Disable: AUTO_TRAIN_DAEMON_DISABLED=1.
+    try:
+        if _should_run_daemons():
+            import asyncio as _asyncio_at
+            from dash.cron.auto_train_daemon import auto_train_loop as _auto_train_loop
+            _asyncio_at.create_task(_auto_train_loop())
+            logger.info("auto_train_daemon: started")
+    except Exception as _e:
+        logger.warning(f"auto_train_daemon import failed: {_e}")
     yield
     # ---- Shutdown: dispose all data-source providers (engines + caches).
     try:
@@ -1013,6 +1045,14 @@ try:
 except ImportError:
     brain_versions_router = None
 try:
+    from app.brain_unified import router as brain_unified_router
+except Exception:
+    brain_unified_router = None
+try:
+    from app.brain_actions import router as brain_actions_router
+except Exception:
+    brain_actions_router = None
+try:
     from app.ontology_api import router as ontology_router
 except ImportError:
     ontology_router = None
@@ -1045,6 +1085,13 @@ except Exception:
 # auto_apply_api DELETED 2026-05-23 (orphan, 0 frontend refs)
 
 app.include_router(auth_router)
+# Federated auth — LDAP + OIDC/SSO (boot-safe: guarded so a missing dep never blocks startup)
+try:
+    from app.auth_federation import fed_router
+    app.include_router(fed_router)
+except Exception as _fed_e:
+    import logging as _fed_log
+    _fed_log.getLogger(__name__).warning(f"federated auth router skipped: {_fed_e}")
 # Admin ops endpoints (migrations status/apply-pending, daemon health) — Issues #11/#12/#13/#27
 try:
     from app.admin_ops_api import router as _admin_ops_router
@@ -1060,6 +1107,12 @@ except Exception as _e:
     import logging as _aos_log
     _aos_log.getLogger(__name__).warning(f"agent_os_admin_api not mounted: {_e}")
 app.include_router(projects_router)
+# OpenAI-compatible API gateway (/api/v1) for external apps (e.g. PHP storefront)
+try:
+    from app.api_gateway import router as api_gateway_router
+    app.include_router(api_gateway_router)
+except Exception:
+    _main_logging.exception("main: api_gateway router not mounted")
 # Vertical workflow packs — schema-aware auto-install (Issue #4)
 try:
     from app.vertical_packs_api import router as vpacks_router
@@ -1155,6 +1208,24 @@ try:
 except Exception as _e:  # noqa: BLE001
     import logging as _lg
     _lg.getLogger(__name__).warning("training_api router not registered: %s", _e)
+try:
+    from app.datasource_api import router as _datasource_router
+    app.include_router(_datasource_router)
+except Exception as _e:  # noqa: BLE001
+    import logging as _lg
+    _lg.getLogger(__name__).warning("datasource_api router not registered: %s", _e)
+try:
+    from app.overview_api import router as _overview_router
+    app.include_router(_overview_router)
+except Exception as _e:  # noqa: BLE001
+    import logging as _lg
+    _lg.getLogger(__name__).warning("overview_api router not registered: %s", _e)
+try:
+    from app.wiki_api import router as _wiki_router
+    app.include_router(_wiki_router)
+except Exception as _e:  # noqa: BLE001
+    import logging as _lg
+    _lg.getLogger(__name__).warning("wiki_api router not registered: %s", _e)
 app.include_router(engines_admin_router)
 app.include_router(visibility_templates_router)
 app.include_router(skill_marketplace_router)
@@ -1173,6 +1244,10 @@ if brain_seeds_router is not None:
     app.include_router(brain_seeds_router)
 if brain_versions_router is not None:
     app.include_router(brain_versions_router)
+if brain_unified_router is not None:
+    app.include_router(brain_unified_router)
+if brain_actions_router is not None:
+    app.include_router(brain_actions_router)
 if ontology_router is not None:
     app.include_router(ontology_router)
 if customer_360_router is not None:
@@ -1544,8 +1619,8 @@ from starlette.responses import JSONResponse
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    SKIP_PATHS = {"/health", "/api/health", "/api/flags", "/", "/info", "/config", "/api/auth/login", "/api/auth/register", "/api/sharepoint/callback", "/api/gdrive/callback", "/api/onedrive/callback", "/api/embed/session/create", "/api/embed/chat", "/api/embed/chat/stream", "/api/embed/widget.js", "/api/embed/docs"}
-    SKIP_PREFIXES = ("/ui", "/docs", "/openapi.json", "/redoc", "/api/branding", "/v1/ontology", "/brand", "/decks", "/api/health", "/health", "/api/embed/try", "/api/embed/config", "/api/s/")
+    SKIP_PATHS = {"/health", "/api/health", "/api/flags", "/", "/info", "/config", "/api/auth/login", "/api/auth/register", "/api/auth/methods", "/api/auth/ldap/login", "/api/sharepoint/callback", "/api/gdrive/callback", "/api/onedrive/callback", "/api/embed/session/create", "/api/embed/chat", "/api/embed/chat/stream", "/api/embed/widget.js", "/api/embed/docs"}
+    SKIP_PREFIXES = ("/ui", "/docs", "/openapi.json", "/redoc", "/api/branding", "/v1/ontology", "/brand", "/decks", "/api/health", "/health", "/api/embed/try", "/api/embed/config", "/api/s/", "/api/v1/docs", "/api/auth/oidc/")
 
     async def dispatch(self, request, call_next):  # type: ignore[no-untyped-def]
         path = request.url.path
@@ -2991,7 +3066,7 @@ def get_architecture():
         "formats": 18,
         "format_list": ["CSV", "Excel", "JSON", "SQL", "PPTX", "DOCX", "PDF", "MD", "TXT", "JPG", "PNG", "TIFF", "BMP", "GIF", "WEBP", "PY", "XLS"],
         "training_steps": 14,
-        "connectors": ["SharePoint", "Google Drive", "PostgreSQL", "MySQL", "Microsoft Fabric"],
+        "connectors": ["PostgreSQL", "MySQL"],
         "export": ["PPTX (8 themes)", "Excel (4 sheets)", "PDF", "Dashboards"],
     }
 

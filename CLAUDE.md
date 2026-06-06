@@ -98,6 +98,26 @@ Symptom: clicking a "Related questions" chip on the chat answer card did nothing
 - Fix: in the wrapper added `if (act === 'related') { onAction?.('related', payload); return; }` AND changed the default bubble `onAction?.(act)` → `onAction?.(act, payload)` so any arg-aware handler keeps its payload.
 - **Rule:** an intermediate `onAction` re-dispatcher MUST forward the payload by default, not just for the cases it special-cases. A bare `onAction?.(act)` silently breaks every arg-carrying action.
 
+### Session 2026-06-06 (latest+11) — Federated auth: LDAP + OIDC/SSO (OpenWebUI-modeled)
+
+Added LDAP + generic OIDC/SSO on top of local login. Researched Open WebUI's auth design (Authlib OIDC, ldap3 bind-search-bind, role/group claim mapping, account-merge by email, trusted-header SSO) and ported the model. Branch `feat/federated-auth` → merged to `main` (local only). **All federation OFF by default — local username/password unchanged.**
+
+**Backend — `app/auth_federation.py` (NEW, `fed_router`, guarded-imported in `main.py`):**
+- **LDAP** via `ldap3` (new dep, pinned `2.9.1`; `pyasn1` already present): app-bind (`LDAP_APP_DN`/`LDAP_APP_PASSWORD`) → search by `LDAP_ATTRIBUTE_FOR_USERNAME` (`escape_filter_chars`, injection-safe) → **rebind as the found user DN with the supplied password** (the real check). Auto-provision into `dash_users` (bcrypt placeholder pw, `auth_provider='ldap'`, `external_id`=DN). TLS via `ldap3.Tls`+`LDAP_VALIDATE_CERT`.
+- **OIDC** — manual auth-code flow (NO Authlib → avoids app-wide SessionMiddleware): `/.well-known/openid-configuration` discovery, **state + nonce + PKCE(S256)**, transient flow stored in NEW `public.dash_oauth_flow` (multi-worker-safe; 15-min GC), code exchange, **id_token JWKS signature verify via `pyjwt` `PyJWKClient`** (aud+iss+nonce checked). Built-ins: generic OIDC / Keycloak / Google / Microsoft(tenant). Replaces the old hand-rolled Keycloak (which had no state/PKCE/JWKS and leaked the token in the redirect URL).
+- **Token handoff fix**: OIDC callback no longer puts the token in the URL — sets a 120s JS-readable `dash_sso` cookie + redirects `/ui/login?sso=1`; the login page moves it to `localStorage` then clears the cookie (no access-log/referrer leak).
+- **Role/group**: `OAUTH_ALLOWED_ROLES` gate (reject if user holds none). No admin elevation (single-super-admin = fixed username, no role column on `dash_users`). **Pharma twist**: `group_to_site` maps an LDAP group / OIDC group-claim → `dash_users.site_code` so SSO/LDAP users land branch-bound (drives Shop-Counter mode; today site_code is a manual UPDATE).
+- **Config**: ENV baseline (12-factor, OpenWebUI var names) merged with ONE JSON override row in `dash_admin_settings` (key=`auth_config`, scope=global). **Secrets (LDAP_APP_PASSWORD, *_CLIENT_SECRET) are ENV-ONLY — never written to DB** (the `/config` POST strips them defensively). 30s config cache.
+- Endpoints: `GET /api/auth/methods` (public, in SKIP_PATHS — login page reads it), `POST /api/auth/ldap/login` (public), `GET /api/auth/oidc/{provider}/login` + `/callback` (SKIP_PREFIX `/api/auth/oidc/`), super-admin `GET|POST /api/auth/config`.
+
+**Frontend:** login page (`routes/login/+page.svelte`) — replaced the dead `alert('SSO not configured')` stub buttons with dynamic buttons from `/api/auth/methods` (one per OIDC provider + LDAP), added SSO-cookie pickup + `?sso_error=` handling. NEW super-admin **`/ui/auth-admin`** page — structured editor (General/LDAP/OIDC) + raw-JSON advanced mode, GET/POST `/api/auth/config`.
+
+**Verified (E2E, throwaway `osixia/openldap` on the dash net):** LDAP correct-pw→token, wrong-pw→401, unknown-user→401, user provisioned (`auth_provider='ldap'`, DN in `external_id`). OIDC against real Google discovery: 302 with state+nonce+code_challenge+S256, flow row persisted, `/methods` reflects provider. (Callback token-exchange+JWKS-verify is standard pyjwt — not completable headlessly without a real code.) Test artifacts purged after.
+
+**Deploy:** new `ldap3` dep ⇒ image rebuild mandatory (`uv pip sync`) — done, leader cleared, force-recreate, HEALTH_OK. Prod `/methods` = local-only (no auth env set → federation dormant, safe).
+
+**Notes/gotchas:** `dash_users` has NO role column (super = fixed username) — OIDC can gate access + set site_code but can't grant admin. Manual-OIDC chosen over Authlib to avoid adding SessionMiddleware app-wide. Migration not needed (auth_provider/external_id/site_code columns already existed); only `dash_oauth_flow` is created at lifespan.
+
 ### Session 2026-06-06 (latest+10) — Prod-breaker audit: dead-table + AGE-boot fixes + dead-UI prune
 
 Full-code audit for production breakers. 6 fixed + deployed (image rebuild → HEALTH_OK), 1 false alarm. Committed on branch `fix/dead-code-prod-breakers` → merged to `main` (local only, no GitHub).
