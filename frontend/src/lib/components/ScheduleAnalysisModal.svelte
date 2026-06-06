@@ -152,9 +152,6 @@
           <div style="border: 2px solid var(--pw-accent, #c96342); background: rgba(201,99,66,0.08); padding: 12px; margin-bottom: 12px;">
             <div style="font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.06em; color: var(--pw-accent, #c96342); margin-bottom: 4px;"><Icon name="check" size={14} /> SAVED AS WORKFLOW</div>
             <div style="font-size: 12px; color: var(--pw-ink);">Workflow #{saved.wf_id} is active for project <strong>{saved.project_slug}</strong>.</div>
-            <div style="margin-top: 8px;">
-              <a href="{base}/ui/agent-os/workflows" style="font-size: 11px; font-weight: 700; text-decoration: underline; color: var(--pw-accent, #c96342);">View → /ui/agent-os/workflows</a>
-            </div>
           </div>
           <div style="display: flex; justify-content: flex-end;">
             <button class="feedback-btn" onclick={close} style="padding: 8px 16px; font-size: 11px; font-weight: 700;">CLOSE</button>

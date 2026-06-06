@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte';
   import AgentFlow from '$lib/AgentFlow.svelte';
- import { onMount, onDestroy } from 'svelte';
+   import { onMount, onDestroy } from 'svelte';
  import { page } from '$app/state';
  import { base } from '$app/paths';
  import LineageTab from '$lib/components/settings/LineageTab.svelte';
@@ -10,11 +10,11 @@
  import ScenarioRunner from '$lib/components/ScenarioRunner.svelte';
  import { confirmDelete } from '$lib/confirmDelete';
  import MetricsTab from '$lib/metrics/MetricsTab.svelte';
- import GraphPanel from '$lib/intel/GraphPanel.svelte';
  import JournalPanel from '$lib/intel/JournalPanel.svelte';
  import CanvasPanel from '$lib/intel/CanvasPanel.svelte';
  import VenturePanel from '$lib/intel/VenturePanel.svelte';
 import ColumnCard from '$lib/components/ColumnCard.svelte';
+ import BrainHub from '$lib/brain/BrainHub.svelte';
 
  const slug = $derived(page.params.slug || '');
  let project = $state<any>(null);
@@ -90,23 +90,101 @@ $effect(() => {
    const isData = (f: File) => dataExt.includes(f.name.split('.').pop()?.toLowerCase() || '');
    const dataFiles = arr.filter(isData);
    const docFiles = arr.filter((f) => !isData(f));
-   // Data ALWAYS goes through staging (validate before load); docs to the doc path.
-   if (dataFiles.length) await stageUploadFiles(dataFiles);
-   if (docFiles.length) {
-     showUpload = true;
-     if (docFiles.length === 1) { setFile(docFiles[0]); }
-     else { const dt = new DataTransfer(); docFiles.forEach((f) => dt.items.add(f)); setFiles(dt.files); }
+   dsUploadOpen = true;
+   const _clog = (m: string) => { try { window.dispatchEvent(new CustomEvent('dash-cli-log', { detail: m })); } catch {} };
+   try {
+     // ── Data files: stage (upload, fast) → fire promote+train in BACKGROUND ──
+     // The upload returns as soon as the file is staged; the server then loads it
+     // into Postgres + runs the full pipeline (profile→train→Q&A→vectors→graph)
+     // while the UI just polls. No blocking on the 100k-row load.
+     if (dataFiles.length) {
+       dsUploadMsg = `Uploading ${dataFiles.length} data file(s)…`;
+       _clog(`▸ uploading ${dataFiles.map(f => f.name).join(', ')}`);
+       await stageUploadFiles(dataFiles);   // upload bytes to staging (fast)
+       if (stageBatchId) {
+         const bid = stageBatchId;
+         stageBatchId = null; stageFilesMeta = []; stagePlan = null;
+         dsUploadMsg = '✓ Uploaded — agents loading + training in background…';
+         _clog('▸ load + full training started (background)');
+         // fire-and-forget: don't await the 100k-row load + pipeline
+         fetch(`/api/ingest/${slug}/${bid}/promote?train=true&force=true`, { method: 'POST', headers: _h() })
+           .then(() => { loadDataSource(); })
+           .catch(() => { dsUploadMsg = '✗ load failed — check file'; });
+       } else {
+         dsUploadMsg = '✗ staging failed — check file format';
+       }
+     }
+     // ── Document files: upload-doc in BACKGROUND, then retrain ──
+     if (docFiles.length) {
+       dsUploadMsg = `Uploading ${docFiles.length} document(s)…`;
+       for (const f of docFiles) {
+         _clog(`▸ uploading ${f.name}`);
+         const fd = new FormData(); fd.append('file', f);
+         try { await fetch(`/api/upload-doc?project=${slug}`, { method: 'POST', body: fd, headers: _h() }); } catch {}
+       }
+       fetch(`/api/projects/${slug}/retrain`, { method: 'POST', headers: _h() }).catch(() => {});
+     }
+     // keep the strip "live" for ~20s while the background run spins up, then the
+     // poll syncs to the real run status.
+     dsTrainGraceUntil = Date.now() + 20000;
+     isTraining = true;
+     try { loadTrainingSteps(); } catch {}
+     if (!dsUploadMsg.startsWith('✗')) dsUploadMsg = '✓ Uploaded — agents working in background';
+     await loadDataSource();
+     if (!dsPollTimer) dsPollTimer = setInterval(loadDataSource, 5000);
+     setTimeout(() => { if (!dsUploadMsg.startsWith('✗')) dsUploadMsg = ''; }, 8000);
+   } catch (e: any) {
+     dsUploadMsg = '✗ Upload error: ' + (e?.message || e);
    }
+ }
+ // XHR upload with real % progress (fetch can't report upload progress).
+ function xhrUpload(url: string, fd: FormData, onPct: (p: number) => void): Promise<any> {
+   return new Promise((resolve, reject) => {
+     const xhr = new XMLHttpRequest();
+     xhr.open('POST', url);
+     const h = _h();
+     for (const k in h) { if (k.toLowerCase() !== 'content-type') xhr.setRequestHeader(k, h[k]); }
+     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onPct(Math.round((e.loaded / e.total) * 100)); };
+     xhr.onload = () => {
+       if (xhr.status >= 200 && xhr.status < 300) { try { resolve(JSON.parse(xhr.responseText)); } catch { resolve({}); } }
+       else reject(new Error('HTTP ' + xhr.status));
+     };
+     xhr.onerror = () => reject(new Error('network'));
+     xhr.send(fd);
+   });
+ }
+ // Map a live training step → pipeline-strip stage index (0..6). -1 = none, 7 = all done.
+ function pipeStageIdx(step: string): number {
+   const s = (step || '').toLowerCase();
+   if (/done|complete|finished/.test(s)) return 6;
+   if (/graph|triple|knowledge_graph/.test(s)) return 5;
+   if (/vector|embed|backfill|knowledge index|reindex|\bindex\b/.test(s)) return 4;
+   if (/q&a|qa pair|experiment|eval/.test(s)) return 3;
+   if (/train|deep analysis|codex|brain|domain|persona|relationship|synth/.test(s)) return 2;
+   if (/profile|catalog|dimension|sample|hierarchy|sql_profil/.test(s)) return 1;
+   if (/upload|stag|load|promote|drift/.test(s)) return 0;
+   return 2; // mid-train default
  }
  async function stageUploadFiles(files: FileList | File[]) {
    stageBusy = true; stageResult = null;
    try {
-     for (const f of Array.from(files)) {
+     const list = Array.from(files);
+     let idx = 0;
+     for (const f of list) {
+       idx++;
        const fd = new FormData(); fd.append('file', f);
        let url = `/api/upload/stage?project=${slug}`;
        if (stageBatchId) url += `&batch_id=${stageBatchId}`;
-       const r = await fetch(url, { method: 'POST', body: fd, headers: _h() });
-       if (r.ok) { const d = await r.json(); stageBatchId = d.batch_id; }
+       try {
+         const d = await xhrUpload(url, fd, (pct) => {
+           dsUploadMsg = `▸ uploading ${f.name}${list.length > 1 ? ` (${idx}/${list.length})` : ''} · ${pct}%`;
+         });
+         if (d && d.batch_id) stageBatchId = d.batch_id;
+       } catch {
+         // fallback to fetch if XHR path fails
+         const r = await fetch(url, { method: 'POST', body: fd, headers: _h() });
+         if (r.ok) { const d = await r.json(); stageBatchId = d.batch_id; }
+       }
      }
      await stageRefresh();
    } finally { stageBusy = false; }
@@ -1344,10 +1422,13 @@ $effect(() => {
  }
 
  function openDataQualityForTable(tname: string) {
- activeTab = 'data-quality';
+ activeTab = 'upload';
  dqTableFilter = tname;
  dqSeverityFilter = 'all';
  if (!dqLoaded) loadDataQuality(false);
+ if (typeof document !== 'undefined') {
+ setTimeout(() => { document.getElementById('dq-section')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 120);
+ }
  }
 
  async function loadAgentTpl() {
@@ -1573,6 +1654,9 @@ $effect(() => {
  let visApprovalComment = $state('');
  let visDraftDiffExpanded = $state<Record<number, boolean>>({});
  let currentUserId = $state<number | null>(null);
+ let isSuper = $state(false);
+
+ // ── Service-account API keys moved to standalone /ui/gateway (API Gateway tab) ──
 
  async function loadVisDrafts() {
  visDraftsLoading = true;
@@ -3104,7 +3188,7 @@ function signUserJWT($user) {
  const d = await r.json();
  const list = (d.sources || []).map((s: any) => ({
  name: s.name || s.db_type?.toUpperCase(),
- dialect: s.dialect || (s.db_type === 'fabric' ? 'tsql' : s.db_type),
+ dialect: s.dialect || s.db_type,
  mode: s.mode || 'sync',
  scope: s.agent_scope || 'project',
  }));
@@ -3320,6 +3404,27 @@ function signUserJWT($user) {
  setTimeout(() => { if (!tableInspectCache[t.name]) loadTableDetail(t.name); }, i * 120);
  });
  }
+ });
+
+ $effect(() => {
+  if (activeTab === 'upload' || activeTab === 'datasets') {
+    loadAutoTrainStatus();
+    _autoTrainPollTimer = setInterval(loadAutoTrainStatus, 30_000);
+  } else {
+    if (_autoTrainPollTimer) { clearInterval(_autoTrainPollTimer); _autoTrainPollTimer = null; }
+  }
+  return () => {
+    if (_autoTrainPollTimer) { clearInterval(_autoTrainPollTimer); _autoTrainPollTimer = null; }
+  };
+ });
+
+ $effect(() => {
+  if (isTraining || trainStepsRunStatus === 'running') {
+    autoTrainStatus = 'training';
+    const done = trainSteps ? trainSteps.filter((s: any) => s.status === 'done').length : 0;
+    autoTrainProgress = done;
+    autoTrainMessage = 'Training pipeline running…';
+  }
  });
 
  async function loadTableDetail(tblName: string) {
@@ -3646,7 +3751,7 @@ function signUserJWT($user) {
  let dbSyncLog = $state<{step: string, detail: string}[]>([]);
  let dbSyncing = $state(false);
  let dbLoading = $state(false);
- let connectorModal: '' | 'postgres' | 'mysql' | 'fabric' = $state('');
+ let connectorModal: '' | 'postgres' | 'mysql' = $state('');
  let spSetupModal = $state(false);
  let addTablesModal: any = $state(null); // current source obj being expanded
  let addTablesRemote: string[] = $state([]); // remote table list
@@ -4734,10 +4839,18 @@ function signUserJWT($user) {
 
  const tabs = [
  { id: 'datasets', label: 'COCKPIT' },
- { id: 'upload', label: 'UPLOAD' },
- { id: 'data-quality', label: 'DATA QUALITY', icon: '' },
- { id: 'knowledge', label: 'KNOWLEDGE' },
- { id: 'rules', label: 'RULES' },
+ { id: 'upload', label: 'DATA SOURCE' },
+ { id: 'brain-definitions', label: 'DEFINITIONS' },
+ { id: 'brain-glossary', label: 'GLOSSARY' },
+ { id: 'brain-patterns', label: 'PATTERNS' },
+ { id: 'brain-rules', label: 'RULES' },
+ { id: 'brain-graph', label: 'GRAPH' },
+ { id: 'brain-schema', label: 'SCHEMA' },
+ { id: 'brain-org', label: 'ORG' },
+ { id: 'brain-promote', label: 'PROMOTE' },
+ { id: 'brain-pull', label: 'PULL' },
+ { id: 'brain-conflicts', label: 'CONFLICTS' },
+ { id: 'knowledge', label: 'FILES' },
  { id: 'training', label: 'TRAINING' },
  { id: 'docs', label: 'DOCS' },
  { id: 'queries', label: 'QUERIES' },
@@ -4753,7 +4866,6 @@ function signUserJWT($user) {
  { id: 'sources', label: 'SOURCES' },
  { id: 'self-learn', label: 'LEARN' },
  { id: 'pipeline', label: 'PIPELINE' },
- { id: 'graph', label: 'GRAPH' },
  { id: 'journal', label: 'JOURNAL' },
  { id: 'canvas', label: 'CANVAS' },
  { id: 'venture', label: 'VENTUREDESK' },
@@ -4859,6 +4971,10 @@ function signUserJWT($user) {
  // Critical: wait only for project detail so shell + tabs render fast.
  await loadDetail();
  loading = false;
+ // Identity (drives super-admin-gated UI like API KEYS panel).
+ fetch('/api/me', { headers: _h() }).then(r => r.ok ? r.json() : null).then(d => {
+   if (d) { isSuper = !!d.is_super; if (currentUserId === null && (d.user_id ?? d.id) != null) currentUserId = d.user_id ?? d.id; }
+ }).catch(() => {});
  // Background: hydrate everything else without blocking first paint.
  // allSettled so one failure can't block others.
  Promise.allSettled([
@@ -4986,7 +5102,7 @@ function signUserJWT($user) {
  if (t === 'sharepoint') return `/api/sharepoint/sources/${src.id}/schedule`;
  if (t === 'gdrive' || t === 'google_drive') return `/api/gdrive/sources/${src.id}/schedule`;
  if (t === 'onedrive') return `/api/onedrive/sources/${src.id}/schedule`;
- if (['postgresql','mysql','fabric'].includes(t)) return `/api/connectors/sources/${src.id}/schedule`;
+ if (['postgresql','mysql'].includes(t)) return `/api/connectors/sources/${src.id}/schedule`;
  return null;
  }
 
@@ -5338,6 +5454,111 @@ function signUserJWT($user) {
 
  // Train ALL stepper
  let isTraining = $state(false);
+ // Data Source sub-tabs
+ let dsTab = $state<'upload'|'quality'|'history'>('upload');
+
+ // ═══ NEW Data Source (mixed design: health rings + pipeline + expandable rows) ═══
+ let dsData = $state<any>(null);
+ let dsLoading = $state(false);
+ let dsExpanded = $state<string | null>(null);
+ let dsSort = $state<'health'|'rows'|'name'|'trained'>('health');
+ let dsFilter = $state('');
+ let dsUploadOpen = $state(false);
+ let dsUploadMsg = $state('');
+ let dsTrainGraceUntil = $state(0); // keep strip "live" briefly after upload while the run spins up
+ let dsTrainingTables = $state<Record<string, boolean>>({});
+ let dsPollTimer: any = null;
+
+ async function loadDataSource() {
+   if (dsLoading) return;
+   dsLoading = true;
+   try {
+     const r = await fetch(`/api/projects/${slug}/datasource`, { headers: _h() });
+     if (r.ok) dsData = await r.json();
+   } catch {}
+   dsLoading = false;
+   // sync the live-training flag to the REAL run status (dash_training_runs active_run).
+   // When the run finishes, this clears the pipeline strip + per-row ⟳ spinners.
+   const runLive = !!dsData?.summary?.is_training;
+   const inGrace = Date.now() < dsTrainGraceUntil; // just-uploaded, run spinning up
+   isTraining = runLive || inGrace;
+   if (!runLive && !inGrace) dsTrainingTables = {};
+   // keep polling while training is active (or within the post-upload grace)
+   const training = runLive || inGrace || Object.values(dsTrainingTables).some(Boolean);
+   if (training && !dsPollTimer) {
+     dsPollTimer = setInterval(loadDataSource, 5000);
+   } else if (!training && dsPollTimer) {
+     clearInterval(dsPollTimer); dsPollTimer = null;
+   }
+ }
+
+ // Load the Data Source aggregate whenever the upload tab is active — covers
+ // direct #upload hash navigation / reload (the tab onclick that used to be the
+ // ONLY trigger doesn't fire on hash-init, which left the rings showing 0/—
+ // even though the data was fully trained).
+ $effect(() => {
+   if (activeTab === 'upload' && !dsData && !dsLoading) {
+     loadDataSource();
+     try { if (!dqLoaded) loadDataQuality(false); } catch {}
+   }
+ });
+
+ async function dsTrainTables(names: string[]) {
+   try {
+     for (const n of names) dsTrainingTables[n] = true;
+     dsTrainingTables = { ...dsTrainingTables };
+     try { window.dispatchEvent(new CustomEvent('dash-cli-log', { detail: `▸ training ${names.join(', ')}…` })); } catch {}
+     const r = await fetch(`/api/projects/${slug}/retrain?force=1`, {
+       method: 'POST', headers: { ..._h(), 'Content-Type': 'application/json' },
+       body: JSON.stringify({ table_names: names, force: true }),
+     });
+     if (r.ok) {
+       isTraining = true;
+       try { loadTrainingSteps(); } catch {}
+       if (!dsPollTimer) dsPollTimer = setInterval(loadDataSource, 5000);
+     }
+   } catch {}
+ }
+
+ function dsTrainAll() {
+   const names = (dsData?.tables || []).map((t: any) => t.name);
+   if (names.length) dsTrainTables(names);
+ }
+
+ async function dsDeleteTable(name: string) {
+   if (!confirm(`Delete table "${name}"? Removes the data + its training artifacts. Cannot be undone.`)) return;
+   try {
+     await fetch(`/api/tables/${encodeURIComponent(name)}?project=${slug}`, { method: 'DELETE', headers: _h() });
+     try { window.dispatchEvent(new CustomEvent('dash-cli-log', { detail: `▸ deleted table ${name}` })); } catch {}
+     dsExpanded = null;
+     await loadDataSource();
+   } catch {}
+ }
+
+ const dsRingPct = (n: number, d: number) => (d > 0 ? Math.round((100 * n) / d) : 0);
+
+ function dsSortedTables() {
+   let ts = [...(dsData?.tables || [])];
+   const f = dsFilter.trim().toLowerCase();
+   if (f) ts = ts.filter((t: any) => t.name.toLowerCase().includes(f));
+   ts.sort((a: any, b: any) => {
+     if (dsSort === 'rows') return (b.rows || 0) - (a.rows || 0);
+     if (dsSort === 'name') return a.name.localeCompare(b.name);
+     if (dsSort === 'trained') return (b.trained ? 1 : 0) - (a.trained ? 1 : 0);
+     return ((a.quality?.score ?? 100) - (b.quality?.score ?? 100)); // health asc (worst first)
+   });
+   return ts;
+ }
+ // Auto-train robot state
+ let autoTrainStatus = $state<'watching'|'detected'|'training'|'done'|'error'|'disabled'>('watching');
+ let autoTrainMessage = $state('');
+ let autoTrainProgress = $state(0);
+ let autoTrainCountdown = $state(0);
+ let autoTrainDelta = $state('');
+ let autoTrainLastTrained = $state('');
+ let autoTrainNextCheck = $state('');
+ let _autoTrainPollTimer: ReturnType<typeof setInterval> | null = null;
+ let _countdownTimer: ReturnType<typeof setInterval> | null = null;
  let trainSteps = $state<{name: string; status: 'pending'|'active'|'done'|'error'}[]>([]);
  let trainCurrentTable = $state('');
  let trainTableIndex = $state(0);
@@ -5549,6 +5770,71 @@ function signUserJWT($user) {
 
  function mapBackendStep(backendStep: string): number {
  return TRAIN_STEP_MAP[backendStep] ?? 0;
+ }
+
+ async function loadAutoTrainStatus() {
+  try {
+    const token = localStorage.getItem('dash_token') || '';
+    const r = await fetch(`/api/projects/${slug}/auto-train/status`, {
+      headers: { 'Authorization': `Bearer ${token}`, 'X-Scope-Id': slug }
+    });
+    if (!r.ok) return;
+    const d = await r.json();
+
+    // Determine robot state from response
+    if (d.is_training || d.active_run) {
+      autoTrainStatus = 'training';
+      // Estimate progress from active run if possible
+      if (isTraining && trainStepsRunStatus === 'running') {
+        const done = trainSteps.filter((s: any) => s.status === 'done').length;
+        autoTrainProgress = done;
+      }
+      autoTrainMessage = d.active_run?.status === 'queued' ? 'Queued — waiting for worker…' : 'Training pipeline running…';
+    } else if (d.daemon?.last_check_result?.action === 'enqueued') {
+      autoTrainStatus = 'detected';
+      autoTrainMessage = 'Data change detected — training queued';
+    } else if (d.recent_runs?.[0]?.status === 'done') {
+      const lastRun = d.recent_runs[0];
+      if (lastRun.finished_at) {
+        const diff = Date.now() - new Date(lastRun.finished_at).getTime();
+        const mins = Math.round(diff / 60000);
+        autoTrainLastTrained = mins < 60 ? `${mins}m ago` : `${Math.round(mins/60)}h ago`;
+      }
+      autoTrainStatus = isTraining ? 'training' : 'watching';
+      if (!isTraining) autoTrainMessage = 'Monitoring for changes';
+    } else if (!d.daemon?.enabled) {
+      autoTrainStatus = 'disabled';
+      autoTrainMessage = 'Auto-train paused';
+    } else {
+      autoTrainStatus = isTraining ? 'training' : 'watching';
+      autoTrainMessage = isTraining ? 'Training pipeline running…' : 'Monitoring for changes';
+    }
+
+    // Next check time from daemon
+    if (d.daemon?.poll_interval_s && d.daemon?.last_check_time) {
+      const nextMs = (d.daemon.last_check_time * 1000 + d.daemon.poll_interval_s * 1000) - Date.now();
+      if (nextMs > 0) {
+        const nextMins = Math.round(nextMs / 60000);
+        autoTrainNextCheck = nextMins <= 1 ? 'soon' : `in ${nextMins} min`;
+      }
+    }
+  } catch (e) {
+    // fail-soft — robot just shows watching
+  }
+ }
+
+ async function triggerTrainNow() {
+  try {
+    const token = localStorage.getItem('dash_token') || '';
+    await fetch(`/api/projects/${slug}/retrain`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'X-Scope-Id': slug }
+    });
+    autoTrainStatus = 'training';
+    autoTrainMessage = 'Training queued…';
+    // Also trigger the normal training UI flow
+    startTrainAll && startTrainAll();
+  } catch(e) {}
  }
 
  function cLog(text: string) {
@@ -6183,17 +6469,26 @@ function signUserJWT($user) {
     {@const groups = [
       { label: 'Workspace', icon: 'workspace', items: [
         { id: 'datasets', label: 'Cockpit' },
-        { id: 'data-quality', label: 'Data Quality' },
-        { id: 'knowledge', label: 'Knowledge' },
         { id: 'training', label: 'Training' },
         { id: 'docs', label: 'Docs' },
         { id: 'queries', label: 'Queries' },
-        { id: 'metrics', label: 'Definitions' },
         { id: 'lineage', label: 'Lineage' },
+        { id: 'knowledge', label: 'Files' },
+      ]},
+      { label: 'Brain', icon: 'brain', items: [
+        { id: 'brain-definitions', label: 'Definitions' },
+        { id: 'brain-glossary', label: 'Glossary' },
+        { id: 'brain-patterns', label: 'Patterns' },
+        { id: 'brain-rules', label: 'Rules' },
+        { id: 'brain-graph', label: 'Graph' },
+        { id: 'brain-schema', label: 'Schema' },
+        { id: 'brain-org', label: 'Org' },
+        { id: 'brain-promote', label: 'Promote ⤴' },
+        { id: 'brain-pull', label: 'Pull ⤓' },
+        { id: 'brain-conflicts', label: 'Conflicts ⚠' },
       ]},
       { label: 'Agents', icon: 'agents', items: [
         { id: 'agents', label: 'Agents' },
-        { id: 'workflows', label: 'Workflows' },
         { id: 'schedules', label: 'Schedules' },
         { id: 'evals', label: 'Evals' },
       ]},
@@ -6220,9 +6515,10 @@ function signUserJWT($user) {
         <div class="set-rail-group">
           <div class="set-rail-grouplabel">{g.label}</div>
           {#each visibleItems as it}
-            <button data-tab={it.id} class:active={activeTab === it.id} onclick={(e) => { activeTab = it.id; logTabSwitch(it.id); if (it.id === 'lineage' && detail?.tables) { for (const t of detail.tables) loadTableDetail(t.name); } if (it.id === 'fed-health') loadFedHealth(); if (it.id === 'rls' && !rlsConfig) { loadRlsConfig(); loadRlsSchemaHints(); } if (it.id === 'cockpit' && !agentTplLoaded) loadAgentTpl(); if (it.id === 'data-quality' && !dqLoaded) loadDataQuality(false); if (it.id === 'pipeline') { loadTrainingSteps(); loadTrainingRuns(); } if (it.id === 'datasets') { try { inspectsBatchLoaded = false; } catch {} if (!detail) { loadDetail()?.catch?.(()=>{}); } if (!extractionPlansLoaded) loadExtractionPlans(); } try { (e.currentTarget as HTMLElement)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch {} }}>
+            <button data-tab={it.id} class:active={activeTab === it.id} onclick={(e) => { activeTab = it.id; logTabSwitch(it.id); if (it.id === 'lineage' && detail?.tables) { for (const t of detail.tables) loadTableDetail(t.name); } if (it.id === 'fed-health') loadFedHealth(); if (it.id === 'rls' && !rlsConfig) { loadRlsConfig(); loadRlsSchemaHints(); } /* agent-template API removed (single-agent): loadAgentTpl() dropped — its panel is gated on agentTplStatus?.applied (stays null), so skipping avoids 3 dead /agent-template 404s on Cockpit open */ if (it.id === 'upload') { loadDataSource(); if (!dqLoaded) loadDataQuality(false); } if (it.id === 'pipeline') { loadTrainingSteps(); loadTrainingRuns(); } if (it.id === 'datasets') { try { inspectsBatchLoaded = false; } catch {} if (!detail) { loadDetail()?.catch?.(()=>{}); } if (!extractionPlansLoaded) loadExtractionPlans(); } try { (e.currentTarget as HTMLElement)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch {} }}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 {#if it.id === 'cockpit'}<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2" fill="currentColor"/>
+                {:else if it.id.startsWith('brain-')}<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><line x1="7.5" y1="7.5" x2="10.5" y2="16"/><line x1="16.5" y1="7.5" x2="13.5" y2="16"/><line x1="8.5" y1="6" x2="15.5" y2="6"/>
                 {:else if it.id === 'datasets'}<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
                 {:else if it.id === 'data-quality'}<path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="9"/>
                 {:else if it.id === 'knowledge'}<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
@@ -6233,7 +6529,6 @@ function signUserJWT($user) {
                 {:else if it.id === 'metrics'}<path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/>
                 {:else if it.id === 'lineage'}<circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M9 6h7a2 2 0 0 1 2 2v7"/>
                 {:else if it.id === 'agents'}<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>
-                {:else if it.id === 'workflows'}<rect x="3" y="3" width="6" height="6"/><rect x="15" y="3" width="6" height="6"/><rect x="9" y="15" width="6" height="6"/><path d="M6 9v3h12V9M12 12v3"/>
                 {:else if it.id === 'schedules'}<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
                 {:else if it.id === 'evals'}<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
                 {:else if it.id === 'users'}<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
@@ -6246,7 +6541,6 @@ function signUserJWT($user) {
                 {:else if it.id === 'scenarios'}<circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/><path d="M3 12a9 9 0 0 1 9-9"/>
                 {:else if it.id === 'fed-health'}<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
                 {:else if it.id === 'pipeline'}<path d="M3 7h13a3 3 0 0 1 0 6H8a3 3 0 0 0 0 6h13"/><circle cx="3" cy="7" r="1.5" fill="currentColor"/><circle cx="21" cy="19" r="1.5" fill="currentColor"/>
-                {:else if it.id === 'graph'}<circle cx="12" cy="12" r="2"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M7 6l3.5 4.5M17 6l-3.5 4.5M7 18l3.5-4.5M17 18l-3.5-4.5"/>
                 {:else if it.id === 'journal'}<path d="M4 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4z"/><path d="M4 4v18"/><path d="M8 8h8M8 12h8M8 16h5"/>
                 {:else if it.id === 'canvas'}<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9h18M9 4v16"/>
                 {:else if it.id === 'venture'}<path d="M3 17l6-6 4 4 7-7"/><path d="M14 8h7v7"/>
@@ -6292,7 +6586,7 @@ function signUserJWT($user) {
     </div>
   </div>
 
-  {#if (activeTab === 'cockpit' || activeTab === 'datasets' || activeTab === 'upload') && (isTraining || trainStepsRunStatus === 'running' || trainSteps.some(s => s.status === 'done'))}
+  {#if (activeTab === 'cockpit' || activeTab === 'datasets') && (isTraining || trainStepsRunStatus === 'running' || trainSteps.some(s => s.status === 'done'))}
   <div style="margin-bottom: 12px; padding: 10px 14px; border: 2px solid var(--pw-ink); background: var(--pw-surface); font-family: var(--pw-font-body);">
     <div style="display: flex; align-items: center; gap: 10px;">
       <div style="flex: 1; height: 4px; background: var(--pw-bg-alt); border: 1px solid var(--pw-muted);">
@@ -7094,1589 +7388,114 @@ function signUserJWT($user) {
 
     {#if activeTab === 'upload'}
     <input type="file" accept=".csv,.xlsx,.xls,.json,.sql,.md,.txt,.py,.pptx,.docx,.pdf,.jpg,.jpeg,.png,.tiff,.bmp,.gif,.webp,.parquet,.ods,.xml,.html,.htm,.zip,.eml" multiple onchange={(e) => { const files = (e.target as HTMLInputElement).files; if (files && files.length > 0) routeUpload(files); }} bind:this={fileInputEl} style="display: none;" />
-
-    {#if canEdit}
-      <!-- Compact dropzone -->
-      <button
-        type="button"
-        class="ds-drop"
-        ondragover={(e) => { e.preventDefault(); }}
-        ondrop={(e) => { e.preventDefault(); const files = e.dataTransfer?.files; if (files && files.length > 0) routeUpload(files); }}
-        onclick={() => fileInputEl?.click()}
-        aria-label="Upload files"
-      >
-        <span class="ds-drop-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        </span>
-        <span class="ds-drop-main">Drop files or browse</span>
-        <span class="ds-drop-sub">Validate before load · CSV · Excel · PDF · DOCX · PPTX · JSON · 200 MB</span>
-      </button>
-
-      {#if stageBusy}<div class="cp-hdr-meta" style="margin-top:6px;">staging…</div>{/if}
-      {#if stageResult}
-        <div class="cp-hdr-meta" style="margin-top:6px;">
-          Promote result — {stageResult.status} · {stageResult.loaded_files} loaded · {stageResult.quarantined} quarantined
-          {#if stageResult.status !== 'undone' && stageBatchId}
-            <button class="set-link" disabled={stageBusy} style="margin-left:8px; color:#c43;" onclick={stageUndo}>{stageUndoArm ? 'click again to confirm undo' : 'undo'}</button>
-          {/if}
-        </div>
-      {/if}
-
-      {#if gdSetupWarning}
-        <div class="ds-warn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <span>Google Drive is not configured. <code>GOOGLE_CLIENT_ID</code> / <code>GOOGLE_CLIENT_SECRET</code> must be set by an administrator.</span>
-          <a href="/ui/command-center?tab=integrations" target="_blank" rel="noopener" class="ds-warn-link">Open integrations →</a>
-          <button onclick={() => { gdSetupWarning = false; }} class="ds-warn-close" aria-label="Dismiss"><Icon name="x" size={14} /></button>
-        </div>
-      {/if}
-
-      <!-- Loaded files summary -->
-      {#if _totalTables > 0 || _totalDocs > 0}
-        <div class="cp-hdr-meta" style="margin-top:14px;">
-          Loaded: {[...(detail?.tables || []).map((t: any) => t.name), ...docs.map((d: any) => d.name || d.filename)].filter(Boolean).join('  ·  ')}
-          {#if _totalRows > 0} · {_totalRows.toLocaleString()} rows{/if}
-        </div>
-      {/if}
-
-      <!-- Train (minimal Upload tab) -->
-      {#if _totalTables > 0 || _totalDocs > 0 || stageBatchId}
-        <div class="ds-section-head" style="margin-top:18px;">
-          <h3 class="ds-section-title">Train the agent</h3>
-          <button class="ds-btn ds-btn-sm ds-btn-primary" onclick={() => { openQualityReview(); }} disabled={!!trainingTable || isTraining}>
-            <Icon name="zap" size={13} /> {isTraining ? 'Training…' : 'Train all'}
-          </button>
-        </div>
-        <p class="cp-hdr-meta" style="margin-top:4px;">Training updates the agent's brain — knowledge, definitions, Q&A — from your uploaded data.</p>
-      {/if}
-
-      {#if false}
-      <!-- Connected sources (hidden on Upload tab) -->
-      <div class="ds-section-head">
-        <h3 class="ds-section-title">Connected sources <span class="ds-count">({_connectedSources})</span></h3>
-        <div class="ds-chip-row">
-          <button class="ds-chip" onclick={() => { if (!spConfigured) { spSetupModal = true; } else { activeTab = 'sources'; sourceType = 'sharepoint'; spStartConnect(); } }} title={spConfigured ? 'SharePoint' : 'Setup needed'}>
-            <span class="ds-chip-plus">+</span> SharePoint
-          </button>
-          <button class="ds-chip" onclick={gdriveIconClick} title={gdConfigured ? 'Connect Google Drive' : 'Click to check setup'}>
-            <span class="ds-chip-plus">+</span> Drive
-          </button>
-          <button class="ds-chip" onclick={() => { dbType = 'postgresql'; dbStep = 'form'; connectorModal = 'postgres'; }} title="PostgreSQL">
-            <span class="ds-chip-plus">+</span> Postgres
-          </button>
-          <button class="ds-chip" onclick={() => { dbType = 'mysql'; dbStep = 'form'; connectorModal = 'mysql'; }} title="MySQL">
-            <span class="ds-chip-plus">+</span> MySQL
-          </button>
-          <button class="ds-chip" onclick={() => { dbType = 'fabric'; dbStep = 'form'; connectorModal = 'fabric'; }} title="Microsoft Fabric / SQL Server">
-            <span class="ds-chip-plus">+</span> Fabric
-          </button>
-        </div>
-      </div>
-
-      {#if _connectedSources === 0}
-        <div class="ds-empty-line">No remote sources connected yet.</div>
-      {:else}
-        <div class="ds-source-list">
-          {#each dbSources as src (src.id)}
-            {@const cfg = src.config || {}}
-            {@const tbls = cfg.selected_tables || src.selected_tables || []}
-            {@const dialect = (cfg.db_type || src.source_type || '').toLowerCase()}
-            {@const lastSync = src.last_sync_at ? String(src.last_sync_at).slice(0, 16).replace('T', ' ') : 'never'}
-            <div class="ds-source-row">
-              <span class="ds-source-dot"></span>
-              <span class="ds-source-kind">{dialect}</span>
-              <span class="ds-source-meta">
-                {#if src.name}<strong>{src.name}</strong> · {/if}{cfg.host || src.host || '?'}:{cfg.port || src.port || ''}/{cfg.database || src.database || '?'}
-                <span class="ds-source-sub">tables: {tbls.length} · last sync: {lastSync}</span>
-              </span>
-              <span class="ds-source-actions">
-                <button class="ds-btn ds-btn-sm" onclick={() => openAddTables(src)} title="Add more tables">+ Tables</button>
-                <button class="ds-btn ds-btn-sm" disabled={dbSyncing} onclick={() => dbSync(src.id)} title="Re-sync">{dbSyncing ? '…' : 'Sync'}</button>
-                <button class="ds-btn ds-btn-sm ds-btn-danger" onclick={async () => { if (await confirmDelete({ itemName: src.name || `${dialect} source`, itemType: 'database source' })) dbDelete(src.id); }} title="Disconnect">Remove</button>
-              </span>
-            </div>
-            {#if tbls.length > 0}
-              <div class="ds-source-tables">{tbls.join(' · ')}</div>
-            {/if}
-          {/each}
-          {#each spSources as src (src.id)}
-            <div class="ds-source-row">
-              <span class="ds-source-dot"></span>
-              <span class="ds-source-kind">sharepoint</span>
-              <span class="ds-source-meta">{src.site_name || src.folder_path || 'connected'}</span>
-              <span class="ds-source-sub-inline">manage on sources tab</span>
-            </div>
-          {/each}
-          {#each gdSources as src (src.id)}
-            <div class="ds-source-row">
-              <span class="ds-source-dot"></span>
-              <span class="ds-source-kind">drive</span>
-              <span class="ds-source-meta">{src.folder_path || 'My Drive'}</span>
-              <span class="ds-source-sub-inline">manage on sources tab</span>
-            </div>
-          {/each}
-          {#each odSources as src (src.id)}
-            <div class="ds-source-row">
-              <span class="ds-source-dot"></span>
-              <span class="ds-source-kind">onedrive</span>
-              <span class="ds-source-meta">{src.folder_path || src.site_name || 'connected'}</span>
-              <span class="ds-source-sub-inline">manage on sources tab</span>
-            </div>
-          {/each}
-        </div>
-      {/if}
-
-      <!-- ADD MORE TABLES modal -->
-      {#if showQualityReview}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <div style="position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 1001; display: flex; align-items: center; justify-content: center; padding: 20px;" onclick={(e) => { if (e.target === e.currentTarget && !isTraining) showQualityReview = false; }}>
-          <div class="ink-border stamp-shadow" style="background: var(--pw-surface); width: 560px; max-width: 94vw; max-height: 88vh; overflow-y: auto;">
-            <div class="dark-title-bar" style="padding: 10px 14px; font-size: 11px; display: flex; justify-content: space-between; align-items: center;">
-              <span>QUALITY CHECK — pick what to train</span>
-              <button style="background: none; border: none; color: var(--pw-surface); cursor: pointer; font-size: 13px;" onclick={() => { if (!isTraining) showQualityReview = false; }}>×</button>
-            </div>
-            <div style="padding: 14px; font-size: 12px;">
-              {#if qualityLoading}
-                <div style="color: var(--pw-muted); padding: 20px; text-align: center;">Checking data quality… (fast, free)</div>
-              {:else if qualityItems.length === 0}
-                <div style="color: var(--pw-muted); padding: 20px; text-align: center;">No data tables found.</div>
-              {:else}
-                <div style="color: var(--pw-muted); margin-bottom: 10px;">Good tables are pre-selected. Untick anything you don't want trained — or tick a weak one to train it anyway.</div>
-                <div style="display: flex; flex-direction: column; gap: 6px;">
-                  {#each qualityItems as it (it.table)}
-                    {@const color = it.verdict === 'GOOD' ? '#1a9c50' : (it.verdict === 'WEAK' ? '#c87a1a' : '#c0392b')}
-                    {@const glyph = it.verdict === 'GOOD' ? '✓' : (it.verdict === 'WEAK' ? '⚠' : '✗')}
-                    <!-- svelte-ignore a11y_label_has_associated_control -->
-                    <label style="display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--pw-border, #e3e0d8); border-radius: 0; cursor: pointer; background: {qualityPicked[it.table] ? 'rgba(201,99,66,0.04)' : 'transparent'};">
-                      <input type="checkbox" bind:checked={qualityPicked[it.table]} style="margin-top: 2px;" />
-                      <span style="flex: 1; min-width: 0;">
-                        <span style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                          <span style="font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{it.table}</span>
-                          <span style="flex-shrink: 0; font-weight: 700; color: {color};">{glyph} {it.verdict} · {it.score}/100</span>
-                        </span>
-                        <span style="display: block; color: var(--pw-muted); font-size: 11px; margin-top: 2px;">{(it.rows || 0).toLocaleString()} rows · {it.cols || 0} cols — {Array.isArray(it.reasons) ? it.reasons.join(' · ') : ''}</span>
-                      </span>
-                    </label>
-                  {/each}
-                </div>
-              {/if}
-            </div>
-            {#if !qualityLoading && qualityItems.length > 0}
-              <div style="padding: 12px 14px; border-top: 1px solid var(--pw-border, #e3e0d8); display: flex; justify-content: space-between; align-items: center; gap: 10px;">
-                <button class="set-ghost" onclick={() => { showQualityReview = false; }} disabled={isTraining}>Cancel</button>
-                <button class="set-cta" onclick={trainPickedTables} disabled={isTraining || qualitySelectedCount === 0}>
-                  <Icon name="zap" size={14} /> Train {qualitySelectedCount} selected
-                </button>
-              </div>
-            {/if}
-          </div>
-        </div>
-      {/if}
-
-      {#if addTablesModal}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <div style="position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 200; display: flex; align-items: center; justify-content: center;" onclick={(e) => { if (e.target === e.currentTarget) addTablesModal = null; }}>
-          <div class="ink-border stamp-shadow" style="background: var(--pw-surface); width: 480px; max-height: 92vh; overflow-y: auto;">
-            <div class="dark-title-bar" style="padding: 10px 14px; font-size: 11px; display: flex; justify-content: space-between; align-items: center;">
-              <span>+ ADD TABLES — {(addTablesModal.config?.host || '?')}/{(addTablesModal.config?.database || '?')}</span>
-              <button style="background: none; border: none; color: var(--pw-surface); cursor: pointer; font-size: 13px;" onclick={() => addTablesModal = null}>×</button>
-            </div>
-            <div style="padding: 14px; font-size: 11px;">
-              {#if addTablesLoading && addTablesRemote.length === 0}
-                <div style="color: var(--pw-muted);">Fetching remote tables…</div>
-              {:else if addTablesRemote.length === 0}
-                <div style="color: var(--pw-muted);">No additional tables on the remote DB. All tables already synced.</div>
-              {:else}
-                {@const _filtered = addTablesRemote.filter(t => t.toLowerCase().includes(addTablesFilter.toLowerCase()))}
-                {@const _allVisiblePicked = _filtered.length > 0 && _filtered.every(t => addTablesPicked.includes(t))}
-                <div style="margin-bottom: 8px; color: var(--pw-muted);">{addTablesRemote.length} unsynced table{addTablesRemote.length === 1 ? '' : 's'} on remote:</div>
-                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
-                  <span style="color: var(--pw-success);">$</span>
-                  <input
-                    type="text"
-                    placeholder="filter tables…"
-                    bind:value={addTablesFilter}
-                    style="flex: 1; background: var(--pw-ink); border: 1px solid var(--pw-muted); color: var(--pw-success); font-family: ui-monospace, monospace; font-size: 11px; padding: 5px 7px; outline: none;"
-                  />
-                  <span style="font-size: 10px; color: var(--pw-success); border: 1px solid var(--pw-success); padding: 2px 6px; white-space: nowrap;">{addTablesPicked.length} of {addTablesRemote.length} selected</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 10px; color: var(--pw-muted);">
-                  <span>showing {_filtered.length} of {addTablesRemote.length}</span>
-                  <button
-                    type="button"
-                    style="background: none; border: 1px solid var(--pw-muted); color: var(--pw-success); font-family: ui-monospace, monospace; font-size: 10px; padding: 3px 8px; cursor: pointer;"
-                    disabled={_filtered.length === 0}
-                    onclick={() => {
-                      if (_allVisiblePicked) {
-                        const visible = new Set(_filtered);
-                        addTablesPicked = addTablesPicked.filter(x => !visible.has(x));
-                      } else {
-                        const merged = new Set([...addTablesPicked, ..._filtered]);
-                        addTablesPicked = [...merged];
-                      }
-                    }}
-                  >{_allVisiblePicked ? 'DESELECT ALL VISIBLE' : 'SELECT ALL VISIBLE'}</button>
-                </div>
-                <div style="max-height: 280px; overflow-y: auto; border: 1px solid var(--pw-muted); padding: 8px;">
-                  {#if _filtered.length === 0}
-                    <div style="color: var(--pw-muted); font-style: italic;">no tables match '{addTablesFilter}'</div>
-                  {:else}
-                    {#each _filtered as t}
-                      <label style="display: flex; align-items: center; gap: 6px; padding: 3px 0; cursor: pointer;">
-                        <input type="checkbox" checked={addTablesPicked.includes(t)} onchange={(e) => { if ((e.target as HTMLInputElement).checked) addTablesPicked = [...addTablesPicked, t]; else addTablesPicked = addTablesPicked.filter(x => x !== t); }} />
-                        <span>{t}</span>
-                      </label>
-                    {/each}
-                  {/if}
-                </div>
-                <div style="display: flex; gap: 8px; margin-top: 12px;">
-                  <button class="send-btn" style="flex: 1; padding: 8px; font-size: 10px;" disabled={addTablesLoading || addTablesPicked.length === 0} onclick={commitAddTables}>{addTablesLoading ? '● SYNCING…' : `ADD + SYNC (${addTablesPicked.length})`}</button>
-                  <button class="feedback-btn" style="flex: 1; padding: 8px; font-size: 10px;" onclick={() => addTablesModal = null}>Cancel</button>
-                </div>
-              {/if}
-            </div>
-          </div>
-        </div>
-      {/if}
-
-      <!-- SharePoint setup-needed modal -->
-      {#if spSetupModal}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <div style="position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 200; display: flex; align-items: center; justify-content: center;" onclick={(e) => { if (e.target === e.currentTarget) spSetupModal = false; }}>
-          <div class="ink-border stamp-shadow" style="background: var(--pw-surface); width: 460px;">
-            <div class="dark-title-bar" style="padding: 10px 14px; font-size: 11px; display: flex; justify-content: space-between; align-items: center;">
-              <span>SHAREPOINT — SETUP NEEDED</span>
-              <button style="background: none; border: none; color: var(--pw-surface); cursor: pointer; font-size: 13px;" onclick={() => spSetupModal = false}>×</button>
-            </div>
-            <div style="padding: 16px; font-size: 11px; line-height: 1.6;">
-              <div style="color: var(--pw-error); font-weight: 900; margin-bottom: 8px;">Microsoft Entra ID credentials are not configured.</div>
-              <div style="margin-bottom: 10px;">A super-admin must register an Azure App and set these environment variables on the server:</div>
-              <div style="font-family: monospace; background: var(--pw-surface); padding: 8px 10px; border: 1px solid var(--pw-muted); margin-bottom: 12px; font-size: 10px;">
-                MS_CLIENT_ID=...<br/>
-                MS_CLIENT_SECRET=...<br/>
-                MS_TENANT_ID=...
-              </div>
-              <div style="margin-bottom: 12px;">After setting them, configure the connector from <strong>Command Center → INTEGRATIONS</strong>.</div>
-              <div style="display: flex; gap: 8px;">
-                <button class="feedback-btn" style="flex: 1; padding: 8px; font-size: 10px;" onclick={() => spSetupModal = false}>Close</button>
-                <a href="/ui/command-center?tab=integrations" class="send-btn" style="flex: 1; padding: 8px; font-size: 10px; text-align: center; text-decoration: none; display: inline-block;">OPEN COMMAND CENTER</a>
-              </div>
-            </div>
-          </div>
-        </div>
-      {/if}
-
-      <!-- DB connector modal -->
-      {#if connectorModal}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <div style="position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 200; display: flex; align-items: center; justify-content: center;" onclick={(e) => { if (e.target === e.currentTarget) connectorModal = ''; }}>
-          <div class="ink-border stamp-shadow" style="background: var(--pw-surface); width: 460px; max-height: 92vh; overflow-y: auto;">
-            <div class="dark-title-bar" style="padding: 10px 14px; font-size: 11px; display: flex; justify-content: space-between; align-items: center;">
-              <span>CONNECT {connectorModal === 'postgres' ? 'POSTGRESQL' : connectorModal === 'mysql' ? 'MYSQL' : 'MICROSOFT FABRIC'}</span>
-              <button style="background: none; border: none; color: var(--pw-surface); cursor: pointer; font-size: 13px;" onclick={() => connectorModal = ''}>×</button>
-            </div>
-            <div style="padding: 16px; display: flex; flex-direction: column; gap: 10px; font-size: 11px;">
-              {#if dbStep === 'form' || dbStep === 'idle'}
-                <!-- honeypot to absorb browser autofill -->
-                <input type="text" name="username" autocomplete="username" style="display: none;" tabindex="-1" aria-hidden="true" />
-                <input type="password" name="password" autocomplete="current-password" style="display: none;" tabindex="-1" aria-hidden="true" />
-                <label>Host
-                  <input type="text" bind:value={dbHost} name="db_host_{connectorModal}" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other" placeholder={connectorModal === 'fabric' ? 'xxx.datawarehouse.fabric.microsoft.com' : 'localhost'} style="width: 100%; padding: 6px; border: 2px solid var(--pw-ink); background: var(--pw-surface); margin-top: 4px;" />
-                </label>
-                <div style="display: flex; gap: 8px;">
-                  <label style="flex: 1;">Port
-                    <input type="text" bind:value={dbPort} name="db_port_{connectorModal}" autocomplete="off" data-lpignore="true" data-1p-ignore style="width: 100%; padding: 6px; border: 2px solid var(--pw-ink); background: var(--pw-surface); margin-top: 4px;" />
-                  </label>
-                  <label style="flex: 2;">Database
-                    <input type="text" bind:value={dbName} name="db_name_{connectorModal}" autocomplete="off" data-lpignore="true" data-1p-ignore style="width: 100%; padding: 6px; border: 2px solid var(--pw-ink); background: var(--pw-surface); margin-top: 4px;" />
-                  </label>
-                </div>
-                <label>Username
-                  <input type="text" bind:value={dbUser} name="db_user_{connectorModal}" autocomplete="off" data-lpignore="true" data-1p-ignore style="width: 100%; padding: 6px; border: 2px solid var(--pw-ink); background: var(--pw-surface); margin-top: 4px;" />
-                </label>
-                <label>Password
-                  <input type="text" bind:value={dbPass} name="db_pass_{connectorModal}" autocomplete="off" data-lpignore="true" data-1p-ignore style="width: 100%; padding: 6px; border: 2px solid var(--pw-ink); background: var(--pw-surface); margin-top: 4px; font-family: monospace; -webkit-text-security: disc; text-security: disc;" />
-                </label>
-                <div style="display: flex; gap: 8px; margin-top: 6px;">
-                  <button class="send-btn" style="flex: 1; padding: 8px; font-size: 10px;" disabled={dbTesting || !dbHost || !dbUser} onclick={dbTestConnection}>{dbTesting ? '● TESTING…' : 'TEST + LIST TABLES'}</button>
-                  <button class="feedback-btn" style="flex: 1; padding: 8px; font-size: 10px;" onclick={() => connectorModal = ''}>Cancel</button>
-                </div>
-                {#if dbTestResult?.error}
-                  <div style="font-size: 10px; color: var(--pw-error);">{dbTestResult.error}</div>
-                {/if}
-              {/if}
-              {#if dbStep === 'tables' && dbRemoteTables.length > 0}
-                <div style="font-size: 10px; color: var(--pw-muted);">Pick tables to sync:</div>
-                <div style="max-height: 240px; overflow-y: auto; border: 1px solid var(--pw-muted); padding: 6px;">
-                  {#each dbRemoteTables as t}
-                    <label style="display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 10px; cursor: pointer;">
-                      <input type="checkbox" checked={dbSelectedTables.includes(t.name || t)} onchange={(e) => { const v = t.name || t; if ((e.target as HTMLInputElement).checked) dbSelectedTables = [...dbSelectedTables, v]; else dbSelectedTables = dbSelectedTables.filter((x) => x !== v); }} />
-                      <span>{t.name || t}{t.row_count !== undefined ? ` · ${t.row_count} rows` : ''}</span>
-                    </label>
-                  {/each}
-                </div>
-                <div style="display: flex; gap: 8px;">
-                  <button class="send-btn" style="flex: 1; padding: 8px; font-size: 10px;" disabled={dbLoading || dbSyncing || dbSelectedTables.length === 0} onclick={async () => { const sid = await dbConnect(); if (sid) { await dbSync(sid); } await loadDetail(); connectorModal = ''; }}>{dbLoading ? '● CONNECTING…' : dbSyncing ? '● SYNCING…' : `CONNECT + SYNC (${dbSelectedTables.length})`}</button>
-                  <button class="feedback-btn" style="flex: 1; padding: 8px; font-size: 10px;" onclick={() => { dbStep = 'form'; }}>BACK</button>
-                </div>
-              {/if}
-            </div>
-          </div>
-        </div>
-      {/if}
+    <!-- ═══ HEALTH RINGS ═══ -->
+    {#if true}
+    {@const _ds = dsData?.summary || {}}
+    <div class="dsx-rings">
+      <div class="dsx-ring"><div class="dsx-ring-n">{_ds.tables ?? '—'}</div><div class="dsx-ring-l">tables</div></div>
+      <div class="dsx-ring"><div class="dsx-ring-n">{(_ds.rows ?? 0).toLocaleString()}</div><div class="dsx-ring-l">rows</div></div>
+      <div class="dsx-ring"><div class="dsx-ring-n">{_ds.trained_pct ?? 0}%</div><div class="dsx-ring-l">trained</div></div>
+      <div class="dsx-ring"><div class="dsx-ring-n">{_ds.qa ?? 0}</div><div class="dsx-ring-l">Q&amp;A</div></div>
+      <div class="dsx-ring"><div class="dsx-ring-n">{_ds.vectors ?? 0}</div><div class="dsx-ring-l">vectors</div></div>
+      <div class="dsx-ring" class:dsx-ring-warn={(_ds.issues ?? 0) > 0}><div class="dsx-ring-n">{_ds.issues ?? 0}</div><div class="dsx-ring-l">issues</div></div>
+      <div class="dsx-rings-sp"></div>
+      {#if canEdit}<button class="dsx-upbtn" onclick={() => dsUploadOpen = !dsUploadOpen}>＋ Upload data {dsUploadOpen ? '▴' : '▾'}</button>{/if}
+    </div>
     {/if}
 
-    <!-- Upload progress (shows after file selected) -->
-    {#if showUpload && (selectedFile || selectedFiles.length > 0)}
-      <div class="ink-border" style="padding: 12px 16px; margin-bottom: 16px; background: var(--pw-surface);">
-        <div class="flex items-center justify-between mb-2">
-          {#if selectedFiles.length > 1}
-            <div>
-              <span style="font-weight: 900; font-size: 11px;">{selectedFiles.length} files selected</span>
-              <span style="font-size: 10px; color: var(--pw-muted); margin-left: 6px;">({(selectedFiles.reduce((s, f) => s + f.size, 0) / 1024).toFixed(1)} KB)</span>
-            </div>
-          {:else if selectedFile}
-            <div class="flex items-center gap-2">
-              <span style="font-weight: 900; font-size: 11px;">{selectedFile.name}</span>
-              <span style="font-size: 11px; font-weight: 900; padding: 1px 6px; background: {uploadFileType === 'data' ? 'var(--pw-accent)' : uploadFileType === 'sql_patterns' ? 'var(--pw-accent-ink)' : '#cc7a00'}; color: white; text-transform: uppercase;">{uploadFileType === 'data' ? 'DATA' : uploadFileType === 'sql_patterns' ? 'SQL' : 'DOC'}</span>
-              <span style="font-size: 10px; color: var(--pw-muted);">({(selectedFile.size / 1024).toFixed(1)} KB)</span>
-            </div>
-          {/if}
-          <button onclick={() => { showUpload = false; selectedFile = null; selectedFiles = []; uploadSteps = []; uploadResult = null; uploadError = ''; }} style="background: none; border: none; cursor: pointer; font-size: 13px; color: var(--pw-muted);">&times;</button>
-        </div>
-
-        {#if selectedFile || selectedFiles.length > 0}
-          {#if uploadFileType === 'data' && selectedFiles.length <= 1}
-            <input type="text" bind:value={tableName} placeholder="Table name (auto-generated)" style="width: 100%; border: 1px solid var(--pw-bg-alt); padding: 5px 10px; font-family: var(--pw-font-body); font-size: 11px; background: var(--pw-surface); margin-bottom: 8px;" />
-          {/if}
-
-          {#if uploadMatch}
-            <div class="ink-border" style="margin-top: 10px; padding: 8px 12px; background: #fff4d4; border-color: #cc7a00;">
-              <div style="font-size: 10px; font-weight: 900; text-transform: uppercase; color: #cc7a00; margin-bottom: 4px;">TABLE MATCH FOUND</div>
-              <div style="font-size: 11px;">Table <strong>{uploadMatch.table}</strong> exists ({uploadMatch.overlap_pct}% overlap, {uploadMatch.existing_rows} rows)</div>
-              <div style="display: flex; gap: 6px; margin-top: 8px;">
-                <button class="feedback-btn" class:send-btn={uploadAction === 'append'} onclick={() => uploadAction = 'append'} style="font-size: 11px; padding: 3px 10px; font-weight: 900;">APPEND</button>
-                <button class="feedback-btn" class:send-btn={uploadAction === 'upsert'} onclick={() => uploadAction = 'upsert'} style="font-size: 11px; padding: 3px 10px; font-weight: 900;">UPSERT</button>
-                <button class="feedback-btn" class:send-btn={uploadAction === 'replace'} onclick={() => uploadAction = 'replace'} style="font-size: 11px; padding: 3px 10px; font-weight: 900;">REPLACE</button>
-              </div>
-            </div>
-          {/if}
-
-          {#if !uploadResult && uploadResults.length === 0}
-            <button class="send-btn" onclick={doUpload} disabled={uploading} style="margin-top: 10px; padding: 8px 14px; font-size: 11px; width: 100%;">{uploading ? 'UPLOADING...' : selectedFiles.length > 1 ? `▶ UPLOAD ${selectedFiles.length} FILES` : '▶ UPLOAD'}</button>
-          {/if}
-        {/if}
-
-        {#if uploadFileProgress.length > 0 || uploading}
-          {#if true}
-            {@const done = uploadFileProgress.filter(p => p.status === 'done').length}
-            {@const errors = uploadFileProgress.filter(p => p.status === 'error').length}
-            {@const total = uploadFileProgress.length || 1}
-            {@const pct = Math.round(((done + errors) / total) * 100)}
-          <div style="margin-top: 10px; padding: 10px; background: var(--pw-bg-alt); border-left: 3px solid var(--pw-accent);">
-            <div style="margin-bottom: 8px;">
-              <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 900; margin-bottom: 3px;">
-                <span>{uploading ? `Processing ${done + errors + 1}/${total}` : `${done} of ${total} completed`}</span>
-                <span>{uploading ? `${pct}%` : (errors > 0 ? `${done} ok · ${errors} failed` : '100%')}</span>
-              </div>
-              <div style="height: 6px; background: var(--pw-surface); border-radius: 0; overflow: hidden;">
-                {#if uploading && pct === 0}
-                  <div style="height: 100%; width: 100%; background: linear-gradient(90deg, transparent 0%, var(--pw-accent) 50%, transparent 100%); animation: shimmer 1.5s infinite;"></div>
-                {:else}
-                  <div style="height: 100%; width: {pct}%; background: var(--pw-accent); transition: width 0.3s;"></div>
-                {/if}
-              </div>
-            </div>
-            <!-- Live Agent Cards -->
-            {#if uploading && Object.keys(liveAgents).length > 0}
-              <div style="display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
-                {#each ['Conductor', 'Scanner', 'Parser', 'Vision', 'Inspector', 'Engineer'] as agentName}
-                  {#if liveAgents[agentName]}
-                    {@const status = liveAgents[agentName]}
-                    {@const lastStep = liveSteps.filter(s => s.agent === agentName).at(-1)}
-                    <div style="flex: 1; min-width: 100px; padding: 6px 8px; border-radius: 0; border: 1px solid {status === 'active' ? 'var(--pw-accent)' : 'var(--pw-surface)'}; background: {status === 'active' ? 'rgba(0,255,0,0.05)' : 'var(--pw-bg-alt)'};">
-                      <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 2px;">
-                        <span style="font-size: 10px; {status === 'active' ? 'animation: pulse 1s infinite;' : ''}">{status === 'done' ? '' : status === 'active' ? '●' : '○'}</span>
-                        <span style="font-size: 10px; font-weight: 900; color: {status === 'active' ? 'var(--pw-accent)' : 'var(--pw-muted)'};">{agentName}</span>
-                      </div>
-                      {#if lastStep}
-                        <div style="font-size: 11px; color: var(--pw-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{lastStep.detail}">{lastStep.detail?.substring(0, 40)}</div>
-                      {/if}
-                    </div>
-                  {/if}
-                {/each}
-              </div>
-            {/if}
-
-            <!-- Live processing steps -->
-            {#if uploading && liveSteps.length > 0}
-              <div style="margin-bottom: 8px; padding: 6px 8px; background: rgba(0,0,0,0.15); border-radius: 0; max-height: 120px; overflow-y: auto;">
-                {#each liveSteps as ls}
-                  <div style="font-size: 11px; display: flex; gap: 6px; padding: 1px 0; color: var(--pw-muted);">
-                    <span style="flex-shrink: 0; width: 10px; color: {ls.detail?.includes('done') || ls.detail?.includes('') ? 'var(--pw-accent)' : '#cc7a00'};">{ls.detail?.includes('done') || ls.detail?.includes('') ? '' : '●'}</span>
-                    <span style="flex-shrink: 0; width: 55px; font-weight: 700; color: var(--pw-accent); opacity: 0.7;">{ls.agent}</span>
-                    <span style="flex: 1; opacity: 0.8;">{ls.step} — {ls.detail}</span>
-                  </div>
-                {/each}
-              </div>
-            {/if}
-
-            <!-- Per-file list -->
-            <div style="max-height: 250px; overflow-y: auto;">
-              {#each uploadFileProgress as fp, idx}
-                <div style="font-size: 11px; padding: 2px 0; display: flex; align-items: center; gap: 6px;">
-                  {#if fp.status === 'done'}
-                    <span style="color: var(--pw-accent); flex-shrink: 0;"><Icon name="check" size={14} /></span>
-                  {:else if fp.status === 'uploading'}
-                    <span style="color: #cc7a00; flex-shrink: 0; animation: pulse 1s infinite;">●</span>
-                  {:else if fp.status === 'error'}
-                    <span style="color: var(--pw-error); flex-shrink: 0;"><Icon name="x" size={14} /></span>
-                  {:else}
-                    <span style="color: var(--pw-muted); flex-shrink: 0;">○</span>
-                  {/if}
-                  <span style="font-size: 11px; color: var(--pw-muted); flex-shrink: 0; width: 24px;">{idx + 1}.</span>
-                  <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; {fp.status === 'uploading' ? 'font-weight: 700;' : ''}">{fp.name}</span>
-                  {#if fp.status === 'done'}
-                    {@const r = uploadResults.find(r => r.file === fp.name)}
-                    {#if r?.detail}
-                      <span style="font-size: 11px; color: var(--pw-accent); flex-shrink: 0;">{r.detail}</span>
-                    {/if}
-                  {:else if fp.status === 'uploading'}
-                    <span style="font-size: 11px; color: #cc7a00; flex-shrink: 0;">processing...</span>
-                  {/if}
-                </div>
-                <!-- Agent processing steps for completed files -->
-                {#if fp.status === 'done'}
-                  {@const fileResult = uploadResults.find(r => r.file === fp.name)}
-                  {#if fileResult?.processing_steps?.length}
-                    <div style="margin-left: 36px; margin-bottom: 6px; padding: 6px 8px; background: rgba(0,255,0,0.03); border-left: 2px solid var(--pw-surface);">
-                      {#if fileResult.agents_used?.length}
-                        <div style="font-size: 11px; color: var(--pw-muted); margin-bottom: 4px; font-weight: 700;">
-                          {fileResult.agents_used.length} agents: {fileResult.agents_used.join(' → ')}
-                        </div>
-                      {/if}
-                      {#each fileResult.processing_steps as step}
-                        <div style="font-size: 11px; display: flex; gap: 6px; padding: 1px 0; color: {step.status === 'error' ? 'var(--pw-error)' : step.status === 'warn' ? '#cc7a00' : 'var(--pw-muted)'};">
-                          <span style="flex-shrink: 0; width: 10px;">{step.status === 'done' ? '' : step.status === 'warn' ? '' : step.status === 'error' ? '' : '○'}</span>
-                          <span style="flex-shrink: 0; width: 60px; font-weight: 700; color: var(--pw-accent); opacity: 0.7;">{step.agent}</span>
-                          <span style="flex-shrink: 0; width: 120px;">{step.step}</span>
-                          <span style="flex: 1; opacity: 0.6;">{step.detail}</span>
-                        </div>
-                      {/each}
-                    </div>
-                  {/if}
-                {/if}
-              {/each}
-            </div>
-            <!-- Summary when done -->
-            {#if !uploading && uploadResults.length > 0}
-              {#if true}
-                {@const totalTables = uploadResults.reduce((s, r) => s + (r.tables_created || (r.table_name ? 1 : 0) || r.tables_saved || 0), 0)}
-                {@const totalRows = uploadResults.reduce((s, r) => s + (r.total_rows || r.rows || 0), 0)}
-                {@const totalIndexed = uploadResults.filter(r => r.indexed).length}
-                {@const hasEngineer = uploadResults.some(r => r.engineer)}
-                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--pw-surface); font-size: 11px; font-weight: 900; color: var(--pw-accent);">
-                  <Icon name="check" size={14} /> {uploadResults.length} files uploaded
-                  {#if totalTables > 0} · {totalTables} tables{/if}
-                  {#if totalRows > 0} · {totalRows} rows{/if}
-                  {#if totalIndexed > 0} · {totalIndexed} docs indexed{/if}
-                </div>
-                {#if hasEngineer}
-                  <div style="font-size: 10px; color: #cc7a00; margin-top: 4px;"><Icon name="settings" size={14} /> Engineer running — creating views and discovering relationships...</div>
-                {/if}
-              {/if}
-            {/if}
-            {#if uploadError}<div style="margin-top: 6px; font-size: 11px; color: var(--pw-error);">{uploadError}</div>{/if}
-          </div>
-          {/if}
-        {/if}
-      </div>
+    {#if dsUploadOpen && canEdit}
+      <button type="button" class="dsx-drop" ondragover={(e)=>{e.preventDefault();}} ondrop={(e)=>{e.preventDefault(); const fs=e.dataTransfer?.files; if(fs&&fs.length) routeUpload(fs);}} onclick={() => fileInputEl?.click()}>▸ drag files here · csv xlsx json pdf docx pptx png · or browse</button>
+      {#if dsUploadMsg}<div class="dsx-upmsg" class:dsx-upmsg-err={dsUploadMsg.startsWith('✗')}>{dsUploadMsg}</div>{/if}
     {/if}
 
-    <!-- Unified files table (staged + live in one) -->
-    {#if docs.length > 0 || (detail?.tables?.length || 0) > 0 || (stageBatchId && stageFilesMeta.length > 0)}
-      <div class="ds-section-head" style="margin-top: 24px;">
-        <h3 class="ds-section-title">Files <span class="ds-count">({_totalDocs + _totalTables + (stageBatchId ? stageFilesMeta.length : 0)})</span></h3>
-        <div class="ds-chip-row">
-          {#if stageBatchId && stageFilesMeta.length > 0}
-            <span class="cp-hdr-meta" style="font-size:11px;">batch {stageBatchId}</span>
-            <button class="ds-btn ds-btn-sm ds-btn-primary" disabled={stageBusy} onclick={() => stagePromote(true, true)} title="Load all files + start training (bypasses quality gate)">{stageBusy ? 'Working…' : 'Train'}</button>
-            <button class="ds-btn ds-btn-sm ds-btn-link-danger" disabled={stageBusy} onclick={stageReject}>Reject batch</button>
-          {/if}
-          <button class="ds-btn ds-btn-sm" onclick={() => { loadResourceRegistry?.(); loadKnowledgeFiles?.(); loadRecentActivity?.(); }} title="Refresh">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-            Refresh
-          </button>
-          {#if canEdit && (detail?.tables?.length || 0) > 0}
-            <button class="ds-btn ds-btn-sm ds-btn-primary" onclick={() => { openQualityReview(); }} disabled={!!trainingTable || isTraining}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-              Train all
-            </button>
-          {/if}
+    <!-- ═══ PIPELINE STRIP — per-step ✓ green / ● pulse / ○ idle ═══ -->
+    {#if true}
+    {@const _ds2 = dsData?.summary || {}}
+    {@const _live = _ds2.is_training || isTraining || Object.values(dsTrainingTables).some(Boolean)}
+    {@const _trained = (_ds2.trained_tables ?? 0) > 0}
+    {@const _curStep = _ds2.active_run?.current_step || ''}
+    {@const _aIdx = _live ? pipeStageIdx(_curStep) : (_trained ? 7 : -1)}
+    <div class="dsx-pipe">
+      {#each ['UPLOAD','PROFILE','TRAIN','Q&A','VECTORS','GRAPH','LIVE'] as st, i}
+        {@const _isDone = _aIdx === 7 || i < _aIdx}
+        {@const _isOn = _live && i === _aIdx}
+        <div class="dsx-pst" class:done={_isDone} class:on={_isOn} class:idle={!_isDone && !_isOn}>
+          <span class="dsx-pdot">{#if _isDone}✓{/if}</span><span class="dsx-plbl">{st}</span>
         </div>
-      </div>
-
-      <div class="ds-table-wrap">
-        <table class="ds-table">
-          <thead>
-            <tr>
-              <th style="width: 28px;"></th>
-              <th>Name</th>
-              <th style="width: 60px;">Type</th>
-              <th style="width: 80px;">Size</th>
-              <th style="width: 90px;">Rows</th>
-              <th style="width: 70px;">Cols</th>
-              <th style="width: 60px;">Q&amp;A</th>
-              <th style="width: 110px;">Health</th>
-              <th style="width: 130px;">Status</th>
-              <th style="width: 60px;"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {#if stageBatchId && Array.isArray(stageFilesMeta)}
-              {#each stageFilesMeta as f}
-                {@const verdictColor = f.verdict==='exact'?'#1f8f4e':f.verdict==='drift'?'#c43322':'#3a8dff'}
-                {@const isQuar = f.status==='quarantine'}
-                <tr style="background: rgba(58,141,255,0.04);">
-                  <td></td>
-                  <td class="ds-name" title="{f.filename} → {f.target_table || f.dataset || '—'}">
-                    {f.filename}
-                    <span style="margin-left:8px; padding:1px 6px; font-weight:700; font-size:10.5px; background:{verdictColor}22; color:{verdictColor};">{(f.verdict||'new').toUpperCase()}</span>
-                  </td>
-                  <td><span class="ds-type-chip">stage</span></td>
-                  <td class="ds-num">—</td>
-                  <td class="ds-num">{f.rows ?? 0}</td>
-                  <td class="ds-num">—</td>
-                  <td class="ds-num">—</td>
-                  <td>
-                    <span class="cp-hdr-meta" style="font-size:10.5px;">→ {f.target_table || f.dataset || '—'}</span>
-                  </td>
-                  <td>
-                    <span class="ds-status">
-                      <span class="ds-status-dot" style="background:{isQuar?'#c43322':'#cc7a00'};"></span>
-                      {isQuar ? 'QUARANTINE' : 'STAGED'}
-                    </span>
-                    {#if f.reason}<div class="cp-hdr-meta" style="font-size:10px;">{f.reason}</div>{/if}
-                  </td>
-                  <td>
-                    {#if isQuar && f.verdict==='drift'}
-                      <button class="ds-btn-link" disabled={stageBusy} onclick={() => stageResolveDrift(f.filename)} title="Accept drift">Accept</button>
-                    {:else if isQuar}
-                      <button class="ds-btn-link" disabled={stageBusy} onclick={() => stageRecheckFile(f.filename)} title="Re-check">Re-check</button>
-                    {/if}
-                  </td>
-                </tr>
-              {/each}
-            {/if}
-            {#each docs as d}
-              <tr>
-                <td></td>
-                <td class="ds-name" title="{d.name}">{d.name}</td>
-                <td><span class="ds-type-chip">{d.type.replace('.','')}</span></td>
-                <td class="ds-num">{d.file_size ? (d.file_size / 1024 / 1024).toFixed(1) + ' MB' : (d.size / 1024).toFixed(1) + ' KB'}</td>
-                <td class="ds-num">—</td>
-                <td class="ds-num">—</td>
-                <td class="ds-num">—</td>
-                <td>
-                  <div class="ds-health">
-                    <div class="ds-health-track"><div class="ds-health-fill ds-health-good" style="width: 100%;"></div></div>
-                    <span class="ds-health-pct">100%</span>
-                  </div>
-                </td>
-                <td><span class="ds-status"><span class="ds-status-dot ds-status-dot-good"></span>Indexed</span></td>
-                <td>
-                  {#if canEdit}
-                    <button class="ds-btn-link ds-btn-link-danger" onclick={() => deleteDoc(d.name)} title="Delete">Delete</button>
-                  {/if}
-                </td>
-              </tr>
-            {/each}
-            {#each (detail?.tables || []).filter((t: any) => showCastedTables || !_isCasted(t.name)) as t}
-              {@const isTrained = knowledgeFiles.some((f: any) => f.type === 'tables' && f.name === t.name + '.json')}
-              {@const qaCount = (training?.training_qa || []).filter((q: any) => q.source_table === t.name).length}
-              {@const health = t.health || (isTrained ? (qaCount > 0 ? 100 : 60) : 0)}
-              {@const isExpanded = expandedTables[t.name] ?? false}
-              {@const isTraining = trainingTable === t.name}
-              {@const meta = tableMetaCache[t.name]}
-              {@const inspData = tableInspectCache[t.name]}
-              {@const dqCount = dqData?.by_table?.[t.name] || 0}
-              <tr class="ds-row-clickable" onclick={() => toggleTableExpand(t.name)}>
-                <td class="ds-toggle">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate({isExpanded ? 90 : 0}deg); transition: transform 120ms ease;"><polyline points="9 18 15 12 9 6"/></svg>
-                </td>
-                <td class="ds-name" title="{t.name}">
-                  {t.name}
-                  {#if codexEnriched.has(t.name) || meta?.pipeline_logic?.code_enriched === true}
-                    <span
-                      title="Enriched from source pipeline code (view DDL / table logic)"
-                      style="margin-left: 8px; padding: 1px 6px; border: 1px solid #2f7d4f; color: #2f7d4f; background: transparent; font-size: 11px; font-weight: 800; letter-spacing: 0.04em; vertical-align: middle;"
-                    >CODE</span>
-                  {/if}
-                  {#if dqCount > 0}
-                    <button
-                      onclick={(e) => { e.stopPropagation(); openDataQualityForTable(t.name); }}
-                      title="Open Data Quality filtered by this table"
-                      style="margin-left: 8px; padding: 1px 6px; border: 1px solid #cc7a00; color: #cc7a00; background: transparent; font-size: 11px; font-weight: 800; cursor: pointer; letter-spacing: 0.04em; vertical-align: middle;"
-                    ><Icon name="hospital" size={14} /> {dqCount} issue{dqCount === 1 ? '' : 's'}</button>
-                  {/if}
-                </td>
-                <td><span class="ds-type-chip ds-type-tbl">tbl</span></td>
-                <td class="ds-num">—</td>
-                <td class="ds-num">{(t.rows || 0).toLocaleString()}</td>
-                <td class="ds-num">{t.columns || 0}</td>
-                <td class="ds-num">{qaCount}</td>
-                <td>
-                  <div class="ds-health">
-                    <div class="ds-health-track">
-                      <div class="ds-health-fill {health >= 67 ? 'ds-health-good' : health >= 34 ? 'ds-health-warn' : 'ds-health-low'}" style="width: {Math.max(health, 0)}%;"></div>
-                    </div>
-                    <span class="ds-health-pct">{health}%</span>
-                  </div>
-                </td>
-                <td>
-                  <span class="ds-status">
-                    <span class="ds-status-dot {isTraining ? 'ds-status-dot-warn' : isTrained ? 'ds-status-dot-good' : 'ds-status-dot-muted'}"></span>
-                    {isTraining ? 'training…' : isTrained ? 'trained' : 'untrained'}
-                  </span>
-                </td>
-                <td onclick={(e) => e.stopPropagation()}>
-                  {#if canEdit}
-                    <button class="ds-btn-link ds-btn-link-danger" onclick={() => deleteTable(t.name)} title="Delete table">Delete</button>
-                  {/if}
-                </td>
-              </tr>
-              {#if isExpanded}
-                <tr class="ds-expand-row">
-                  <td></td>
-                  <td colspan="9">
-                    <div class="ds-expand">
-                      {#if t.source_file || t.description}
-                        <div class="ds-expand-source">
-                          {#if t.source_file}<span><strong>Source:</strong> {t.source_file}{#if t.source_detail} <span class="ds-expand-source-detail">{t.source_detail}</span>{/if}</span>{/if}
-                          {#if t.description}<span class="ds-expand-source-desc">— {t.description}</span>{/if}
-                        </div>
-                      {/if}
-
-                      <div class="ds-expand-actions">
-                        {#if canEdit}
-                          <button class="ds-btn ds-btn-sm ds-btn-primary" onclick={() => trainTable(t.name)} disabled={!!trainingTable}>
-                            {isTrained ? 'Retrain' : 'Train'}
-                          </button>
-                        {/if}
-                        <button class="ds-btn ds-btn-sm" onclick={() => openInspect(t)}>Full inspect</button>
-                        <button class="ds-btn ds-btn-sm" onclick={async () => {
-                          const r = await fetch(`/api/tables/${t.name}/download?format=csv&project=${slug}`, { headers: _h() });
-                          if (r.ok) { const blob = await r.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${t.name}.csv`; a.click(); URL.revokeObjectURL(url); }
-                        }}>Download CSV</button>
-                        <button class="ds-btn ds-btn-sm" onclick={async () => {
-                          const r = await fetch(`/api/tables/${t.name}/download?format=excel&project=${slug}`, { headers: _h() });
-                          if (r.ok) { const blob = await r.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${t.name}.xlsx`; a.click(); URL.revokeObjectURL(url); }
-                        }}>Download Excel</button>
-                        {#if canEdit}
-                          <button class="ds-btn ds-btn-sm ds-btn-danger-ghost" onclick={() => deleteTable(t.name)}>Delete</button>
-                        {/if}
-                      </div>
-
-                      <!-- ═══ EXTRACTION PLAN (P4) ═══ -->
-                      {#if true}
-                      {@const _plan = extractionPlans[t.name]}
-                      {@const _edit = extractionPlanEdits[t.name] || { header_row: '', skip_rows: '', busy: false, saved: false }}
-                      <div class="ds-card" style="margin-top: 14px; padding: 12px;">
-                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
-                          <strong style="font-size:11.5px; letter-spacing:0.06em; text-transform:uppercase;">Extraction plan</strong>
-                          {#if _plan}
-                            {@const _strat = String(_plan.strategy || '')}
-                            {@const _color = _strat === 'llm-rescued' ? '#cc7a00' : _strat === 'rules-split' ? '#2f7d4f' : _strat === 'ai-unpivot' ? '#7a3fbf' : '#3a5f8a'}
-                            <span style="padding:1px 8px; border:1px solid {_color}; color:{_color}; font-size:11px; font-weight:800; letter-spacing:0.04em;">{_strat || 'unknown'}</span>
-                            {#if _plan.llm_rescued}
-                              <span style="padding:1px 8px; border:1px solid #cc7a00; color:#cc7a00; font-size:11px; font-weight:800;">LLM rescued: yes</span>
-                            {/if}
-                          {/if}
-                        </div>
-
-                        {#if !_plan}
-                          <div style="font-size:12px; color:var(--pw-muted);">No extraction plan recorded for this table.</div>
-                        {:else}
-                          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:10px;">
-                            <label style="display:flex; flex-direction:column; gap:4px;">
-                              <span style="font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--pw-muted);">Header row</span>
-                              <input
-                                class="ds-input"
-                                type="number"
-                                min="0"
-                                placeholder={String(_plan.header_row ?? 0)}
-                                value={_edit.header_row}
-                                oninput={(e) => {
-                                  const v = (e.currentTarget as HTMLInputElement).value;
-                                  extractionPlanEdits = { ...extractionPlanEdits, [t.name]: { ..._edit, header_row: v, saved: false, err: undefined } };
-                                }}
-                                disabled={!canEdit || _edit.busy}
-                              />
-                            </label>
-                            <label style="display:flex; flex-direction:column; gap:4px;">
-                              <span style="font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--pw-muted);">Skip rows (comma-separated)</span>
-                              <input
-                                class="ds-input"
-                                type="text"
-                                placeholder={(Array.isArray(_plan.skip_rows) && _plan.skip_rows.length ? _plan.skip_rows.join(', ') : 'e.g. 0,1,5')}
-                                value={_edit.skip_rows}
-                                oninput={(e) => {
-                                  const v = (e.currentTarget as HTMLInputElement).value;
-                                  extractionPlanEdits = { ...extractionPlanEdits, [t.name]: { ..._edit, skip_rows: v, saved: false, err: undefined } };
-                                }}
-                                disabled={!canEdit || _edit.busy}
-                              />
-                            </label>
-                          </div>
-
-                          <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; margin-bottom:10px; font-size:12px;">
-                            <div>
-                              <div style="color:var(--pw-muted); font-size:10.5px; text-transform:uppercase; letter-spacing:0.04em;">Rows in</div>
-                              <div>{_plan.row_count_in ?? '—'}</div>
-                            </div>
-                            <div>
-                              <div style="color:var(--pw-muted); font-size:10.5px; text-transform:uppercase; letter-spacing:0.04em;">Rows out</div>
-                              <div>{_plan.row_count_out ?? '—'}</div>
-                            </div>
-                            <div>
-                              <div style="color:var(--pw-muted); font-size:10.5px; text-transform:uppercase; letter-spacing:0.04em;">Sheet</div>
-                              <div>{_plan.sheet_name || '—'}</div>
-                            </div>
-                            <div>
-                              <div style="color:var(--pw-muted); font-size:10.5px; text-transform:uppercase; letter-spacing:0.04em;">Source file</div>
-                              <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title={_plan.source_file || ''}>{_plan.source_file || '—'}</div>
-                            </div>
-                          </div>
-
-                          {#if _plan.rescue_reasoning}
-                            <div style="font-size:11.5px; color:var(--pw-muted); margin-bottom:10px; padding:8px; background:var(--pw-bg-alt); border:1px solid var(--pw-border);">
-                              <strong>Rescue reasoning:</strong> {_plan.rescue_reasoning}
-                            </div>
-                          {/if}
-
-                          <div style="display:flex; align-items:center; gap:10px;">
-                            {#if canEdit}
-                              <button
-                                class="ds-btn ds-btn-sm ds-btn-primary"
-                                onclick={() => reIngestExtractionPlan(t.name)}
-                                disabled={_edit.busy}
-                              >
-                                {_edit.busy ? 'Re-ingesting…' : 'Re-ingest with overrides'}
-                              </button>
-                            {/if}
-                            {#if _edit.saved}
-                              <span style="color:#2f7d4f; font-size:12px; font-weight:600;">✓ Saved</span>
-                            {/if}
-                            {#if _edit.err}
-                              <span style="color:#c0392b; font-size:12px;">{_edit.err}</span>
-                            {/if}
-                          </div>
-                        {/if}
-                      </div>
-                      {/if}
-                    </div>
-                  </td>
-                </tr>
-              {/if}
-            {/each}
-          </tbody>
-        </table>
-        <div class="ds-table-foot">
-          <span>{_totalTables} tables · {_totalRows.toLocaleString()} rows</span>
-        </div>
-      </div>
-
-      <!-- ═══ Table details — rich per-table cards ═══ -->
-      {#if (detail?.tables?.length || 0) > 0}
-        {@const _allOpen = (detail?.tables || []).every((t: any) => tableCardOpen[t.name] ?? true)}
-        {@const _filteredTables = (detail?.tables || []).filter((t: any) => {
-          if (tableCardFilter === 'all') return true;
-          if (tableCardFilter === 'trained') return isTableTrained(t.name);
-          if (tableCardFilter === 'untrained') return !isTableTrained(t.name);
-          return true;
-        })}
-        <div class="ds-section-head" style="margin-top: 28px;">
-          <h3 class="ds-section-title">Table details <span class="ds-count">({_filteredTables.length})</span></h3>
-          <div class="ds-chip-row">
-            <select class="dt-filter" bind:value={tableCardFilter} aria-label="Filter tables">
-              <option value="all">All tables</option>
-              <option value="trained">Trained only</option>
-              <option value="untrained">Untrained only</option>
-            </select>
-            <button class="ds-btn ds-btn-sm" onclick={() => expandAllCards(!_allOpen)}>
-              {_allOpen ? 'Collapse all' : 'Expand all'}
-            </button>
-          </div>
-        </div>
-
-        <div class="dt-card-list">
-          {#each _filteredTables as t (t.name)}
-            {@const _open = tableCardOpen[t.name] ?? true}
-            {@const _meta = tableMetaCache[t.name]}
-            {@const _insp = tableInspectCache[t.name]}
-            {@const _cols = _insp?.columns || _meta?.table_columns || []}
-            {@const _sample = _insp?.sample || []}
-            {@const _sampleLimit = tableSampleLimit[t.name] ?? 10}
-            {@const _qaCount = (training?.training_qa || []).filter((q: any) => q.source_table === t.name).length}
-            {@const _health = t.health ?? (isTableTrained(t.name) ? (_qaCount > 0 ? 100 : 60) : 0)}
-            {@const _status = tableStatus(t)}
-            {@const _rels = (tableRelationships || []).filter((r: any) => r.from_table === t.name || r.to_table === t.name || r.from === t.name || r.to === t.name)}
-            {@const _cm = columnMapCache[t.name]}
-            {@const _isTraining = trainingTable === t.name}
-            <div class="dt-card">
-              <!-- 1. Header bar -->
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <div class="dt-head" onclick={() => toggleCard(t.name)} role="button" tabindex="0">
-                <span class="dt-caret">{_open ? '▾' : '▸'}</span>
-                <span class="dt-title">{t.name}</span>
-                <span class="dt-pill {_status.cls}"><span class="dt-pill-dot"></span>{_status.label}</span>
-                <span class="dt-meta-sep">·</span>
-                <span class="dt-meta">{(t.rows || 0).toLocaleString()} rows</span>
-                <span class="dt-meta-sep">·</span>
-                <span class="dt-meta">{t.columns || _cols.length || 0} cols</span>
-                {#if t.size_bytes || t.size}
-                  <span class="dt-meta-sep">·</span>
-                  <span class="dt-meta">{((t.size_bytes || t.size || 0) / 1024).toFixed(1)} KB</span>
-                {/if}
-                {#if t.created_at}
-                  <span class="dt-meta-sep">·</span>
-                  <span class="dt-meta">created {relTime(t.created_at)}</span>
-                {/if}
-                {#if t.last_trained_at || _meta?.last_trained_at}
-                  <span class="dt-meta-sep">·</span>
-                  <span class="dt-meta">last trained {relTime(t.last_trained_at || _meta?.last_trained_at)}</span>
-                {/if}
-                {#if t.source_file || t.source}
-                  <span class="dt-meta-sep">·</span>
-                  <span class="dt-meta dt-mono" title="{t.source_file || t.source}">{t.source_file || t.source}</span>
-                {/if}
-                <span class="dt-head-spacer"></span>
-                {#if canEdit}
-                  <button class="dt-icon-btn dt-icon-danger" title="Delete table" onclick={(e) => { e.stopPropagation(); deleteTable(t.name); }} aria-label="Delete">⊝</button>
-                {/if}
-              </div>
-
-              {#if _open}
-                <div class="dt-body">
-                  <!-- 2. Overview -->
-                  <div class="dt-section">
-                    <div class="dt-section-label">Overview</div>
-                    <div class="dt-grid dt-grid-overview">
-                      <div class="dt-stat"><span class="dt-stat-k">Purpose</span><span class="dt-stat-v">{_meta?.table_description || _meta?.purpose || t.description || '—'}</span></div>
-                      <div class="dt-stat"><span class="dt-stat-k">Grain</span><span class="dt-stat-v">{_meta?.grain || '—'}</span></div>
-                      <div class="dt-stat"><span class="dt-stat-k">Primary key</span><span class="dt-stat-v dt-mono">{(_meta?.primary_keys || []).join(', ') || _meta?.primary_key || '—'}</span></div>
-                      <div class="dt-stat"><span class="dt-stat-k">Refresh</span><span class="dt-stat-v">{_meta?.refresh_cadence || _meta?.freshness || '—'}</span></div>
-                      <div class="dt-stat"><span class="dt-stat-k">Used by</span><span class="dt-stat-v dt-mono">{(_meta?.downstream_tables || []).join(', ') || '—'}</span></div>
-                    </div>
-                  </div>
-
-                  <!-- 2.5 Column Map — grouped by dimension / measure(unit) / id / date / text -->
-                  {#if _cm?.groups?.length}
-                    <div class="dt-section">
-                      <div class="dt-section-label">Column Map <span class="dt-section-count">({_cm.total})</span></div>
-                      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; margin-top:6px;">
-                        {#each _cm.groups as grp}
-                          {@const gmeta = grp.group === 'DIMENSION' ? {ic:'◇', c:'#3a8dff', lbl:'Dimensions'} : grp.group === 'MEASURE' ? {ic:'∑', c:'#1a9c50', lbl:'Measures'} : grp.group === 'IDENTIFIER' ? {ic:'#', c:'#9b6dff', lbl:'Identifiers'} : grp.group === 'DATE' ? {ic:'⏱', c:'#cc7a00', lbl:'Dates'} : {ic:'¶', c:'var(--pw-muted)', lbl:'Text'}}
-                          <div style="border:1px solid var(--pw-border); border-radius: 0; padding:8px 10px; background:var(--pw-surface);">
-                            <div style="font-size:10px; font-weight:900; letter-spacing:0.06em; text-transform:uppercase; color:{gmeta.c}; margin-bottom:6px;">{gmeta.ic} {gmeta.lbl} ({grp.columns.length})</div>
-                            {#each grp.columns as c}
-                              {@const uic = c.unit === 'currency' ? '$' : c.unit === 'percentage' ? '%' : c.unit === 'count' ? '#' : c.unit === 'time' ? '⏱' : c.unit === 'physical' ? '▱' : c.unit === 'number' ? '∑' : '◇'}
-                              <div style="display:flex; align-items:baseline; gap:6px; font-size:11px; padding:2px 0; line-height:1.5;">
-                                <span style="color:{gmeta.c}; width:12px; flex-shrink:0;">{uic}</span>
-                                <span class="dt-mono" style="font-weight:700;">{c.name}</span>
-                                <span class="dt-muted" style="font-size:10px; margin-left:auto; text-align:right;">
-                                  {#if c.unit && c.unit !== 'none' && c.unit !== 'number'}{c.unit} · {/if}{#if grp.group === 'MEASURE' && c.min != null}{Number(c.min).toLocaleString()}–{Number(c.max).toLocaleString()}{:else if grp.group === 'DATE' && c.min_date}{c.min_date} → {c.max_date}{:else if c.unique_count != null}{c.unique_count} values{/if}
-                                </span>
-                              </div>
-                            {/each}
-                          </div>
-                        {/each}
-                      </div>
-                    </div>
-                  {/if}
-
-                  <!-- 3. Schema -->
-                  <div class="dt-section">
-                    <div class="dt-section-label">Schema <span class="dt-section-count">({_cols.length})</span></div>
-                    {#if _cols.length > 0}
-                      <div class="dt-table-wrap">
-                        <table class="dt-table">
-                          <thead>
-                            <tr>
-                              <th>Column</th>
-                              <th style="width: 100px;">Type</th>
-                              <th style="width: 50px;">Null</th>
-                              <th style="width: 60px;">Unique</th>
-                              <th style="width: 40px;">PK</th>
-                              <th style="width: 40px;">FK</th>
-                              <th>Sample</th>
-                              <th>Description</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {#each _cols as col}
-                              {@const _metaCol = (_meta?.table_columns || []).find((c: any) => c.name === col.name)}
-                              {@const _sampleVal = _sample.length > 0 ? String(_sample[0][col.name] ?? '').slice(0, 30) : ''}
-                              <tr>
-                                <td class="dt-mono">{col.name}</td>
-                                <td class="dt-mono dt-muted">{col.type || _metaCol?.type || '—'}</td>
-                                <td class="dt-num">{col.nullable === false ? '' : col.null_pct != null ? `${col.null_pct}%` : '—'}</td>
-                                <td class="dt-num">{col.unique_pct != null ? `${col.unique_pct}%` : col.distinct != null ? col.distinct : '—'}</td>
-                                <td class="dt-num">{col.is_pk || (_meta?.primary_keys || []).includes(col.name) ? '●' : ''}</td>
-                                <td class="dt-num">{col.is_fk ? '●' : ''}</td>
-                                <td class="dt-mono dt-muted">{_sampleVal}</td>
-                                <td class="dt-muted">{_metaCol?.description || col.description || ''}</td>
-                              </tr>
-                            {/each}
-                          </tbody>
-                        </table>
-                      </div>
-                    {:else if _insp === undefined}
-                      <div class="dt-empty">Loading schema…</div>
-                    {:else}
-                      <div class="dt-empty">No columns available.</div>
-                    {/if}
-                  </div>
-
-                  <!-- 4. Sample data -->
-                  <div class="dt-section">
-                    <div class="dt-section-label">
-                      Sample data <span class="dt-section-count">(first {Math.min(_sampleLimit, _sample.length)} of {_sample.length} loaded)</span>
-                      <span class="dt-section-actions">
-                        {#if _sample.length > _sampleLimit}
-                          <button class="dt-link" onclick={() => tableSampleLimit = { ...tableSampleLimit, [t.name]: _sampleLimit + 10 }}>load more</button>
-                        {/if}
-                        <button class="dt-link" onclick={() => downloadTable(t.name, 'csv')}>↓ CSV</button>
-                      </span>
-                    </div>
-                    {#if _sample.length > 0}
-                      <div class="dt-table-wrap">
-                        <table class="dt-table">
-                          <thead>
-                            <tr>
-                              <th style="width: 28px;">#</th>
-                              {#each Object.keys(_sample[0] || {}) as h}
-                                <th>{h}</th>
-                              {/each}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {#each _sample.slice(0, _sampleLimit) as row, ri}
-                              <tr>
-                                <td class="dt-num dt-muted">{ri + 1}</td>
-                                {#each Object.values(row) as val}
-                                  <td class="dt-mono">{val ?? ''}</td>
-                                {/each}
-                              </tr>
-                            {/each}
-                          </tbody>
-                        </table>
-                      </div>
-                    {:else if _insp === undefined}
-                      <div class="dt-empty">Loading sample…</div>
-                    {:else}
-                      <div class="dt-empty">No sample rows available.</div>
-                    {/if}
-                  </div>
-
-                  <!-- 5. Data quality -->
-                  <div class="dt-section">
-                    <div class="dt-section-label">Data quality</div>
-                    <div class="dt-quality">
-                      <div class="dt-bar">
-                        <div class="dt-bar-fill {_health >= 67 ? 'dt-bar-good' : _health >= 34 ? 'dt-bar-warn' : 'dt-bar-low'}" style="width: {Math.max(_health, 0)}%;"></div>
-                      </div>
-                      <span class="dt-bar-pct">{_health}%</span>
-                    </div>
-                    <div class="dt-grid dt-grid-quality">
-                      <div class="dt-stat"><span class="dt-stat-k">Nulls</span><span class="dt-stat-v">{_insp?.quality?.nulls ?? _insp?.null_pct ?? '—'}{_insp?.quality?.nulls != null ? '%' : ''}</span></div>
-                      <div class="dt-stat"><span class="dt-stat-k">Duplicates</span><span class="dt-stat-v">{_insp?.quality?.duplicates ?? '—'}</span></div>
-                      <div class="dt-stat"><span class="dt-stat-k">Outliers</span><span class="dt-stat-v">{_insp?.quality?.outliers ?? '—'}</span></div>
-                      <div class="dt-stat"><span class="dt-stat-k">Schema drift</span><span class="dt-stat-v">{_insp?.quality?.drift ?? ((driftAlerts || []).filter((d: any) => d.table_name === t.name).length || '0')}</span></div>
-                      <div class="dt-stat"><span class="dt-stat-k">Issues</span><span class="dt-stat-v">{(_meta?.data_quality_notes || []).length || '0'}</span></div>
-                    </div>
-                    {#if (_meta?.data_quality_notes || []).length > 0}
-                      <ul class="dt-notes">
-                        {#each _meta.data_quality_notes as note}
-                          <li><Icon name="alert-triangle" size={14} /> {note}</li>
-                        {/each}
-                      </ul>
-                    {/if}
-                  </div>
-
-                  <!-- 6. Distributions -->
-                  <div class="dt-section">
-                    <div class="dt-section-label">Distributions</div>
-                    {#if _sample.length > 0 && _cols.length > 0}
-                      {@const _catCols = _cols.filter((c: any) => {
-                        const tp = String(c.type || '').toLowerCase();
-                        return tp.includes('text') || tp.includes('char') || tp.includes('str') || tp.includes('enum') || tp.includes('bool');
-                      }).slice(0, 3)}
-                      {@const _numCol = _cols.find((c: any) => {
-                        const tp = String(c.type || '').toLowerCase();
-                        return tp.includes('int') || tp.includes('num') || tp.includes('float') || tp.includes('decimal') || tp.includes('double');
-                      })}
-                      <div class="dt-grid dt-grid-distros">
-                        {#each _catCols as col}
-                          {@const bars = distroBars(_sample, col.name, 5)}
-                          {#if bars.length > 0}
-                            <div class="dt-distro">
-                              <div class="dt-distro-label">{col.name}</div>
-                              {#each bars as b}
-                                <div class="dt-distro-row">
-                                  <span class="dt-distro-name" title="{b.label}">{b.label}</span>
-                                  <div class="dt-distro-bar"><div class="dt-distro-fill" style="width: {b.pct}%;"></div></div>
-                                  <span class="dt-distro-pct">{b.pct}%</span>
-                                </div>
-                              {/each}
-                            </div>
-                          {/if}
-                        {/each}
-                        {#if _numCol}
-                          {@const five = fiveNum(_sample, _numCol.name)}
-                          {#if five}
-                            <div class="dt-distro">
-                              <div class="dt-distro-label">{_numCol.name} <span class="dt-muted">(5-num)</span></div>
-                              <div class="dt-fivenum">
-                                <span><em>min</em> {five.min}</span>
-                                <span><em>p25</em> {five.p25}</span>
-                                <span><em>p50</em> {five.p50}</span>
-                                <span><em>p75</em> {five.p75}</span>
-                                <span><em>max</em> {five.max}</span>
-                              </div>
-                            </div>
-                          {/if}
-                        {/if}
-                      </div>
-                    {:else}
-                      <div class="dt-empty">No distribution data — train table to populate.</div>
-                    {/if}
-                  </div>
-
-                  <!-- 7. Relationships -->
-                  <div class="dt-section">
-                    <div class="dt-section-label">Relationships <span class="dt-section-count">({_rels.length})</span></div>
-                    {#if _rels.length > 0}
-                      <div class="dt-table-wrap">
-                        <table class="dt-table">
-                          <thead><tr><th>From</th><th>To</th><th style="width: 100px;">Confidence</th><th style="width: 100px;">Status</th></tr></thead>
-                          <tbody>
-                            {#each _rels as r}
-                              <tr>
-                                <td class="dt-mono">{r.from_table || r.from || ''}{r.from_column ? '.' + r.from_column : ''}</td>
-                                <td class="dt-mono">{r.to_table || r.to || ''}{r.to_column ? '.' + r.to_column : ''}</td>
-                                <td class="dt-num">{r.confidence != null ? `${Math.round(r.confidence * 100)}%` : '—'}</td>
-                                <td>{r.verified ? 'verified' : r.status || 'discovered'}</td>
-                              </tr>
-                            {/each}
-                          </tbody>
-                        </table>
-                      </div>
-                    {:else}
-                      <div class="dt-empty">No relationships found yet.</div>
-                    {/if}
-                  </div>
-
-                  <!-- 8. Knowledge / Q&A -->
-                  <div class="dt-section">
-                    <div class="dt-section-label">Knowledge &amp; Q&amp;A</div>
-                    {#if true}
-                      {@const _evals = (training?.training_qa || []).filter((q: any) => q.source_table === t.name)}
-                      {@const _patterns = (queryPlans || []).filter((p: any) => Array.isArray(p.tables) && p.tables.includes(t.name))}
-                      {@const _memories = (insights || []).filter((m: any) => Array.isArray(m.tables) && m.tables.includes(t.name))}
-                      <div class="dt-grid dt-grid-quality">
-                        <div class="dt-stat"><span class="dt-stat-k">Q&amp;A evals</span><span class="dt-stat-v">{_evals.length}</span></div>
-                        <div class="dt-stat"><span class="dt-stat-k">Query patterns</span><span class="dt-stat-v">{_patterns.length}</span></div>
-                        <div class="dt-stat"><span class="dt-stat-k">Memories</span><span class="dt-stat-v">{_memories.length}</span></div>
-                      </div>
-                      {#if _evals.length === 0 && _patterns.length === 0 && _memories.length === 0}
-                        <div class="dt-empty dt-empty-cta">
-                          No Q&amp;A generated yet — train table to populate.
-                          {#if canEdit}
-                            <button class="dt-link" onclick={() => trainTable(t.name)} disabled={!!trainingTable}>Run training</button>
-                          {/if}
-                        </div>
-                      {/if}
-                    {/if}
-                  </div>
-
-                  <!-- 9. Lineage -->
-                  <div class="dt-section">
-                    <div class="dt-section-label">Lineage</div>
-                    <div class="dt-grid dt-grid-overview">
-                      <div class="dt-stat"><span class="dt-stat-k">Upstream source</span><span class="dt-stat-v dt-mono">{t.source_file || t.source || _meta?.upstream_source || '—'}</span></div>
-                      <div class="dt-stat"><span class="dt-stat-k">Downstream tables</span><span class="dt-stat-v dt-mono">{(_meta?.downstream_tables || []).join(', ') || '—'}</span></div>
-                      <div class="dt-stat"><span class="dt-stat-k">Views</span><span class="dt-stat-v dt-mono">{(_meta?.views || []).join(', ') || '—'}</span></div>
-                    </div>
-                  </div>
-
-                  <!-- 10. Activity -->
-                  <div class="dt-section">
-                    <div class="dt-section-label">Activity</div>
-                    {#if true}
-                      {@const _activity = [
-                        ...(t.created_at ? [{ ts: t.created_at, label: 'created' }] : []),
-                        ...((t.last_trained_at || _meta?.last_trained_at) ? [{ ts: t.last_trained_at || _meta?.last_trained_at, label: 'trained' }] : []),
-                        ...((trainingRuns || []).filter((r: any) => Array.isArray(r.tables) && r.tables.includes(t.name)).slice(0, 3).map((r: any) => ({ ts: r.created_at || r.started_at, label: r.status || 'training run' }))),
-                      ].filter(e => e.ts).sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime()).slice(0, 5)}
-                      {#if _activity.length > 0}
-                        <ul class="dt-activity">
-                          {#each _activity as ev}
-                            <li><span class="dt-mono dt-muted">{relTime(ev.ts)}</span> · {ev.label}</li>
-                          {/each}
-                        </ul>
-                      {:else}
-                        <div class="dt-empty">No activity recorded yet.</div>
-                      {/if}
-                    {/if}
-                  </div>
-
-                  <!-- 11. Actions footer -->
-                  <div class="dt-actions">
-                    {#if canEdit}
-                      <button class="ds-btn ds-btn-sm ds-btn-primary" onclick={() => trainTable(t.name)} disabled={!!trainingTable}>
-                        {_isTraining ? '● Training…' : isTableTrained(t.name) ? '▶ Retrain' : '▶ Train'}
-                      </button>
-                    {/if}
-                    <button class="ds-btn ds-btn-sm" onclick={() => openInspect(t)}>⊙ Full inspect</button>
-                    <button class="ds-btn ds-btn-sm" onclick={() => downloadTable(t.name, 'csv')}>↓ CSV</button>
-                    <button class="ds-btn ds-btn-sm" onclick={() => downloadTable(t.name, 'excel')}>↓ Excel</button>
-                    {#if canEdit}
-                      <button class="ds-btn ds-btn-sm ds-btn-danger-ghost" onclick={() => deleteTable(t.name)}>⊝ Delete</button>
-                    {/if}
-                  </div>
-                </div>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      {/if}
-    {:else}
-      <div class="ds-empty-card">
-        <p>No data yet. Drop files above to begin.</p>
-      </div>
+        {#if i < 6}<span class="dsx-pline" class:done={_isDone}></span>{/if}
+      {/each}
+      <span class="dsx-pstat">{_live ? (_curStep || 'training…') : (_trained ? '✓ done' : 'idle')}</span>
+    </div>
     {/if}
 
-    <!-- ═══ STATUS BANDS (below DATA & UPLOAD) ═══ -->
-    {#if isTrained}
-      {@const _driftTotalCock = Object.values(driftCountsBySource).reduce((a: number, b: number) => a + (b || 0), 0)}
-      {@const _todayCostNum = parseFloat(cockpitStats.cost as any) || 0}
-      {@const _capNum = Math.max(0.01, costCapInput)}
-      {@const _pct = Math.min(100, (_todayCostNum / _capNum) * 100)}
-
-      <!-- ═══ STATUS — 4-card row (Today / Performance / Health / Cost) ═══ -->
-      <section class="set-section cp-band">
-        <div class="cp-band-head"><Icon name="bar-chart" size={14} /> Status</div>
-        <div class="cp-grid-4">
-          <div class="cp-card cp-card-blue">
-            <div class="cp-card-head"><span class="cp-card-icon"><Icon name="bar-chart" size={14} /></span> TODAY</div>
-            <div class="cp-kv"><span>Chats</span><b>{cockpitStats.chats}</b></div>
-            <div class="cp-kv"><span>Queries</span><b>{cockpitStats.queries}</b></div>
-            <div class="cp-kv"><span>Insights</span><b>{cockpitStats.insightsCount}</b></div>
-            <div class="cp-kv"><span>Spent</span><b>${cockpitStats.cost}</b></div>
-          </div>
-          <div class="cp-card cp-card-purple">
-            <div class="cp-card-head"><span class="cp-card-icon"><Icon name="zap" size={14} /></span> PERFORMANCE</div>
-            <div class="cp-kv"><span>Latency</span><b>{cockpitStats.latency}ms</b></div>
-            <div class="cp-kv"><span>Quality</span><b>{cockpitStats.quality}/5</b></div>
-            <div class="cp-kv"><span>Cache hit</span><b>{cockpitStats.cacheHit}%</b></div>
-          </div>
-          <div class="cp-card cp-card-green">
-            <div class="cp-card-head"><span class="cp-card-icon"></span> HEALTH</div>
-            <div class="cp-kv"><span>Brain</span><b><span class="set-dot trained"></span> {brainOk}/9</b></div>
-            <div class="cp-kv"><span>Tables</span><b><span class="set-dot trained"></span> {_trainedCount}/{_totalTables}</b></div>
-            <div class="cp-kv"><span>Sources</span><b><span class="set-dot {_connectedSources > 0 ? 'trained' : 'idle'}"></span> {_connectedSources}</b></div>
-          </div>
-          <div class="cp-card cp-card-coral">
-            <div class="cp-card-head"><span class="cp-card-icon"><Icon name="dollar-sign" size={14} /></span> COST</div>
-            <div class="cp-kv"><span>Today</span><b>${cockpitStats.cost}</b></div>
-            <div class="cp-kv"><span>Cap</span><b>${costCapInput.toFixed(2)}</b></div>
-            <div class="cp-bar"><div class="cp-bar-fill" style="width: {_pct}%; background: {_pct > 80 ? '#ff4040' : 'var(--pw-accent)'};"></div></div>
-            <div class="cp-kv"><span>Used</span><b>{_pct.toFixed(1)}%</b></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ═══ ACTIVITY — 5-card metric strip ═══ -->
-      <section class="set-section cp-band">
-        <div class="cp-band-head"><Icon name="bar-chart" size={14} /> Activity</div>
-        <div class="cp-grid-5">
-          <div class="cp-metric-card cp-metric-good">
-            <div class="cp-metric-num">{activityMetrics?.good_feedback ?? 0}</div>
-            <div class="cp-metric-label">GOOD FEEDBACK</div>
-          </div>
-          <div class="cp-metric-card cp-metric-bad">
-            <div class="cp-metric-num">{activityMetrics?.bad_feedback ?? 0}</div>
-            <div class="cp-metric-label">BAD FEEDBACK</div>
-          </div>
-          <div class="cp-metric-card cp-metric-info">
-            <div class="cp-metric-num">{activityMetrics?.insights ?? 0}</div>
-            <div class="cp-metric-label">INSIGHTS</div>
-          </div>
-          <div class="cp-metric-card cp-metric-warn">
-            <div class="cp-metric-num">{activityMetrics?.drift_alerts ?? 0}</div>
-            <div class="cp-metric-label">DRIFT ALERTS</div>
-          </div>
-          <div class="cp-metric-card cp-metric-evo">
-            <div class="cp-metric-num">{activityMetrics?.evolutions ?? 0}</div>
-            <div class="cp-metric-label">EVOLUTIONS</div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ═══ PIPELINE — 3-card row (Last training / Schedule / Drift) ═══ -->
-      <section class="set-section cp-band">
-        <div class="cp-band-head"><Icon name="settings" size={14} /> Pipeline</div>
-        <div class="cp-grid-3">
-          <div class="cp-card cp-card-slate">
-            <div class="cp-card-head"><span class="cp-card-icon"><Icon name="settings" size={14} /></span> LAST TRAINING</div>
-            <div class="cp-kv"><span>When</span><b>{trainingRuns[0]?.finished_at ? formatRelTime(trainingRuns[0].finished_at) : '—'}</b></div>
-            <div class="cp-kv"><span>Steps</span><b>{trainingRuns[0]?.steps_done ?? '—'}/{trainingRuns[0]?.steps_total ?? '—'}</b></div>
-            <div class="cp-kv"><span>Duration</span><b>{trainingRuns[0]?.duration_sec ? `${Math.round(trainingRuns[0].duration_sec)}s` : '—'}</b></div>
-            <div class="cp-kv"><span>Cost</span><b>{trainingRuns[0]?.cost_usd ? `$${trainingRuns[0].cost_usd.toFixed(4)}` : '—'}</b></div>
-          </div>
-          <div class="cp-card cp-card-blue">
-            <div class="cp-card-head"><span class="cp-card-icon"></span> SCHEDULE</div>
-            <div class="cp-kv"><span>Next</span><b>{(Array.isArray(agentTplWorkflows) ? agentTplWorkflows : []).find((w: any) => w.schedule)?.schedule || 'On-demand'}</b></div>
-            <div class="cp-kv"><span>Active workflows</span><b>{(Array.isArray(agentTplWorkflows) ? agentTplWorkflows : []).filter((w: any) => w.status === 'active').length}</b></div>
-            <div style="margin-top: 8px;"><button class="set-ghost" onclick={() => { openQualityReview(); }} disabled={isTraining}>{isTraining ? 'Training…' : 'Train now'}</button></div>
-          </div>
-          <div class="cp-card cp-card-amber">
-            <div class="cp-card-head"><span class="cp-card-icon"><Icon name="alert-triangle" size={14} /></span> DRIFT</div>
-            <div class="cp-kv"><span>Alerts</span><b><span class="set-dot {_driftTotalCock === 0 ? 'trained' : 'warn'}"></span> {_driftTotalCock}</b></div>
-            <div class="cp-kv"><span>Casted</span><b>{_castedCount}</b></div>
-            {#if _driftTotalCock > 0}<div style="margin-top: 8px;"><button class="set-ghost" onclick={openDriftDrawer}>Review →</button></div>{/if}
-          </div>
-        </div>
-      </section>
-
-      <!-- ═══ INTELLIGENCE — 3×3 grid (9 cards) ═══ -->
-      <section class="set-section cp-band">
-        <div class="cp-band-head"><Icon name="brain" size={14} /> Intelligence</div>
-        <div class="cp-grid-3">
-          <!-- Row 1 -->
-          <div class="cp-card cp-card-teal">
-            <div class="cp-card-head"><span class="cp-card-icon"><Icon name="book" size={14} /></span> KNOWLEDGE</div>
-            <div class="cp-card-big-num">{(Array.isArray(knowledgeFiles) ? knowledgeFiles : []).length}</div>
-            <div class="cp-card-sub">files indexed</div>
-            <div class="cp-card-list">
-              {#each ['tables','docs','vectors','qa'] as kt}
-                {@const cnt = (Array.isArray(knowledgeFiles) ? knowledgeFiles : []).filter((f: any) => f.type === kt).length}
-                <div class="cp-kv"><span>{kt}</span><b>{cnt}</b></div>
-              {/each}
-            </div>
-            <button class="cp-card-cta" onclick={() => { activeTab = 'knowledge'; }}>Open → </button>
-          </div>
-          <div class="cp-card cp-card-amber">
-            <div class="cp-card-head"><span class="cp-card-icon"><Icon name="brain" size={14} /></span> BRAIN</div>
-            <div class="cp-card-big-num">{brainOk}/9</div>
-            <div class="cp-card-sub">layers populated</div>
-            <div class="cp-card-list">
-              {#each (Array.isArray(resourceRegistry) ? resourceRegistry : []).slice(0, 5) as l}
-                <div class="cp-kv"><span style="text-transform: capitalize;">{l.type}</span><b>{l.count ?? 0}</b></div>
-              {/each}
-            </div>
-            <button class="cp-card-cta" onclick={() => { activeTab = 'knowledge'; }}>Open → </button>
-          </div>
-          <div class="cp-card cp-card-violet">
-            <div class="cp-card-head"><span class="cp-card-icon"></span> KNOWLEDGE GRAPH</div>
-            <div class="cp-card-big-num">{(Array.isArray(kgTriples) ? kgTriples : []).length}</div>
-            <div class="cp-card-sub">triples extracted</div>
-            <div class="cp-card-list">
-              {#if Array.isArray(kgTriples) && kgTriples.length > 0}
-                {@const topEntities = (() => {
-                  const counts: Record<string, number> = {};
-                  for (const t of kgTriples) {
-                    const s = t?.subject || '—';
-                    counts[s] = (counts[s] || 0) + 1;
-                  }
-                  return Object.entries(counts).sort((a: any, b: any) => b[1] - a[1]).slice(0, 3);
-                })()}
-                {#each topEntities as [ent, cnt]}
-                  <div class="cp-kv"><span title={ent}>{ent.length > 22 ? ent.slice(0,22) + '…' : ent}</span><b>{cnt}</b></div>
-                {/each}
-              {:else}
-                <div class="cp-kv"><span>no triples yet</span><b>—</b></div>
-              {/if}
-            </div>
-            <button class="cp-card-cta" onclick={() => { activeTab = 'lineage'; }}>Open → </button>
-          </div>
-          <!-- Row 2 -->
-          <div class="cp-card cp-card-coral">
-            <div class="cp-card-head"><span class="cp-card-icon"><Icon name="bot" size={14} /></span> AGENTS</div>
-            <div class="cp-card-big-num">{(project as any)?.agents_count ?? 34}</div>
-            <div class="cp-card-sub">configured</div>
-            <div class="cp-card-list">
-              <div class="cp-kv"><span>Active workflows</span><b>{(Array.isArray(agentTplWorkflows) ? agentTplWorkflows : []).filter((w: any) => w.status === 'active').length}</b></div>
-              <div class="cp-kv"><span>Bindings bound</span><b>{(Array.isArray(agentTplBindings) ? agentTplBindings : []).filter((b: any) => b.status === 'bound').length}</b></div>
-              <div class="cp-kv"><span>Bindings total</span><b>{(Array.isArray(agentTplBindings) ? agentTplBindings : []).length}</b></div>
-            </div>
-            <button class="cp-card-cta" onclick={() => { activeTab = 'agents'; }}>Open → </button>
-          </div>
-          <!-- Row 3 -->
-          <div class="cp-card cp-card-emerald">
-            <div class="cp-card-head"><span class="cp-card-icon"><Icon name="wrench" size={14} /></span> SKILLS LIBRARY</div>
-            <div class="cp-card-big-num">{skillsSummary?.count ?? 0}</div>
-            <div class="cp-card-sub">proven recipes</div>
-            <div class="cp-card-list">
-              {#if Array.isArray(skillsSummary?.top) && skillsSummary.top.length > 0}
-                {#each skillsSummary.top.slice(0, 3) as s}
-                  <div class="cp-kv"><span title={s.name || s.description || ''}>{((s.name || s.description || '—') + '').slice(0, 24)}</span><b>{s.success_count ?? s.uses ?? '—'}</b></div>
-                {/each}
-              {:else}
-                <div class="cp-kv"><span>no skills yet</span><b>—</b></div>
-              {/if}
-            </div>
-            <button class="cp-card-cta" onclick={() => { activeTab = 'self-learn'; }}>Open → </button>
-          </div>
-          <div class="cp-card cp-card-red">
-            <div class="cp-card-head"><span class="cp-card-icon"></span> ANTI-PATTERNS</div>
-            <div class="cp-card-big-num">{antiPatternsSummary?.count ?? 0}</div>
-            <div class="cp-card-sub">active rules</div>
-            <div class="cp-card-list">
-              {#if Array.isArray(antiPatternsSummary?.top) && antiPatternsSummary.top.length > 0}
-                {#each antiPatternsSummary.top.slice(0, 3) as a}
-                  <div class="cp-kv"><span title={a.pattern || a.description || ''}>{((a.pattern || a.description || '—') + '').slice(0, 24)}</span><b>{a.hit_count ?? '—'}</b></div>
-                {/each}
-              {:else}
-                <div class="cp-kv"><span>none active</span><b>—</b></div>
-              {/if}
-            </div>
-            <button class="cp-card-cta" onclick={() => { activeTab = 'self-learn'; }}>Open → </button>
-          </div>
-          <div class="cp-card cp-card-slate">
-            <div class="cp-card-head"><span class="cp-card-icon"></span> LINEAGE</div>
-            <div class="cp-card-big-num">{(Array.isArray(agentTplBindings) ? agentTplBindings : []).length || (Array.isArray(relationships) ? relationships.length : 0)}</div>
-            <div class="cp-card-sub">links tracked</div>
-            <div class="cp-card-list">
-              <div class="cp-kv"><span>Bindings</span><b>{(Array.isArray(agentTplBindings) ? agentTplBindings : []).length}</b></div>
-              <div class="cp-kv"><span>Relationships</span><b>{(Array.isArray(relationships) ? relationships : []).length}</b></div>
-            </div>
-            <button class="cp-card-cta" onclick={() => { activeTab = 'lineage'; }}>Open lineage → </button>
-          </div>
-        </div>
-      </section>
-
-      <!-- <Icon name="check" size={14} /> Tab Completion -->
-      <section class="set-section cp-band">
-        <div class="cp-band-head"><Icon name="check" size={14} /> Tab Completion</div>
-        <div class="cp-tab-grid">
-          {#each [
-            {id:'datasets', label:'DATASETS', count: tabCompletion?.datasets ?? 0},
-            {id:'knowledge', label:'KNOWLEDGE', count: tabCompletion?.knowledge ?? 0},
-            {id:'rules', label:'RULES', count: tabCompletion?.rules ?? 0},
-            {id:'training', label:'TRAINING', count: tabCompletion?.training ?? 0},
-            {id:'docs', label:'DOCS', count: tabCompletion?.docs ?? 0},
-            {id:'queries', label:'QUERIES', count: tabCompletion?.queries ?? 0},
-            {id:'lineage', label:'LINEAGE', count: tabCompletion?.lineage ?? 0},
-            {id:'agents', label:'AGENTS', count: tabCompletion?.agents ?? 0},
-            {id:'workflows', label:'WORKFLOWS', count: tabCompletion?.workflows ?? 0},
-            {id:'schedules', label:'SCHEDULES', count: tabCompletion?.schedules ?? 0},
-            {id:'evals', label:'EVALS', count: tabCompletion?.evals ?? 0},
-            {id:'users', label:'USERS', count: tabCompletion?.users ?? 0},
-            {id:'config', label:'CONFIG', count: 1},
-          ] as t}
-            <button class="cp-tab-card" class:cp-tab-done={t.count > 0} onclick={() => { activeTab = t.id; }}>
-              <div class="cp-tab-label">{t.label}</div>
-              <div class="cp-tab-state">{t.count > 0 ? '' : '○'}</div>
-              <div class="cp-tab-count">{t.count}</div>
-            </button>
-          {/each}
-        </div>
-      </section>
-
-      <!-- ═══ ACTIVITY — AI Working + Ready For You ═══ -->
-      <section class="set-section cp-band">
-        <div class="cp-band-head"><Icon name="message-circle" size={14} /> Live Feed</div>
-        <div class="cp-grid-2">
-          <div class="cp-card">
-            <div class="cp-card-head"><Icon name="bot" size={14} /> AI WORKING ON</div>
-            <div class="cp-empty">Nothing running right now.</div>
-            <div class="cp-row cp-row-dim"><span class="cp-row-icon">·</span><span>03:00 ontology cluster</span></div>
-          </div>
-          <div class="cp-card">
-            <div class="cp-card-head"><Icon name="check" size={14} /> READY FOR YOU</div>
-            {#if (cockpitStats.insightsCount || 0) === 0}
-              <div class="cp-empty">No new insights yet.</div>
-            {:else}
-              {#if cockpitStats.insightsCount > 0}<div class="cp-row"><span class="cp-row-icon"><Icon name="star" size={14} /></span><span>{cockpitStats.insightsCount} proactive insight{cockpitStats.insightsCount === 1 ? '' : 's'}</span></div>{/if}
-            {/if}
-          </div>
-        </div>
-
-        <!-- Recent chats full-width -->
-        <div class="cp-card" style="margin-top: 12px;">
-          <div class="cp-card-head"><Icon name="message-circle" size={14} /> RECENT CHATS</div>
-          {#if recentChats.length === 0}
-            <div class="cp-empty">No chats yet.</div>
-          {:else}
-            <div class="cp-list">
-              {#each recentChats as c}
-                <div class="cp-chat-row">
-                  <span class="cp-chat-time">{c.updated_at ? formatRelTime(c.updated_at) : '—'}</span>
-                  {#if c.score !== null && c.score !== undefined}<span class="cp-chat-score"><Icon name="star" size={14} /> {c.score}</span>{:else}<span class="cp-chat-score cp-chat-score-blank">—</span>{/if}
-                  <span class="cp-chat-msg" title={c.first_message}>{c.first_message || '(no preview)'}</span>
-                  <a href="{base}/project/{slug}?session={c.session_id}" class="cp-chat-open">Open →</a>
-                </div>
-              {/each}
-            </div>
-          {/if}
-        </div>
-
-        <!-- Recent activity full-width -->
-        <div class="cp-card" style="margin-top: 12px;">
-          <div class="cp-card-head"><Icon name="clipboard" size={14} /> RECENT ACTIVITY</div>
-          {#if recentActivity.length === 0}
-            <div class="cp-empty">No activity yet.</div>
-          {:else}
-            <div class="cp-list">
-              {#each recentActivity as ev}
-                <div class="cp-act-row">
-                  <span class="cp-act-time">{ev.time}</span>
-                  <span class="cp-act-icon">{ev.icon}</span>
-                  <span class="cp-act-msg">{ev.msg}</span>
-                </div>
-              {/each}
-            </div>
-          {/if}
-        </div>
-      </section>
-
-    {/if}
-
-  <!-- ═══ DATA QUALITY ═══ -->
-      {/if}<!-- end hidden legacy: sources/files/table details -->
-    {/if}<!-- end upload tab -->
-  {:else if activeTab === 'data-quality'}
-    {@const _dqIssues = dqFilteredIssues()}
-    {@const _dqAllTables = dqData?.by_table ? Object.keys(dqData.by_table).sort() : []}
-    <div style="display: flex; flex-direction: column; gap: 14px;">
-      <!-- Score / counts strip -->
-      <div style="display: flex; align-items: center; gap: 18px; padding: 14px 18px; border: 2px solid var(--pw-ink); background: var(--pw-surface);">
-        <div style="display: flex; flex-direction: column; align-items: center; min-width: 92px;">
-          <div style="font-size: 28px; font-weight: 900; color: {dqScoreColor(dqData?.score ?? 100)}; font-family: var(--pw-font-serif, ui-serif);">
-            {dqData?.score ?? '—'}
-          </div>
-          <div style="font-size: 10px; color: var(--pw-muted); letter-spacing: 0.06em; text-transform: uppercase;">QUALITY SCORE</div>
-        </div>
-        <div style="display: flex; gap: 10px; flex-wrap: wrap; flex: 1;">
-          {#if dqData}
-            <span style="padding: 4px 10px; border: 1px solid var(--pw-error, #c14a3a); color: var(--pw-error, #c14a3a); font-size: 11px; font-weight: 700;">
-              ● {dqData.by_severity.high} HIGH
-            </span>
-            <span style="padding: 4px 10px; border: 1px solid #cc7a00; color: #cc7a00; font-size: 11px; font-weight: 700;">
-              ◐ {dqData.by_severity.medium} MED
-            </span>
-            <span style="padding: 4px 10px; border: 1px solid #888; color: #888; font-size: 11px; font-weight: 700;">
-              ○ {dqData.by_severity.low} LOW
-            </span>
-            <span style="padding: 4px 10px; border: 1px solid var(--pw-muted); color: var(--pw-muted); font-size: 11px; font-weight: 700;">
-              ⓘ {dqData.by_severity.info} INFO
-            </span>
-          {:else if dqLoading}
-            <span style="color: var(--pw-muted); font-size: 11px;">scanning…</span>
-          {/if}
-          {#if dqData?.last_scanned}
-            <span style="margin-left: auto; font-size: 10px; color: var(--pw-muted);">last scan: {dqData.last_scanned}</span>
-          {/if}
-        </div>
-        <button
-          class="set-cta"
-          style="padding: 8px 14px;"
-          disabled={dqRescanning}
-          onclick={rescanDataQuality}
-        >{dqRescanning ? '● SCANNING…' : '↻ RESCAN'}</button>
-      </div>
-
-      {#if dqData?.error}
-        <div style="padding: 10px 14px; border: 1px solid var(--pw-error, #c14a3a); color: var(--pw-error, #c14a3a); font-size: 11px;">
-          <Icon name="alert-triangle" size={14} /> {dqData.error}
-        </div>
-      {/if}
-
-      <!-- Filters -->
-      {#if dqData && dqData.issue_count}
-        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-          <span style="font-size: 10px; color: var(--pw-muted); letter-spacing: 0.06em; text-transform: uppercase;">FILTER</span>
-          {#each ['all', 'high', 'medium', 'low', 'info'] as sev}
-            <button
-              onclick={() => { dqSeverityFilter = sev as any; }}
-              style="padding: 4px 10px; border: 1.5px solid {dqSeverityFilter === sev ? 'var(--pw-ink)' : 'var(--pw-muted)'}; background: {dqSeverityFilter === sev ? 'var(--pw-ink)' : 'transparent'}; color: {dqSeverityFilter === sev ? 'var(--pw-surface)' : 'var(--pw-ink)'}; font-size: 10px; font-weight: 700; cursor: pointer; letter-spacing: 0.06em; text-transform: uppercase;"
-            >{sev}</button>
-          {/each}
-          <span style="margin-left: 12px; font-size: 10px; color: var(--pw-muted);">|</span>
-          <select
-            bind:value={dqTableFilter}
-            style="padding: 4px 8px; border: 1.5px solid var(--pw-muted); background: var(--pw-surface); font-size: 11px;"
-          >
-            <option value="">all tables ({_dqAllTables.length})</option>
-            {#each _dqAllTables as tn}
-              <option value={tn}>{tn} ({dqData.by_table[tn]})</option>
-            {/each}
-          </select>
-          {#if dqTableFilter || dqSeverityFilter !== 'all'}
-            <button
-              onclick={() => { dqTableFilter = ''; dqSeverityFilter = 'all'; }}
-              style="padding: 4px 8px; border: none; background: none; color: var(--pw-muted); font-size: 11px; cursor: pointer; text-decoration: underline;"
-            >clear filters</button>
-          {/if}
-          <span style="margin-left: auto; font-size: 11px; color: var(--pw-muted);">
-            showing {_dqIssues.length} of {dqData.issue_count}
-          </span>
-        </div>
-      {/if}
-
-      <!-- Issue list -->
-      {#if dqLoading && !dqData}
-        <div style="padding: 40px; text-align: center; color: var(--pw-muted); font-size: 11px;">● scanning project tables…</div>
-      {:else if dqData && dqData.score >= 100 && dqData.issue_count === 0}
-        <div style="padding: 60px 20px; text-align: center; border: 2px dashed var(--pw-success, #2d8a4a); background: rgba(45,138,74,0.04);">
-          <div style="font-size: 30px; margin-bottom: 8px;"><Icon name="star" size={14} /></div>
-          <div style="font-size: 13px; font-weight: 700; color: var(--pw-success, #2d8a4a);">No data quality issues detected</div>
-          <div style="font-size: 11px; color: var(--pw-muted); margin-top: 6px;">All {dqData.table_count} table(s) passed every check.</div>
-        </div>
-      {:else if _dqIssues.length === 0}
-        <div style="padding: 40px; text-align: center; color: var(--pw-muted); font-size: 11px;">
-          No issues match the active filter.
-        </div>
-      {:else}
-        <div style="display: flex; flex-direction: column; gap: 6px;">
-          {#each _dqIssues as it, ix}
-            <div style="border: 1.5px solid var(--pw-ink); border-left: 4px solid {dqSeverityColor(it.severity)}; background: var(--pw-surface);">
-              <button
-                onclick={() => { dqExpanded[ix] = !dqExpanded[ix]; dqExpanded = {...dqExpanded}; }}
-                style="width: 100%; display: grid; grid-template-columns: 32px 92px 1fr auto auto; gap: 12px; align-items: center; padding: 10px 14px; background: none; border: none; cursor: pointer; text-align: left; font: inherit; color: inherit;"
-              >
-                <span style="color: {dqSeverityColor(it.severity)}; font-size: 14px; font-weight: 700;">{dqSeverityIcon(it.severity)}</span>
-                <span style="padding: 2px 8px; border: 1px solid {dqSeverityColor(it.severity)}; color: {dqSeverityColor(it.severity)}; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; text-align: center;">{dqTypeLabel(it.type)}</span>
-                <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
-                  <div style="font-size: 11px; font-weight: 700; color: var(--pw-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                    {it.table}{#if it.column}<span style="color: var(--pw-muted); font-weight: 400;">.</span><span style="color: var(--pw-ink);">{it.column}</span>{/if}
-                  </div>
-                  <div style="font-size: 11px; color: var(--pw-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{it.message}</div>
-                </div>
-                <span style="font-size: 10px; color: var(--pw-muted); text-transform: uppercase; letter-spacing: 0.04em;">{it.severity}</span>
-                <span style="color: var(--pw-muted); font-size: 13px; transform: rotate({dqExpanded[ix] ? 90 : 0}deg); transition: transform 120ms;">▸</span>
-              </button>
-              {#if dqExpanded[ix]}
-                <div style="padding: 12px 18px 14px 58px; border-top: 1px dashed var(--pw-muted); background: var(--pw-bg-alt, rgba(0,0,0,0.02)); font-size: 11px; line-height: 1.55;">
-                  <div style="margin-bottom: 8px;"><strong>Issue:</strong> {it.message}</div>
-                  <div><strong>Suggestion:</strong></div>
-                  <pre style="margin: 6px 0 0 0; padding: 10px 12px; background: #1a1614; color: #e8e3d6; font-family: ui-monospace, monospace; font-size: 11px; overflow-x: auto; white-space: pre-wrap; word-break: break-word;">{it.suggestion}</pre>
-                </div>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      {/if}
+    <!-- ═══ TABLE LIST ═══ -->
+    <div class="dsx-tb">
+      <input class="dsx-search" placeholder="filter tables…" bind:value={dsFilter} />
+      <div class="dsx-tb-sp"></div>
+      {#if canEdit}<button class="dsx-btn" onclick={dsTrainAll}>↻ retrain all</button>{/if}
+      <select class="dsx-sortsel" bind:value={dsSort}>
+        <option value="health">sort: health</option>
+        <option value="rows">sort: rows</option>
+        <option value="trained">sort: trained</option>
+        <option value="name">sort: name</option>
+      </select>
     </div>
 
-  <!-- ═══ KNOWLEDGE ═══ -->
+    <div class="dsx-rows">
+      <div class="dsx-row dsx-rowhead">
+        <span>NAME</span><span>ROWS</span><span>COLS</span><span>TRAINED</span><span>Q&amp;A</span><span>VEC</span><span>HEALTH</span>
+      </div>
+      {#if dsLoading && !dsData}<div class="dsx-empty">loading…</div>{/if}
+      {#each dsSortedTables() as t (t.name)}
+        {@const q = t.quality || {}}
+        {@const training = dsTrainingTables[t.name] || (dsData?.summary?.is_training)}
+        <div class="dsx-row dsx-rowclk" onclick={() => dsExpanded = dsExpanded === t.name ? null : t.name}>
+          <span class="dsx-tname">{dsExpanded === t.name ? '▾' : '▸'} {t.name}{#if training}<span class="dsx-spin">⟳</span>{/if}</span>
+          <span>{(t.rows||0).toLocaleString()}</span>
+          <span>{t.cols}</span>
+          <span>{#if t.trained}<span class="dsx-ok">✓</span>{:else}<span class="dsx-no">○</span>{/if}</span>
+          <span>{t.qa_count||0}</span>
+          <span>{t.vec ?? '—'}</span>
+          <span><span class="dsx-health" class:dsx-health-lo={(q.score??0)<80}>{q.score??0}%</span></span>
+        </div>
+        {#if dsExpanded === t.name}
+          <div class="dsx-detail">
+            <div class="dsx-dsec"><b>OVERVIEW</b> {(t.rows||0).toLocaleString()} rows · {t.cols} cols{#if t.store?.column} · store key: {t.store.column}{#if Array.isArray(t.store.stores) && t.store.stores.length} ({t.store.stores.slice(0,4).join(', ')}{t.store.stores.length>4?'…':''}){/if}{/if} · {#if t.trained}<span class="dsx-ok">trained{#if t.last_trained} {new Date(t.last_trained).toLocaleString()}{/if}</span>{:else}<span class="dsx-no">not trained</span>{/if}</div>
+            <div class="dsx-dsec"><b>QUALITY</b> score {q.score??0}/100
+              <div class="dsx-qbars">
+                <div class="dsx-qbar"><span>Completeness</span><div class="dsx-qtrk"><div class="dsx-qfill" style="width:{q.completeness??0}%"></div></div><i>{q.completeness??0}%</i></div>
+                <div class="dsx-qbar"><span>Validity</span><div class="dsx-qtrk"><div class="dsx-qfill" style="width:{q.validity??0}%"></div></div><i>{q.validity??0}%</i></div>
+                <div class="dsx-qbar"><span>Uniqueness</span><div class="dsx-qtrk"><div class="dsx-qfill" style="width:{q.uniqueness??0}%"></div></div><i>{q.uniqueness??0}%</i></div>
+              </div>
+              {#if Array.isArray(q.notes) && q.notes.length}<div class="dsx-notes">⚠ {q.notes.join(' · ')}</div>{/if}
+            </div>
+            <div class="dsx-dsec"><b>COLUMNS</b> {#each (t.columns||[]) as c}<span class="dsx-col">{c.name}<i>{c.type}</i></span>{/each}</div>
+            {#if Array.isArray(t.links) && t.links.length}
+              <div class="dsx-dsec"><b>LINKS</b> {#each t.links as l}<span class="dsx-link">🔗 {l.table} · {Array.isArray(l.on)?l.on.join(','):''}</span>{/each}</div>
+            {/if}
+            {#if Array.isArray(t.preview) && t.preview.length}
+              <div class="dsx-dsec"><b>PREVIEW</b>
+                <div class="dsx-prev"><table><thead><tr>{#each (t.columns||[]) as c}<th>{c.name}</th>{/each}</tr></thead><tbody>{#each t.preview as row}<tr>{#each row as cell}<td>{cell}</td>{/each}</tr>{/each}</tbody></table></div>
+              </div>
+            {/if}
+            {#if canEdit}
+            <div class="dsx-dacts">
+              <button class="dsx-btn" onclick={(e)=>{e.stopPropagation(); dsTrainTables([t.name]);}}>↻ {t.trained ? 'retrain' : 'train now'}</button>
+              <a class="dsx-btn" href={`/api/projects/${slug}/tables/${t.name}/download?format=csv&project=${slug}`} onclick={(e)=>e.stopPropagation()}>↓ download</a>
+              <button class="dsx-btn dsx-btn-danger" onclick={(e)=>{e.stopPropagation(); dsDeleteTable(t.name);}}>✕ delete</button>
+            </div>
+            {/if}
+          </div>
+        {/if}
+      {/each}
+      {#if dsData && !dsSortedTables().length}<div class="dsx-empty">no tables{dsFilter ? ' match filter' : ' — upload data to begin'}</div>{/if}
+    </div>
+
+    {/if}<!-- end upload tab -->
+  <!-- ═══ BRAIN (unified hub, shared with /ui/brain) — rail item drives the category ═══ -->
+  {:else if activeTab.startsWith('brain-')}
+    <BrainHub embedded item={activeTab.slice(6)} />
+  <!-- ═══ FILES (raw knowledge metadata) ═══ -->
   {:else if activeTab === 'knowledge'}
     <div class="cli-terminal" style="margin-bottom: 16px; padding: 8px 14px;">
       <div class="cli-line">
@@ -10329,171 +9148,6 @@ function signUserJWT($user) {
         </div>
       </div>
     {/if}
-
-  <!-- ═══ WORKFLOWS ═══ -->
-  {:else if activeTab === 'workflows'}
-    <div class="cli-terminal" style="margin-bottom: 16px; padding: 8px 14px;">
-      <div class="cli-line">
-        <span class="cli-prompt">$</span>
-        <span class="cli-command">dash workflows</span>
-        <span class="cli-output">--list</span>
-        <span class="cli-dim" style="margin-left: auto;">{workflows.length} workflows</span>
-      </div>
-    </div>
-
-    {#if false}
-    <!-- ── Vertical pack picker (Issue #4) — pruned in single-agent ── -->
-    <div style="margin-bottom: 18px; padding: 14px 16px; background: var(--pw-bg-alt, #f1ede4); border: 1px solid var(--pw-border, #e7e3da); border-radius: 8px;">
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-        <div>
-          <div style="font-family: 'Source Serif Pro', Georgia, serif; font-size: 15px; font-weight: 600; color: var(--pw-ink);">Vertical workflow packs</div>
-          <div style="font-size: 12px; color: var(--pw-muted, #87837a); margin-top: 2px;">Auto-install pre-built workflows that match your data shape</div>
-        </div>
-        <button type="button" class="set-btn" onclick={async () => {
-          try {
-            const r = await fetch(`/api/projects/${slug}/vertical-packs/detect`, { headers: _h() });
-            if (!r.ok) { cLog(`${ts()} pack detect failed: ${r.status}`); return; }
-            const d = await r.json();
-            (window as any).__vpDetect = d.matches || [];
-            vpacksDetect = d.matches || [];
-            cLog(`${ts()} detected ${vpacksDetect.length} pack(s)`);
-          } catch (e) { cLog(`${ts()} pack detect err: ${e}`); }
-        }}>↻ Detect packs</button>
-      </div>
-      {#if vpacksDetect && vpacksDetect.length > 0}
-        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
-          {#each vpacksDetect as p}
-            <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: var(--pw-surface, #faf9f5); border: 1px solid var(--pw-border, #e7e3da); border-radius: 6px;">
-              <div style="flex: 1; min-width: 0;">
-                <div style="font-weight: 600; color: var(--pw-ink); font-size: 13px;">{p.name} <span style="font-weight: 400; color: var(--pw-muted); font-size: 11px;">— {p.vertical}</span></div>
-                <div style="font-size: 11px; color: var(--pw-muted, #87837a); margin-top: 2px;">{p.description} · {p.workflow_count} workflows</div>
-              </div>
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-family: ui-monospace, monospace; font-size: 11px; color: {p.score >= 0.6 ? '#16a34a' : p.score >= 0.4 ? '#a06000' : '#dc2626'}; font-weight: 700;">
-                  {(p.score * 100).toFixed(0)}% match
-                </span>
-                <button type="button" class="set-btn"
-                        style="background: {p.score >= 0.4 ? 'var(--pw-accent)' : 'transparent'}; color: {p.score >= 0.4 ? '#fff' : 'var(--pw-muted)'}; border-color: {p.score >= 0.4 ? 'var(--pw-accent)' : 'var(--pw-border)'};"
-                        disabled={p.score < 0.2 || vpackInstalling}
-                        onclick={async () => {
-                          vpackInstalling = true;
-                          cLog(`${ts()} ── installing pack ${p.name}...`);
-                          try {
-                            const r = await fetch(`/api/projects/${slug}/vertical-packs/install`, {
-                              method: 'POST', headers: { ..._h(), 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ pack: p.name })
-                            });
-                            const d = await r.json();
-                            if (r.ok && d.ok) {
-                              cLog(`${ts()} ✓ installed ${d.installed} workflow(s), skipped ${d.skipped}`);
-                              if (typeof loadWorkflows === 'function') loadWorkflows();
-                            } else {
-                              cLog(`${ts()} ✗ install failed: ${d.error || r.status}`);
-                            }
-                          } catch (e) { cLog(`${ts()} install err: ${e}`); }
-                          finally { vpackInstalling = false; }
-                        }}>
-                  {vpackInstalling ? '…' : '+ Install'}
-                </button>
-              </div>
-            </div>
-          {/each}
-        </div>
-      {:else}
-        <div style="font-size: 12px; color: var(--pw-muted); padding: 6px 0;">Click "Detect packs" to see which vertical templates match this project's schema.</div>
-      {/if}
-    </div>
-    {/if}
-    <div class="flex items-center justify-between mb-4">
-      <div style="font-size: 16px; font-weight: 900; text-transform: uppercase;">Workflows</div>
-      <div>
-        <input type="file" accept=".pptx,.pdf,.docx" onchange={async (e) => {
-          const file = (e.target as HTMLInputElement).files?.[0];
-          if (!file) return;
-          // 1. Upload the doc
-          const fd = new FormData(); fd.append('file', file);
-          cLog(`${ts()} ── uploading ${file.name}...`);
-          try {
-            const upRes = await fetch(`/api/upload-doc?project=${slug}`, { method: 'POST', body: fd, headers: _h() });
-            if (!upRes.ok) { cLog(`${ts()} │ upload failed`); return; }
-            cLog(`${ts()} │ uploaded`);
-            // 2. Extract workflow from doc
-            cLog(`${ts()} ── extracting workflow structure...`);
-            const wfRes = await fetch(`/api/projects/${slug}/doc-to-workflow`, {
-              method: 'POST', headers: { ..._h(), 'Content-Type': 'application/json' },
-              body: JSON.stringify({ filename: file.name })
-            });
-            if (wfRes.ok) {
-              const data = await wfRes.json();
-              docWorkflowPreview = data.workflow;
-              cLog(`${ts()} │ found ${data.workflow?.steps?.length || 0} steps`);
-            } else {
-              cLog(`${ts()} │ extraction failed — try from DOCS tab`);
-            }
-          } catch { cLog(`${ts()} │ error`); }
-          (e.target as HTMLInputElement).value = '';
-        }} style="display: none;" id="wf-import-input" />
-        <button class="send-btn" onclick={() => (document.getElementById('wf-import-input') as HTMLInputElement)?.click()} style="padding: 6px 14px; font-size: 10px; cursor: pointer;">↑ IMPORT ANALYSIS</button>
-      </div>
-    </div>
-    <div style="font-size: 10px; color: var(--pw-muted); margin-bottom: 12px;">Upload a past PPTX/PDF/DOCX report to auto-create a reusable workflow from its structure.</div>
-    {#if workflows.length > 0}
-      {#each workflows as wf, wi}
-        <div class="ink-border mb-2" style="background: var(--pw-surface); padding: 12px 16px;">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <span style="font-weight: 900; text-transform: uppercase; font-size: 11px;">{wf.name}</span>
-              {#if wf.source === 'document'}
-                <span style="font-size: 7px; font-weight: 900; padding: 1px 5px; background: #cc7a00; color: white; text-transform: uppercase;">FROM DOC</span>
-              {:else if wf.source === 'mined'}
-                <span style="font-size: 7px; font-weight: 900; padding: 1px 5px; background: #6366f1; color: white; text-transform: uppercase;">DISCOVERED</span>
-              {:else if wf.source === 'user'}
-                <span style="font-size: 7px; font-weight: 900; padding: 1px 5px; background: var(--pw-accent); color: white; text-transform: uppercase;">USER</span>
-              {:else}
-                <span style="font-size: 7px; font-weight: 900; padding: 1px 5px; background: var(--pw-muted); color: white; text-transform: uppercase;">AUTO</span>
-              {/if}
-            </div>
-            <button class="send-btn" style="font-size: 11px; padding: 3px 10px;" onclick={async () => {
-              window.dispatchEvent(new CustomEvent('dash-cli-log', { detail: { text: `  ${new Date().toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})} ── running workflow: ${wf.name}` } }));
-              try {
-                const res = await fetch(`/api/projects/${slug}/workflows-db/${wf.id}/run`, { method: 'POST', headers: _h() });
-                if (res.ok) {
-                  const d = await res.json();
-                  for (const r of d.results || []) {
-                    window.dispatchEvent(new CustomEvent('dash-cli-log', { detail: { text: `  ${new Date().toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})} │ step ${r.step}: ${r.prompt?.slice(0, 60)}` } }));
-                  }
-                }
-              } catch {}
-            }}>RUN</button>
-          </div>
-          <div style="font-size: 11px; color: var(--pw-muted); margin-top: 4px;">{wf.description}</div>
-          {#if wf.steps?.length}
-            <div style="margin-top: 6px;">
-              {#each (Array.isArray(wf.steps) ? wf.steps : []) as step, si}
-                <div style="font-size: 10px; color: var(--pw-muted); padding-left: 8px;">
-                  {si + 1}. {typeof step === 'string' ? step : step.description || step}
-                </div>
-              {/each}
-            </div>
-          {/if}
-        </div>
-      {/each}
-    {:else}<div style="font-size: 11px; color: var(--pw-muted);">No workflows yet. Click TRAIN ALL to auto-generate sample workflows.</div>{/if}
-
-    <!-- Discover Patterns -->
-    <div style="margin-top: 16px;">
-      <button class="send-btn" disabled={mining} style="font-size: 10px; padding: 6px 14px;" onclick={async () => {
-        mining = true;
-        cLog(`${ts()} ── mining conversation patterns...`);
-        try {
-          const r = await fetch(`/api/projects/${slug}/mine-patterns`, { method: 'POST', headers: _h() });
-          const d = await r.json();
-          if (d.status === 'ok') { cLog(`${ts()} │ discovered ${d.workflows_created} new workflows`); loadWorkflows(); }
-          else cLog(`${ts()} │  · ${d.detail || 'no patterns found'}`);
-        } catch {} finally { mining = false; }
-      }}>{mining ? 'MINING...' : 'DISCOVER PATTERNS'}</button>
-      <span style="font-size: 10px; color: var(--pw-muted); margin-left: 8px;">Analyze past conversations to find recurring analysis workflows</span>
-    </div>
 
   <!-- ═══ SCHEDULES ═══ -->
   {:else if activeTab === 'schedules'}
@@ -15284,14 +13938,14 @@ function signUserJWT($user) {
       {/each}
       {#each dbSources as src}
         {@const srcMode = src.mode || 'sync'}
-        {@const srcDialect = src.dialect || (src.db_type === 'fabric' ? 'tsql' : src.db_type)}
+        {@const srcDialect = src.dialect || src.db_type}
         {@const srcScope = src.agent_scope || 'project'}
         {@const isDegraded = !!src.degraded}
         {@const driftOk = !src.drift_baseline || src.drift_status === 'ok'}
         <div class="ink-border" style="padding: 0; background: var(--pw-surface); margin-bottom: 8px;">
           <!-- Header row (existing-style) -->
           <div style="padding: 10px 14px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--pw-bg-alt);">
-            <div style="width: 28px; height: 28px; background: {src.db_type === 'mysql' ? '#00758f' : src.db_type === 'fabric' ? '#0078d4' : '#336791'}; display: flex; align-items: center; justify-content: center; font-weight: 900; color: white; font-size: 11px;">{src.db_type === 'mysql' ? 'MY' : src.db_type === 'fabric' ? 'FB' : 'PG'}</div>
+            <div style="width: 28px; height: 28px; background: {src.db_type === 'mysql' ? '#00758f' : '#336791'}; display: flex; align-items: center; justify-content: center; font-weight: 900; color: white; font-size: 11px;">{src.db_type === 'mysql' ? 'MY' : 'PG'}</div>
             <div style="flex: 1;">
               <div style="font-size: 11px; font-weight: 900;">{src.name || src.db_type?.toUpperCase()} <span style="font-size: 11px; color: var(--pw-muted);">({srcDialect} &middot; {srcMode})</span></div>
               <div style="font-size: 11px; color: var(--pw-muted);">{src.host}:{src.port}/{src.database} &middot; {src.tables_synced || 0} tables {#if src.last_sync_at}&middot; {src.last_sync_at.slice(0, 16)}{/if}</div>
@@ -15589,13 +14243,6 @@ function signUserJWT($user) {
           <div style="font-size: 11px; font-weight: 900;">MySQL</div>
           <div style="font-size: 11px; color: var(--pw-muted); margin-top: 2px;">Sync or live query</div>
         </button>
-        <!-- Microsoft Fabric -->
-        <button class="ink-border" style="padding: 16px; background: var(--pw-surface); cursor: pointer; text-align: center; border-width: 2px;"
-          onclick={() => { sourceType = 'database'; dbType = 'fabric'; dbPort = '1433'; dbStep = 'form'; }}>
-          <div style="width: 36px; height: 36px; background: #0078d4; display: flex; align-items: center; justify-content: center; font-weight: 900; color: white; font-size: 11px; margin: 0 auto 8px;">FB</div>
-          <div style="font-size: 11px; font-weight: 900;">Microsoft Fabric</div>
-          <div style="font-size: 11px; color: var(--pw-muted); margin-top: 2px;">Live SQL query</div>
-        </button>
       </div>
 
     <!-- ── Database Connection Wizard ── -->
@@ -15608,7 +14255,7 @@ function signUserJWT($user) {
           <div style="display: flex; flex-direction: column; gap: 8px;">
             <div>
               <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 2px;">HOST</div>
-              <input type="text" bind:value={dbHost} placeholder={dbType === 'fabric' ? 'workspace.datawarehouse.fabric.microsoft.com' : 'db.company.com'} style="width: 100%; border: 2px solid var(--pw-ink); padding: 6px 10px; font-family: var(--pw-font-body); font-size: 11px; background: var(--pw-surface);" />
+              <input type="text" bind:value={dbHost} placeholder="db.company.com" style="width: 100%; border: 2px solid var(--pw-ink); padding: 6px 10px; font-family: var(--pw-font-body); font-size: 11px; background: var(--pw-surface);" />
             </div>
             <div style="display: flex; gap: 8px;">
               <div style="flex: 1;">
@@ -16729,9 +15376,6 @@ function signUserJWT($user) {
     </div>
 
   <!-- ═══ GRAPH ═══ -->
-  {:else if activeTab === 'graph'}
-    <GraphPanel slug={slug} />
-
   <!-- ═══ JOURNAL ═══ -->
   {:else if activeTab === 'journal'}
     <JournalPanel slug={slug} />
@@ -16900,6 +15544,13 @@ function signUserJWT($user) {
 {/if}
 
 <style>
+ /* ─── Auto-train robot wrapper ─── */
+ .auto-robot-wrap {
+  margin: 12px 0 0;
+  display: flex;
+  justify-content: flex-start;
+ }
+
  /* ─── Cockpit modern redesign (CP-*) ─── */
  .cp-header-strip {
  display: flex; align-items: center; gap: 14px;
@@ -17171,6 +15822,29 @@ function signUserJWT($user) {
  }
  .ds-drift-chip:hover { background: var(--pw-accent); color: #fff; }
  .ds-drift-chip .ds-arrow { font-weight: 600; }
+
+ /* Data Source sub-tabs */
+ .ds-subtabs {
+   display: flex; gap: 2px; margin: 14px 0 18px;
+   border-bottom: 2px solid var(--pw-border);
+ }
+ .ds-subtab {
+   display: inline-flex; align-items: center; gap: 6px;
+   padding: 7px 14px; font-size: 12px; font-weight: 600;
+   color: var(--pw-muted); background: none; border: none;
+   cursor: pointer; border-bottom: 2px solid transparent;
+   margin-bottom: -2px; letter-spacing: 0.01em;
+   transition: color 0.12s;
+ }
+ .ds-subtab:hover { color: var(--pw-ink); }
+ .ds-subtab-on { color: var(--pw-accent) !important; border-bottom-color: var(--pw-accent) !important; }
+ .ds-subtab-badge {
+   font-size: 10px; font-weight: 700; padding: 1px 5px;
+   background: var(--pw-bg-alt); color: var(--pw-muted);
+   border-radius: 8px; font-family: ui-monospace, monospace;
+ }
+ .ds-subtab-badge-err { background: rgba(192,57,43,0.12); color: #c0392b; }
+ .ds-subtab-badge-run { background: rgba(201,99,66,0.15); color: var(--pw-accent); animation: pulse 1s ease-in-out infinite; }
 
  .ds-drop {
  width: 100%;
@@ -17788,7 +16462,9 @@ function signUserJWT($user) {
  overflow-x: hidden;
  min-height: 0;
  overscroll-behavior: contain;
+ scrollbar-width: none;
  }
+ .set-main::-webkit-scrollbar { display: none; }
  .set-rail {
  background: var(--pw-bg-alt);
  border-right: 1px solid var(--pw-border);
@@ -17805,10 +16481,10 @@ function signUserJWT($user) {
  gap: 1px;
  box-shadow: none !important;
  outline: none !important;
- scrollbar-width: thin;
- scrollbar-color: var(--pw-muted) var(--pw-bg-alt);
+ scrollbar-width: none;
  scroll-padding-block: 8px;
  }
+ .set-rail::-webkit-scrollbar { display: none; }
  /* Always-visible scrollbar so user knows they can scroll */
  .set-rail::-webkit-scrollbar { width: 10px !important; -webkit-appearance: none; }
  .set-rail::-webkit-scrollbar-track { background: var(--pw-bg-alt); }
@@ -17991,8 +16667,9 @@ function signUserJWT($user) {
  justify-content: space-between;
  gap: 16px;
  margin-bottom: 28px;
+ flex-wrap: wrap;
  }
- .set-head-left { flex: 1; min-width: 0; }
+ .set-head-left { flex: 1 1 260px; min-width: 0; }
  .set-back {
  font-size: 12px;
  color: var(--pw-muted);
@@ -18015,7 +16692,7 @@ function signUserJWT($user) {
  color: var(--pw-muted);
  margin: 0;
  }
- .set-head-actions { display: flex; gap: 8px; align-items: center; }
+ .set-head-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex-shrink: 0; }
  .set-cta {
  background: var(--pw-accent);
  color: #fff;
@@ -18269,6 +16946,7 @@ function signUserJWT($user) {
 
  @media (max-width: 1100px) {
  .set-shell { grid-template-columns: 56px 1fr; }
+ .set-shell-norail { grid-template-columns: 1fr; }
  .set-rail { padding: 12px 6px; }
  .set-rail-grouplabel,
  .set-rail button span:not(.set-rail-count) { display: none; }
@@ -18277,6 +16955,7 @@ function signUserJWT($user) {
  }
  @media (max-width: 700px) {
  .set-shell { grid-template-columns: 1fr; }
+ .set-shell-norail { grid-template-columns: 1fr; }
  .set-rail {
  flex-direction: row;
  overflow-x: auto;
@@ -19260,5 +17939,75 @@ function signUserJWT($user) {
  background: rgba(25,135,84,0.10);
  color: #146c43;
  }
+
+/* ═══════════ NEW Data Source (dsx-*) ═══════════ */
+.dsx-rings { display:flex; align-items:stretch; gap:10px; margin:4px 0 14px; flex-wrap:wrap; }
+.dsx-ring { background:var(--pw-surface); border:1px solid var(--pw-border); border-radius:10px; padding:10px 16px; min-width:84px; text-align:center; }
+.dsx-ring-warn { border-color:#c0392b; background:rgba(192,57,43,0.06); }
+.dsx-ring-n { font-size:22px; font-weight:700; color:var(--pw-ink); line-height:1.1; }
+.dsx-ring-warn .dsx-ring-n { color:#c0392b; }
+.dsx-ring-l { font-size:10px; text-transform:uppercase; letter-spacing:0.04em; color:var(--pw-ink-soft); margin-top:3px; }
+.dsx-rings-sp { flex:1; }
+.dsx-upbtn { align-self:center; background:var(--pw-accent); color:#fff; border:none; border-radius:8px; padding:9px 16px; font-size:13px; font-weight:600; cursor:pointer; }
+.dsx-upbtn:hover { filter:brightness(1.05); }
+.dsx-drop { width:100%; background:var(--pw-bg-alt); border:1.5px dashed var(--pw-border); border-radius:10px; padding:18px; margin-bottom:14px; color:var(--pw-ink-soft); font-size:13px; cursor:pointer; text-align:center; }
+.dsx-drop:hover { border-color:var(--pw-accent); color:var(--pw-ink); }
+.dsx-upmsg { margin:-8px 0 14px; padding:8px 12px; background:var(--pw-bg-alt); border:1px solid var(--pw-border); border-radius:8px; font-size:12.5px; color:var(--pw-ink); }
+.dsx-upmsg-err { border-color:#c0392b; color:#c0392b; }
+
+.dsx-pipe { display:flex; align-items:center; gap:6px; background:var(--pw-bg-alt); border:1px solid var(--pw-border); border-radius:10px; padding:10px 14px; margin-bottom:14px; flex-wrap:wrap; }
+.dsx-pst { display:flex; align-items:center; gap:5px; }
+.dsx-pdot { width:14px; height:14px; border-radius:50%; background:var(--pw-border); display:inline-flex; align-items:center; justify-content:center; font-size:9px; line-height:1; color:#fff; font-weight:700; flex:0 0 auto; }
+.dsx-pst.done .dsx-pdot { background:#3fae5a; }
+.dsx-pst.on .dsx-pdot { background:var(--pw-accent); animation:pulse 1s ease-in-out infinite; }
+.dsx-pst.idle .dsx-pdot { background:var(--pw-border); }
+.dsx-pst.done .dsx-plbl { color:#2e8b46; font-weight:600; }
+.dsx-pst.on .dsx-plbl { color:var(--pw-accent); font-weight:600; }
+.dsx-pst.idle .dsx-plbl { color:var(--pw-muted); }
+.dsx-plbl { font-size:10px; letter-spacing:0.03em; color:var(--pw-ink-soft); }
+.dsx-pline { flex:1; min-width:14px; height:2px; border-radius:1px; background:var(--pw-border); transition:background .3s; }
+.dsx-pline.done { background:#3fae5a; }
+.dsx-pstat { margin-left:auto; font-size:11px; color:var(--pw-ink-soft); font-family:var(--pw-font-mono, monospace); }
+
+.dsx-tb { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.dsx-search { flex:0 0 240px; padding:7px 10px; border:1px solid var(--pw-border); border-radius:8px; font-size:13px; background:var(--pw-bg); color:var(--pw-ink); }
+.dsx-tb-sp { flex:1; }
+.dsx-sortsel { padding:7px 10px; border:1px solid var(--pw-border); border-radius:8px; font-size:12px; background:var(--pw-bg); color:var(--pw-ink); }
+.dsx-btn { background:var(--pw-bg-alt); border:1px solid var(--pw-border); border-radius:7px; padding:6px 12px; font-size:12px; color:var(--pw-ink); cursor:pointer; text-decoration:none; display:inline-block; }
+.dsx-btn:hover { border-color:var(--pw-accent); color:var(--pw-accent); }
+.dsx-btn-danger:hover { border-color:#c0392b; color:#c0392b; }
+
+.dsx-rows { border:1px solid var(--pw-border); border-radius:10px; overflow:hidden; }
+.dsx-row { display:grid; grid-template-columns:1fr 90px 56px 80px 56px 56px 90px; gap:8px; align-items:center; padding:9px 14px; font-size:13px; border-bottom:1px solid var(--pw-border); }
+.dsx-row:last-child { border-bottom:none; }
+.dsx-rowhead { background:var(--pw-bg-alt); font-size:10px; text-transform:uppercase; letter-spacing:0.05em; color:var(--pw-ink-soft); font-weight:600; }
+.dsx-rowclk { cursor:pointer; }
+.dsx-rowclk:hover { background:var(--pw-bg-alt); }
+.dsx-tname { font-weight:600; color:var(--pw-ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dsx-spin { display:inline-block; margin-left:6px; color:var(--pw-accent); animation:spin 1s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.dsx-ok { color:#6dc97a; font-weight:700; }
+.dsx-no { color:var(--pw-ink-soft); }
+.dsx-health { font-weight:600; color:#3a8a4a; }
+.dsx-health-lo { color:#a06000; }
+
+.dsx-detail { padding:14px 18px; background:var(--pw-bg-alt); border-bottom:1px solid var(--pw-border); font-size:12.5px; color:var(--pw-ink); }
+.dsx-dsec { margin-bottom:10px; line-height:1.6; }
+.dsx-dsec b { display:inline-block; min-width:96px; font-size:10.5px; text-transform:uppercase; letter-spacing:0.04em; color:var(--pw-ink-soft); }
+.dsx-qbars { margin-top:6px; display:flex; flex-direction:column; gap:5px; max-width:520px; }
+.dsx-qbar { display:grid; grid-template-columns:110px 1fr 44px; gap:8px; align-items:center; font-size:11.5px; }
+.dsx-qtrk { height:7px; background:var(--pw-border); border-radius:4px; overflow:hidden; }
+.dsx-qfill { height:100%; background:var(--pw-accent); }
+.dsx-qbar i { font-style:normal; color:var(--pw-ink-soft); text-align:right; }
+.dsx-notes { margin-top:6px; color:#a06000; font-size:11.5px; }
+.dsx-col { display:inline-block; background:var(--pw-bg); border:1px solid var(--pw-border); border-radius:5px; padding:2px 7px; margin:2px 4px 2px 0; font-size:11px; }
+.dsx-col i { font-style:normal; color:var(--pw-ink-soft); margin-left:5px; }
+.dsx-link { display:inline-block; margin-right:12px; color:var(--pw-ink); }
+.dsx-prev { margin-top:6px; overflow-x:auto; }
+.dsx-prev table { border-collapse:collapse; font-size:11px; }
+.dsx-prev th { background:var(--pw-bg); text-align:left; padding:4px 8px; border:1px solid var(--pw-border); font-size:10px; text-transform:uppercase; color:var(--pw-ink-soft); white-space:nowrap; }
+.dsx-prev td { padding:4px 8px; border:1px solid var(--pw-border); white-space:nowrap; max-width:160px; overflow:hidden; text-overflow:ellipsis; }
+.dsx-dacts { margin-top:10px; display:flex; gap:8px; }
+.dsx-empty { padding:24px; text-align:center; color:var(--pw-ink-soft); font-size:13px; }
 
 </style>

@@ -34,7 +34,7 @@ docker cp app/<f>.py cp-api:/app/app/<f>.py                                     
 5. Routers in `app/main.py` are **try/except guarded** → deleting a guarded router file just unregisters it (boot-safe). But **lifespan-body imports are NOT guarded** (e.g. `init_sharepoint` at line ~292) — those crash startup.
 
 ### UI shape (single-agent revamp)
-- Top nav: **Chat · Agent Brain · Upload · Company Brain · Admin**. "Agent Brain" = the full project Settings page (all tabs). Upload = standalone minimal page (dropzone + Train, no rail). Ontology merged into Company Brain.
+- Top nav: **Chat · Data Source · Workspace · API Gateway · Embed · Admin** (as of 2026-06-06). **Workspace** = the full project Settings page, ONE left rail grouped **WORKSPACE · BRAIN · AGENTS · SHARING · INTELLIGENCE** — Brain is a rail GROUP inside it (no separate top-nav button; folded 2026-06-06, see latest+5). Data Source = redesigned full-width no-rail page (health rings + live pipeline strip + expandable table rows w/ inline quality/columns/links/preview/Train-now), backed by `GET /api/projects/{slug}/datasource`; auto-trains untrained tables 24/7. API Gateway + Embed = super-admin only. Brain merge history: Agent Brain + Company Brain → unified Brain (latest+4) → folded into Workspace rail (latest+5). Ontology lives in the Brain group.
 - Composer: Dashboard/Slides/Excel/Research buttons + DASH pill REMOVED.
 - Chat output: clean Compass-style answer card, NO INSIGHT/DATA/SQL/CHART/SOURCES tabs — SQL in a collapsed "✓ N steps · expand" trace. Code in `frontend/src/lib/chat/ChatMessageList.svelte` + `AnswerCard.svelte`.
 - Cockpit: animated **Agent Flow** diagram (`frontend/src/lib/AgentFlow.svelte`) — always-alive (dashes drift, traveling packets, crew-dot pulse), faster when `processing`. Docs→Crew→5 stores→Chat Lanes→Answer. No fill bars (removed per user).
@@ -67,8 +67,405 @@ Primary persona = **pharmacy counter staff** (not analyst). Goal: check stock, f
 - **Verified live:** "is paracetamol in stock at my branch?" → agent called `stock_check` 4× → branch-scoped table (928 units, 15 SKUs, BIOGESIC 168…). "substitutes for AMOR LEVONORGESTREL" → `find_substitutes` → 3 in-stock Levonorgestrel alternatives + dosage caveat.
 - **DATA GAPS (data, not code):** no retail/MRP price (only `weighted_cost_price` = cost); pack/strength buried in brand string ("ALAXAN 10's"); `dosage` col = Burmese patient instructions. No UI yet to self-pick "my branch" — set `dash_users.site_code` per shop login (one UPDATE) or add a picker.
 
+### Admin Command Center prune (2026-06) — single-agent cleanup of the rail
+The Admin (`/ui/command-center`) inherited the full multi-tenant platform rail. Pruned it to match the single-agent product + fixed broken panels.
+- **Killed 6 wrong-domain tabs** (`frontend/src/routes/command-center/+page.svelte`): removed from `_railGroupsBase` AND deleted their `{:else if activeTab===...}` content blocks — **Architecture** (multi-service viz), **External connectors** (SharePoint/GDrive/OneDrive — backend pruned), **Data drift** (ML monitor, no consumer), **Federation** (multi-tenant), **Channels** (Slack/Teams fan-out), **MCP Servers** (agent-builder).
+- **Killed 3 dead rail GROUPS** — **Governance**, **Agent OS**, **Telemetry**. Their backends (`governance_api`, `agent_os_admin_api`, `agent_os_workflows`, `telemetry`) were DELETED in the earlier router prune → every sub-tab returned **HTTP 404**. Removed the `{#if g.label === 'System'}` sub-group rail block + the `gov-`/`aos-`/`tel-` content renders + `GovernancePanel`/`AgentOsAdminPanel`/`TelemetryPanel` imports. (`govSubs`/`aosSubs`/`telSubs` arrays + `_isSubTab` left as harmless dead stubs.)
+- **Trimmed Trust & Governance** — dropped **Approvals / Dataview / Packs** (`approval_api`/`dataview_api`/`packs_api` GONE). Kept accuracy/golden/mdl/diff/scope-audit/actions/metricflow (backends PRESENT).
+- **Fixed HTTP 401 on 5 kept panels** — `AccuracyPanel`/`GoldenPanel`/`DiffPanel`/`ScopeAuditPanel`/`MetricflowPanel` called bare `fetch()` with no auth header. Swapped `fetch(`→`dashFetch(` (auto-injects `Bearer` + `X-Scope-Id` from `lib/api.ts`) + added `import { dashFetch } from '$lib/api'`. Verified live: accuracy/golden/diff now **200** (were 401). **PATTERN: every lib/admin panel must use `dashFetch`, never raw `fetch` — raw fetch = silent 401.**
+- **Diagnosis recipe** for an admin tab error: `docker exec cp-api test -f /app/app/<router>.py` → GONE = 404 = kill the tab; PRESENT + 401 = panel missing auth = swap to `dashFetch`.
+- **Caveat — `kill -HUP 1` masks deleted-module 404s in dev:** routers `docker cp`'d but not baked vanish on container restart. If a previously-working admin tab 404s, check the file exists in the container before assuming a code bug.
+- Admin rail now (single-agent clean): Overview · People · Data · System (stats/health/users/projects/chatLogs/schemas/integrations/traces/logs/admin-settings/llm) + Trust & Governance (accuracy/golden/mdl/diff/scope-audit/actions/metricflow). All rail/content removals reversible (re-add id to `_railGroupsBase` + restore block).
+
+### Nav rename — "Upload" → "Data Source" (2026-06)
+Top-nav single-agent item (`frontend/src/routes/+layout.svelte`, `{#if singleAgent}` block) relabeled **Upload → Data Source** + upload-tray icon → database-cylinder SVG. Same destination (`uploadHref` = standalone dropzone at settings `#upload`). Reflects the pharmacy data-ingestion framing (upload file OR DB connector). Standalone page body unchanged (just the dropzone — no other visible "Upload" string).
+
+### Data Quality folded into Data Source (2026-06-04)
+Standalone **Data Quality** tab killed; its UI now a section INSIDE the Data Source (`upload`) tab. File: `frontend/src/routes/project/[slug]/settings/+page.svelte`.
+- Rail `tabs` array (~4735): dropped `data-quality` entry; `upload` label `UPLOAD` → `DATA SOURCE`. Friendly-label `groups` rail (~6188): dropped Data Quality item too.
+- Rail onclick (~6223): opening `upload` now triggers `loadDataQuality(false)` (auto-load on open).
+- `openDataQualityForTable(tname)` (~1346): Cockpit per-table DQ drill now sets `activeTab='upload'` + smooth-scrolls `#dq-section` instead of dead tab.
+- DQ section inserted into upload-tab block (gated `{#if _totalTables > 0}`, wrapped `<div id="dq-section">`): score strip (`dqScoreColor`) · severity counts ●HIGH ◐MED ○LOW ⓘINFO · last-scan ts · `↻ Rescan` (`rescanDataQuality`) · severity/table filter chips · collapsible issue list (`dqSeverityColor`/`dqSeverityIcon`/`dqTypeLabel`/`dqExpanded`). Reuses ALL existing dq state — none added.
+- Page order: Upload dropzone → Loaded data → **Data quality** → Train.
+- Deleted dead standalone `{:else if activeTab === 'data-quality'}` block (124 lines).
+- Harmless leftovers (intentional): backend endpoints `/data-quality` + `/data-quality/rescan` still called by `loadDataQuality`/`rescanDataQuality`; dead `case 'data-quality'` in `tv()` + rail-icon SVG (no tab has that id → never hit). Reversible: re-add the two rail entries + restore the deleted block.
+
+### Dead RELATED-QUESTIONS chip — payload dropped in wrapper (2026-06-04)
+Symptom: clicking a "Related questions" chip on the chat answer card did nothing. Root cause = 3-hop action chain that drops the 2nd arg:
+- `AnswerCard.svelte:571` chip → `onAction('related', q)` (q = question text).
+- `ChatMessageList.svelte` wrapper (`onAction={(act, payload) => {...}}`, ~471) mapped followup/diary/copy/pin/save/excel/email/share but **had no `related` branch** → fell to default `onAction?.(act)` which **dropped `payload`**.
+- `+page.svelte:792` `handleAction('related', arg)` needs `arg`=question → got `undefined` → empty `q` → silent `return`.
+- Fix: in the wrapper added `if (act === 'related') { onAction?.('related', payload); return; }` AND changed the default bubble `onAction?.(act)` → `onAction?.(act, payload)` so any arg-aware handler keeps its payload.
+- **Rule:** an intermediate `onAction` re-dispatcher MUST forward the payload by default, not just for the cases it special-cases. A bare `onAction?.(act)` silently breaks every arg-carrying action.
+
+### Session 2026-06-06 (latest+10) — Prod-breaker audit: dead-table + AGE-boot fixes + dead-UI prune
+
+Full-code audit for production breakers. 6 fixed + deployed (image rebuild → HEALTH_OK), 1 false alarm. Committed on branch `fix/dead-code-prod-breakers` → merged to `main` (local only, no GitHub).
+
+**Live breakers fixed:**
+1. **`app/auth.py` `apigw_outlets` queried the DEAD `citypharma_balance_stock`** (data re-uploaded as `balance_stock_07052026`). Was `try/except` → silently returned `{outlets:[],count:0}` → **API Gateway mint-key outlet picker always empty**. Fix: auto-detect the stock table via `information_schema` (table with `site_code`+`stock_qty`), fallback `balance_stock_07052026`. **Verified live: 53 outlets.**
+2. **AGE durability landmine** — `compose.yaml` `dash-db` pointed at plain `pgvector/pgvector:pg18-trixie`, but PGDATA has `shared_preload_libraries='age'` → recreating cp-db = postgres fails to boot (missing `age.so`). Fix: repointed to `image: cp-db-age:pg18` + `build: db/Dockerfile.age` (durable image already on host). Next recreate is boot-safe.
+
+**Stale / dead-code pruned:**
+3. `scripts/build_pharma_graph.py` hardcoded dead `citypharma_articles` → now auto-detects catalog table in `main()` via information_schema.
+4. **Cockpit tab open fired 3 dead `/agent-template/*` 404s** (`agent_templates_router=None` — "Industry preset agent template API removed"). Dropped the `loadAgentTpl()` trigger in the settings rail onclick; its panel is gated `{#if agentTplStatus?.applied}` (stays null) so nothing visible changes.
+5+6. **Deleted orphan admin routes** `admin/{governance,agent-os,telemetry}` + lib dirs `lib/admin/{governance,agent-os,telemetry}` (backends removed in the single-agent prune, routes NOT nav-linked, every tab 404'd). **Deleted orphan components** `ApprovalQueue`/`HITLConfirm`/`WorkflowRunDrawer` (0 importers, all hit deleted `/api/{approvals,hitl,agent-os}`). Removed dead `/ui/agent-os/workflows` link in `ScheduleAnalysisModal` (the one mounted component). **Kept `admin/log-agent`** (`log_agent_api` still live).
+7. **FALSE ALARM** — 4 `skills_cowork/.../ooxml/scripts/{pack,validate}.py` "syntax errors" were only on **host python 3.9** (no `match` stmt); **container py3.12 compiles fine**, files are live via `dash/tools/deck_edit.py` subprocess. No action.
+
+**Left as harmless dead code:** `lib/api.ts` agent-os/workflow wrapper exports (never called); `admin/log-agent` orphan route (functional). Editing the shared client for zero-runtime-cost dead exports = needless risk.
+
+**Audit gotchas to remember:**
+- **Subagents can't be spawned in this repo** — the 744KB `CLAUDE.md` auto-loads into every agent's context → "Prompt is too long". Do audits inline with `grep`/`find`.
+- **`ls` returns empty here** (a hook blocks it) — use `find`/`cat`/Read.
+- **compose SERVICE names are `dash-*`, container_names `cp-*`.** `docker compose build cp-api` silently **no-ops** ("no such service: cp-api") + leaves a stale image — the first build attempt this session was a no-op. Use `docker compose build dash-api`; `docker exec`/`inspect` use `cp-api`/`cp-db`.
+- A `try/except`-wrapped DB query against a renamed table = **silent feature death** (empty result, no error, no log alert). When tables get re-uploaded under new names, grep the whole codebase for the OLD names — fail-soft hides the breakage.
+
+### Session 2026-06-06 (latest+9) — Pharma Chemist (clinical brain, Anthropic "Claude as chemist" analog)
+
+Gave CityPharma a **pharmacist/clinical brain** — the NMR-chemist analog for pharma RETAIL (forward drug→profile, inverse symptom→drug, substitutes by generic, all **auditable to source SKU**, zero fine-tuning, no AGE dependency). Built P1 (tools) + P4 (dashboard card), live-verified. P2 (frontend evidence-trace surfacing) + P3 (clinical golden eval → accuracy on dashboard) are the larger remaining waves — NOT built yet.
+
+**P1 — chemist tools** (`dash/tools/pharma_chemist_tool.py`, NEW). Pure relational over catalog clinical columns (`generic_name`/`composition`/`indication`/`dosage`/`side_effect`/`category`), own read-only direct cp-db conn (like pharma_shop_tool), **auto-detects table names** via information_schema (catalog = has generic_name+indication; stock = has stock_qty+site_code). Every result returns `_source: article_code=…` for pharmacist audit. 4 tools, wired into `dash/tools/build.py` OUTSIDE the raw-SQL gate (gated `PHARMA_GRAPH_DISABLED`), log `pharma chemist tools enabled: +4`:
+- `drug_profile(name)` — composition/indication/dosage/side_effect/category + in-stock (sums stock across sites by article_code)
+- `substitutes(name, in_stock_only)` — resolves target generic, returns same-generic siblings ranked by stock + WHY (relational, NOT AGE)
+- `indication_search(symptom, in_stock_only)` — INVERSE: ILIKE over indication → drugs
+- `interaction_check(a,b)` — flags DUPLICATE THERAPY (same generic) + shared side-effect keyword overlap; heuristic, returns both source rows
+
+**P4 — chemist dashboard card.** NEW `app/overview_api.py` `GET /{slug}/chemist` (AUTOCOMMIT, fail-soft, auto-detect catalog): `total_skus`, clinical-field **coverage %** per col, `distinct_generics`/`distinct_categories`, `drugs_with_substitutes` (EXISTS same-generic sibling). Overview `+page.svelte` 🧪 PHARMA CHEMIST strip: 4-stat grid + coverage bars (green≥75 / amber≥50 / red<50) + footer. **Live numbers:** 4886 SKUs, 1036 generics, 101 categories, 2723 w/ substitutes; coverage indication 99.7% · category 97.7% · dosage 85.2% · composition 81.7% · side_effect 75.2% · generic 67.9%.
+
+**Finding:** old `citypharma_articles`/`citypharma_balance_stock` tables are GONE (data re-uploaded as `articles_list_07052026` / `balance_stock_07052026`) → the existing **shop tool + AGE graph tool reference dead table names and are currently broken**. Chemist tool sidesteps via auto-detect. (Shop-tool table refs need fixing too — separate follow-up.)
+
+**Data caveat:** `indication` text is **Burmese** (ဖျားနာခြင်း = fever) → `indication_search('fever')` returns 0; agent must search Burmese terms. Tool works, data is non-English.
+
+**Why:** maps Anthropic's 5 transferable techniques (no-FT tools win, auditable reasoning, bidirectional eval, post-cutoff held-out eval, honest framing) onto CityPharma's real clinical columns. Substitutes = your "chemistry". Survives cp-db recreate (relational). Deploy: image rebuild + leader clear + force-recreate → HEALTH_OK. Verified: `/chemist` JSON real, all 4 tools run in-container, live chat → agent answered with composition.
+
+**Remaining (not built):** P2 surface `_source` audit trace in AnswerCard/chat UI; P3 clinical golden eval (30–50 held-out forward+inverse Q→A) → nightly score → Dashboard quality strip real accuracy %.
+
+**FOLLOW-UP DONE (same session, +P2 +P3 + table-ref fix, all live):**
+- **Fix broken shop/AGE table refs** — old `citypharma_articles`/`citypharma_balance_stock` GONE (data re-uploaded as `*_07052026`). `pharma_shop_tool.py` + `pharma_graph_tool.py` now **auto-detect** tables via information_schema (`_resolve_tables(cur)` sets module globals `ART`/`STOCK` in `_conn()`, fallback to `*_07052026`). **AGE is gone too** → rewrote all 3 graph tools (`find_substitutes`/`alternatives_for_indication`/`drug_relationships`) **RELATIONAL** (same-generic / indication ILIKE), keeping store-scope masking + `_source` article_code. build.py descriptions updated (no longer "Apache AGE"). Verified: stock_check count=5, find_substitutes generic=Co-Amoxiclav.
+- **P2 — audit citation** — new `## 🧪 PHARMA CHEMIST MODE` + **MANDATORY AUDIT** block in `instructions.py` (after SHOP COUNTER): clinical questions route to chemist tools; every substitute/indication/dose claim MUST cite matched generic + `article_code` + stock; no fact without source row. Existing TraceTimeline already shows tool I/O = the evidence trace. Verified live: chat "Augpac out, substitutes?" → agent called `substitutes`, cited Co-Amoxiclav + article_codes.
+- **P3 — clinical golden eval** — `POST /{slug}/chemist/eval` (`overview_api.py`): `_build_golden()` derives **data-grounded** checks (forward=drug→profile has comp+ind, generic=drug→generic, substitute=drug→≥1 sibling, inverse=top-indication-token→≥1 hit, Burmese-safe), runs the real chemist tools, scores pass/total + pct, persists `dash.dash_chemist_eval` (write engine, CREATE IF NOT EXISTS, CAST jsonb). `GET /chemist` reads latest accuracy. Dashboard 🧪 card shows **Clinical accuracy %** + "Run eval" button (`runChemEval`). Verified: **26/26 = 100%**, persisted, accuracy surfaced.
+- **Nightly cron** — extracted `run_chemist_eval(slug)` (no Request) from the endpoint; `dash/cron/chemist_eval_daemon.py` `chemist_eval_loop` (24h, 90s stagger) runs it for `LOCKED_PROJECT_SLUG`, persists accuracy so the 🧪 card stays fresh w/o a click. Registered in `main.py` lifespan after golden_drift (leader-gated via `_should_run_daemons()`, kill switch `CHEMIST_EVAL_DISABLED=1`). Verified: leader logs `chemist_eval daemon started (24h)`, `run_once` 26/26.
+- Deploy: image rebuild + leader clear + force-recreate → HEALTH_OK.
+- **Bug fix — dashboard mini-graph rendered black.** Endpoint fine (93 nodes/300 edges). Cause: inline mini-graph (`buildMiniGraph` in `overview/+page.svelte`) started the FA2 **worker** on nodes placed in a 1×1 box at origin (`x:Math.random(),y:Math.random()`) → all 93 piled on ~1px → invisible. Full `/graph` view spreads nodes with a one-shot `forceAtlas2.assign()` pre-settle first; mini-graph skipped it. Fix: import non-worker `graphology-layout-forceatlas2` too + `forceAtlas2.assign(graph,{iterations:120,settings})` BEFORE creating Sigma + starting the worker → nodes spread across canvas, worker then drifts (Obsidian motion). Pattern: **a force-worker alone never spreads an origin-piled graph fast enough to be visible — always pre-settle with `assign()` first.**
+
+### Session 2026-06-06 (latest+8) — Dashboard cockpit (default landing) + Sigma graph view + Brain Wiki (second-brain surface)
+
+Built the operator **Dashboard** (new default landing tab) + an **Obsidian-style live graph view** + a **Brain Wiki** (readable backlinked concept pages). All three auto-feed off existing data — no new training, no LLM at render time.
+
+**1. Dashboard cockpit** (`/project/[slug]/overview`, new tab, now default landing).
+- New tab in `+layout.svelte` single-agent nav (desktop + mobile) — `overviewHref` derived; default-landing `$effect` redirect changed `…/project/{slug}` → `…/project/{slug}/overview`. Chat active-state excludes `/overview`.
+- NEW agg endpoint `app/overview_api.py` `GET /{slug}/overview` (AUTOCOMMIT + NullPool + `_schema_for`, fail-soft per query, table auto-detect by column): kpis (chats_24h, catalog_skus, tables, sites, stock_units, **stock_value 11.34B MMK**), pharma signals (stockouts/low-stock/units/value/sites/top_category — live SQL on the stock table), top_questions (group-by `dash_chat_sessions.first_message`), recent_chats.
+- Page `overview/+page.svelte` — 9 strips, each fail-soft: KPI rail · System Health (`/api/health` + `/api/health/daemons`) · Data Quality (`/data-quality` + `/datasource`) · Pharma Signals (new) · Tool Health (`/tool-health`) · Insights (`/insights` + dismiss) · Activity (`/training-runs`) · Live Log (`/auto-train/log`) · Top Questions (new) · API Gateway (`/api/auth/apigw-usage`). 30s auto-refresh (pausable). A broken section never blanks the page.
+- **Real-data honesty:** stock table (`balance_stock_07052026`) has NO expiry/supplier/retail-price cols → dropped "Expiring <30d" + "Supplier score" from the mockup; Pharma Signals uses only real columns.
+
+**2. Graph view** (`/project/[slug]/graph`) — **Sigma.js v3 + graphology + forceatlas2** (researched as best-for-us: WebGL handles our scale, native labels/hover/camera vs Cosmos needing a hand-built label overlay; force-graph is canvas, caps ~5k).
+- NEW `app/overview_api.py` `GET /{slug}/graph?source=brain|pharma&focus=&limit=` → `{nodes,edges}` (`_pack` adds degree-driven `val` + group color, dedupes undirected edges).
+- **AGE IS GONE** — cp-db was recreated without the baked-AGE image (the documented durability landmine fired: no `age` extension, empty `shared_preload_libraries`, no `ag_catalog.ag_graph`). So `find_substitutes`/`alternatives_for_indication`/`drug_relationships` agent tools are ALSO broken right now (separate pre-existing breakage). **Fix: derive the substitute web RELATIONALLY** — drugs sharing `generic_name` = substitutes (same rule AGE used). `SELECT a.brand_name,a.category,b.brand_name FROM articles a JOIN articles b ON a.generic_name=b.generic_name AND a.brand_name<b.brand_name` → **20,982 real pairs**, color by category. Robust, survives any cp-db recreate. `_age_conn`/`_agt` helpers left in file (unused, harmless) in case AGE returns.
+- Page `graph/+page.svelte` — dark canvas, **continuous FA2 worker** (`graphology-layout-forceatlas2/worker`) for live Obsidian-style drift (NOT one-shot `forceAtlas2.assign` which freezes — that was the "no animation" bug), `✦ animating/❄ frozen` toggle, source toggle (AGE Pharma ↔ Brain KG), search→2-hop ego-graph, hover→neighbor-highlight+dim (reducers), labels-on-zoom, click→ego-focus/ask-agent, 15s live-poll toggle. Verified: pharma full 728 nodes/4000 edges, ego-focus clusters, brain 7 nodes.
+- **Inline live mini-graph** on the Dashboard card itself (not just a launcher) — small Sigma render (~120 nodes/300 links) with the FA2 worker running continuously = the graph is *visibly moving* in the card before you click.
+
+**3. Brain Wiki** (`/project/[slug]/wiki`) — the missing "human-readable .md wiki layer" (vs the "living knowledge base" diagram). **142 backlinked concept pages, zero LLM**, pure projection of existing knowledge.
+- NEW `app/wiki_api.py` `GET /{slug}/wiki` (index, grouped+searchable) + `GET /{slug}/wiki/page?name=` (one page). `_build_index(slug)` merges `public.dash_company_brain` (glossary/formula/alias/kpi/pattern/org → name+definition+aliases) ∪ `public.dash_knowledge_triples` (subject→predicate→object → entity nodes + **backlinks**). Per page: body (markdown), aliases, links-out (subject=X triples), backlinks (object=X triples), siblings (same category). Fail-soft.
+- Page `wiki/+page.svelte` — warm/readable theme, left rail (search + category chips + concept list sorted by link count), right reader (title + category badge + `markdownToHtml(body)` + `[[wikilink]]`-style clickable links/backlinks → jump pages + "Ask agent about X →"). Counts verified: 142 concepts; `articles_list` page = 7 links-out / 13 backlinks / 5 siblings.
+- Launchers on Dashboard: **KNOWLEDGE GRAPH** card (live inline graph → full graph view) + **📖 BRAIN WIKI** card. Wiki ↔ Graph cross-linked.
+
+**Why build the wiki + graph (vs the prior latest+6 "delete the Obsidian web" call):** that deletion killed `dash_links` (per-chat link SPAM with no reader). This is different — real semantic data (brain 137 entries + KG triples + 20,982 relational substitute pairs). The self-improving LOOP already existed (KG-extract + brain-fill every chat); these add the **readable surfaces** (map + pages) the diagram's STEP-3 WIKI calls for. Map = Graph view, pages = Brain Wiki, both auto-grow.
+
+**Deps:** `sigma graphology graphology-layout-forceatlas2` (frontend). **Endpoints:** `overview_api` (overview+graph) + `wiki_api` registered in `main.py` (try/except guarded). Deploy: image rebuild + leader clear + force-recreate → `HEALTH_OK`. Frontend baked → hard-refresh.
+
+**⚠ Open follow-up (flagged, not done):** rebuild the AGE `citypharma` graph (re-run `scripts/build_pharma_graph.py` + bake the durable AGE image per `db/Dockerfile.age`) — the agent's graph TOOLS (`find_substitutes` etc.) are broken until then. The new Graph view does NOT depend on AGE (relational), but the chat tools do.
+
+### Session 2026-06-06 (latest+7) — Removed Workflows feature from Workspace (single-agent has no use for it)
+
+Cut the **Workflows** surface from the Workspace settings. Single-agent CityPharma answers via tools+SQL — it never fires declarative multi-step workflow chains (inherited dead weight from multi-agent Dash). Backing table `dash.dash_workflow_defs` = **5 builtin defs, 0 runs ever**; the "87" badge came from `/api/projects/{slug}/workflows-db` (`app/learning.py:1830`). Pure clutter.
+
+**Deleted (frontend, every user-reachable door):**
+- Settings rail **Agents** group (`project/[slug]/settings/+page.svelte` `groups` ~6490): dropped `{ id: 'workflows', label: 'Workflows' }` + its rail-icon `{:else if it.id === 'workflows'}` SVG (~6532).
+- Settings content: the entire `{:else if activeTab === 'workflows'}` block (~165 lines, CLI header + vertical-pack picker + DISCOVER PATTERNS) — deleted lines 9152–9316, leaving the SCHEDULES block intact.
+- Top-nav **Build** dropdown (`routes/+layout.svelte`): the dead **Workflows** menu row (→ pruned `/ui/agent-os/workflows`, route dir already empty) + its `isBuildActive` `startsWith('/ui/agent-os/workflows')` ref.
+
+**Left as harmless dead code:** `loadWorkflows()` + `workflows` state + the flat `tabs`/`tv()` `workflows` entries (no rail door → `activeTab` never becomes `'workflows'`), and backend `dash_workflow_defs` table + `/workflows-db` endpoint (no reader now; drop later if desired). Reversible: re-add the rail item + content block.
+
+**Schedules KEPT** (separate AGENTS-group item). Verdict on the Schedules page's 3 blocks: keep **Scheduled Reports** (real, used), Sync Schedules auto-hides on 0 sources, and **Daily Digest** still renders `! NOT IMPLEMENTED YET (BACKEND PENDING)` to the user — flagged to hide but NOT yet cut. The hidden `dash_agent_schedules` (4 dream/precompute/ab-revert/brainbench system crons) are Brain self-learning upkeep — NOT user-facing, untouched.
+
+Deploy: `npm run build` clean (only pre-existing `<tr>`/a11y warnings) → image rebuild + `DELETE FROM dash.dash_daemon_leader` + `--force-recreate dash-api` → `HEALTH_OK staleness_warning:false`.
+
+### Session 2026-06-06 (latest+6) — Deleted dead Obsidian-graph stack (GraphPanel/LinkedBy/dash_links writes)
+
+Removed the orphaned Obsidian-style graph + bidirectional-links feature. It was **double-dead** in single-agent: `app/graph_api.py` + `app/links_api.py` were docker-cp'd in the 2026-05-26 Obsidian-steals session but never baked → absent on disk → `main.py` try/except imports made `graph_router`/`links_router` = None → `/api/graph` + `/api/links` returned 404. So `GraphPanel.svelte` (pruned from the single-agent rail anyway) + `LinkedBy.svelte` were broken UIs against a missing backend, AND `dash/tools/build.py` was still writing a `dash_links` row on **every chat** (`link_chat_cites_tables`) into a table whose only reader (`/api/graph`) was gone — a wasted per-chat DB write.
+
+**Deleted:** `frontend/src/lib/intel/GraphPanel.svelte`, `frontend/src/lib/links/LinkedBy.svelte` (+ empty `lib/links/` dir); settings `'graph'` flat-tab entry + `{:else if activeTab === 'graph'}` block + `GraphPanel` import + rail icon; `build.py:209-217` dash_links cites-write; `apply_skill.py` `link_chat_uses_skill` write; the three `links_ctx` write helpers (`extract_table_refs` / `link_chat_cites_tables` / `link_chat_uses_skill` + `_write_link_direct`).
+
+**Kept:** `dash/links_ctx.py` slimmed to ONLY the two ContextVars (`CUR_SESSION_ID` / `CUR_PROJECT_SLUG`) — `app/projects.py:869` still sets them around `team.run` (cheap, hot-path, no DB). The two real graphs untouched: **Brain → Graph** (KG SPO triples merged list, `app/brain_unified.py` `_passthrough_graph` over `dash_knowledge_triples`) and the **Apache AGE `citypharma` pharma graph** (agent's `find_substitutes`/`alternatives_for_indication`/`drug_relationships` tools). `main.py` dead `graph_/links_` router try/except imports left as harmless None (already guarded). `dash.dash_links` table left in place (no writer now; no reader; drop later if desired).
+
+**Why delete not build:** the LLM IS the reasoner; the graphs are inputs, not separate brains. The agent's "single brain" = the prompt-assembled Brain (13 context layers), already correct. A visual graph UI (Obsidian-style link web) = human serendipity, zero value for a pharma counter agent. A literal single-graph-DB "second brain" = GraphRAG = different/heavier architecture, low payoff for SQL+tool reasoning. So: removed the dead web, kept the two graphs that feed/serve the agent, built nothing.
+
+**Pattern:** docker-cp'd modules that were never baked vanish on container restart → their try/except router imports silently become None → the frontend that calls them 404s, but a write-side hook (here `dash_links`) keeps firing into a now-readerless table. When deleting a half-dead feature, trace BOTH the dead read path (UI→404) AND any live write path (per-chat INSERT) — kill the wasted write too.
+
+### Session 2026-06-06 (latest+5) — Nav un-orphaning: Workspace button restored + Brain folded into ONE Workspace rail (single left menu)
+
+Two-part fix after the Single Brain merge (latest+4) left settings tabs orphaned, then a follow-up to collapse Brain into the Workspace rail so there is ONE left menu and no duplicate top-nav doors.
+
+**Part A — root cause: 16 settings tabs orphaned.** The latest+4 nav collapse deleted the "Agent Brain" top-nav button — the ONLY entry that opened project Settings on a rail-visible tab (`settings#datasets` = Cockpit). The lone remaining settings entry "Data Source" opens `settings#upload`, and `settings/+page.svelte` hides the whole rail there (`class:set-shell-norail={activeTab === 'upload'}`). So from the top nav you landed on the no-rail Data Source view with no door to Cockpit / Agents / Evals / Schedules / Workflows / Users / Config / Pipeline / Federation / Docs / Queries / Lineage / Sharing / Training / Knowledge / Rules. Nothing was deleted in code — they just lost their entry point. **Fix:** added a **Workspace** (gear) top-nav button → `agentBrainHref` (`settings#datasets`, full rail). Reused the already-orphaned `agentBrainHref` derived. Mirrored in mobile nav.
+
+**Part B — fold Brain INTO the Workspace rail (single left menu).** User: "I want only ONE left side menu" + "Brain and submenu same as other items." Embedded `<BrainHub embedded>` was rendering its OWN left RailNav next to the Workspace rail = two stacked left menus. Folded Brain's 10 hub items into the single Workspace rail as a **BRAIN group** (same item style/icon/active-highlight as every other rail entry):
+- `frontend/src/lib/brain/BrainHub.svelte` — extracted from the `/ui/brain` route into a reusable component (route is now a thin `<BrainHub />` wrapper → single source, can't drift). Props: `embedded` (skip super-admin redirect + skip top-level hash routing — settings owns `window.location.hash`) + `item` (externally-driven active category). When embedded: hides its own RailNav + page-head, shell goes single-column (`.brain-embedded` CSS), and a `$effect` follows the `item` prop → `selectHubItem('', item)`. ScopeSwitch `[AGENT|COMPANY|PERSONAL|ALL]` stays as a horizontal filter atop the merged list (a view filter, not a menu).
+- settings rail `groups`: new **Brain** group = `brain-definitions / brain-glossary / brain-patterns / brain-rules / brain-graph / brain-schema / brain-org / brain-promote / brain-pull / brain-conflicts`. Each id-prefixed; content block `{:else if activeTab.startsWith('brain-')}<BrainHub embedded item={activeTab.slice(6)} />`. Item suffix maps 1:1 to BrainHub's `ITEM_TO_CAT` + `SHARING_FILTER` keys.
+- Workspace **Definitions** (metric editor, id `metrics`) DROPPED from the rail group (user decision) — Brain Definitions is the single one. Old single `brain` rail item + the in-page horizontal-chip idea both discarded in favor of folding.
+- Old Workspace Knowledge tab → renamed **Files** (raw metadata browser kept for debugging).
+
+**Part C — kill duplicate top-nav door.** Once Brain is a Workspace rail group, the top-nav "Brain" button was a duplicate door to the same settings page → **deleted** (desktop). Workspace button now highlights on Brain tabs too (`hash !== '#upload'`). Build-dropdown + mobile "Brain" entries repointed from the orphan `/ui/brain` standalone → `settings#brain-glossary`. `/ui/brain` route still exists (same component) but no longer fragments nav.
+
+**Final nav:** `Chat · Data Source · Workspace · Gateway · Embed · Admin`. One settings page, one left rail: `WORKSPACE · BRAIN · AGENTS · SHARING · INTELLIGENCE`. Backend untouched (`/api/brain/unified` + promote/pull/resolve already live from latest+4).
+
+**Patterns to remember:**
+- Deleting a nav button can orphan an entire surface even when zero code is deleted — the tab is reachable in principle (rail click) but has no door. A no-rail view (`set-shell-norail`) is a dead-end if it's the only entry. Always trace: top-nav → does any button open a rail-visible state?
+- To embed a route's hub inside another page without drift: extract the route body into a `*.svelte` component, make the route a thin wrapper, mount the SAME component elsewhere with an `embedded` prop. Don't reimplement the hub inline — that recreates the drift bug you're trying to kill.
+- Hash-routing collision: when an embedded component and its host both write `window.location.hash`, gate the child's `writeHash`/`onHashChange`/`parseHash` on `!embedded`. Host owns the hash; child takes navigation via a prop + `$effect`.
+- Folding a sub-hub's nav into the parent rail (vs a second rail or horizontal chips) is the cleanest "one menu" — id-prefix the items (`brain-*`), match the content block on the prefix, drive the child via prop. Item suffixes must match the child's category keys exactly.
+
+### Session 2026-06-05 (latest+4) — Single Brain merge: Agent Brain + Company Brain → ONE unified hub
+
+Merged the two separate "Agent Brain" (project Settings deep-link) + "Company Brain" (`/ui/brain`) nav items into ONE unified **Brain** hub. `/ui/brain` becomes the hub in-place (no page deleted — "Agent Brain" was never a page, just a settings link). 6 phases, 17 sub-tasks. Frontend split into NEW self-contained components (parallel-safe) wired inline by me into the single 1587-line `brain/+page.svelte`; backend = new merge engine. Deployed via image rebuild + force-recreate (deploy rule), verified live.
+
+**Design (approved, decisive — MERGE not keep-separate):** ONE nav "Brain"; left rail **KNOWLEDGE / OPS / SHARING / ACTIVITY**; **SCOPE switch** [THIS AGENT | COMPANY | PERSONAL | ALL]; deterministic dedup engine keyed by `category + "::" + lower(trim(name))`; status enum `synced(✓) / conflict(⚠) / agent_only(⤴ promote) / company_only(⤓ pull)`.
+
+**Backend (new files, app/):**
+- `brain_merge_definitions.py` `merge_definitions(conn, slug)` — `dash_metric_definitions` (name+description) ∪ `dash_company_brain` category='formula' (name+definition). Company query uses `(project_slug = :slug OR project_slug IS NULL)` so global formulas surface.
+- `brain_merge_glossary.py` `merge_glossary` — company `glossary`/`alias` ∪ agent column-terms from `dash_table_metadata.metadata->'table_columns'`.
+- `brain_merge_patterns.py` `merge_patterns` — `dash_query_patterns` (question→sql) ∪ company category='pattern'.
+- `brain_merge_rules.py` `merge_rules` — `dash_rules_db` (name→definition) ∪ company category `= ANY('{threshold,org,calendar,benchmark}')`.
+- `brain_unified.py` — `GET /api/brain/unified?category=&scope=&project_slug=`. category ∈ definitions|glossary|patterns|rules|graph|schema|org. scope ∈ agent|company|personal|all. Lazy-imports the merge modules in try/except (broken merge → empty list, never 500). Passthroughs: graph→`dash_knowledge_triples`, schema→`dash_table_metadata`, org→`dash_company_brain` org/threshold/calendar/benchmark. Tags each item `meta.actionable` (True only for definitions/patterns/rules — the categories with a writable agent table). `scope='personal'` → own `dash_company_brain WHERE user_id=:uid` path (no longer aliased to company).
+- `brain_actions.py` — `POST /api/brain/{promote,pull,resolve}`. promote=agent→company (upsert `dash_company_brain`), pull=company→agent (write agent table), resolve={winner:agent|company}. Company writes version-audited via `brain_versions.snapshot_version(conn, id, change_type, uid, reason)` inside the open txn. `_AGENT_TABLE` map = {definitions:dash_metric_definitions.description, patterns:dash_query_patterns.sql, rules:dash_rules_db.definition}; `_COMPANY_CAT` map = {definitions:formula, glossary:glossary, patterns:pattern, rules:threshold}.
+- All follow `app/brain.py` engine idiom: `from db import db_url` + `create_engine(db_url, poolclass=NullPool)` + `with _engine.connect()/.begin()`. Registered in `app/main.py` (try/except guarded → boot-safe).
+
+**Frontend (new components, frontend/src/lib/brain/):**
+- `ScopeSwitch.svelte` — 4-value segmented control, `$bindable` scope + `onChange`.
+- `RailNav.svelte` — 4 groups (KNOWLEDGE/OPS/SHARING/ACTIVITY), `$bindable` active + `onSelect(group,item)`.
+- `hubRouting.ts` — `parseHash/writeHash/onHashChange`, hash format `#section/item?scope=`, SSR-safe, `replaceState` (no history spam).
+- `MergedList.svelte` — rows w/ status badges (✓muted ⚠coral ⤴amber ⤓ink), click-expand → THIS AGENT vs COMPANY `<pre>` diff + action buttons. Buttons gated on `item.meta?.actionable` — non-writable categories (glossary/graph/schema/org) show "Read-only — sharing not available" instead of broken resolve buttons.
+- Wired into `brain/+page.svelte`: rail+scope+hash state, `ITEM_TO_CAT` (KNOWLEDGE→unified cat), `SHARING_FILTER` (promote→agent_only / pull→company_only / conflicts→conflict over all 4 merge cats), `handleMergedAction` → POST endpoints → refetch. OPS items training/datasource deep-link to `/ui/project/{LOCKED_SLUG}/settings#training|#upload`; activity→existing log tab. `LOCKED_SLUG='proj_demo_citypharma'`; scope→filter map: agent→locked slug, company→global, personal→personal, all→all.
+
+**Nav collapse (`+layout.svelte`):** deleted "Agent Brain" button (settings still reachable via Data Source → same settings page), renamed "Company Brain" → **"Brain"** (nav + Knowledge dropdown + mobile). Header "Company Brain" → "Brain".
+
+**Verified live (cp-api :8011, fresh image):** 7 categories return real merged data — definitions 34, **glossary 69 (14 ⚠conflict + 10 agent + 45 company)**, patterns 36, rules 42, graph 21 (=triples), schema 2 (=table_metadata), org 0. `meta.actionable` True for definitions / False for glossary. promote/pull/resolve routes registered (422 validation). personal scope runs own path (count 0 — none exist). 0 stale "Company Brain" strings baked.
+
+**Patterns to remember:**
+- Single 1587-line Svelte file can't be parallel-edited — decompose into NEW self-contained components (scoped styles, class-prefixed, zero global-CSS deps), agents write those in parallel, integrator wires inline. Worktree isolation breaks the baked-image deploy path → agents write NEW files in the MAIN tree.
+- Workflow-tool subagents kept 403'ing this session; the **Agent tool used a different auth path and worked** — fall back to Agent tool when Workflow fleet 403s.
+- A merge category is only "actionable" (promote/pull/resolve) if its agent side is a real writable table. Glossary's agent side = `table_metadata` columns (read-only) → mark `actionable=False` in the unified payload + gate the UI buttons, else "Keep company" 400s. Surface the capability from the backend, don't hardcode in the component.
+- `validate_and_fix` not relevant here, but the dedup contract IS load-bearing: every merged item = `{category, name, key, agent_value, company_value, agent_id, company_id, status, meta}`, status computed by a shared `_status(agent, company)` helper. Keep all merge modules emitting that exact shape or `MergedList` + the action handler break.
+
+### Session 2026-06-05 (latest+3) — Data Source UX: per-step pipeline strip, upload %, single-CLI robot, gateway+embed test sandboxes, robot LOG/AGENTS tabs
+
+UI/UX pass on the Data Source page + the floating robot + the gateway/embed pages. User wanted: no redundant CLI window, upload %, a pipeline strip that goes green/tick per step, a way to TEST the API gateway + embed chat, and a richer training log showing WHICH agent is doing WHAT. Design was approved in CLI-mockup form before coding (user asked "show design in CLI first").
+
+**1. Pipeline strip — per-step ✓ green / ● pulse / ○ idle** (`frontend/src/routes/project/[slug]/settings/+page.svelte`, `.dsx-pipe`). Was: all 7 dots same colour (`class:on={_live}` / `class:done` on every dot). Now: `pipeStageIdx(current_step)` maps the live `active_run.current_step` → a stage index (0-6); stages BEFORE = ✓ green dot + green label + green connector line, stage AT = ● pulsing orange, stages AFTER = ○ gray idle. Done run → all ✓; never-trained → all ○. Stage map: UPLOAD=stage/load/promote · PROFILE=profile/dim/sample · TRAIN=deep/codex/brain/persona · Q&A=qa/experiment/eval · VECTORS=embed/index · GRAPH=triple · LIVE=done. Dot is now a 14px circle that renders a `✓` glyph when done.
+
+**2. Upload percent** (`stageUploadFiles`). `fetch()` can't report upload progress → added `xhrUpload(url, fd, onPct)` (XMLHttpRequest + `upload.onprogress`). `dsUploadMsg` now shows `▸ uploading articles.csv (1/2) · 42%` live; fetch fallback if XHR throws. `_h()` returns only `Authorization` (no Content-Type) so XHR + FormData boundary is safe.
+
+**3. Single CLI = the robot (killed the redundant bottom CONSOLE)** (`frontend/src/routes/+layout.svelte`). The page had TWO consoles: the bottom `.cn-bar` CONSOLE footer AND the floating `RobotPanel`. Disabled the bottom bar (`{#if false && showCli && …}`) + removed the footer "▲ Terminal" toggle (footer is just the disclaimer now). `RobotPanel` is the sole CLI surface. The `cliLogs`/`cliExpanded` state stays (feeds RobotPanel via the `logs` prop), only the bottom markup is gone.
+
+**4. API Gateway chat sandbox** (`frontend/src/routes/gateway/+page.svelte`, new `TEST → Chat sandbox` rail tab). Live-tests the real `POST /api/v1/chat/completions`: paste a `dash-key-…` (auto-fills from a freshly-minted key via `$effect`), type a message, optional **stream** toggle (parses SSE `chat.completion.chunk` deltas in-browser), renders the answer + latency/tokens. 3 preset chips exercise the 3-tier masking: own-stock (full) · other-branch (qty/price blocked) · catalog (open). `sendSandbox()` uses `baseUrl` = `origin + /api/v1`.
+
+**5. Embed test chat surfaced** (`frontend/src/routes/embed/+page.svelte`). A working sandbox route already existed — `GET /api/embed/try/{embed_id}` (`app/embed_public.py:331`, serves the REAL widget, supports `?claim_store_id=&claim_role=` impersonation, public embeds open w/o token). It just wasn't in the UI. Added a **▶ Test chat** button per widget row in the Widgets tab → `window.open(${baseUrl}/api/embed/try/${embed_id})`.
+
+**6. Robot panel — detailed logs + live agent activity (2 tabs + ticker)** (`frontend/src/lib/RobotPanel.svelte`, client-side mapping, no backend). User wanted to see "all agents, who's working, who's doing what".
+- **Live ticker** (header band while training): active agent + its action + running `N calls · $X · M:SS` parsed from the observer lines (`running \$X (N calls)` regex + first→last ts for elapsed).
+- **▸ LOG tab** = phase-grouped: consecutive log lines grouped under phase headers (`✓ PROFILE · 4` done-green / `● TRAIN` active-pulse), each line `time · **Agent** · action`, agent name colour-coded by phase (UPLOAD green/PROFILE blue/TRAIN amber/GRAPH cyan/VECTORS purple), raw `llm ·` model-call lines dimmed.
+- **AGENTS tab** = roster: WORKING (current, pulsing) / DONE (✓ + last action) / PENDING (○ remaining pipeline agents) / IDLE (chat team list). Footer chip `AGENTS (5/13)`.
+- **`agentFor(text)`** = the keyword→agent map (client-side, tweak freely): `persona→Persona Agent`, `triple/knowledge graph→Triple Extractor`, `vector/embed→Embedder`, `codex→Codex Enricher`, `q&a/experiment→Q&A Generator`, `verified vs real data→Analyst`, `relationship→Relationship Mapper`, `memor→Auto-Memory Promoter`, `domain/brain_fill→Brain Builder`, `insight→Proactive Insights`, `catalog/dimension/sample/profil→Profiler`, `upload/stage/load/promote→Conductor`, `training done→Conductor ✓`. `llm ·` observer lines = `isLlm` (dimmed, attached to whatever agent is active). 13-agent canonical pipeline order drives the "pending" list.
+
+**Approval-first pattern:** user explicitly asked to see the design in CLI before building (twice now). For UX-heavy asks, present an ASCII mockup of the new surface + the data-source decision (client-map vs backend-tag) via `AskUserQuestion` with previews, get the pick, THEN build. Approved: robot tabs + client-side map.
+
+**Deploy:** each change validated via local `cd frontend && npm run build` (catches Svelte errors fast — Dockerfile's in-image build silently keeps stale bundle on failure) → image rebuild → `--force-recreate dash-api` → `DELETE FROM dash.dash_daemon_leader` → healthy. Frontend is baked into the image, so even "frontend-only" changes need the rebuild; the "no rebuild" in the client-map decision = future *mapping tweaks*, not the initial ship. Hard-refresh (Cmd+Shift+R) to drop the old hashed bundle.
+
+### Session 2026-06-05 (latest+2) — "what's pending" audit: API Gateway already COMPLETE, chat-time SQL dialect hardening, sensitive-key gap
+
+User asked to finish pending work. Audit found the API Gateway backlog (memory index claimed "P2 tool masking, P3 service keys, P4 streaming, P5 docs LEFT") was **entirely stale** — P0-P8 + docs are all live + verified. Greps confirmed: `mask_row` wired in `dash/tools/pharma_shop_tool.py` (164) + `pharma_graph_tool.py` (112/149); raw-SQL/introspect/specialists gated `not _store_locked` in `dash/tools/build.py` (518/603/620/662/689/705); streaming scope set/reset in try/finally INSIDE the generator (`app/api_gateway.py` 450/480); `mint/revoke/list_service_keys` in `app/auth.py`. So no feature backlog — just 2 small real fixes.
+
+**1. Chat-time SQLite→Postgres dialect drift (the lone eval miss).** The agent occasionally emitted SQLite date syntax at gen time → caught by the runtime SQL validator (separate layer) but cost a retry + 1 eval miss. Generation-time layers (`dash/tools/llm_sql_helper.py _postgres_sql_rules`, `dash/tools/sql_validator.py validate_and_fix`) govern Q&A-gen + runtime auto-fix, NOT the Analyst's first-shot chat SQL. Fix = harden the Analyst prompt grounding. Added a 7-line declarative `### POSTGRESQL DIALECT` block to `ANALYST_INSTRUCTIONS` (`dash/instructions.py:548`, inside the existing `## SQL GROUNDING` section, right after the "PostgreSQL NOT SQLite / never `sqlite_master`" line): `strftime('%Y-%m',x)→to_char(...,'YYYY-MM')`, `date('now')→CURRENT_DATE`, `julianday(a)-julianday(b)→(a::date-b::date)`, `date(col,'-7 days')→col::date - INTERVAL '7 days'`, no `||` date-building, and references the runtime-injected TEXT-DATE `to_date(col,'DD/MM/YYYY HH24:MI')` brain rule. Declarative + short (codebase prefers declarative over prescriptive mega-prompts). Wired via `build_analyst_instructions` `parts=[ANALYST_INSTRUCTIONS]`.
+
+**2. `_SENSITIVE_KEYS` belt-suspenders gap.** Pharma tools return `total_stock_qty` + `total_inventory_value` (from `store_stock_summary`), which were NOT in `_SENSITIVE_KEYS` (`dash/api_scope.py:95`). Currently no leak — those aggregates are forced-own-store by parameterized `WHERE site_code=ANY(%s)` when locked, so `mask_row` never needs to null them — but added both to the tuple as defense-in-depth (matches the "toolset is boundary + mask_row is belt-suspenders" philosophy; latent gap if a future path applies mask_row to summary rows).
+
+**Gateway gap audit (5 concerns):** mask_row coverage · streaming scope set/reset · raw-SQL lockdown for store keys · svc-key rate-limit + super-reject → all PASS; only finding = the 2 missing sensitive keys (fixed). Multi-agent note: the dialect-fix subagent did the `instructions.py` edit cleanly; the Explore/audit subagents both errored "Prompt is too long" (the giant inherited CLAUDE.md blows the subagent context budget) → ran that audit inline instead.
+
+**Deploy:** image rebuilt (`citypharma:latest`) + `--force-recreate dash-api` + `DELETE FROM dash.dash_daemon_leader` → healthy, `staleness_warning:false`, both edits baked (`grep` in container confirmed). Memory: `MEMORY.md` index line for `project_citypharma_apigw` rewritten to "COMPLETE — P0-P8 + docs" (the detail file `project_citypharma_apigw.md` was already current).
+
+**Pattern:** memory INDEX one-liners drift from DETAIL files — when "what's pending" turns up suspiciously stale, verify the code (greps) before re-chasing "left" work; here a whole P2-P5 "backlog" was already shipped.
+
+### Session 2026-06-05 (latest+1) — Real-time training-log in robot panel + training-pipeline cleanup (8 fixes)
+
+User wanted live training logs IN the robot panel ("i wanto see real time longs in agent") + then a deep audit of the training flow ("which is important which is not"). Robot HEADER showed `TRAINING` but BODY only polled chat-learning events → "Waiting for chat activity" (the disconnect). Surfaced the already-existing `_master_log` feed + cleaned 8 pipeline issues. All verified live via forced retrain (~110s, ~$0.025, 100% Q&A-verified).
+
+**1. Real-time training log in robot panel.** The data already existed — `app/upload.py` `_master_log` appends `{ts,msg,table,table_index,total_tables}` to `public.dash_training_runs.logs` (JSONB) on every step, plus an LLM observer logs every model call (latency/tokens/cost). It was never surfaced.
+- **NEW `GET /{slug}/auto-train/log?since=N&limit=`** (`app/learning.py`, next to `auto-train/status`). Slices the run's `logs` JSONB tail from cursor `since` (array index) via `jsonb_array_elements … WITH ORDINALITY`. Prefers active run, falls back to latest (so the `━━━ done ━━━` line shows). Returns `{run_id,status,current_step,total,events:[{i,ts,msg,table}]}`.
+- **`frontend/src/lib/RobotPanel.svelte`** polls it every **2s only while `srvTraining`** (idle otherwise), resets feed on new run (`run_id` change + first event `i===0`), merges into the console body.
+- **Two bugs fixed during rollout:** (a) mapped `e.text` but endpoint returns `e.msg` → every line rendered literal "undefined". (b) Robot body ALSO merged the `logs` prop (`cliLogs`, a 2nd messier training feed from the settings-page step poller via `dash-cli-log`) → duplicate + double-timestamp lines. **Fix:** read `e.msg`; make `/auto-train/log` the SOLE training source in the body — `logs` prop now drives ONLY the header trainStep/trainProgress, not the console body.
+
+**2. 20 false hierarchies on lineage cols.** `_detect_hierarchies` (`app/upload.py`): `_period`/`_batch_id`/`_content_hash` are single-valued → every other col trivially maps to one parent → junk hierarchies polluting the brain. **Fix:** exclude `_`-prefixed + known lineage cols (`_is_lineage_col`) + skip degenerate single-value parents (`parent_unique <= 1`).
+
+**3. Stale hierarchy persistence.** `if hierarchies:` guard never overwrote metadata when detection returned empty → old 20 lived in metadata + brain + SUMMARY forever. **Fix:** always `metadata["hierarchies"] = hierarchies` (clears stale on empty). SUMMARY now shows `hierarchy: —`.
+
+**4. Ghost-table everywhere (the big one — was capping evals at 3/10).** A raw-SQL wipe drops the DB table but the proper `delete_table` endpoint (which cleans disk JSON) is bypassed → orphaned `{table}.json` survive in `tables/`, `dimensions/`, `training/`. Eval-gen + relationship-discovery + multi-file-synthesis enumerate those → generate SQL against a dropped table → every such eval ERRORs `relation … does not exist`. **Fixes (DB-liveness everywhere):**
+- NEW `_live_tables(slug)` helper (inspector over project schema).
+- NEW `_purge_orphan_knowledge(slug)` — deletes `tables/dimensions/business/queries/training` files whose table isn't live; called at retrain start in `_bg()` (purged 5 files live).
+- `_generate_project_evals` skips `{table}_qa.json` whose table isn't live.
+- relationship `table_count` + multi-file-synthesis now count only live-table JSONs.
+
+**5. Autosim orphan enqueue.** `_bg()` enqueued `autosim_generate_grounded` every retrain — sim chassis was DELETED in the 2026-05-23 trim, so NO registered handler (`worker.py` only registers `dream_lite` etc). 13 dead `failed` rows had piled up in `dash.dash_minions`. **Fix:** removed the enqueue + purged the 13 rows. (dream-lite KEPT — has a live handler; at training time it hits `if not episodes` → `bootstrap_ok`, $0, zero LLM calls.)
+
+**6. "100 rows" misleading label + change-detection bug.** Master loop reads `SELECT * … LIMIT 100` for legacy col-stats → `num_rows` displayed 100 for a 4,886-row table, AND change-detection compared the always-100 sample → "table unchanged → skip deep analysis" every retrain. **Fix:** `_run_auto_training` now derives `num_rows` from a real `COUNT(*)` (fallback to sample). Display + change-detection both honest now (deep analysis correctly re-runs on changed data).
+
+**7. Dead-feature log noise.** Removed 3 lines: `knowledge graph build deferred…`, `sub-agent synthesis deferred…`, `sub-agent synthesis disabled (dead feature)`.
+
+**8. Free-text + null-byte + date-format in dimension catalog.** `_build_dimension_catalog`:
+- Skip cols with `AVG(LENGTH) > 40` → the `other` col (76-char Burmese instructions, 104 distinct) was wrongly catalogued as a dimension → 100+ sentences in the brain. Catalog dropped 419→314 values, 9→4 cols.
+- Strip null bytes / control chars from values; exclude lineage cols.
+- **Date-format detection** — text cols holding `DD/MM/YYYY HH24:MI` (`created_at`/`updated_at`) get a `dash_company_brain` `pattern` row: "use `to_date(col,'DD/MM/YYYY HH24:MI')`, NEVER `col::date` (DatetimeFieldOverflow)". Layer-13 injection → agent stops crashing on date queries.
+- **Date-aware Q&A/eval GENERATION** — `_llm_generate_training` detects DD/MM/YYYY sample values → injects a `⚠ TEXT-DATE columns … use to_date()` directive into the Q&A-gen prompt (eval set samples from Q&A, so both fixed). Plus defensive `to_date()` wrap in the deterministic SQL-experiments + saved-query trend builders. Result: **Q&A SQL errors 2→0, verified 92%→100% (26/26), quality 77%→80%, 0 DatetimeFieldOverflow in evals.**
+
+**Remaining (NOT training bugs):** 1 eval miss = agent emits SQLite date syntax at gen time (chat-time model dialect drift, caught by runtime SQL validator, separate layer). dream-lite enqueue KEPT (live, $0). `\0` literal-string label kept (real data, not a true null byte).
+
+**Files:** `app/learning.py` (+`/auto-train/log`), `app/upload.py` (hierarchy lineage skip + always-persist + `_live_tables`/`_purge_orphan_knowledge` + eval/relationship/synthesis liveness + real `COUNT(*)` + dim-catalog free-text/null-byte/date-format + Q&A-gen date directive + experiment/saved-query `to_date` wrap + autosim enqueue removed + 3 dead log lines), `frontend/src/lib/RobotPanel.svelte` (live training-log poller).
+
+**Patterns to remember:**
+- A raw-SQL wipe (drop table + delete dash_* via psql) bypasses `delete_table`'s disk-JSON cleanup → orphaned knowledge files seed ghosts in eval/relationship/synthesis. Any path that enumerates `knowledge/{slug}/**.json` MUST filter by `_live_tables()`. Purge at retrain start as a backstop.
+- The training log is ALREADY rich (every step + every LLM call w/ cost) in `dash_training_runs.logs` — surface via a `?since=` cursor endpoint, don't rebuild a feed.
+- Two feeds for one console = duplicate + double-timestamp. The `cliLogs` prop (settings dsx poller) embeds its own time; the renderer re-prepends `fmtTs`. Pick ONE body source.
+- Removing an enqueue isn't enough — purge the already-stuck `failed` minion rows too (`dash.dash_minions WHERE kind=…`).
+- Profiler `LIMIT 100` sample is fine for col-stats but NEVER for row-count display or change-detection — use real `COUNT(*)`.
+- `dash_company_brain` ON CONFLICT needs the PARTIAL-index predicate: `ON CONFLICT (project_slug, name) WHERE project_slug IS NOT NULL` (matches `uq_brain_slug_name`).
+- For TEXT dates (DD/MM/YYYY): fix BOTH the chat-time agent (brain rule, Layer 13) AND generation-time Q&A/eval (prompt directive) — a brain rule alone leaves stored eval SQL broken.
+
+### Session 2026-06-05 (latest) — Data Source full redesign + training root-cause fix (untrained tables / no process running)
+
+User: "I DON'T SEE DETAILS IN LOGS, NO PROCESS RUNNING N TRAINING, WHY?" → two seeded pharma tables (`citypharma_articles` 4892, `citypharma_balance_stock` 106322) stayed **untrained forever**. Root-caused + fixed end-to-end, then redesigned the Data Source page (mixed Stripe/Apple: health rings + live pipeline strip + expandable rows).
+
+**WHY they were stuck untrained (3 layers):**
+1. Tables were seeded directly into PG, never went through `/upload`, so the inline `_run_auto_training` never ran on them.
+2. The auto-train daemon only enqueued **profile_v2-only** jobs (`dash/training/train_queue.py` `_DEFAULT_STEPS=["profile_v2"]`; the queue worker's `_dispatch_job` skips any other step as `unknown_step`). It NEVER ran the full 14-step pipeline. The full pipeline only runs via `POST /projects/{slug}/retrain` (`app/upload.py:retrain_project`), which itself **skips unchanged tables** via `check_fingerprint_changed` — and nobody ever triggered it for the seeded tables.
+3. The "is this table trained?" signal was wrong (see gotcha below) so even the UI couldn't tell.
+
+**Backend fixes:**
+- **`app/datasource_api.py` (NEW)** — `GET /api/projects/{slug}/datasource`, registered in `app/main.py` next to `training_api`. One call returns `{summary{tables,rows,trained_tables,trained_pct,qa,vectors,triples,issues,is_training,active_run}, tables[{name,rows,cols,columns,trained,last_trained,qa_count,store{column,stores},quality{score,completeness,validity,uniqueness,consistency,notes},preview,links}]}`. Quality computed live: null-FILTER completeness, ROW_NUMBER full-row dup uniqueness, negative-value validity on qty/cost/stock/price-named cols. Links = shared column names across tables. Read-only, fail-soft.
+- **Force-train** — `POST /projects/{slug}/retrain?force=1` (or body `{force:true}`); parsed in `retrain_project` (~11198), gate at `if change_type=="unchanged" and not force` (~11999). Trains untrained-but-unchanged tables. Returns ~40ms (runs background ThreadPool, NOT inline). Powers the per-row **Train now** + **retrain all**.
+- **Daemon auto-trains untrained** — `dash/cron/auto_train_daemon.py`: `_get_untrained_tables()` (metadata-based) + `_trigger_full_train()` calls `retrain_project(slug, stub_request)` with `force=True` via a trusted stub (`request.state.user={"user_id":0,"username":SUPER_ADMIN}` → passes `check_project_permission` since `username==SUPER_ADMIN`). On each check, any table with no `dash_table_metadata` row → full pipeline now (not just on row-delta).
+
+**TWO load-bearing gotchas (both newly codified in README deploy gotchas #9–#11):**
+- **Trained-signal:** per-table training writes `dash_table_metadata` (profile) + `dash_training_qa` (`table_name` col, ~11 Q&A/table). `dash_training_steps` only holds GLOBAL tail steps (`knowledge_graph`/`vector_backfill`/`ml_auto_create`, `scope='project'`) — **never `scope=<table_name>` rows**. So `trained` = EXISTS `dash_table_metadata` row, `qa_count` = `dash_training_qa GROUP BY table_name`, `last_trained` = `metadata.updated_at`. Fixed in BOTH the endpoint's `_trained_map` AND the daemon's `_get_untrained_tables`.
+- **AUTOCOMMIT or counters zero:** `public.dash_knowledge_triples` doesn't exist on this DB → that counter query errors and **aborts the shared transaction**, silently zeroing every later `COUNT(*)` (incl. row counts → all tables showed `rows=0`). Fix: open the connection with `.execution_options(isolation_level="AUTOCOMMIT")`. Also strip control chars from preview cells (data has newlines → breaks JSON client + UI).
+- **Daemon leader-election:** plain `docker restart` races the prior process's <30s-fresh heartbeat (`dash.dash_daemon_leader`, LEASE_S=30) → all 12 workers lose the claim → no daemon starts. `DELETE FROM dash.dash_daemon_leader;` before restart/force-recreate. `get_daemon_status()` reads per-worker globals → status endpoint usually hits a non-leader worker and shows `last_check=0.0` even when the daemon ran.
+
+**Frontend** (`project/[slug]/settings/+page.svelte`, `upload` tab):
+- Replaced the ~1640-line `dsTab` upload/quality/history block with a self-contained `.dsx-*` design: 6 **health rings** + slide-open upload dropzone + **live pipeline strip** (7 stages, pulses on `is_training`) + sortable/filterable **table rows** that expand inline to show OVERVIEW (store-scope/source/trained-at) · QUALITY scorecard (3 bars + notes) · COLUMNS · LINKS · 5-row PREVIEW · **Train now**/download. Kills the upload/quality/history dupe sub-tabs (each table owns its own quality/history inline).
+- New state: `dsData/dsLoading/dsExpanded/dsSort/dsFilter/dsUploadOpen/dsTrainingTables` + `loadDataSource()` (5s poll while training) + `dsTrainTables(names)` / `dsTrainAll()`. Fired on upload-tab open. Fetch = `fetch(\`/api/projects/${slug}/datasource\`, {headers:_h()})`.
+- Spliced via python (kept `{#if activeTab==='upload'}` wrapper + hidden file input); CSS appended before `</style>`. Builds clean.
+
+**Verified live (baked image):** both tables trained ✓ qa=11 each, quality 96/100, 98 negative-stock + null cols flagged, FK link detected, previews; force-retrain runs; `auto_train_daemon: started` ✓ and correctly does NOT false-retrain once trained. Then **cleared all project data** at user request (full `pg_dump` backup → `pre_clear_citypharma.dump`, dropped tables + wiped training artifacts + disk cache; project/agent/auth/brain kept) so they can upload fresh.
+
+### Session 2026-06-05 — API Gateway P5 + Agent team pruning + /ui/embed standalone page + StoreScope in embed
+
+**1. API Gateway P5 — `/api/v1/docs` standalone HTML developer guide**
+`GET /api/v1/docs` serves a full HTML page (quickstart, auth, endpoints, blocking/streaming shapes, 3-tier access model, rate limit, errors, code examples: cURL/PHP/Python/Node). No auth required — safe to share with external dev teams. Added to `AuthMiddleware.SKIP_PREFIXES` in `app/main.py`. Content in `_DOCS_HTML` constant in `app/api_gateway.py` (~line 721). Gateway page Developer tabs show "Open full docs ↗" banner linking to it.
+
+**2. Agent team pruning — disabled 5 irrelevant agents**
+CityPharma pharma stock data has NO customer transactions, NO investment portfolio, NO competitor feeds, NO supply-chain manufacturing, NO portfolio ops. Five agents were wasting tokens (routing rules in Leader prompt + agent objects built) on every chat:
+
+| Agent | Why disabled | Default |
+|---|---|---|
+| `customer_strategist` | RFM/CLV/churn — needs customer purchase history | was ON |
+| `deal_analyst` | DCF/IRR/MOIC — venture/investment valuation | was ON |
+| `market_sentinel` | competitor news, sector trends, web research | was ON |
+| `ops_optimizer` | portfolio KPI tracking, board reports | was ON |
+| `supply_sentry` | manufacturing supply-chain risk, lead times | was ON |
+
+Disabled in `proj_demo_citypharma` feature_config (DB). Net saving: ~800 tokens/chat.
+
+**3. Dynamic routing-block stripping in `build_leader_instructions`**
+`dash/instructions.py` `build_leader_instructions()` now accepts `project_slug` and reads `feature_config.agents`. For each disabled agent, strips its `## CRITICAL ROUTING — <Name>` block + routing table row from `LEADER_INSTRUCTIONS` via regex before returning. Fail-soft (`try/except`) — if stripping fails, returns full instructions (safe fallback).
+
+`dash/team.py` updated to pass `project_slug=locked_slug()` to `build_leader_instructions()` in `create_team()`. Required importing `locked_slug` from `dash.single_agent`.
+
+**Bug during rollout:** first edit of `team.py` used `project_slug` (undefined in `create_team()` scope) → `NameError` → container crash loop. Fix: use `locked_slug()` directly. Always verify variable scope when editing module-level functions that run at import time.
+
+**4. `/ui/embed` — new standalone Embed management page**
+New route `frontend/src/routes/embed/+page.svelte`. 5 tabs:
+- **Overview** — widget count, endpoint reference, cURL test snippet
+- **Widgets** — list all embeds, mint new (store picker, scope radio), show key once on create
+- **Config** — edit primary_color/position/theme/welcome_msg/logo_url with live preview
+- **Usage** — 1d/7d/30d stats (calls/tokens/sessions/p50)
+- **Developer** — 3 snippets (public/store-scoped/HMAC), 3-tier access reminder
+
+Added "Embed" nav button in `+layout.svelte` after API Gateway, `{#if isSuper}` gated, routes `/ui/embed`, active on `routeMatches('/embed')`.
+
+**5. StoreScope wired in `app/embed_public.py`**
+Embed chat was NOT enforcing 3-tier masking — `user_attrs.store_id` was in the session but `API_STORE_SCOPE` ContextVar was never set. Fixed at all 4 chat call sites (blocking + streaming × 2):
+
+```python
+# After set_request_context(), before chat:
+_embed_scope_tok = None
+try:
+    from app.auth import resolve_api_scope as _resolve_scope
+    from dash.api_scope import API_STORE_SCOPE as _EMBED_SCOPE_VAR
+    if sess_user_attrs and sess_user_attrs.get("store_id"):
+        _embed_user = {
+            "store_id": sess_user_attrs.get("store_id", ""),
+            "store_ids": sess_user_attrs.get("store_ids", ""),
+            "scope_mode": sess_user_attrs.get("scope_mode", "store"),
+        }
+        _embed_scope = _resolve_scope(_embed_user)
+        _embed_scope_tok = _EMBED_SCOPE_VAR.set(_embed_scope)
+except Exception:
+    pass
+# ... in finally: reset _embed_scope_tok
+```
+
+Mirrors exactly what `app/api_gateway.py` does. Embed sessions with `store_id` now enforce Tier 1/2/3 masking identically to API Gateway keys.
+
 ### Reverse-coupling rule (learned the hard way)
 A router file is boot-safe to delete ONLY if it's imported nowhere but `main.py` AND has no unguarded lifespan init. Check both: `grep -rln "app\.<name>" app dash | grep -v main.py` (must be empty) AND scan the `lifespan` body (160–~899 in main.py) for `from app.<name> import` / `init_<name>()`. The router-registration block (917+) is guarded; the lifespan body is not.
+
+### Session 2026-06-04 — "chat not working" (was stale hot-copy) + Data Source responsive crush fix
+
+Two user reports, both root-caused + fixed, image rebuilt + force-recreated (per deploy rule [[feedback_citypharma_deploy]]).
+
+**1. "chat is not working — stuck at Connecting to agent…"** — backend was NEVER broken. Verified every layer end-to-end:
+- API direct `127.0.0.1:8011` → full 83KB SSE stream, `stock_check` ran, `TeamRunCompleted`.
+- OpenRouter LITE/CHAT models respond fine from container.
+- Caddy: HTTP `:8090` returns **308** (auto HTTP→HTTPS redirect); browser uses **HTTPS `:8453`** (cert CN=`localhost`, so curl to `127.0.0.1:8453` fails TLS `internal error` — SNI mismatch, NOT a real break; `--resolve`/`localhost` works). Through `localhost:8453` chat streamed code=200, incremental SSE.
+- The screenshot's "What's our current MRR?" correctly returns an **instant scope-guardrail refusal** (1.1s) — MRR is off-topic for the pharma agent.
+- Frontend `api.ts` `sendMessage`: relative `API_BASE=''` (same-origin), standard SSE reader — correct.
+- **Root cause:** running container served a **hot-copied frontend** (login theme + responsive were `docker cp`'d, not baked) — a half-applied/stale bundle the browser loaded → SSE callbacks didn't render. Fix = bake + `up -d --force-recreate dash-api` (replaces hot-copy with clean baked bundle) + browser hard-refresh `Cmd+Shift+R`.
+- **Diagnosis pattern codified:** "Connecting to agent…" stuck ≠ backend dead. Reproduce the chat with `curl -sk -F "message=…" https://localhost:8453/api/projects/<slug>/chat` (form-encoded, through Caddy w/ correct SNI). If it streams, the bug is the browser bundle/stale hot-copy — recreate, don't debug the agent.
+
+**2. Data Source page header crushed to a sliver at narrow width** (title "CityAgent Analyst" wrapping char-by-char). File: `frontend/src/routes/project/[slug]/settings/+page.svelte`. The **Data Source** nav = `upload` tab = `.set-shell` + `.set-shell-norail` (single-column, no rail). Two bugs:
+- `@media (max-width:1100px){ .set-shell { grid-template-columns: 56px 1fr } }` came LATER in the sheet than `.set-shell-norail { grid-template-columns:1fr }` (same specificity) → at ≤1100px the no-rail page got a **phantom 56px rail column**, shoving the header into a sliver. Fix: added `.set-shell-norail { grid-template-columns: 1fr }` INSIDE both media blocks (1100px + 700px).
+- `.set-head` was `display:flex` nowrap with `justify-content:space-between` → the action buttons (← Projects · Train all · Refresh · Chat) crushed `.set-head-left` (flex:1 min-width:0) to ~0. Fix: `.set-head { flex-wrap:wrap }` + `.set-head-left { flex:1 1 260px }` + `.set-head-actions { flex-wrap:wrap; flex-shrink:0 }` → buttons wrap below the title instead of squeezing it.
+- **Pattern:** a later same-specificity `@media .set-shell{…}` silently overrides a modifier class like `.set-shell-norail`. Any layout-modifier class MUST be re-declared inside every breakpoint that touches the base grid, or scope the media rule to `:not(.set-shell-norail)`.
+
+Verified live: container has `set-shell-norail…{grid-template-columns:1fr}` ×3 + `flex:1 1 260px`; chat streams 64 SSE events w/ `stock_check`; login theme baked.
+
+### API Gateway P8 — multi-outlet keys (set-membership) + tabbed gateway page (2026-06)
+
+OpenAI-compatible gateway (`/api/v1`) P0–P7 already shipped (see memory `project_citypharma_apigw`). This turn: **one API key can own a SET of outlets** + redesigned `/ui/gateway` from one long scroll to **tabbed** (Overview / Keys / Usage / Docs / Access Model). Decisions taken (user-approved): set-membership tier rule, tabbed layout, DB-backed outlet picker.
+
+**Access model recap (the boundary):** each store key bound to a SET of outlets. Tier 1 = any `site_code` in the set → full qty+cost. Tier 2 = other stores → availability only. Tier 3 = no site_code (catalog/substitutes/indications) → open. Enforcement = the toolset (store keys lose raw SQL at build time), not the prompt.
+
+**Storage:** `dash_users.store_ids TEXT` (CSV), added in `app/auth.py` `_bootstrap_tables` store-scope block (own connection + commit). `store_id` kept = primary (first of set), back-compat.
+
+**Backend:**
+- `dash/api_scope.py` — `StoreScope` gains `stores: tuple`; `owns()` = set membership (`sc in s.stores`), new `bound_stores()` returns the list; `bound_store()` kept = primary; `enforced` = `mode=='store' and (store_id or stores)`.
+- `app/auth.py` — `_validate_api_key` selects + carries `store_ids`; `resolve_api_scope` parses CSV → `stores` tuple; `mint_service_key` accepts `store_ids: list[str]` (dedupe preserve order; single `store_id` still works; writes primary→`store_id`/`site_code` + CSV→`store_ids`); `list_service_keys` returns `store_ids[]`; NEW `GET /apigw-outlets` (super-admin) = distinct `site_code` from `proj_demo_citypharma.citypharma_balance_stock` (53 outlets) for the picker.
+- `dash/tools/pharma_shop_tool.py` — when locked, `stock_check` + `store_stock_summary` use `b.site_code = ANY(%s)` over `bound_stores()` (psycopg passes a Python list to `ANY`). stock_check SUMs Tier-1 across owned set + adds per-outlet `your_stores` breakdown; outlets NOT in set = availability only. (`mask_row(_row, "")` when locked → no-op since owned data is all Tier-1.)
+- `app/api_gateway.py` — `_sanitize_for_scope` now builds the FULL owned set (`store_ids` ∪ primary) and treats any site in it as own (was single `store_id` → falsely redacted owned outlets as foreign).
+- `app/projects.py` SHOP CONTEXT (~1037) — reads `store_ids`; multi-outlet → "covering N outlets: …, do NOT pass a single site_code, report combined + per-outlet"; single → existing per-branch text.
+
+**Frontend `/ui/gateway`:** full rewrite to tabbed. Mint form = name + scope radio (store/global) + searchable outlet picker (chips, DB-backed via `/apigw-outlets`, free-text fallback) → CREATE posts `store_ids[]`. Keys table shows `outlet +N ▸` expandable row listing all owned outlets. Usage tab uses real `totals.calls`/`by_key[].service_account`/`store_id`.
+
+**Verified live (E2E):** 2-outlet key (`20060`,`20063`) → "is paracetamol in stock at my outlets?" → combined **1,811u** (902 + 909) with per-outlet split, no false redaction. Non-owned `20003` → "availability confirmed … cannot display exact inventory count", qty blocked + foreign code redacted. DB cross-check: `ANY(['20060','20063'])` sum ≈ 2× single-store → confirms the SET aggregates, not just primary. Test key revoked after.
+
+**Patterns:** (1) `psycopg` `WHERE col = ANY(%s)` with a Python list is the clean multi-value scope filter — no string-built IN clauses. (2) When widening a single-value scope to a set, every guard that compared to the single value (here the response sanitizer) must widen to set membership too, or it false-positives on the now-legit values. (3) Multi-store narration needs the SHOP CONTEXT to name the full set + tell the agent NOT to pass a single site_code (which would narrow the tool back to one outlet). Deploy = image rebuild + force-recreate (see [[feedback_citypharma_deploy]]); cosmetic gap left: keys-list "calls 24h" column not joined to usage (real numbers in Usage tab).
 
 ---
 ## 2026-05-27 (latest+++++) — Queue finalizer + zero-touch schema drift (lazy profile_v2 + unknown-table prompt rule)

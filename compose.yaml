@@ -1,6 +1,12 @@
 services:
   dash-db:
-    image: pgvector/pgvector:pg18-trixie
+    # Durable Apache AGE + pgvector image. PGDATA has shared_preload_libraries='age',
+    # so recreating cp-db on the plain pgvector image fails to boot (missing age.so).
+    # This bakes AGE in → recreate is boot-safe. Build: docker compose build dash-db
+    image: cp-db-age:pg18
+    build:
+      context: .
+      dockerfile: db/Dockerfile.age
     container_name: cp-db
     restart: always
     command: >
@@ -85,7 +91,7 @@ services:
       # Single-agent product lock (CityPharma)
       - SINGLE_AGENT_MODE=${SINGLE_AGENT_MODE:-1}
       - LOCKED_PROJECT_SLUG=${LOCKED_PROJECT_SLUG:-citypharma}
-      - PRODUCT_NAME=${PRODUCT_NAME:-CityPharma}
+      - PRODUCT_NAME=${PRODUCT_NAME:-CityAgent Pharma}
       # Database — goes through PgBouncer
       - DB_HOST=dash-pgbouncer
       - DB_PORT=5432
@@ -94,6 +100,9 @@ services:
       - DB_DATABASE=${DB_DATABASE:?DB_DATABASE required}
       # Scaling
       - RATE_LIMIT=${RATE_LIMIT:-500/minute}
+      # OpenAI-compat gateway: per-store-key rate cap (Redis-backed, global)
+      - API_GW_RATE_PER_MIN=${API_GW_RATE_PER_MIN:-60}
+      - REDIS_URL=${REDIS_URL:-redis://dash-redis:6379}
       # Required
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       # Models (3-tier with auto-fallback via OpenRouter models[])
