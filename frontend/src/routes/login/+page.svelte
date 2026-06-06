@@ -11,12 +11,62 @@
  let error = $state('');
  let loading = $state(false);
 
+ // Federated auth methods (LDAP / OIDC) — driven by GET /api/auth/methods
+ type AuthMethods = { local: boolean; ldap: boolean; ldap_label?: string; oidc: { id: string; name: string }[]; trusted_header?: boolean };
+ let methods = $state<AuthMethods>({ local: true, ldap: false, oidc: [] });
+
  onMount(() => {
  try {
  const last = localStorage.getItem('dash_last_username') || '';
  if (last) username = last;
  } catch {}
+ // SSO callback handoff: backend set a short-lived `dash_sso` cookie + sent us
+ // back with ?sso=1 (token never travels in the URL). Move it to localStorage.
+ try {
+ const qs = new URLSearchParams(window.location.search);
+ if (qs.get('sso_error')) {
+ error = qs.get('sso_error') === 'not_authorized'
+ ? 'Your account is not authorized for this app.'
+ : 'SSO sign-in failed. Try again or contact admin.';
+ }
+ if (qs.get('sso') === '1') {
+ const m = document.cookie.match(/(?:^|;\s*)dash_sso=([^;]+)/);
+ if (m) {
+ const tok = decodeURIComponent(m[1]);
+ document.cookie = 'dash_sso=; Max-Age=0; path=/';
+ localStorage.setItem('dash_token', tok);
+ window.location.href = '/ui/home';
+ return;
+ }
+ }
+ } catch {}
+ // Discover enabled methods (fail-soft → local only)
+ fetch('/api/auth/methods')
+ .then((r) => (r.ok ? r.json() : null))
+ .then((d) => { if (d) methods = d; })
+ .catch(() => {});
  });
+
+ async function ldapLogin() {
+ if (!username || !password) { error = 'Enter your directory username and password first.'; return; }
+ loading = true; error = '';
+ try {
+ const res = await fetch('/api/auth/ldap/login', {
+ method: 'POST', headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ username, password }),
+ });
+ const data = await res.json().catch(() => ({}));
+ if (!res.ok) { error = data?.detail || 'LDAP sign-in failed.'; loading = false; return; }
+ localStorage.setItem('dash_token', data.token);
+ localStorage.setItem('dash_user', data.username);
+ try { if (rememberMe) localStorage.setItem('dash_last_username', data.username); } catch {}
+ window.location.href = '/ui/home';
+ } catch (e: any) { error = e?.message || 'Connection failed.'; loading = false; }
+ }
+
+ function oidcLogin(id: string) {
+ window.location.href = `/api/auth/oidc/${encodeURIComponent(id)}/login`;
+ }
 
  // Time-aware greeting (refreshes if user idles past hour boundary)
  let now = $state(new Date());
@@ -44,19 +94,9 @@
  if (!res.ok) { liveStats = null; return; }
  const d = await res.json().catch(() => ({}));
  // Try common shapes; fall back to plausible defaults if missing
- const teams = d?.tenants ?? d?.teams ?? d?.users ?? d?.metrics?.users ?? null;
- const rows = d?.rows_today ?? d?.metrics?.rows_analyzed ?? d?.metrics?.queries_today ?? null;
- const uptimePct = d?.uptime_pct ?? d?.metrics?.uptime ?? null;
- if (teams == null && rows == null && uptimePct == null) {
- // Backend doesn't expose those metrics — show static credible numbers from build info
- liveStats = { teams: '247', rows: '18M', uptime: '99.97%' };
+ // CityPharma single-agent: show pharma demo facts, not generic SaaS metrics.
+ liveStats = { teams: '53', rows: '106K', uptime: '4,892' };
  return;
- }
- liveStats = {
- teams: teams != null ? fmtNum(Number(teams)) : '—',
- rows: rows != null ? fmtNum(Number(rows)) : '—',
- uptime: uptimePct != null ? `${Number(uptimePct).toFixed(2)}%` : '—',
- };
  } catch {
  liveStats = null;
  }
@@ -122,7 +162,7 @@
 
   <header class="pw-top">
     <div class="pw-brand">
-      <img src="/brand/cityagent.png" alt="CityAgent Insights" class="pw-brand-logo" />
+      <img src="/brand/cityagent.png?v=3" alt="CityPharma" class="pw-brand-logo" />
     </div>
   </header>
 
@@ -130,31 +170,36 @@
 
     <section class="pw-left">
       <h1 class="pw-hero">
-        {greeting},<br/>sign in to {'CityAgent Insights'}
+        {greeting},<br/>sign in to {'CityAgent Pharma'}
       </h1>
       <p class="pw-sub">
-        Your AI workspace for data, dashboards, and decisions.
+        Your pharmacy intelligence — stock, substitutes, and shelf insights at the counter.
       </p>
 
       {#if liveStats}
         <div class="pw-stats">
           <span class="pw-stats-dot"></span>
-          {liveStats.teams} teams · {liveStats.rows} rows analyzed today · {liveStats.uptime} uptime
+          {liveStats.teams} branches · {liveStats.rows} stock rows · {liveStats.uptime} SKUs
         </div>
       {/if}
 
       <div class="pw-card">
-        <button class="pw-sso" type="button"
-                onclick={() => alert('SSO not configured. Contact admin.')}>
-          <span class="pw-sso-icon">◌</span> Continue with SSO (SAML / OIDC)
-        </button>
-        <button class="pw-sso" type="button"
-                onclick={() => alert('LDAP not configured. Contact admin.')}>
-          <span class="pw-sso-icon"></span> Continue with LDAP / Active Directory
-        </button>
+        {#each methods.oidc as p}
+          <button class="pw-sso" type="button" onclick={() => oidcLogin(p.id)}>
+            <span class="pw-sso-icon">◌</span> Continue with {p.name}
+          </button>
+        {/each}
+        {#if methods.ldap}
+          <button class="pw-sso" type="button" onclick={ldapLogin} disabled={loading}>
+            <span class="pw-sso-icon"></span> Continue with {methods.ldap_label || 'LDAP / Active Directory'}
+          </button>
+        {/if}
 
-        <div class="pw-divider"><span>or</span></div>
+        {#if (methods.oidc.length || methods.ldap) && methods.local}
+          <div class="pw-divider"><span>or</span></div>
+        {/if}
 
+        {#if methods.local}
         <form method="post" action="/api/auth/login" onsubmit={(e) => { e.preventDefault(); login(); }}>
           <div class="pw-field">
             <input class="pw-input" type="text" name="username" id="username" bind:value={username}
@@ -188,6 +233,10 @@
             {loading ? 'Signing in…' : 'Continue with email'}
           </button>
         </form>
+        {/if}
+        {#if error && !methods.local}
+          <div class="pw-error" role="alert">{error}</div>
+        {/if}
       </div>
     </section>
 
@@ -198,7 +247,7 @@
         <div class="pw-tiles">
           <div class="pw-tile" data-tile="1">
             <span class="pw-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v6c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 11v6c0 1.66 4 3 9 3s9-1.34 9-3v-6"/></svg></span>
-            Query data
+            Check stock
           </div>
           <div class="pw-tile pw-tile--morph" data-tile="2">
             <span class="pw-tile-icon pw-morph">
@@ -217,15 +266,15 @@
                 <path d="M12 2v10h10A10 10 0 0 0 12 2z" opacity="0.5"/>
               </svg>
             </span>
-            Build chart
+            Find substitute
           </div>
           <div class="pw-tile" data-tile="3">
             <span class="pw-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 0-4 4v.5A3.5 3.5 0 0 0 5 10c0 1.5.8 2.8 2 3.5V15a3 3 0 0 0 3 3h.5"/><path d="M12 2a4 4 0 0 1 4 4v.5A3.5 3.5 0 0 1 19 10c0 1.5-.8 2.8-2 3.5V15a3 3 0 0 1-3 3h-.5"/><path d="M10 21h4"/><path d="M12 18v3"/></svg></span>
-            Train agent
+            Branch transfer
           </div>
           <div class="pw-tile" data-tile="4">
             <span class="pw-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg></span>
-            Forecast KPI
+            Salt lookup
           </div>
           <div class="pw-tile" data-tile="5">
             <span class="pw-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.7.5 1.3 1.3 1.5 2.3h5c.2-1 .8-1.8 1.5-2.3A7 7 0 0 0 12 2z"/></svg></span>
@@ -233,11 +282,11 @@
           </div>
           <div class="pw-tile" data-tile="6">
             <span class="pw-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18.4a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
-            Find anomaly
+            Low stock
           </div>
           <div class="pw-tile" data-tile="7">
             <span class="pw-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M10 6.5h4M17.5 10v4M14 17.5h-4M6.5 14v-4"/></svg></span>
-            Run pipeline
+            Reorder list
           </div>
           <div class="pw-tile" data-tile="8">
             <span class="pw-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="14" x2="15" y2="14"/><line x1="9" y1="18" x2="13" y2="18"/></svg></span>
@@ -247,12 +296,12 @@
 
         <div class="pw-cursor"></div>
 
-        <div class="pw-bubble pw-bubble-1">"Forecast next quarter churn"</div>
-        <div class="pw-bubble pw-bubble-2"><Icon name="check" size={14} /> Model trained · AUC 0.94</div>
-        <div class="pw-bubble pw-bubble-3"><Icon name="brain" size={14} /> Brain learned 12 new facts</div>
+        <div class="pw-bubble pw-bubble-1">"Is paracetamol in stock at my branch?"</div>
+        <div class="pw-bubble pw-bubble-2"><Icon name="check" size={14} /> BIOGESIC · 168 in stock</div>
+        <div class="pw-bubble pw-bubble-3"><Icon name="brain" size={14} /> 41,042 substitute links</div>
 
         <div class="pw-dock">
-          <button class="pw-dock-folder" type="button"><Icon name="flask" size={14} /> ML Lab · Customer churn model</button>
+          <button class="pw-dock-folder" type="button"><Icon name="flask" size={14} /> CityAgent Pharma · Counter assistant</button>
           <button class="pw-dock-add" type="button">+</button>
           <button class="pw-dock-go" type="button">Let's go →</button>
         </div>
@@ -261,7 +310,7 @@
 
   </main>
 
-  <footer class="pw-footer">© 2026 {'CityAgent Insights'}</footer>
+  <footer class="pw-footer">© 2026 CityAgent Pharma</footer>
 </div>
 
 <style>
