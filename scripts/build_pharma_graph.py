@@ -22,7 +22,9 @@ import sys
 import psycopg
 
 SCHEMA = "proj_demo_citypharma"
-ART = f"{SCHEMA}.citypharma_articles"
+# Catalog table is auto-detected at runtime (data was re-uploaded as
+# articles_list_07052026; the old citypharma_articles name is gone).
+ART = None  # resolved in main() via information_schema
 GRAPH = "citypharma"
 
 
@@ -44,6 +46,20 @@ def main() -> int:
     cur = conn.cursor()
     cur.execute("LOAD 'age';")
     cur.execute('SET search_path = ag_catalog, "$user", public;')
+
+    # Resolve the catalog table (has brand_name + generic_name); the old
+    # citypharma_articles name is gone, data lands as *_07052026.
+    global ART
+    cur.execute(
+        "SELECT table_name FROM information_schema.columns "
+        "WHERE table_schema = %s AND column_name IN ('brand_name','generic_name') "
+        "GROUP BY table_name HAVING count(DISTINCT column_name) = 2 "
+        "ORDER BY table_name LIMIT 1",
+        (SCHEMA,),
+    )
+    _row = cur.fetchone()
+    ART = f'"{SCHEMA}"."{_row[0]}"' if _row else f'"{SCHEMA}"."articles_list_07052026"'
+    print(f"[graph] catalog table = {ART}", flush=True)
 
     # fresh graph
     cur.execute("SELECT * FROM ag_catalog.drop_graph(%s, true);" if False else

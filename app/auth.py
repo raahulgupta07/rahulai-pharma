@@ -598,6 +598,26 @@ def _bootstrap_tables():
         except Exception:
             conn.rollback()
         conn.commit()
+    # API gateway store-scoping (Phase 0): bind a key to one store + a scope mode.
+    #   site_code  — staff/service branch (already queried by the chat SHOP CONTEXT)
+    #   store_id   — store the API key is bound to (defaults to site_code if unset)
+    #   scope_mode — 'store' (Tier-1 own / Tier-2 masked others) | 'global' (no mask)
+    # Own connection + commit so a rollback elsewhere in bootstrap can't discard them.
+    try:
+        with _engine.connect() as _sc_conn:
+            for _col, _ddl in (
+                ("site_code",  "ALTER TABLE public.dash_users ADD COLUMN IF NOT EXISTS site_code TEXT"),
+                ("store_id",   "ALTER TABLE public.dash_users ADD COLUMN IF NOT EXISTS store_id TEXT"),
+                ("store_ids",  "ALTER TABLE public.dash_users ADD COLUMN IF NOT EXISTS store_ids TEXT"),
+                ("scope_mode", "ALTER TABLE public.dash_users ADD COLUMN IF NOT EXISTS scope_mode TEXT DEFAULT 'global'"),
+            ):
+                try:
+                    _sc_conn.execute(text(_ddl))
+                except Exception:
+                    logger.exception("auth: add %s column failed", _col)
+            _sc_conn.commit()
+    except Exception:
+        logger.exception("auth: store-scope columns bootstrap failed")
     try:
         # Lazy import — avoid circular dep with dash.policy.loader → app.auth.
         from dash.policy.loader import _ensure_visibility_policy_table
@@ -693,17 +713,53 @@ def validate_token(token: str) -> Optional[dict]:
 
 
 def _validate_api_key(key: str) -> Optional[dict]:
-    """Validate a dash-key-* API key."""
+    """Validate a dash-key-* API key. Carries the key's store-scope binding
+    (site_code/store_id/scope_mode) so the API gateway can enforce the
+    three-tier access rule — see dash/api_scope.py."""
     try:
         with _engine.connect() as conn:
             row = conn.execute(text(
-                "SELECT id, username FROM public.dash_users WHERE api_key = :k"
+                "SELECT id, username, site_code, store_id, scope_mode, store_ids "
+                "FROM public.dash_users WHERE api_key = :k"
             ), {"k": key}).fetchone()
             if row:
-                return {"user_id": row[0], "username": row[1], "expiry": float('inf'), "is_super": row[1] == SUPER_ADMIN, "aad_groups": []}
+                return {
+                    "user_id": row[0], "username": row[1],
+                    "expiry": float('inf'),
+                    "is_super": row[1] == SUPER_ADMIN, "aad_groups": [],
+                    "site_code": row[2], "store_id": row[3],
+                    "scope_mode": row[4] or "global",
+                    "store_ids": row[5] or "",
+                    "via_api_key": True,
+                }
     except Exception:
         logger.exception("auth: api key validation failed")
     return None
+
+
+def resolve_api_scope(user: Optional[dict]) -> Optional["object"]:
+    """Build the StoreScope for an API-key user, or None for human/UI sessions.
+
+    store_id falls back to site_code when unset. A user with scope_mode='global'
+    (or no binding) yields a non-enforced scope so existing behaviour is unchanged.
+    Returns a dash.api_scope.StoreScope (or None). Never raises.
+    """
+    try:
+        if not user or not user.get("via_api_key"):
+            return None
+        from dash.api_scope import StoreScope
+        store = (user.get("store_id") or user.get("site_code") or "").strip()
+        ids_raw = (user.get("store_ids") or "").strip()
+        stores = tuple(x.strip() for x in ids_raw.split(",") if x.strip())
+        if not store and stores:
+            store = stores[0]
+        mode = (user.get("scope_mode") or "global").strip().lower()
+        if (not store and not stores) or mode == "global":
+            return StoreScope(store_id=store, stores=stores, mode="global")
+        return StoreScope(store_id=store, stores=stores, mode="store")
+    except Exception:
+        logger.exception("auth: resolve_api_scope failed")
+        return None
 
 
 def get_current_user(request: Request) -> Optional[dict]:
@@ -1297,6 +1353,445 @@ def regenerate_api_key(request: Request):
         conn.execute(text("UPDATE public.dash_users SET api_key = :k WHERE id = :uid"), {"k": key, "uid": user["user_id"]})
         conn.commit()
     return {"api_key": key}
+
+
+# ---------------------------------------------------------------------------
+# Service-account API keys (Phase 3) — store-bound, super-admin only
+# ---------------------------------------------------------------------------
+
+class ServiceKeyMintRequest(BaseModel):
+    service_account_name: str
+    store_id: Optional[str] = None          # single-outlet (back-compat)
+    store_ids: Optional[list[str]] = None   # multi-outlet SET (preferred)
+    scope_mode: str = "store"  # 'store' (tier-scoped) | 'global' (no mask)
+
+
+class ServiceKeyRevokeRequest(BaseModel):
+    key: Optional[str] = None
+    service_account_name: Optional[str] = None
+
+
+def _require_super_session(request: Request):
+    """Super-admin gate that REJECTS api-key sessions. Key management must be
+    done from a logged-in human super-admin session, never via a dash-key-*
+    bearer (which would let a service key mint/rotate other keys)."""
+    user = get_current_user(request)
+    if not user or not user.get("is_super"):
+        raise HTTPException(403, "Super admin access required")
+    if user.get("via_api_key"):
+        raise HTTPException(403, "API keys cannot manage service accounts; use a logged-in session")
+    return user
+
+
+@router.post("/api-key")
+def mint_service_key(req: ServiceKeyMintRequest, request: Request):
+    """Mint a store-bound service-account API key. Super admin only.
+
+    Creates/updates a service-account row in dash_users bound to store_id +
+    scope_mode, and returns the plaintext dash-key-* ONCE. Keys are stored
+    in plaintext in dash_users.api_key (same scheme as the per-user key) so
+    _validate_api_key can match them directly.
+    """
+    admin = _require_super_session(request)
+
+    name = (req.service_account_name or "").strip()
+    if not name or len(name) < 2:
+        raise HTTPException(400, "service_account_name must be at least 2 characters")
+    scope_mode = (req.scope_mode or "store").strip().lower()
+    if scope_mode not in ("store", "global"):
+        raise HTTPException(400, "scope_mode must be 'store' or 'global'")
+
+    # Build the owned-store SET — accept store_ids[] (preferred) or single store_id.
+    raw_ids = list(req.store_ids or [])
+    if req.store_id:
+        raw_ids.append(req.store_id)
+    _seen: set[str] = set()
+    ids: list[str] = []
+    for x in raw_ids:
+        x = (x or "").strip()
+        if x and x not in _seen:
+            _seen.add(x)
+            ids.append(x)
+    if scope_mode == "store" and not ids:
+        raise HTTPException(400, "at least one store_id is required for store scope")
+    primary = ids[0] if ids else ""
+    ids_csv = ",".join(ids)
+
+    key = f"dash-key-{secrets.token_urlsafe(24)}"
+    # Service accounts are namespaced so they never collide with human logins.
+    username = f"svc:{name}"
+
+    try:
+        with _engine.connect() as conn:
+            existing = conn.execute(text(
+                "SELECT id FROM public.dash_users WHERE username = :u"
+            ), {"u": username}).fetchone()
+            if existing:
+                conn.execute(text(
+                    "UPDATE public.dash_users "
+                    "SET api_key = :k, store_id = :sid, site_code = :sid, "
+                    "    store_ids = :sids, scope_mode = :sm "
+                    "WHERE username = :u"
+                ), {"k": key, "sid": primary, "sids": ids_csv, "sm": scope_mode, "u": username})
+                sa_id = existing[0]
+            else:
+                # password_hash is required NOT NULL; service accounts have no
+                # interactive login, so seed an unguessable random hash.
+                conn.execute(text(
+                    "INSERT INTO public.dash_users "
+                    "(username, password_hash, api_key, store_id, site_code, store_ids, scope_mode) "
+                    "VALUES (:u, :p, :k, :sid, :sid, :sids, :sm)"
+                ), {
+                    "u": username, "p": _hash_password(secrets.token_urlsafe(32)),
+                    "k": key, "sid": primary, "sids": ids_csv, "sm": scope_mode,
+                })
+                sa_id = conn.execute(text(
+                    "SELECT id FROM public.dash_users WHERE username = :u"
+                ), {"u": username}).fetchone()[0]
+
+            # Grant the service account viewer access to the locked project so
+            # the gateway's project_chat permission check passes. CityPharma is
+            # locked to one project; share it (idempotent).
+            try:
+                from dash.single_agent import locked_slug as _ls
+                _slug = _ls()
+            except Exception:
+                _slug = "proj_demo_citypharma"
+            proj = conn.execute(text(
+                "SELECT id, user_id FROM public.dash_projects WHERE slug = :s"
+            ), {"s": _slug}).fetchone()
+            if proj and proj[1] != sa_id:
+                already = conn.execute(text(
+                    "SELECT 1 FROM public.dash_project_shares "
+                    "WHERE project_id = :pid AND shared_with_user_id = :uid"
+                ), {"pid": proj[0], "uid": sa_id}).fetchone()
+                if not already:
+                    conn.execute(text(
+                        "INSERT INTO public.dash_project_shares "
+                        "(project_id, shared_with_user_id, shared_by, role) "
+                        "VALUES (:pid, :uid, :by, 'viewer')"
+                    ), {"pid": proj[0], "uid": sa_id, "by": admin.get("user_id")})
+            conn.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("auth: mint_service_key failed")
+        raise HTTPException(500, f"Failed to mint key: {e}")
+
+    log_action(admin, "mint_service_key", "service_account", name,
+               f"stores={ids_csv} scope_mode={scope_mode}")
+
+    return {
+        "status": "ok",
+        "service_account_name": name,
+        "service_account_id": sa_id,
+        "store_id": primary,
+        "store_ids": ids,
+        "scope_mode": scope_mode,
+        "api_key": key,  # plaintext — shown ONCE
+    }
+
+
+@router.post("/api-key/revoke")
+def revoke_service_key(req: ServiceKeyRevokeRequest, request: Request):
+    """Revoke a service-account API key. Super admin only.
+
+    Identify by key OR service_account_name. Clears api_key (disables the key)
+    but keeps the service-account row + its store binding for audit/reuse.
+    """
+    admin = _require_super_session(request)
+
+    key = (req.key or "").strip()
+    name = (req.service_account_name or "").strip()
+    if not key and not name:
+        raise HTTPException(400, "Provide 'key' or 'service_account_name'")
+
+    try:
+        with _engine.connect() as conn:
+            if key:
+                row = conn.execute(text(
+                    "SELECT id, username FROM public.dash_users WHERE api_key = :k"
+                ), {"k": key}).fetchone()
+            else:
+                row = conn.execute(text(
+                    "SELECT id, username FROM public.dash_users WHERE username = :u"
+                ), {"u": f"svc:{name}"}).fetchone()
+            if not row:
+                raise HTTPException(404, "Service account / key not found")
+            sa_id, sa_username = row[0], row[1]
+            conn.execute(text(
+                "UPDATE public.dash_users SET api_key = NULL WHERE id = :id"
+            ), {"id": sa_id})
+            conn.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("auth: revoke_service_key failed")
+        raise HTTPException(500, f"Failed to revoke key: {e}")
+
+    disp = sa_username[4:] if sa_username.startswith("svc:") else sa_username
+    log_action(admin, "revoke_service_key", "service_account", disp, "")
+    return {"status": "ok", "revoked": disp}
+
+
+@router.get("/api-keys")
+def list_service_keys(request: Request):
+    """List store-bound service-account API keys. Super admin only.
+
+    Returns the service accounts (dash_users rows where username starts
+    'svc:'), stripping the 'svc:' prefix to a display name. NEVER returns the
+    api_key value — only whether it is currently active (non-NULL).
+    """
+    _require_super_session(request)
+
+    try:
+        with _engine.connect() as conn:
+            rows = conn.execute(text(
+                "SELECT id, username, store_id, scope_mode, "
+                "(api_key IS NOT NULL) AS active, created_at, store_ids "
+                "FROM public.dash_users "
+                "WHERE username LIKE 'svc:%' "
+                "ORDER BY username ASC"
+            )).fetchall()
+    except Exception as e:
+        logger.exception("auth: list_service_keys failed")
+        raise HTTPException(500, f"Failed to list keys: {e}")
+
+    keys = []
+    for r in rows:
+        username = r[1] or ""
+        name = username[4:] if username.startswith("svc:") else username
+        ids_csv = (r[6] or "").strip()
+        store_ids = [x.strip() for x in ids_csv.split(",") if x.strip()]
+        if not store_ids and r[2]:
+            store_ids = [r[2]]
+        keys.append({
+            "id": r[0],
+            "service_account_name": name,
+            "store_id": r[2],
+            "store_ids": store_ids,
+            "scope_mode": r[3],
+            "active": bool(r[4]),
+            "created_at": r[5].isoformat() if r[5] else None,
+        })
+
+    return {"keys": keys}
+
+
+@router.get("/apigw-outlets")
+def apigw_outlets(request: Request):
+    """Distinct outlet site_codes (for the mint-key outlet picker). Super admin only."""
+    _require_super_session(request)
+    outlets: list[str] = []
+    schema = "proj_demo_citypharma"
+    try:
+        with _engine.connect() as conn:
+            # Auto-detect the stock table — data was re-uploaded as
+            # balance_stock_07052026; the old citypharma_balance_stock is gone.
+            # Pick any table in the schema that has site_code + stock_qty.
+            stock_tbl = conn.execute(text(
+                "SELECT table_name FROM information_schema.columns "
+                "WHERE table_schema = :s AND column_name IN ('site_code','stock_qty') "
+                "GROUP BY table_name HAVING count(DISTINCT column_name) = 2 "
+                "ORDER BY table_name LIMIT 1"
+            ), {"s": schema}).scalar()
+            if not stock_tbl:
+                stock_tbl = "balance_stock_07052026"
+            # stock_tbl comes from the DB catalog (not user input); still
+            # double-quote it to be safe.
+            rows = conn.execute(text(
+                f'SELECT DISTINCT site_code FROM "{schema}"."{stock_tbl}" '
+                "WHERE site_code IS NOT NULL AND site_code <> '' "
+                "ORDER BY site_code ASC"
+            )).fetchall()
+        outlets = [r[0] for r in rows if r[0]]
+    except Exception:
+        logger.exception("auth: apigw_outlets query failed")
+    return {"outlets": outlets, "count": len(outlets)}
+
+
+# ---------------------------------------------------------------------------
+# API Gateway admin (super-admin "API Gateway" page)
+# ---------------------------------------------------------------------------
+
+class ApigwConfigRequest(BaseModel):
+    rate_per_min: int
+
+
+def _apigw_rate_per_min() -> int:
+    """Read the live rate cap from public.dash_apigw_config (singleton id=1),
+    falling back to the API_GW_RATE_PER_MIN env (default 60) on any error."""
+    env_default = 60
+    try:
+        env_default = int(os.getenv("API_GW_RATE_PER_MIN", "60"))
+    except (TypeError, ValueError):
+        env_default = 60
+    try:
+        with _engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT rate_per_min FROM public.dash_apigw_config WHERE id = 1"
+            )).fetchone()
+        if row and row[0] is not None:
+            return int(row[0])
+    except Exception:
+        logger.exception("auth: apigw config read failed (fallback to env)")
+    return env_default
+
+
+@router.get("/apigw-status")
+def apigw_status(request: Request):
+    """API Gateway status panel. Super admin only. Fail-soft on redis/db errors."""
+    _require_super_session(request)
+
+    redis_up = False
+    try:
+        import redis as _redis
+        _c = _redis.from_url(
+            os.getenv("REDIS_URL", "redis://dash-redis:6379"),
+            socket_timeout=2, socket_connect_timeout=2,
+        )
+        _c.ping()
+        redis_up = True
+    except Exception:
+        redis_up = False
+
+    rate_per_min = _apigw_rate_per_min()
+
+    keys_active = 0
+    keys_revoked = 0
+    try:
+        with _engine.connect() as conn:
+            keys_active = conn.execute(text(
+                "SELECT COUNT(*) FROM public.dash_users "
+                "WHERE username LIKE 'svc:%' AND api_key IS NOT NULL"
+            )).scalar() or 0
+            keys_revoked = conn.execute(text(
+                "SELECT COUNT(*) FROM public.dash_users "
+                "WHERE username LIKE 'svc:%' AND api_key IS NULL"
+            )).scalar() or 0
+    except Exception:
+        logger.exception("auth: apigw_status key counts failed")
+
+    return {
+        "live": True,
+        "model": "citypharma-analyst",
+        "redis_up": redis_up,
+        "rate_per_min": rate_per_min,
+        "keys_active": int(keys_active),
+        "keys_revoked": int(keys_revoked),
+    }
+
+
+@router.get("/apigw-config")
+def apigw_config_get(request: Request):
+    """Current live rate cap. Super admin only."""
+    _require_super_session(request)
+    return {"rate_per_min": _apigw_rate_per_min()}
+
+
+@router.post("/apigw-config")
+def apigw_config_set(req: ApigwConfigRequest, request: Request):
+    """Update the live rate cap (singleton config). Super admin only.
+    Takes effect in the gateway within ~10s (TTL cache) without a restart."""
+    admin = _require_super_session(request)
+
+    v = int(req.rate_per_min)
+    if v < 1 or v > 100000:
+        raise HTTPException(400, "rate_per_min must be between 1 and 100000")
+
+    try:
+        from db.session import get_write_engine
+        eng = get_write_engine()
+        with eng.connect() as conn:
+            conn.execute(text(
+                "UPDATE public.dash_apigw_config "
+                "SET rate_per_min = :v, updated_at = now() WHERE id = 1"
+            ), {"v": v})
+            conn.commit()
+    except Exception as e:
+        logger.exception("auth: apigw_config_set failed")
+        raise HTTPException(500, f"Failed to update rate cap: {e}")
+
+    log_action(admin, "apigw_config_set", "apigw", "rate_per_min", f"rate_per_min={v}")
+    return {"ok": True, "rate_per_min": v}
+
+
+@router.get("/apigw-usage")
+def apigw_usage(request: Request, days: int = 7):
+    """Usage analytics aggregated from public.dash_apigw_usage. Super admin only.
+
+    NOTE: 429 rate-limit rejections are NOT logged in dash_apigw_usage (only
+    completed requests are metered), so totals.rate_limited is always 0 here.
+    """
+    _require_super_session(request)
+
+    try:
+        days = int(days)
+    except (TypeError, ValueError):
+        days = 7
+    if days < 1:
+        days = 1
+    if days > 365:
+        days = 365
+
+    out = {
+        "days": days,
+        "totals": {"calls": 0, "tokens": 0, "rate_limited": 0},
+        "daily": [],
+        "by_key": [],
+    }
+
+    try:
+        with _engine.connect() as conn:
+            tot = conn.execute(text(
+                "SELECT COUNT(*) AS calls, COALESCE(SUM(total_tokens), 0) AS tokens "
+                "FROM public.dash_apigw_usage "
+                "WHERE ts > now() - (:days || ' days')::interval"
+            ), {"days": days}).fetchone()
+            if tot:
+                out["totals"]["calls"] = int(tot[0] or 0)
+                out["totals"]["tokens"] = int(tot[1] or 0)
+
+            daily_rows = conn.execute(text(
+                "SELECT to_char(date_trunc('day', ts), 'YYYY-MM-DD') AS d, "
+                "       COUNT(*) AS calls, COALESCE(SUM(total_tokens), 0) AS tokens "
+                "FROM public.dash_apigw_usage "
+                "WHERE ts > now() - (:days || ' days')::interval "
+                "GROUP BY date_trunc('day', ts) "
+                "ORDER BY date_trunc('day', ts) ASC"
+            ), {"days": days}).fetchall()
+            out["daily"] = [
+                {"date": r[0], "calls": int(r[1] or 0), "tokens": int(r[2] or 0)}
+                for r in daily_rows
+            ]
+
+            key_rows = conn.execute(text(
+                "SELECT service_account, store_id, scope_mode, "
+                "       COUNT(*) AS calls, COALESCE(SUM(total_tokens), 0) AS tokens, "
+                "       MAX(ts) AS last_ts "
+                "FROM public.dash_apigw_usage "
+                "WHERE ts > now() - (:days || ' days')::interval "
+                "GROUP BY service_account, store_id, scope_mode "
+                "ORDER BY calls DESC"
+            ), {"days": days}).fetchall()
+            by_key = []
+            for r in key_rows:
+                sa = r[0] or ""
+                if sa.startswith("svc:"):
+                    sa = sa[4:]
+                by_key.append({
+                    "service_account": sa,
+                    "store_id": r[1],
+                    "scope_mode": r[2],
+                    "calls": int(r[3] or 0),
+                    "tokens": int(r[4] or 0),
+                    "last": r[5].isoformat() if r[5] else None,
+                })
+            out["by_key"] = by_key
+    except Exception:
+        logger.exception("auth: apigw_usage aggregation failed")
+
+    return out
 
 
 @router.get("/users/{username}/projects")
