@@ -220,4 +220,21 @@ Full-code audit for production breakers. 6 fixed + deployed (image rebuild → H
 
 ---
 
+## 13. Federated auth — LDAP + OIDC/SSO (2026-06-06, OpenWebUI-modeled)
+
+Added optional LDAP + generic OIDC/SSO on top of local login. **OFF by default; local username/password unchanged.** Code: `app/auth_federation.py` (`fed_router`, guarded-imported in `main.py`). Branch merged to `main` (local).
+
+- **LDAP**: `ldap3` (new dep, pinned `2.9.1`; `pyasn1` already present) bind-search-bind — app-bind → search by `LDAP_ATTRIBUTE_FOR_USERNAME` (`escape_filter_chars`) → rebind as user DN. Auto-provisions `dash_users` (bcrypt placeholder, `auth_provider='ldap'`, `external_id`=DN). TLS + `LDAP_VALIDATE_CERT`.
+- **OIDC**: manual auth-code flow (NO Authlib → avoids app-wide SessionMiddleware). Discovery via `/.well-known/openid-configuration`, **state + nonce + PKCE(S256)**, transient store = NEW `public.dash_oauth_flow` (created at lifespan, 15-min GC), **id_token JWKS verify via pyjwt `PyJWKClient`** (aud/iss/nonce). Built-ins: generic / Keycloak / Google / Microsoft. Replaces old hand-rolled Keycloak (no state/PKCE/JWKS + token-in-URL leak).
+- **Token handoff**: callback sets 120s JS-readable `dash_sso` cookie + `/ui/login?sso=1` (no token in URL); login page moves it to `localStorage` then clears.
+- **Access + branch**: `OAUTH_ALLOWED_ROLES` gate (reject if no allowed role); `group_to_site` maps LDAP-group / OIDC group-claim → `dash_users.site_code` (auto-binds federated users to their branch for Shop-Counter mode). **No admin elevation** — `dash_users` has no role column, super-admin = fixed username.
+- **Config**: ENV baseline (OpenWebUI var names) merged with ONE JSON row in `dash_admin_settings` (key=`auth_config`, global). **Secrets (`LDAP_APP_PASSWORD`, `*_CLIENT_SECRET`) ENV-ONLY — never persisted** (`/config` POST strips them). 30s cache.
+- **Endpoints**: `GET /api/auth/methods` (public, SKIP_PATHS), `POST /api/auth/ldap/login` (public), `GET /api/auth/oidc/{provider}/login`+`/callback` (SKIP_PREFIX `/api/auth/oidc/`), super-admin `GET|POST /api/auth/config`.
+- **Frontend**: login page renders methods from `/api/auth/methods` (replaced dead `alert()` stubs) + SSO-cookie pickup; NEW super-admin **`/ui/auth-admin`** editor (General/LDAP/OIDC + raw-JSON).
+- **Verified E2E** (throwaway `osixia/openldap`): correct→token, wrong→401, unknown→401, provisioned. OIDC vs real Google discovery: 302 w/ state+nonce+PKCE, flow row persisted.
+- **No DB migration** — `auth_provider`/`external_id`/`site_code` columns already existed; only `dash_oauth_flow` auto-created. **New `ldap3` dep ⇒ deploy MUST rebuild image** (not hot-copy).
+- Config/turn-on reference: `.env.example` federation block + README "Authentication" section + CLAUDE.md `latest+11`.
+
+---
+
 *Distilled from CLAUDE.md (7665 lines) + code structure, 2026-06-06. For session-level detail and the running build log, read CLAUDE.md (CityPharma section lines 7–448 override the inherited Dash log).*
