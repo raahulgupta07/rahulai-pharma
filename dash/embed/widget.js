@@ -303,7 +303,15 @@
       from { opacity: 0; transform: translateY(2px); }
       to { opacity: 0.85; }
     }
-    .agent-step .ic { flex-shrink: 0; }
+    .agent-step .ic { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; }
+    .agent-step .ic.ok { color: ${t.accent}; font-weight: 700; }
+    .agent-step .step-spin {
+      width: 9px; height: 9px; border-radius: 50%;
+      border: 1.5px solid ${t.accent}; border-top-color: transparent;
+      animation: agent-spin 0.7s linear infinite;
+    }
+    .agent-step.agent-step-done { opacity: 0.5; }
+    .agent-step.agent-step-done .step-tx { text-decoration: none; }
     .agent-steps.done .agent-step { display: none; }
     .agent-steps.done .agent-steps-head { font-weight: 500; }
 
@@ -856,17 +864,32 @@
 
         var stepStart = Date.now();
         var stepCount = 0;
+        var pendingLine = null;   // the step currently "in progress" (spinner)
+        // Mark the in-progress step complete (✓) before the next one starts.
+        function tickPending() {
+          if (pendingLine) {
+            var ic = pendingLine.querySelector('.ic');
+            if (ic) { ic.textContent = '✓'; ic.classList.add('ok'); }
+            pendingLine.classList.add('agent-step-done');
+            pendingLine = null;
+          }
+        }
         function addStep(p) {
+          tickPending();
           stepCount++;
           var line = document.createElement('div');
           line.className = 'agent-step';
-          line.innerHTML = '<span class="ic">' + escapeHtml(p.icon || '🔧') + '</span>' +
-                           '<span>' + escapeHtml(p.label || '') + '</span>';
+          line.innerHTML = '<span class="ic"><span class="step-spin"></span></span>' +
+                           '<span class="step-tx">' + escapeHtml(p.label || '') + '</span>';
           strip.appendChild(line);
+          pendingLine = line;
           msgList.scrollTop = msgList.scrollHeight;
         }
+        // Seed an immediate step so the strip is never a blank "thinking…".
+        addStep({ label: 'understanding your question' });
         function collapseStrip() {
           if (strip.classList.contains('done')) return;
+          tickPending();
           var secs = ((Date.now() - stepStart) / 1000).toFixed(1);
           strip.classList.add('done');
           if (stepCount === 0) { strip.remove(); return; }
@@ -890,10 +913,11 @@
 
         var assembled = '';
         var streamErrored = false;
+        var writingShown = false;
         return streamChat(
           tokenStr, msg,
           function onDelta(delta) {
-            collapseStrip();
+            if (!writingShown) { writingShown = true; addStep({ label: 'writing answer' }); }
             assembled += delta;
             div.innerHTML = renderMd(assembled) + '<span class="stream-cursor">▍</span>';
             msgList.scrollTop = msgList.scrollHeight;
