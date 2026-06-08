@@ -26,10 +26,14 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:?DB_USER required}"]
-      interval: 10s
+      # -d so it probes the real DB (not just the postmaster socket), and
+      # start_period covers first-boot initdb on a cold volume (AWS) so the
+      # init seeder never fires into a not-yet-ready DB and dies exit 2.
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:?DB_USER required} -d ${DB_DATABASE:?DB_DATABASE required}"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 40s
     networks:
       - dash
     deploy:
@@ -93,6 +97,20 @@ services:
       - /bin/sh
       - -ec
       - |
+        echo "[init] waiting for postgres at $$PGHOST:$$PGPORT (db=$$PGDATABASE user=$$PGUSER)..."
+        ready=""
+        i=1
+        while [ "$$i" -le 60 ]; do
+          if psql -tAc "SELECT 1" >/dev/null 2>&1; then ready=1; echo "[init] db reachable after $$i attempt(s)."; break; fi
+          echo "[init] db not ready yet ($$i/60) — retrying in 2s..."
+          sleep 2
+          i=$$((i + 1))
+        done
+        if [ -z "$$ready" ]; then
+          echo "[init] FATAL: could not connect to $$PGHOST:$$PGPORT after 120s. Last psql error:"
+          psql -tAc "SELECT 1" || true
+          exit 2
+        fi
         echo "[init] checking if database already has schema..."
         exists="$$(psql -tAc "SELECT to_regclass('public.dash_projects') IS NOT NULL")"
         if [ "$$exists" = "t" ]; then
