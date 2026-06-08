@@ -262,15 +262,20 @@
       0%, 80%, 100% { transform: scale(0.7); opacity: 0.5; }
       40% { transform: scale(1); opacity: 1; }
     }
-    .stream-cursor {
-      display: inline-block;
-      width: 0.5em;
-      color: ${t.accent};
-      animation: stream-blink 1s infinite step-start;
-      margin-left: 1px;
+    /* loading dots — store-accent bouncing wave (no blink) */
+    .load-dots {
+      display: inline-flex; gap: 4px; vertical-align: middle; margin-left: 4px;
     }
-    @keyframes stream-blink {
-      50% { opacity: 0; }
+    .load-dots i {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: ${t.accent}; display: inline-block;
+      animation: load-bounce 1.2s infinite ease-in-out both;
+    }
+    .load-dots i:nth-child(1) { animation-delay: -0.32s; }
+    .load-dots i:nth-child(2) { animation-delay: -0.16s; }
+    @keyframes load-bounce {
+      0%, 80%, 100% { transform: scale(0.5); opacity: 0.35; }
+      40% { transform: scale(1); opacity: 1; }
     }
 
     /* live agent activity strip (what the agent is doing) */
@@ -906,7 +911,7 @@
         row.appendChild(av);
         var div = document.createElement('div');
         div.className = 'msg bot';
-        div.innerHTML = '<span class="stream-cursor">▍</span>';
+        div.innerHTML = '<span class="load-dots"><i></i><i></i><i></i></span>';
         row.appendChild(div);
         msgList.appendChild(row);
         msgList.scrollTop = msgList.scrollHeight;
@@ -919,7 +924,7 @@
           function onDelta(delta) {
             if (!writingShown) { writingShown = true; addStep({ label: 'writing answer' }); }
             assembled += delta;
-            div.innerHTML = renderMd(assembled) + '<span class="stream-cursor">▍</span>';
+            div.innerHTML = renderMd(assembled) + '<span class="load-dots"><i></i><i></i><i></i></span>';
             msgList.scrollTop = msgList.scrollHeight;
           },
           function onDone(_payload) {

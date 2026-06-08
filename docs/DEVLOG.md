@@ -2,6 +2,21 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-08 (latest+34) — embed widget: search_all gate (kill hallucinated stock) + expandable rows + public-key rotate + dots-loader streaming
+
+**search_all gate (the big fix):** store-locked keys kept `search_all` (training-knowledge RAG), which **beat** the scoped pharma tools — the agent answered drug/stock questions from fabricated training samples (fake brands/qty) instead of `stock_check`/`find_nearby_stock`. Gated `search_all` behind `not _store_locked` in `dash/tools/build.py` (same as run_sql_query/analyze/hybrid_lookup) → pharma tools are the ONLY data path for store keys. Verified: "do you have paracetamol" now returns real stock (PARACAP 1100, BIOGESIC 500…) via `stock_check`, no hallucination. (Diagnosed via the gateway E2E test in this session: trace showed `chat.analyst.search_all` was the only tool called.)
+
+**Per-store embed mint:** bulk-created embeds for all 53 stores (`embed_mgr.create_embed`, `bound_scope_id=<site_code>`, `bound_intent=private`, `created_by=1` — the col is an int FK, not a name). 33 new + 20 existing test ones. Handout dumped to `examples/embed-test/store_embeds.tsv` (gitignored — has keys).
+
+**Embed UI (`EmbedPanel.svelte`):**
+- **Expandable widget rows** (mirror Gateway Outlet Keys): click a row → inline embed_id, public_key, endpoint, scope (intent→qty/availability), rate, full snippet + copy buttons, ▶ test + ⚙ playground jumps. Action buttons `stopPropagation` so they don't toggle the row.
+- **Public-key rotate + revoke** on the PUBLIC KEY line. `manager.rotate_public_key()` + `POST /embeds/{id}/rotate-key` — the existing `/rotate` only cycled the HMAC secret (useless for public-auth store widgets where public_key IS the credential). Rotate patches the row in-memory (new key shows instantly), both gated behind a confirm.
+
+**Widget streaming UX (`dash/embed/widget.js`):**
+- Live agent-step strip upgraded: seeded "understanding your question" step (never a blank `thinking…`), each step shows a spinner + ticks ✓ when the next starts, "writing answer" step on first token, collapses to `✓ done · Ns · N steps`.
+- Replaced the blinking `▍` stream-cursor with **3 store-accent bouncing dots** (`.load-dots`, wave bounce). Dots while waiting, trail after streaming text, gone on done.
+- **Streaming reality:** the 33 store embeds are **consumer** mode = answer buffered + masked + dropped in at `done` (NO token deltas, by design — masking needs the full buffer). 20 older test embeds are **analyst** = true token-by-token. Decision: KEEP consumer (dots + drop-in) — the post-hoc currency/qty mask is the safety layer; not flipping to analyst. To flip later: `UPDATE dash_agent_embeds SET response_style='analyst' WHERE bound_scope_id IS NOT NULL`.
+
 ### Session 2026-06-08 (latest+33) — `shop_flat` denormalized stock table (kill runtime join) + `find_nearby_stock` cross-store locator
 
 **Why:** every stock query ran `articles ⋈ balance_stock ON a.article_code::text = b.article_code` at runtime — cast = no index + full scan, and the Excel `1E+12` corruption silently dropped rows mid-join. Asked: improve SQL, no real-time join. Also: "where can I find this medicine if it's out/low at my outlet" (cross-store locator).
