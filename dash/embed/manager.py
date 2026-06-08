@@ -175,6 +175,89 @@ def create_embed(
     return out
 
 
+def _live_outlet_codes(conn) -> list[str]:
+    """DISTINCT site_code from the latest stock upload — same resolver the
+    gateway-key auto-provision uses (auth._live_outlets). Returns [] on any
+    failure so the caller stays fail-soft."""
+    schema = "citypharma"
+    try:
+        from dash.tools.table_sync import latest_table_sa, STOCK_COLS
+        stock_tbl = latest_table_sa(conn, schema, STOCK_COLS) or "balance_stock_07052026"
+        rows = conn.execute(text(
+            f'SELECT DISTINCT site_code FROM "{schema}"."{stock_tbl}" '
+            "WHERE site_code IS NOT NULL AND site_code <> '' ORDER BY site_code ASC"
+        )).fetchall()
+        return [r[0] for r in rows if r[0]]
+    except Exception:
+        logger.exception("embed: _live_outlet_codes failed")
+        return []
+
+
+def auto_provision_store_embeds(project_slug: str) -> int:
+    """Create one public store-bound embed (name `store-<site_code>`) for every
+    live outlet that has none yet — the embed twin of auth._auto_provision_missing.
+
+    Production widget shape: auth_mode=public, bound_role=staff, consumer/masked
+    (column defaults: response_style=consumer, bound_intent=public, status=live,
+    enabled=true, auto_provisioned=false). Idempotent on the `store-<code>` name.
+
+    Gated by env EMBED_AUTO_PROVISION (default '1' = on). Fully fail-soft.
+    Returns the count of embeds created this call (0 if gate off / nothing to do).
+    """
+    import os
+    if os.getenv("EMBED_AUTO_PROVISION", "1") != "1":
+        return 0
+    try:
+        eng = _get_engine()
+        with eng.connect() as conn:
+            outlets = _live_outlet_codes(conn)
+            if not outlets:
+                return 0
+            # Existing store embeds for this project, keyed by bound outlet code.
+            rows = conn.execute(text(
+                "SELECT name, bound_scope_id FROM public.dash_agent_embeds "
+                "WHERE project_slug = :s AND name LIKE 'store-%'"
+            ), {"s": project_slug}).fetchall()
+            have: set[str] = set()
+            for nm, bsid in rows:
+                if bsid:
+                    have.add(bsid)
+                elif nm and nm.startswith("store-"):
+                    have.add(nm[len("store-"):])
+            missing = [o for o in outlets if o not in have]
+            if not missing:
+                return 0
+            # Resolve owner user_id for created_by (INTEGER column).
+            owner = conn.execute(text(
+                "SELECT user_id FROM public.dash_projects WHERE slug = :s LIMIT 1"
+            ), {"s": project_slug}).fetchone()
+            created_by = int(owner[0]) if owner and owner[0] is not None else None
+    except Exception:
+        logger.exception("embed: auto_provision_store_embeds setup failed")
+        return 0
+
+    made = 0
+    for code in missing:
+        try:
+            create_embed(
+                project_slug=project_slug,
+                name=f"store-{code}",
+                allowed_origins=[],          # any origin, like the existing 53
+                auth_mode="public",
+                rate_limit_per_min=120,
+                created_by=created_by,
+                bound_scope_id=code,
+                bound_intent="public",       # masked (consumer drop-in)
+                bound_role="staff",
+            )
+            made += 1
+        except Exception:
+            logger.exception("embed: auto-provision failed for outlet %s", code)
+    if made:
+        logger.info("embed: auto-provisioned %d new store embeds", made)
+    return made
+
+
 def list_embeds(project_slug: str) -> list[dict[str, Any]]:
     eng = _get_engine()
     with eng.connect() as conn:

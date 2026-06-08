@@ -350,6 +350,12 @@ async def create_embed_endpoint(slug: str, request: Request):
 def list_embeds_endpoint(slug: str, request: Request, include_agent_scoped: bool = False):
     user = _get_user(request)
     _check_access(user, slug)
+    # Lazy auto-provision: create store embeds for any new outlets before listing
+    # (mirrors the gateway-key path in auth.apigw_provision_list). Fail-soft.
+    try:
+        embed_mgr.auto_provision_store_embeds(slug)
+    except Exception:
+        logger.exception("lazy embed auto-provision failed (ignored)")
     embeds = embed_mgr.list_embeds(slug)
     if not include_agent_scoped:
         # Hide legacy per-agent auto-provisioned rows. Keep project-level default
@@ -381,6 +387,17 @@ def prune_legacy_agent_embeds_endpoint(slug: str, request: Request):
         )
         deleted = res.rowcount or 0
     return {"status": "ok", "deleted": deleted}
+
+
+@router.post("/{slug}/embeds/provision-stores")
+def provision_store_embeds_endpoint(slug: str, request: Request):
+    """Create one public store-bound embed per live outlet that has none yet.
+    Idempotent; respects the EMBED_AUTO_PROVISION gate. Safe for a scheduler/daemon
+    or a UI 'Sync outlet embeds' button. Returns the count created this call."""
+    user = _get_user(request)
+    _check_access(user, slug)
+    created = embed_mgr.auto_provision_store_embeds(slug)
+    return {"status": "ok", "created": created}
 
 
 @router.get("/{slug}/embeds/{embed_id}")

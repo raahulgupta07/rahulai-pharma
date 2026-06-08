@@ -958,6 +958,22 @@ def save_fingerprint(project_slug: str, table_name: str, row_count: int, col_nam
             conn.commit()
     except Exception:
         pass
+    # New stock upload may introduce new outlets — auto-provision their store
+    # embeds (and gateway keys) immediately, so the engineer never has to open a
+    # tab or run a script. Stock tables only; idempotent + fail-soft.
+    if "balance_stock" in str(table_name).lower():
+        try:
+            from dash.embed import manager as _embed_mgr
+            made = _embed_mgr.auto_provision_store_embeds(project_slug)
+            if made:
+                logger.info("upload: auto-provisioned %d store embeds after %s", made, table_name)
+        except Exception:
+            logger.exception("upload: store-embed auto-provision after ingest failed (ignored)")
+        try:
+            from app.auth import _auto_provision_missing as _apigw_provision
+            _apigw_provision()
+        except Exception:
+            logger.exception("upload: gateway-key auto-provision after ingest failed (ignored)")
 
 
 def check_fingerprint_changed(project_slug: str, table_name: str, row_count: int, col_names: list[str]) -> str:
