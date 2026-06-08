@@ -1812,11 +1812,19 @@ if _frontend_build.exists():
     if _brand_dir.exists():
         app.mount("/brand", StaticFiles(directory=str(_brand_dir)), name="brand")
 
-    # Serve deck QA jpgs (per-deck preview thumbnails)
+    # Serve deck QA jpgs (per-deck preview thumbnails). Fail-soft: a non-writable
+    # /app/knowledge volume (e.g. root-owned mount) must never crash worker boot —
+    # skip the mount and log instead. Ownership is fixed in the Dockerfile; this is
+    # defense-in-depth so a misconfigured volume degrades gracefully.
     import os as _os
     _decks_dir = "/app/knowledge/_decks"
-    _os.makedirs(_decks_dir, exist_ok=True)
-    app.mount("/decks", StaticFiles(directory=_decks_dir, follow_symlink=True), name="decks")
+    try:
+        _os.makedirs(_decks_dir, exist_ok=True)
+        app.mount("/decks", StaticFiles(directory=_decks_dir, follow_symlink=True), name="decks")
+    except OSError as _e:
+        _main_logging.getLogger("dash.main").warning(
+            "/decks mount skipped — cannot create %s (%s). "
+            "Fix volume ownership: chown -R dash:dash /app/knowledge", _decks_dir, _e)
 
     @app.get("/ui/{path:path}")
     @app.get("/ui")

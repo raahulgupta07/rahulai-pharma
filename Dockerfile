@@ -125,7 +125,22 @@ ENV BUILD_COMMIT=$BUILD_COMMIT \
 # ---------------------------------------------------------------------------
 # Non-root user
 # ---------------------------------------------------------------------------
-RUN groupadd -r dash && useradd -r -g dash -d /app -s /sbin/nologin dash \
+# Pre-create every runtime-writable dir BEFORE chown so a FRESH named volume
+# mounted on /app/knowledge inherits dash:dash ownership (Docker copies the
+# image mountpoint's owner into a new empty volume). knowledge/ is gitignored,
+# so on a clean clone it is absent from the build context — without this the
+# mountpoint is auto-created root-owned and the non-root app cannot write,
+# crashing every worker at boot (makedirs /app/knowledge/_decks -> EACCES).
+RUN mkdir -p \
+        /app/knowledge/_decks \
+        /app/knowledge/embed_logos \
+        /app/knowledge/seeds \
+        /app/knowledge/tables \
+        /app/knowledge/business \
+        /app/knowledge/queries \
+        /app/knowledge/rules \
+        /app/.gunicorn \
+    && groupadd -r dash && useradd -r -g dash -d /app -s /sbin/nologin dash \
     && chown -R dash:dash /app
 USER dash
 
