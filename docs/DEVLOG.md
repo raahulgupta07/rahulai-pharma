@@ -2,6 +2,24 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-08 (latest+38) — Auto-provision store embeds for new outlets
+
+**Asked:** "we need to have auto embed generate as new outlets added — auto generate new embed."
+
+**Before:** store embeds were created only by the manual `examples/embed-test/setup_embeds.py` script or the **+ NEW EMBED** button. Gateway *keys* already auto-minted per new outlet (`auth._auto_provision_missing`, lazy-on-list); embeds had no equivalent loop. A new outlet shipped with a working API key but no chat widget until someone ran the script.
+
+**Built — embed twin of the gateway-key provisioner (commit 5cdcef7):**
+- `dash/embed/manager.py auto_provision_store_embeds(slug)`: enumerate live outlets via the shared latest-stock resolver (`_live_outlet_codes` → `latest_table_sa` + DISTINCT `site_code`), skip outlets already holding a `store-<code>` embed, create the rest via `create_embed(auth_mode='public', bound_role='staff', bound_intent='public')`. Column defaults supply the production shape (response_style=consumer, status=live, enabled=true). Idempotent on the `store-<code>` name, fail-soft, gated `EMBED_AUTO_PROVISION` (default `1`).
+- **Landmine avoided:** keep `auto_provisioned=false` (create_embed's default). The partial unique index `uq_embeds_auto_project` allows only ONE `auto_provisioned=true AND agent_id IS NULL` row per project — setting it true on every store embed would collide after the first.
+- **Three triggers:**
+  1. **On stock ingest** (primary) — `app/upload.py save_fingerprint` fires it whenever the table name contains `balance_stock`, and also kicks `auth._auto_provision_missing()` for gateway keys. New outlets get **embed + API key** the moment data uploads — no tab, no script.
+  2. Lazy on `GET /api/projects/{slug}/embeds` (mirrors the gateway `apigw-provision` list path) — opening the Widgets tab provisions any missing.
+  3. Manual `POST /api/projects/{slug}/embeds/provision-stores` — for a daemon/scheduler or a "Sync outlet embeds" button.
+
+**Verified:** `docker compose build dash-api` + force-recreate → health 200, route `/api/projects/{slug}/embeds/provision-stores` registered, boot 0 errors. (`public.dash_data_sources` UndefinedTable in logs = pre-existing vestigial noise from `init_connectors`, not this change.) `setup_embeds.py` kept for load-testing only; redundant for production.
+
+---
+
 ### Session 2026-06-08 (latest+37) — Fresh-DB/cloud-install fix (schema race + broken migrations + baseline seed) + embed Monitoring drill-down
 
 **Reported:** engineer's AWS install threw a wall of `relation "public.dash_projects" / "dash_company_brain" / "dash.dash_correction_rules" / "dash_tool_patches" does not exist` — the DB schema never got built. Invisible locally (local DB converged over many boots).
