@@ -873,28 +873,35 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
         pass
 
     # Unified semantic search (KB + Brain + KG + Facts with reranking)
-    try:
-        sa = create_search_all_tool(project_slug=project_slug)
-        _patch_obj(sa, "search_all", project_slug)
-        # Durable span wrap: wrap the tool's entrypoint callable so each
-        # search_all call lands in dash_traces. Fail-open — any error leaves
-        # the tool untouched.
+    # Store-scope: search_all reads TRAINING knowledge (KB/Brain/KG/Q&A), NOT live
+    # stock. For a pharmacy-counter store key it competes with — and beats — the
+    # scoped pharma tools, so the agent answers drug/stock questions from fabricated
+    # training samples instead of stock_check/find_nearby_stock. Drop it for
+    # store-locked keys so the pharma tools are the ONLY data path. (Global / human
+    # UI keeps it.)
+    if not _store_locked:
         try:
-            _orig_sa = getattr(sa, "entrypoint", None)
-            if _orig_sa is not None and not getattr(sa, "_traced", False):
-                def _traced_search_all(*a, _o=_orig_sa, **k):
-                    with _trace_span("chat.analyst.search_all", kind="chat",
-                                     project_slug=project_slug,
-                                     meta={"agent": "analyst", "tool": "search_all",
-                                           "args": _preview_args(*a, **k)}):
-                        return _o(*a, **k)
-                sa.entrypoint = _traced_search_all
-                sa._traced = True
-        except Exception:
+            sa = create_search_all_tool(project_slug=project_slug)
+            _patch_obj(sa, "search_all", project_slug)
+            # Durable span wrap: wrap the tool's entrypoint callable so each
+            # search_all call lands in dash_traces. Fail-open — any error leaves
+            # the tool untouched.
+            try:
+                _orig_sa = getattr(sa, "entrypoint", None)
+                if _orig_sa is not None and not getattr(sa, "_traced", False):
+                    def _traced_search_all(*a, _o=_orig_sa, **k):
+                        with _trace_span("chat.analyst.search_all", kind="chat",
+                                         project_slug=project_slug,
+                                         meta={"agent": "analyst", "tool": "search_all",
+                                               "args": _preview_args(*a, **k)}):
+                            return _o(*a, **k)
+                    sa.entrypoint = _traced_search_all
+                    sa._traced = True
+            except Exception:
+                pass
+            tools.append(sa)
+        except ImportError:
             pass
-        tools.append(sa)
-    except ImportError:
-        pass
 
     # Hybrid lookup — routes exact metrics (count/sum/total) to deterministic
     # SQL and meaning questions to semantic search. Guards counts against the
