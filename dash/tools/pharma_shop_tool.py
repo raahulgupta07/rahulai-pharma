@@ -314,7 +314,7 @@ def store_stock_summary(
                                COALESCE(SUM(b.stock_qty),0) AS total_qty,
                                COUNT(DISTINCT a.article_code) AS articles
                         FROM {STOCK} b
-                        JOIN {ART} a ON a.article_code::text = b.article_code
+                        LEFT JOIN {ART} a ON a.article_code::text = b.article_code
                         {where_sql}
                         GROUP BY a.category
                         ORDER BY total_qty DESC
@@ -340,7 +340,11 @@ def store_stock_summary(
                            COUNT(DISTINCT a.article_code) AS articles,
                            COALESCE(SUM(b.stock_qty * b.weighted_cost_price),0) AS inv_value
                     FROM {STOCK} b
-                    JOIN {ART} a ON a.article_code::text = b.article_code
+                    -- LEFT JOIN: stock_qty lives in {STOCK} alone; the article
+                    -- join only enriches unique_articles. An INNER join here
+                    -- drops EVERY stock row when article_code is corrupt
+                    -- (1E+12 scientific-notation text ≠ bigint::text) → total 0.
+                    LEFT JOIN {ART} a ON a.article_code::text = b.article_code
                     {where_sql}""",
                 tuple(params))
             row = cur.fetchone() or (0, 0, 0)

@@ -2,6 +2,23 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-08 (latest+31) — Parallel multi-store embed test → found + fixed a cross-store DATA-LEAK (3 bugs)
+
+**Goal:** load-test the embed widget with 20 stores asking in parallel (EN+MY), measure latency/accuracy. Built a reusable harness — and it surfaced a serious correctness+security bug.
+
+**Harness** (`examples/embed-test/`): `setup_embeds.py` creates N store-bound embeds (one per `site_code`, `bound_scope_id`, `auth_mode=public`, `bound_intent=private` for unmasked test numbers, `secret_key_hash=''`); `run_embed_test.py` fires them concurrently (ThreadPool), the 2-step embed flow per store — `POST /api/embed/session/create {embed_id,public_key}` (Origin header must match `allowed_origins` ARRAY column, demo allows `http://localhost:3000`) → `POST /api/embed/chat {session_token,message}` — and scores latency/%Burmese/accuracy vs DB truth → CSV. The embed path does NOT serialize like the gateway (no single-agent lock); it's gated by an async semaphore `LLM_PARALLEL_CAP_CHAT` (was default 10 → bumped to 20 in compose+.env for true 20-wide).
+
+**Bug found: store scope leaked across requests → 12% correct (5/40).** Each store returned ANOTHER store's total (20006 got 20003's 19,834; 20005 got 20004's) + global-total leaks (1,245,892). Wrong even SEQUENTIALLY with Redis flushed (so NOT the response cache — its key already includes site_id). Root cause = **scoping was prompt-only and the prompt was cached cross-store**:
+- **Bug 1 — team cache key ignored the store.** `store_id` is baked into the system prompt at team-build time (`dash/instructions.py` EMBED USER CONTEXT), but embed called `create_project_team(user_id=None)` → key `citypharma_None_<lang>` collided for ALL stores → first store's baked prompt reused for 60s. FIX: pass the per-embed `synthetic_viewer` (negative `-embed_pk`) as `user_id` → one cached team per store (`app/embed_public.py`, both chat + stream paths).
+- **Bug 2 — embeds never set the SQL scope.** `resolve_api_scope()` returns None without `via_api_key`, so `API_STORE_SCOPE` stayed None → the stock tool dropped its `WHERE site_code=…` filter → unscoped global total. FIX: add `"via_api_key": True` to the embed `_embed_user` → real `StoreScope(mode=store)` → SQL filters by site. Defense-in-depth: even a stale prompt can't leak data now. (`app/embed_public.py`, both paths; scope ContextVar token already reset in finally.)
+- **Bug 3 (uncovered by fix 2) — broken article join zeroed totals.** Fix 2 forced the store-locked tool (raw SQL disabled) → agent must use `store_stock_summary`, whose `INNER JOIN articles ON a.article_code::text = b.article_code` drops EVERY stock row when `article_code` is the 1E+12 scientific-notation corruption (text ≠ bigint::text) → total 0. `stock_qty` lives in the stock table alone; the join only enriches `unique_articles`. FIX: `INNER JOIN → LEFT JOIN` in the totals + category queries (`dash/tools/pharma_shop_tool.py`); kept low_stock INNER (its `int(article_code)` would crash on NULL).
+
+**Result: 12% → 95% (38/40)** under 20-way parallel. EN 20/20, MY 18/20 (the 2 MY misses `22669→52669`/`19100→21900` are model Burmese-numeral slips, not scope leaks). Latency 8-25s, fully parallel. Each store now returns ITS OWN total.
+
+**Caching verdict:** the leak was NOT caching (cache key includes store; leak reproduced with Redis flushed). Caching is needed for prod (hides 8-25s repeat latency at scale) but must stay OFF until answers are correct — else it caches wrong/cross-store answers. Now correct → safe to enable (`APIGW_CACHE_TTL=90`, `EMBED_CACHE_TTL=300`).
+
+---
+
 ### Session 2026-06-08 (latest+30) — GitHub repo + fresh-clone AWS deploy (partial-commit fix) + .env.example
 
 **Embed stream 500 (pre-existing, fixed this session too):** `app/embed_public.py` consumer SSE path read `max_reply_chars` but the row unpacked to `_max_reply_chars` → `UnboundLocalError` before the generator → HTTP 500 (`stream http 500` in the widget). Fixed to `int(_max_reply_chars or 600)`. (Detail folded here; see latest+29 for the bilingual display work it sat next to.)

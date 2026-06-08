@@ -122,6 +122,9 @@ services:
       # drop METRIC_SHORTCUT_DISABLED (cache hides the 70-220s repeat-question latency).
       - APIGW_CACHE_TTL=${APIGW_CACHE_TTL:-90}
       - METRIC_SHORTCUT_DISABLED=${METRIC_SHORTCUT_DISABLED:-0}
+      # Concurrent agent runs for the chat tier (embed + chat share this async
+      # semaphore). 20 = true 20-store-parallel embed load; raise for more.
+      - LLM_PARALLEL_CAP_CHAT=${LLM_PARALLEL_CAP_CHAT:-20}
       # Models (3-tier with auto-fallback via OpenRouter models[])
       - CHAT_MODEL=${CHAT_MODEL:-google/gemini-3-flash-preview}
       - DEEP_MODEL=${DEEP_MODEL:-google/gemini-3-flash-preview}

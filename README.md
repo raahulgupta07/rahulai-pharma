@@ -137,6 +137,8 @@ Browser-facing access to the same agent. Drop a `<script>` tag on any web page �
 - **Mint widgets:** bind each embed to a store (or leave unbound for catalog-only Tier 3 access).
 - **Store-scoped auth:** pass `data-user='{"store_id":"20063"}'` signed with HMAC → session enforces Tier 1/2/3 masking via the same `StoreScope` ContextVar as API Gateway.
 - **Public mode:** no `store_id` → Tier 3 only (drug catalog, substitutes, indications). Staff cannot see any stock quantities without a signed store claim.
+- **Concurrency:** unlike the gateway, the embed path is NOT serialized — N stores run in parallel, gated by the async `LLM_PARALLEL_CAP_CHAT` semaphore (default 20). Each store gets its own per-store cached team (keyed on the embed's synthetic viewer id), and the SQL tool enforces `WHERE site_code` via the `StoreScope` so a store can never see another store's numbers.
+- **Load test:** `examples/embed-test/` — `setup_embeds.py` makes N store-bound embeds, `run_embed_test.py` fires them concurrently (EN+MY) and scores latency / %Burmese / per-store accuracy vs DB truth → CSV. Flush the embed cache first (`docker exec cp-redis redis-cli FLUSHALL`) for honest latency. Verified 38/40 (95%) correct under 20-way parallel.
 
 ```html
 <!-- Store-scoped embed (staff terminal) -->

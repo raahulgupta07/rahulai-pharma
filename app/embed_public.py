@@ -982,6 +982,11 @@ async def embed_chat(req: Request):
                 "store_id": sess_user_attrs.get("store_id", ""),
                 "store_ids": sess_user_attrs.get("store_ids", ""),
                 "scope_mode": sess_user_attrs.get("scope_mode", "store"),
+                # REQUIRED: resolve_api_scope() returns None without this →
+                # API_STORE_SCOPE stays None → the SQL tool drops the
+                # `WHERE site_code=…` filter → global-total leak. Embeds are
+                # store-locked exactly like a store API key.
+                "via_api_key": True,
             }
             _embed_scope = _resolve_scope(_embed_user)
             _embed_scope_tok = _EMBED_SCOPE_VAR.set(_embed_scope)
@@ -1034,7 +1039,12 @@ async def embed_chat(req: Request):
             agent_name="Embed Agent",
             agent_role="",
             agent_personality="friendly",
-            user_id=None,
+            # Per-store team cache key. The store_id is baked into the system
+            # prompt at build time; with user_id=None every store collided on
+            # one cached team (citypharma_None_<lang>) and reused the FIRST
+            # store's baked store_id → cross-store number leak. synthetic_viewer
+            # is the per-embed (per-store) negative id → one team per store.
+            user_id=synthetic_viewer,
         )
 
         ctx_note = ""
@@ -1350,6 +1360,11 @@ async def embed_chat_stream(req: Request):
                 "store_id": sess_user_attrs.get("store_id", ""),
                 "store_ids": sess_user_attrs.get("store_ids", ""),
                 "scope_mode": sess_user_attrs.get("scope_mode", "store"),
+                # REQUIRED: resolve_api_scope() returns None without this →
+                # API_STORE_SCOPE stays None → the SQL tool drops the
+                # `WHERE site_code=…` filter → global-total leak. Embeds are
+                # store-locked exactly like a store API key.
+                "via_api_key": True,
             }
             _embed_scope = _resolve_scope(_embed_user)
             _embed_scope_tok = _EMBED_SCOPE_VAR.set(_embed_scope)
@@ -1435,7 +1450,9 @@ async def embed_chat_stream(req: Request):
                 agent_name="Embed Agent",
                 agent_role="",
                 agent_personality="friendly",
-                user_id=None,
+                # Per-store team cache key (see chat path) — stops cross-store
+                # baked-prompt reuse under the shared citypharma_None_<lang> key.
+                user_id=synthetic_viewer,
             )
 
             ctx_note = ""
