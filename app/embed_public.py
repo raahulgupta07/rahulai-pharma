@@ -16,6 +16,26 @@ from fastapi import APIRouter, HTTPException, Request
 
 logger = logging.getLogger(__name__)
 
+import os as _os
+
+
+def _embed_log_bodies() -> bool:
+    """True when EMBED_LOG_BODIES is enabled — store raw question/answer text on
+    dash_embed_calls (message_text/response_text). Off by default (privacy + size)."""
+    return _os.getenv("EMBED_LOG_BODIES", "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _embed_call_insert_sql(log_bodies: bool) -> str:
+    """Build the dash_embed_calls INSERT. Adds body columns only when logging is on
+    (and migration 177 has added them), so older DBs / bodies-off keep working."""
+    cols = ("embed_id, session_token, external_user, origin, ip, "
+            "message_chars, response_chars, latency_ms, success, error")
+    vals = ":e, :t, :u, :o, :ip, :mc, :rc, :ms, :s, :err"
+    if log_bodies:
+        cols += ", message_text, response_text"
+        vals += ", :mt, :rt"
+    return f"INSERT INTO public.dash_embed_calls ({cols}) VALUES ({vals})"
+
 router = APIRouter(prefix="/api/embed", tags=["EmbedPublic"])
 
 
@@ -1134,21 +1154,21 @@ async def embed_chat(req: Request):
         try:
             origin = req.headers.get("Origin") or ""
             ip = req.client.host if req.client else None
+            _lb = _embed_log_bodies()
+            _params = {
+                "e": embed_id, "t": token,
+                "u": sess.get("external_user"),
+                "o": origin, "ip": ip,
+                "mc": len(message or ""),
+                "rc": len(content or ""),
+                "ms": latency_ms,
+                "s": success, "err": err_msg,
+            }
+            if _lb:
+                _params["mt"] = message
+                _params["rt"] = content
             with eng.begin() as conn:
-                conn.execute(text(
-                    "INSERT INTO public.dash_embed_calls "
-                    "(embed_id, session_token, external_user, origin, ip, "
-                    " message_chars, response_chars, latency_ms, success, error) "
-                    "VALUES (:e, :t, :u, :o, :ip, :mc, :rc, :ms, :s, :err)"
-                ), {
-                    "e": embed_id, "t": token,
-                    "u": sess.get("external_user"),
-                    "o": origin, "ip": ip,
-                    "mc": len(message or ""),
-                    "rc": len(content or ""),
-                    "ms": latency_ms,
-                    "s": success, "err": err_msg,
-                })
+                conn.execute(text(_embed_call_insert_sql(_lb)), _params)
         except Exception:
             pass
 
@@ -1654,21 +1674,21 @@ async def embed_chat_stream(req: Request):
                 latency_ms = int((_time_mod.monotonic() - t0) * 1000)
                 origin = req.headers.get("Origin") or ""
                 ip = req.client.host if req.client else None
+                _lb = _embed_log_bodies()
+                _params = {
+                    "e": embed_id, "t": token,
+                    "u": sess.get("external_user"),
+                    "o": origin, "ip": ip,
+                    "mc": len(message or ""),
+                    "rc": len(content_assembled or ""),
+                    "ms": latency_ms,
+                    "s": True, "err": None,
+                }
+                if _lb:
+                    _params["mt"] = message
+                    _params["rt"] = content_assembled
                 with eng.begin() as conn:
-                    conn.execute(text(
-                        "INSERT INTO public.dash_embed_calls "
-                        "(embed_id, session_token, external_user, origin, ip, "
-                        " message_chars, response_chars, latency_ms, success, error) "
-                        "VALUES (:e, :t, :u, :o, :ip, :mc, :rc, :ms, :s, :err)"
-                    ), {
-                        "e": embed_id, "t": token,
-                        "u": sess.get("external_user"),
-                        "o": origin, "ip": ip,
-                        "mc": len(message or ""),
-                        "rc": len(content_assembled or ""),
-                        "ms": latency_ms,
-                        "s": True, "err": None,
-                    })
+                    conn.execute(text(_embed_call_insert_sql(_lb)), _params)
             except Exception:
                 pass
 

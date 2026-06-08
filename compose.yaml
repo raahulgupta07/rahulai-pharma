@@ -159,6 +159,9 @@ services:
       # Gateway chat-body logging → dash_apigw_messages (powers per-key Questions
       # drill-down + auto-learn harvest). PII: keep on only with consent.
       - APIGW_LOG_BODIES=${APIGW_LOG_BODIES:-1}
+      # Embed widget chat-body logging → dash_embed_calls.message_text/response_text
+      # (powers the Monitoring QUESTION/ANSWER panels). PII: consumer chat — consent only.
+      - EMBED_LOG_BODIES=${EMBED_LOG_BODIES:-1}
       # DEV: caching OFF for real fresh test/eval behaviour. PROD: APIGW_CACHE_TTL=90,
       # drop METRIC_SHORTCUT_DISABLED (cache hides the 70-220s repeat-question latency).
       - APIGW_CACHE_TTL=${APIGW_CACHE_TTL:-90}
