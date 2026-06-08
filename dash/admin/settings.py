@@ -347,13 +347,16 @@ def integrations_enabled() -> dict:
     `embed_enabled` settings. Fail-open to True on any error (missing row → the
     registry default is True anyway; DB hiccup → don't lock operators out).
     """
+    # Read the DB DIRECTLY (not via the 30s get_setting cache) so /api/flags is
+    # always fresh — a super-admin who flips the toggle + reloads must see the
+    # nav update immediately, not after a cache window.
+    def _on(key: str) -> bool:
+        raw = _read_db(key, "global", None)   # None when no row → default ON
+        if raw is None:
+            return True
+        return _coerce(raw, "bool") is True
     try:
-        gw = get_setting("gateway_enabled")
-        em = get_setting("embed_enabled")
-        return {
-            "gateway": True if gw is None else bool(gw),
-            "embed": True if em is None else bool(em),
-        }
+        return {"gateway": _on("gateway_enabled"), "embed": _on("embed_enabled")}
     except Exception:
         return {"gateway": True, "embed": True}
 

@@ -551,25 +551,40 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  }
  }
 
- // Quick on/off toggle (Cockpit Integrations card) — posts immediately.
- let togglingKey = $state<string | null>(null);
+ // Integrations on/off (Cockpit) — stage changes, then Save (reload so the
+ // top-nav re-reads /api/flags and shows/hides the surfaces).
+ let integPending = $state<Record<string, boolean>>({});
+ let integSaving = $state(false);
  function settingOn(key: string): boolean {
    const s = allSettings.find((x) => x.key === key);
    const v = s ? s.effective_value : true;
    return !(v === false || v === 'false' || v === 0 || v === '0');
  }
- async function toggleIntegration(key: string) {
-   togglingKey = key;
-   const next = !settingOn(key);
+ function integView(key: string): boolean {
+   return key in integPending ? integPending[key] : settingOn(key);
+ }
+ function toggleIntegration(key: string) {
+   integPending = { ...integPending, [key]: !integView(key) };
+ }
+ let integDirty = $derived(
+   Object.keys(integPending).some((k) => integPending[k] !== settingOn(k))
+ );
+ async function saveIntegrations() {
+   const items = Object.keys(integPending)
+     .filter((k) => integPending[k] !== settingOn(k))
+     .map((k) => ({ key: k, value: integPending[k], scope: 'global' }));
+   if (items.length === 0) return;
+   integSaving = true;
    try {
      await fetch('/api/admin/settings', {
        method: 'POST',
        headers: { ..._h(), 'Content-Type': 'application/json' },
-       body: JSON.stringify({ settings: [{ key, value: next, scope: 'global' }] }),
+       body: JSON.stringify({ settings: items }),
      });
-     await loadAdminSettings();
+     // Reload so the shared top-nav re-fetches /api/flags and shows/hides items.
+     window.location.reload();
    } finally {
-     togglingKey = null;
+     integSaving = false;
    }
  }
 
@@ -3104,14 +3119,19 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
     </div>
   </section>
   <section class="ccc-panel">
-    <div class="ccc-h">INTEGRATIONS</div>
+    <div class="ccc-h-row">
+      <div class="ccc-h">INTEGRATIONS</div>
+      <button class="ccc-save" disabled={!integDirty || integSaving} onclick={saveIntegrations}>
+        {integSaving ? 'Saving…' : 'Save'}
+      </button>
+    </div>
     <div class="ccc-toggles">
       <div class="ccc-toggle-row">
         <div class="ccc-toggle-lbl">
           <span class="ccc-toggle-name">🔑 API Gateway</span>
-          <span class="ccc-toggle-sub">OpenAI-compatible REST /api/v1 — {settingOn('gateway_enabled') ? 'live' : 'disabled (routes 403, hidden from nav)'}</span>
+          <span class="ccc-toggle-sub">OpenAI-compatible REST /api/v1 — {integView('gateway_enabled') ? 'live' : 'disabled (routes 403, hidden from nav)'}</span>
         </div>
-        <button class="ccc-switch" class:on={settingOn('gateway_enabled')} disabled={togglingKey === 'gateway_enabled'}
+        <button class="ccc-switch" class:on={integView('gateway_enabled')}
                 onclick={() => toggleIntegration('gateway_enabled')} aria-label="Toggle API Gateway">
           <span class="ccc-knob"></span>
         </button>
@@ -3119,13 +3139,14 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
       <div class="ccc-toggle-row">
         <div class="ccc-toggle-lbl">
           <span class="ccc-toggle-name">&lt;/&gt; Embed</span>
-          <span class="ccc-toggle-sub">Chat widget for external sites — {settingOn('embed_enabled') ? 'live' : 'disabled (routes 403, hidden from nav)'}</span>
+          <span class="ccc-toggle-sub">Chat widget for external sites — {integView('embed_enabled') ? 'live' : 'disabled (routes 403, hidden from nav)'}</span>
         </div>
-        <button class="ccc-switch" class:on={settingOn('embed_enabled')} disabled={togglingKey === 'embed_enabled'}
+        <button class="ccc-switch" class:on={integView('embed_enabled')}
                 onclick={() => toggleIntegration('embed_enabled')} aria-label="Toggle Embed">
           <span class="ccc-knob"></span>
         </button>
       </div>
+      {#if integDirty}<div class="ccc-toggle-hint">Unsaved — click Save to apply (page reloads so the nav updates).</div>{/if}
     </div>
   </section>
   <section class="ccc-panel">
@@ -3755,6 +3776,10 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  .ccc-jump button { text-align: left; border: 1px solid var(--pw-border, #e7e1d6); border-radius: 8px; padding: 14px 16px; background: var(--pw-bg-alt, #faf7f1); font-size: 14px; font-weight: 600; color: var(--pw-ink, #1a1614); cursor: pointer; transition: background 0.12s, border-color 0.12s; }
  .ccc-jump button:hover { background: rgba(201,99,66,0.06); border-color: var(--pw-accent, #c96342); }
  @media (max-width: 900px) { .ccc-kpis { grid-template-columns: repeat(2, 1fr); } .ccc-jump { grid-template-columns: 1fr; } }
+ .ccc-h-row { display: flex; align-items: center; justify-content: space-between; }
+ .ccc-save { font-size: 12px; font-weight: 600; padding: 6px 16px; border-radius: 7px; border: 1px solid var(--pw-accent, #c96342); background: var(--pw-accent, #c96342); color: #fff; cursor: pointer; transition: opacity 0.12s; }
+ .ccc-save:disabled { opacity: 0.35; cursor: default; }
+ .ccc-toggle-hint { font-size: 11px; color: var(--pw-accent, #c96342); margin-top: 2px; }
  .ccc-toggles { display: flex; flex-direction: column; gap: 14px; }
  .ccc-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
  .ccc-toggle-lbl { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
