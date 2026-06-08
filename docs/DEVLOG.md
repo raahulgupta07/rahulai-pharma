@@ -2,6 +2,31 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-08 (latest+37) — Fresh-DB/cloud-install fix (schema race + broken migrations + baseline seed) + embed Monitoring drill-down
+
+**Reported:** engineer's AWS install threw a wall of `relation "public.dash_projects" / "dash_company_brain" / "dash.dash_correction_rules" / "dash_tool_patches" does not exist` — the DB schema never got built. Invisible locally (local DB converged over many boots).
+
+**Root cause = fresh-DB-only races + migrations broken through the runner:**
+1. Migration auto-runner (`app/main.py:254`) ran on **every** gunicorn worker (preload=False, `workers=max(2,cpu)`), not WORKER_RANK-gated → N workers stampede a fresh DB. Its `pg_advisory_lock` guard was **void** because app+migrations route through `dash-pgbouncer` in `POOL_MODE: transaction` (session locks release at txn end).
+2. `app/auth.py _bootstrap_tables()` (`CREATE TABLE IF NOT EXISTS` for dash_users/dash_projects/…) is not race-safe — parallel DDL aborts each other's bootstrap txn → partial/empty schema; ran on all workers ungated.
+3. The runner's `conn.exec_driver_sql(content)` makes psycopg3 parse literal `%` as a placeholder (`only %s/%b/%t allowed, got '%I'`) → silently killed `067` (`format('%I',…)`) and `174`. The 148 already-applied migrations were drift-marked, never actually run through the runner, so this went unnoticed.
+4. **`.gitignore` `*.sql`** silently excluded `db/migrations/*.sql` — migrations `172–175` were never committed; fresh clones shipped without them.
+
+**Architecture truth uncovered:** base tables are created lazily by ~29 modules on first use (e.g. `dash_data_sources` by `init_connectors` at lifespan **:300**, AFTER migrations at **:254**; schema `dash` by `copy_stream.py`); migrations are additive best-effort that converge over several restarts. `dash_data_sources` doesn't even exist in the working DB (vestigial — migs 001/002/009 ALTER it = harmless no-op-fail). So a piecemeal "make migrations run on a bare DB" is unsalvageable.
+
+**Fixes (commit a152a17):**
+- `dash/db_runner/migrate.py`: `_direct_db_url()` runs migrations on a DIRECT connection bypassing pgbouncer (`*pgbouncer*`→`dash-db`, or `MIGRATION_DB_URL`/`MIGRATION_DB_HOST` override) so the advisory lock actually holds; `content.replace("%","%%")` before exec (psycopg halves on the wire → server sees original SQL).
+- `app/main.py`: migration runner gated `if WORKER_RANK==0` (matches skills/daemons).
+- `app/auth.py`: `_bootstrap_tables()` body (renamed `_bootstrap_tables_locked()`) wrapped in `pg_advisory_lock(72157424)` on a DIRECT conn — serialized across workers.
+- `db/migrations/174_usage_unified.sql`: `DROP VIEW IF EXISTS` before `CREATE VIEW` (CREATE OR REPLACE can't drop/reorder columns).
+- `.gitignore`: `!db/migrations/*.sql` + `!db/baseline/*.sql` negations (recovered 172–175 into git).
+
+**Deterministic fresh-install (the real fix):** `db/baseline/schema.sql` (complete known-good DDL — 239 tables, 3 schemas, extensions in their correct schemas: vector→public, pgcrypto→dash, pg_trgm→citypharma; schema-only = no data/secrets) + `db/baseline/migrations_seed.sql` (148 tracking rows). `scripts/init_fresh_db.sh` loads both via `docker exec -i cp-db psql` (app image has no psql), guarded (refuses if `dash_projects` exists), `--reset` drops+recreates for a half-broken DB. **Verified:** empty DB → baseline → runner = `applied=1(174) skipped=148 errors=0`; local recreate booted with 0 schema errors.
+
+**Engineer recovery on AWS:** `git pull` → `docker compose -f compose.yaml build dash-api` → `bash scripts/init_fresh_db.sh --reset` → `docker compose up -d`.
+
+**Also — embed Monitoring drill-down:** clicking a widget/store row in Monitoring now opens a full **detail screen** (mirrors gateway outlet page): `← Back`, KPI strip, activity chart, latency distribution, errors block, top users/origins, and a per-call list (expand → question/answer if logged + session/latency/chars/origin). New `GET /api/admin/usage/embed-detail?embed_id=&range=` (`app/usage_api.py`; auto-detects future `message_text`/`response_text` cols via `messages_enabled`, gated like gateway's `APIGW_LOG_BODIES`). `.emp-main` max-width 1100→1340 + `margin:0 auto` to kill the left dead-space. `EmbedPanel.svelte`.
+
 ### Session 2026-06-08 (latest+36) — Cockpit integration toggles (Save button) + fresh /api/flags so nav hides disabled surface
 
 Follow-up to the kill switch (latest+35). Added quick **API Gateway / Embed on-off switches on the Cockpit** landing (`command-center/+page.svelte`, new INTEGRATIONS card) so a super-admin flips them without digging into Admin settings sections.
