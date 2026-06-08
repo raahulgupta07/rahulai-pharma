@@ -290,8 +290,16 @@ That's it. Open `http://localhost:8011/ui` and log in.
    - **Idempotent & safe:** if the DB already has the schema it skips instantly and
      changes nothing — so re-running `docker compose up` on an existing install is a
      no-op for the DB. Restarts / upgrades are unaffected.
+   - **Cold-volume safe:** the seeder waits for Postgres to actually accept queries
+     (retry loop, not just `pg_isready`) so a cold AWS volume mid-`initdb` can't make
+     it die `exit 2`. `dash-db` healthcheck uses `-d` + `start_period`.
 4. Only after the seeder finishes does `cp-api` boot — so it never starts against an
    empty DB. First boot is clean.
+5. **Writable `knowledge/` volume** (`knowledge_data:/app/knowledge`) is pre-created
+   `dash`-owned in the image, so a brand-new volume inherits non-root ownership and
+   the app can write decks/logos/training files. (Without this, a fresh volume mounts
+   root-owned and every worker crashes `PermissionError /app/knowledge/_decks` — fixed
+   2026-06-08; the `/decks` mount is also fail-soft now.)
 
 > **Engineer checklist — that is the whole job.** Do **not** run any
 > `init_fresh_db.sh`, `psql`, or migration command by hand. Just `cp .env.example .env`,
@@ -308,6 +316,19 @@ docker compose -f compose.yaml build dash-api
 bash scripts/init_fresh_db.sh --reset   # DROPS + reloads the DB (data loss — fresh box only)
 docker compose -f compose.yaml up -d
 ```
+
+**Recovery — `cp-api` restart-loops with `PermissionError /app/knowledge/_decks`** (a box first
+booted on a build *before* the 2026-06-08 ownership fix → its `knowledge_data` volume is
+root-owned). Rebuilding does **not** re-chown an existing volume. The volume is empty (boot
+never succeeded), so drop it and let the fixed image recreate it `dash`-owned:
+
+```bash
+git pull
+docker compose down
+docker volume rm "$(basename "$PWD")_knowledge_data"   # e.g. rahulai-city-pharma_knowledge_data
+docker compose up -d --build
+```
+Or chown in place without dropping: `docker run --rm -v <project>_knowledge_data:/k alpine chown -R 999:999 /k` (999 = the `dash` uid).
 
 **Not in git** (gitignored — supplied/regenerated on the box):
 - `.env` — secrets. Copy from `.env.example`, fill real values.
