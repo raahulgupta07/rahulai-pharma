@@ -834,23 +834,25 @@ def admin_list_sources(request: Request):
 
 
 def init_connectors():
-    """Ensure dash_data_sources has a config column. No new tables needed."""
+    """Ensure dash_data_sources has a config column. No new tables needed.
+
+    The external-DB connector feature is OFF in this single-tenant fork —
+    ``public.dash_data_sources`` is never created here (it belongs to the parent
+    multi-tenant Dash). Short-circuit when the table is absent so we don't ALTER a
+    non-existent table and spam an UndefinedTable WARNING on every boot.
+    """
     try:
         with _engine.connect() as conn:
+            exists = conn.execute(text(
+                "SELECT to_regclass('public.dash_data_sources')"
+            )).scalar()
+            if not exists:
+                logger.debug("Connectors init: dash_data_sources absent (feature off) — skipped")
+                return
             # Add config JSONB column if missing (table created by sharepoint.py)
             conn.execute(text("""
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (
-                        SELECT 1 FROM information_schema.columns
-                        WHERE table_schema = 'public'
-                          AND table_name = 'dash_data_sources'
-                          AND column_name = 'config'
-                    ) THEN
-                        ALTER TABLE public.dash_data_sources
-                            ADD COLUMN config JSONB DEFAULT '{}';
-                    END IF;
-                END $$;
+                ALTER TABLE public.dash_data_sources
+                    ADD COLUMN IF NOT EXISTS config JSONB DEFAULT '{}';
             """))
             conn.commit()
         logger.info("Connectors init OK")
