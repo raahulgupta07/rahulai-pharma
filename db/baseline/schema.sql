@@ -11,7 +11,7 @@ CREATE EXTENSION IF NOT EXISTS "pg_trgm" SCHEMA citypharma;
 -- PostgreSQL database dump
 --
 
-\restrict snhegY9y8CFyXa7DcNBolA0FcxRT2Bi6gzrPynGAIn8swINvNjlBCk1Tp09vvdh
+\restrict 7mCQm2rlrXfdkFhFKDGnzYlPuATnq005MEjseRsSjZEnluhZhzZ2H7sQ963B6Ke
 
 -- Dumped from database version 18.4 (Debian 18.4-1.pgdg13+1)
 -- Dumped by pg_dump version 18.4 (Debian 18.4-1.pgdg13+1)
@@ -163,90 +163,6 @@ CREATE TABLE citypharma.shop_flat (
 
 
 --
--- Name: agent_audit_log; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.agent_audit_log (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    agent_id uuid,
-    user_id uuid,
-    action text NOT NULL,
-    detail jsonb,
-    ts timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: agent_memory_events; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.agent_memory_events (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    agent_id uuid NOT NULL,
-    event_type text NOT NULL,
-    payload jsonb DEFAULT '{}'::jsonb NOT NULL,
-    embedding public.vector(1536),
-    ts timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: agent_simulations; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.agent_simulations (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    agent_id uuid,
-    user_id uuid NOT NULL,
-    scenario text NOT NULL,
-    horizon text,
-    seed_tables jsonb,
-    status text DEFAULT 'queued'::text NOT NULL,
-    progress integer DEFAULT 0 NOT NULL,
-    result_json jsonb,
-    report_md text,
-    error text,
-    started_at timestamp with time zone,
-    finished_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: aos_agent_overrides; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.aos_agent_overrides (
-    id bigint NOT NULL,
-    agent_id text NOT NULL,
-    state text NOT NULL,
-    detail text,
-    set_at timestamp with time zone DEFAULT now() NOT NULL,
-    set_by text,
-    CONSTRAINT aos_agent_overrides_state_check CHECK ((state = ANY (ARRAY['paused'::text, 'rate-limited'::text])))
-);
-
-
---
--- Name: aos_agent_overrides_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.aos_agent_overrides_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: aos_agent_overrides_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.aos_agent_overrides_id_seq OWNED BY dash.aos_agent_overrides.id;
-
-
---
 -- Name: aos_capabilities; Type: TABLE; Schema: dash; Owner: -
 --
 
@@ -383,42 +299,6 @@ ALTER SEQUENCE dash.aos_models_id_seq OWNED BY dash.aos_models.id;
 
 
 --
--- Name: aos_quotas; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.aos_quotas (
-    id bigint NOT NULL,
-    agent_id text NOT NULL,
-    tokens_limit bigint,
-    calls_per_min integer,
-    dollars_per_day numeric,
-    tokens_used bigint DEFAULT 0 NOT NULL,
-    dollars_used numeric DEFAULT 0 NOT NULL,
-    window_resets_at timestamp with time zone,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: aos_quotas_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.aos_quotas_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: aos_quotas_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.aos_quotas_id_seq OWNED BY dash.aos_quotas.id;
-
-
---
 -- Name: aos_tool_registry; Type: TABLE; Schema: dash; Owner: -
 --
 
@@ -451,84 +331,6 @@ CREATE SEQUENCE dash.aos_tool_registry_id_seq
 --
 
 ALTER SEQUENCE dash.aos_tool_registry_id_seq OWNED BY dash.aos_tool_registry.id;
-
-
---
--- Name: dash_ab_revert_events; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_ab_revert_events (
-    id bigint NOT NULL,
-    run_id bigint,
-    project_slug text NOT NULL,
-    target_type text NOT NULL,
-    target_id bigint NOT NULL,
-    score_before numeric(3,2),
-    score_after numeric(3,2),
-    delta numeric(3,2),
-    sample_size integer,
-    decision text NOT NULL,
-    reason text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: dash_ab_revert_events_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_ab_revert_events_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_ab_revert_events_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_ab_revert_events_id_seq OWNED BY dash.dash_ab_revert_events.id;
-
-
---
--- Name: dash_ab_revert_runs; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_ab_revert_runs (
-    id bigint NOT NULL,
-    project_slug text NOT NULL,
-    started_at timestamp with time zone DEFAULT now() NOT NULL,
-    finished_at timestamp with time zone,
-    anti_patterns_checked integer DEFAULT 0,
-    anti_patterns_reverted integer DEFAULT 0,
-    skill_library_checked integer DEFAULT 0,
-    skill_library_deprecated integer DEFAULT 0,
-    insights_checked integer DEFAULT 0,
-    insights_deprecated integer DEFAULT 0,
-    status text DEFAULT 'running'::text,
-    error text
-);
-
-
---
--- Name: dash_ab_revert_runs_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_ab_revert_runs_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_ab_revert_runs_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_ab_revert_runs_id_seq OWNED BY dash.dash_ab_revert_runs.id;
 
 
 --
@@ -833,198 +635,6 @@ ALTER SEQUENCE dash.dash_auto_apply_history_id_seq OWNED BY dash.dash_auto_apply
 
 
 --
--- Name: dash_automl_experiments; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_automl_experiments (
-    id bigint NOT NULL,
-    project_slug text NOT NULL,
-    template_id text NOT NULL,
-    user_id integer,
-    status text DEFAULT 'queued'::text NOT NULL,
-    decision_path text,
-    config jsonb DEFAULT '{}'::jsonb,
-    n_rows integer,
-    positive_rate numeric(5,4),
-    leaderboard jsonb DEFAULT '[]'::jsonb,
-    shap_global jsonb DEFAULT '[]'::jsonb,
-    shap_per_row jsonb DEFAULT '[]'::jsonb,
-    narrative text,
-    recommendations text,
-    best_model_id integer,
-    time_budget integer DEFAULT 600,
-    started_at timestamp with time zone,
-    completed_at timestamp with time zone,
-    error text,
-    events jsonb DEFAULT '[]'::jsonb,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now()
-);
-
-
---
--- Name: dash_automl_experiments_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_automl_experiments_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_automl_experiments_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_automl_experiments_id_seq OWNED BY dash.dash_automl_experiments.id;
-
-
---
--- Name: dash_automl_followups; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_automl_followups (
-    id bigint NOT NULL,
-    experiment_id bigint NOT NULL,
-    user_id integer NOT NULL,
-    role text NOT NULL,
-    content text NOT NULL,
-    citations jsonb DEFAULT '[]'::jsonb,
-    created_at timestamp with time zone DEFAULT now()
-);
-
-
---
--- Name: dash_automl_followups_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_automl_followups_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_automl_followups_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_automl_followups_id_seq OWNED BY dash.dash_automl_followups.id;
-
-
---
--- Name: dash_automl_reports; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_automl_reports (
-    id bigint NOT NULL,
-    experiment_id bigint NOT NULL,
-    type text NOT NULL,
-    file_path text,
-    dashboard_id integer,
-    payload jsonb,
-    created_at timestamp with time zone DEFAULT now()
-);
-
-
---
--- Name: dash_automl_reports_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_automl_reports_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_automl_reports_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_automl_reports_id_seq OWNED BY dash.dash_automl_reports.id;
-
-
---
--- Name: dash_automl_staging; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_automl_staging (
-    id bigint NOT NULL,
-    project_slug text,
-    user_id integer,
-    filename text NOT NULL,
-    file_path text NOT NULL,
-    format text NOT NULL,
-    n_rows integer,
-    schema_columns jsonb DEFAULT '[]'::jsonb,
-    sample_rows jsonb DEFAULT '[]'::jsonb,
-    created_at timestamp with time zone DEFAULT now()
-);
-
-
---
--- Name: dash_automl_staging_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_automl_staging_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_automl_staging_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_automl_staging_id_seq OWNED BY dash.dash_automl_staging.id;
-
-
---
--- Name: dash_automl_upload_sets; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_automl_upload_sets (
-    id bigint NOT NULL,
-    user_id integer NOT NULL,
-    template_id text NOT NULL,
-    project_slug text,
-    status text DEFAULT 'staging'::text NOT NULL,
-    files jsonb DEFAULT '[]'::jsonb,
-    merge_report jsonb DEFAULT '{}'::jsonb,
-    eda_findings jsonb DEFAULT '{}'::jsonb,
-    domain_interpretation jsonb DEFAULT '{}'::jsonb,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now()
-);
-
-
---
--- Name: dash_automl_upload_sets_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_automl_upload_sets_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_automl_upload_sets_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_automl_upload_sets_id_seq OWNED BY dash.dash_automl_upload_sets.id;
-
-
---
 -- Name: dash_autonomous_workflows; Type: TABLE; Schema: dash; Owner: -
 --
 
@@ -1077,75 +687,6 @@ ALTER SEQUENCE dash.dash_autonomous_workflows_id_seq OWNED BY dash.dash_autonomo
 
 
 --
--- Name: dash_autosim_briefs; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_autosim_briefs (
-    id bigint NOT NULL,
-    project_slug text NOT NULL,
-    user_id integer,
-    brief_type text NOT NULL,
-    body_md text NOT NULL,
-    sim_run_ids bigint[],
-    read_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT now()
-);
-
-
---
--- Name: dash_autosim_briefs_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_autosim_briefs_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_autosim_briefs_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_autosim_briefs_id_seq OWNED BY dash.dash_autosim_briefs.id;
-
-
---
--- Name: dash_autosim_packs; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_autosim_packs (
-    id bigint NOT NULL,
-    vertical text NOT NULL,
-    pack_name text NOT NULL,
-    scenarios jsonb NOT NULL,
-    version integer DEFAULT 1,
-    status text DEFAULT 'active'::text,
-    created_at timestamp with time zone DEFAULT now()
-);
-
-
---
--- Name: dash_autosim_packs_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_autosim_packs_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_autosim_packs_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_autosim_packs_id_seq OWNED BY dash.dash_autosim_packs.id;
-
-
---
 -- Name: dash_autosim_runs; Type: TABLE; Schema: dash; Owner: -
 --
 
@@ -1181,43 +722,6 @@ CREATE SEQUENCE dash.dash_autosim_runs_id_seq
 --
 
 ALTER SEQUENCE dash.dash_autosim_runs_id_seq OWNED BY dash.dash_autosim_runs.id;
-
-
---
--- Name: dash_brain_evidence; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_brain_evidence (
-    id bigint NOT NULL,
-    brain_id bigint NOT NULL,
-    source_type text NOT NULL,
-    source_id text,
-    source_session_id text,
-    snippet text,
-    score numeric(4,3),
-    metadata jsonb DEFAULT '{}'::jsonb,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT dash_brain_evidence_source_type_check CHECK ((source_type = ANY (ARRAY['chat'::text, 'doc'::text, 'triple'::text, 'memory'::text, 'training'::text, 'dream'::text, 'manual'::text])))
-);
-
-
---
--- Name: dash_brain_evidence_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_brain_evidence_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_brain_evidence_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_brain_evidence_id_seq OWNED BY dash.dash_brain_evidence.id;
 
 
 --
@@ -1260,81 +764,6 @@ ALTER SEQUENCE dash.dash_brainbench_corpus_id_seq OWNED BY dash.dash_brainbench_
 
 
 --
--- Name: dash_brainbench_results; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_brainbench_results (
-    id bigint NOT NULL,
-    run_id bigint NOT NULL,
-    corpus_id bigint NOT NULL,
-    replayed_answer text,
-    replayed_judge_score numeric(3,2),
-    score_delta numeric(3,2),
-    regression boolean DEFAULT false,
-    win boolean DEFAULT false,
-    error text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: dash_brainbench_results_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_brainbench_results_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_brainbench_results_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_brainbench_results_id_seq OWNED BY dash.dash_brainbench_results.id;
-
-
---
--- Name: dash_brainbench_runs; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_brainbench_runs (
-    id bigint NOT NULL,
-    project_slug text NOT NULL,
-    corpus_ids bigint[] DEFAULT ARRAY[]::bigint[] NOT NULL,
-    run_label text,
-    run_config jsonb DEFAULT '{}'::jsonb,
-    results jsonb DEFAULT '[]'::jsonb,
-    summary jsonb DEFAULT '{}'::jsonb,
-    started_at timestamp with time zone DEFAULT now() NOT NULL,
-    finished_at timestamp with time zone,
-    status text DEFAULT 'queued'::text NOT NULL,
-    CONSTRAINT dash_brainbench_runs_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'done'::text, 'failed'::text])))
-);
-
-
---
--- Name: dash_brainbench_runs_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_brainbench_runs_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_brainbench_runs_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_brainbench_runs_id_seq OWNED BY dash.dash_brainbench_runs.id;
-
-
---
 -- Name: dash_campaign_events; Type: TABLE; Schema: dash; Owner: -
 --
 
@@ -1366,41 +795,6 @@ CREATE SEQUENCE dash.dash_campaign_events_id_seq
 --
 
 ALTER SEQUENCE dash.dash_campaign_events_id_seq OWNED BY dash.dash_campaign_events.id;
-
-
---
--- Name: dash_campaign_metrics; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_campaign_metrics (
-    id integer NOT NULL,
-    campaign_id integer,
-    metric_name text NOT NULL,
-    value numeric,
-    period_start timestamp with time zone,
-    period_end timestamp with time zone,
-    recorded_at timestamp with time zone DEFAULT now()
-);
-
-
---
--- Name: dash_campaign_metrics_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_campaign_metrics_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_campaign_metrics_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_campaign_metrics_id_seq OWNED BY dash.dash_campaign_metrics.id;
 
 
 --
@@ -1446,21 +840,6 @@ CREATE SEQUENCE dash.dash_campaigns_id_seq
 --
 
 ALTER SEQUENCE dash.dash_campaigns_id_seq OWNED BY dash.dash_campaigns.id;
-
-
---
--- Name: dash_canvas; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_canvas (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    project_slug text NOT NULL,
-    name text DEFAULT 'Untitled canvas'::text NOT NULL,
-    board jsonb DEFAULT '{"cards": []}'::jsonb NOT NULL,
-    created_by text,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
-);
 
 
 --
@@ -1647,21 +1026,6 @@ CREATE SEQUENCE dash.dash_connection_audit_id_seq
 --
 
 ALTER SEQUENCE dash.dash_connection_audit_id_seq OWNED BY dash.dash_connection_audit.id;
-
-
---
--- Name: dash_connection_user_tokens; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_connection_user_tokens (
-    connection_id uuid NOT NULL,
-    user_id integer NOT NULL,
-    refresh_token text NOT NULL,
-    access_token text,
-    expires_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now()
-);
 
 
 --
@@ -2047,44 +1411,6 @@ CREATE SEQUENCE dash.dash_dream_findings_id_seq
 --
 
 ALTER SEQUENCE dash.dash_dream_findings_id_seq OWNED BY dash.dash_dream_findings.id;
-
-
---
--- Name: dash_dream_insights; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_dream_insights (
-    id bigint NOT NULL,
-    project_slug text NOT NULL,
-    insight text NOT NULL,
-    evidence_episode_ids text[],
-    upvotes integer DEFAULT 0 NOT NULL,
-    downvotes integer DEFAULT 0 NOT NULL,
-    last_used_at timestamp with time zone,
-    status text DEFAULT 'active'::text NOT NULL,
-    source_dream_run_id bigint,
-    insight_hash text NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: dash_dream_insights_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_dream_insights_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_dream_insights_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_dream_insights_id_seq OWNED BY dash.dash_dream_insights.id;
 
 
 --
@@ -2521,73 +1847,6 @@ CREATE TABLE dash.dash_eval_suites (
 
 
 --
--- Name: dash_exa_cache; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_exa_cache (
-    id bigint NOT NULL,
-    cache_key text,
-    payload jsonb,
-    cached_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: dash_exa_cache_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_exa_cache_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_exa_cache_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_exa_cache_id_seq OWNED BY dash.dash_exa_cache.id;
-
-
---
--- Name: dash_forecast_runs; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_forecast_runs (
-    id bigint NOT NULL,
-    project_slug text NOT NULL,
-    table_name text,
-    tier text NOT NULL,
-    horizon integer,
-    mase double precision,
-    mape double precision,
-    rmse double precision,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: dash_forecast_runs_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_forecast_runs_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_forecast_runs_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_forecast_runs_id_seq OWNED BY dash.dash_forecast_runs.id;
-
-
---
 -- Name: dash_generated_files; Type: TABLE; Schema: dash; Owner: -
 --
 
@@ -3005,18 +2264,6 @@ ALTER SEQUENCE dash.dash_minions_id_seq OWNED BY dash.dash_minions.id;
 
 
 --
--- Name: dash_pack_installs; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_pack_installs (
-    pack_id uuid NOT NULL,
-    project_slug text NOT NULL,
-    enabled boolean DEFAULT true NOT NULL,
-    installed_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
---
 -- Name: dash_packs; Type: TABLE; Schema: dash; Owner: -
 --
 
@@ -3398,42 +2645,6 @@ ALTER SEQUENCE dash.dash_segment_snapshots_id_seq OWNED BY dash.dash_segment_sna
 
 
 --
--- Name: dash_sim_comparison_runs; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_sim_comparison_runs (
-    id bigint NOT NULL,
-    project_slug text NOT NULL,
-    base_scenario jsonb NOT NULL,
-    optimistic_sim_id text,
-    baseline_sim_id text,
-    pessimistic_sim_id text,
-    status text DEFAULT 'running'::text,
-    created_by_user_id integer,
-    created_at timestamp with time zone DEFAULT now()
-);
-
-
---
--- Name: dash_sim_comparison_runs_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_sim_comparison_runs_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_sim_comparison_runs_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_sim_comparison_runs_id_seq OWNED BY dash.dash_sim_comparison_runs.id;
-
-
---
 -- Name: dash_sim_recommendations; Type: TABLE; Schema: dash; Owner: -
 --
 
@@ -3747,81 +2958,6 @@ CREATE SEQUENCE dash.dash_slide_critique_id_seq
 --
 
 ALTER SEQUENCE dash.dash_slide_critique_id_seq OWNED BY dash.dash_slide_critique.id;
-
-
---
--- Name: dash_slide_live_data; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_slide_live_data (
-    id bigint NOT NULL,
-    pres_id bigint NOT NULL,
-    slide_idx integer NOT NULL,
-    sql_text text NOT NULL,
-    refresh_mode text DEFAULT 'on_open'::text,
-    last_run_at timestamp with time zone,
-    cached_result jsonb,
-    cached_columns jsonb,
-    error_text text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: dash_slide_live_data_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_slide_live_data_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_slide_live_data_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_slide_live_data_id_seq OWNED BY dash.dash_slide_live_data.id;
-
-
---
--- Name: dash_slide_narration; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_slide_narration (
-    id bigint NOT NULL,
-    pres_id bigint NOT NULL,
-    slide_idx integer NOT NULL,
-    voice text,
-    audio_path text,
-    audio_url text,
-    duration_ms integer,
-    text_hash text,
-    cost_usd numeric(8,4),
-    created_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: dash_slide_narration_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_slide_narration_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_slide_narration_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_slide_narration_id_seq OWNED BY dash.dash_slide_narration.id;
 
 
 --
@@ -4190,37 +3326,6 @@ CREATE TABLE dash.dash_venture_deals (
 
 
 --
--- Name: dash_venture_financials; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_venture_financials (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    deal_id uuid NOT NULL,
-    year integer NOT NULL,
-    revenue numeric,
-    ebitda numeric,
-    capex numeric,
-    fcf numeric,
-    assumptions jsonb DEFAULT '{}'::jsonb NOT NULL
-);
-
-
---
--- Name: dash_venture_partners; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_venture_partners (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    deal_id uuid NOT NULL,
-    name text NOT NULL,
-    role text,
-    equity_pct numeric,
-    fit_score numeric,
-    notes text
-);
-
-
---
 -- Name: dash_venture_scenarios; Type: TABLE; Schema: dash; Owner: -
 --
 
@@ -4454,37 +3559,6 @@ ALTER SEQUENCE dash.dash_workflow_schedules_id_seq OWNED BY dash.dash_workflow_s
 
 
 --
--- Name: dash_yf_cache; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.dash_yf_cache (
-    id bigint NOT NULL,
-    cache_key text,
-    payload jsonb,
-    cached_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: dash_yf_cache_id_seq; Type: SEQUENCE; Schema: dash; Owner: -
---
-
-CREATE SEQUENCE dash.dash_yf_cache_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: dash_yf_cache_id_seq; Type: SEQUENCE OWNED BY; Schema: dash; Owner: -
---
-
-ALTER SEQUENCE dash.dash_yf_cache_id_seq OWNED BY dash.dash_yf_cache.id;
-
-
---
 -- Name: training_signals; Type: TABLE; Schema: dash; Owner: -
 --
 
@@ -4523,25 +3597,6 @@ CREATE SEQUENCE dash.training_signals_id_seq
 --
 
 ALTER SEQUENCE dash.training_signals_id_seq OWNED BY dash.training_signals.id;
-
-
---
--- Name: user_agents; Type: TABLE; Schema: dash; Owner: -
---
-
-CREATE TABLE dash.user_agents (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    user_id uuid NOT NULL,
-    persona_json jsonb DEFAULT '{}'::jsonb NOT NULL,
-    zep_session_id text,
-    graph_id text,
-    state text DEFAULT 'building'::text NOT NULL,
-    enabled boolean DEFAULT false NOT NULL,
-    last_sync timestamp with time zone,
-    version integer DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
-);
 
 
 --
@@ -8174,43 +7229,41 @@ CREATE MATERIALIZED VIEW public.mv_table_usage AS
 --
 
 CREATE VIEW public.v_usage_unified AS
- SELECT
+ SELECT 'platform'::text AS src,
+    dash_llm_costs.ts,
+    COALESCE(dash_llm_costs.actor, 'system'::text) AS actor,
+    NULL::text AS store_id,
+    dash_llm_costs.model,
+    COALESCE(dash_llm_costs.tokens_in, 0) AS tokens_in,
+    COALESCE(dash_llm_costs.tokens_out, 0) AS tokens_out,
+    COALESCE(dash_llm_costs.cost_usd, (0)::numeric) AS cost_usd,
         CASE
-            WHEN ((dash_traces.meta ->> 'channel'::text) = 'api'::text) THEN 'api_key'::text
-            ELSE 'platform'::text
-        END AS src,
-    dash_traces.started_at AS ts,
-    COALESCE(NULLIF((dash_traces.meta ->> 'actor'::text), ''::text), 'system'::text) AS actor,
-    (dash_traces.meta ->> 'store_id'::text) AS store_id,
-    COALESCE(NULLIF((dash_traces.meta ->> 'model'::text), ''::text), '(none)'::text) AS model,
-    COALESCE(dash_traces.tokens, 0) AS tokens_in,
-    0 AS tokens_out,
-    COALESCE(dash_traces.cost_usd, (0)::numeric) AS cost_usd,
-    COALESCE(dash_traces.duration_ms, 0) AS latency_ms,
-        CASE
-            WHEN (dash_traces.status = 'error'::text) THEN 'error'::text
-            ELSE 'ok'::text
+            WHEN dash_llm_costs.ok THEN 'ok'::text
+            ELSE 'error'::text
         END AS status
-   FROM public.dash_traces
-  WHERE ((dash_traces.kind = 'chat'::text) AND (dash_traces.parent_id IS NULL))
+   FROM public.dash_llm_costs
+  WHERE (COALESCE(dash_llm_costs.task, ''::text) !~~ 'train%'::text)
 UNION ALL
  SELECT 'training'::text AS src,
-    dash_traces.started_at AS ts,
+    dash_llm_costs.ts,
     'system'::text AS actor,
     NULL::text AS store_id,
-    COALESCE(NULLIF((dash_traces.meta ->> 'model'::text), ''::text), '(none)'::text) AS model,
-    COALESCE(dash_traces.tokens, 0) AS tokens_in,
-    0 AS tokens_out,
-    COALESCE(dash_traces.cost_usd, (0)::numeric) AS cost_usd,
-    COALESCE(dash_traces.duration_ms, 0) AS latency_ms,
+    dash_llm_costs.model,
+    COALESCE(dash_llm_costs.tokens_in, 0) AS tokens_in,
+    COALESCE(dash_llm_costs.tokens_out, 0) AS tokens_out,
+    COALESCE(dash_llm_costs.cost_usd, (0)::numeric) AS cost_usd,
         CASE
-            WHEN (dash_traces.status = 'error'::text) THEN 'error'::text
-            ELSE 'ok'::text
+            WHEN dash_llm_costs.ok THEN 'ok'::text
+            ELSE 'error'::text
         END AS status
-   FROM public.dash_traces
-  WHERE ((dash_traces.kind = ANY (ARRAY['training'::text, 'learning'::text])) AND (dash_traces.parent_id IS NULL))
+   FROM public.dash_llm_costs
+  WHERE (COALESCE(dash_llm_costs.task, ''::text) ~~ 'train%'::text)
 UNION ALL
- SELECT 'embedding'::text AS src,
+ SELECT
+        CASE
+            WHEN (dash_apigw_usage.request_type = 'embedding'::text) THEN 'embedding'::text
+            ELSE 'api_key'::text
+        END AS src,
     dash_apigw_usage.ts,
     COALESCE(dash_apigw_usage.service_account, 'unknown'::text) AS actor,
     dash_apigw_usage.store_id,
@@ -8218,10 +7271,8 @@ UNION ALL
     COALESCE(dash_apigw_usage.prompt_tokens, 0) AS tokens_in,
     COALESCE(dash_apigw_usage.completion_tokens, 0) AS tokens_out,
     COALESCE(dash_apigw_usage.cost_usd, (0)::numeric) AS cost_usd,
-    COALESCE(dash_apigw_usage.latency_ms, 0) AS latency_ms,
     COALESCE(dash_apigw_usage.status, 'ok'::text) AS status
    FROM public.dash_apigw_usage
-  WHERE (dash_apigw_usage.request_type = 'embedding'::text)
 UNION ALL
  SELECT 'embed'::text AS src,
     dash_embed_calls.ts,
@@ -8231,7 +7282,6 @@ UNION ALL
     COALESCE(dash_embed_calls.tokens_in, 0) AS tokens_in,
     COALESCE(dash_embed_calls.tokens_out, 0) AS tokens_out,
     COALESCE(dash_embed_calls.cost_usd, (0)::numeric) AS cost_usd,
-    COALESCE(dash_embed_calls.latency_ms, 0) AS latency_ms,
         CASE
             WHEN dash_embed_calls.success THEN 'ok'::text
             ELSE 'error'::text
@@ -8243,14 +7293,7 @@ UNION ALL
 -- Name: VIEW v_usage_unified; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON VIEW public.v_usage_unified IS 'Normalized usage/cost spine. Chat+training cost/tokens/latency from dash_traces ROOT spans (real ledger); embeddings from dash_apigw_usage; embed widget from dash_embed_calls. cron excluded.';
-
-
---
--- Name: aos_agent_overrides id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.aos_agent_overrides ALTER COLUMN id SET DEFAULT nextval('dash.aos_agent_overrides_id_seq'::regclass);
+COMMENT ON VIEW public.v_usage_unified IS 'Normalized cross-source usage/cost spine (platform|training|api_key|embedding|embed) for the Admin Usage dashboard.';
 
 
 --
@@ -8282,31 +7325,10 @@ ALTER TABLE ONLY dash.aos_models ALTER COLUMN id SET DEFAULT nextval('dash.aos_m
 
 
 --
--- Name: aos_quotas id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.aos_quotas ALTER COLUMN id SET DEFAULT nextval('dash.aos_quotas_id_seq'::regclass);
-
-
---
 -- Name: aos_tool_registry id; Type: DEFAULT; Schema: dash; Owner: -
 --
 
 ALTER TABLE ONLY dash.aos_tool_registry ALTER COLUMN id SET DEFAULT nextval('dash.aos_tool_registry_id_seq'::regclass);
-
-
---
--- Name: dash_ab_revert_events id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_ab_revert_events ALTER COLUMN id SET DEFAULT nextval('dash.dash_ab_revert_events_id_seq'::regclass);
-
-
---
--- Name: dash_ab_revert_runs id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_ab_revert_runs ALTER COLUMN id SET DEFAULT nextval('dash.dash_ab_revert_runs_id_seq'::regclass);
 
 
 --
@@ -8359,59 +7381,10 @@ ALTER TABLE ONLY dash.dash_auto_apply_history ALTER COLUMN id SET DEFAULT nextva
 
 
 --
--- Name: dash_automl_experiments id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_automl_experiments ALTER COLUMN id SET DEFAULT nextval('dash.dash_automl_experiments_id_seq'::regclass);
-
-
---
--- Name: dash_automl_followups id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_automl_followups ALTER COLUMN id SET DEFAULT nextval('dash.dash_automl_followups_id_seq'::regclass);
-
-
---
--- Name: dash_automl_reports id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_automl_reports ALTER COLUMN id SET DEFAULT nextval('dash.dash_automl_reports_id_seq'::regclass);
-
-
---
--- Name: dash_automl_staging id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_automl_staging ALTER COLUMN id SET DEFAULT nextval('dash.dash_automl_staging_id_seq'::regclass);
-
-
---
--- Name: dash_automl_upload_sets id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_automl_upload_sets ALTER COLUMN id SET DEFAULT nextval('dash.dash_automl_upload_sets_id_seq'::regclass);
-
-
---
 -- Name: dash_autonomous_workflows id; Type: DEFAULT; Schema: dash; Owner: -
 --
 
 ALTER TABLE ONLY dash.dash_autonomous_workflows ALTER COLUMN id SET DEFAULT nextval('dash.dash_autonomous_workflows_id_seq'::regclass);
-
-
---
--- Name: dash_autosim_briefs id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_autosim_briefs ALTER COLUMN id SET DEFAULT nextval('dash.dash_autosim_briefs_id_seq'::regclass);
-
-
---
--- Name: dash_autosim_packs id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_autosim_packs ALTER COLUMN id SET DEFAULT nextval('dash.dash_autosim_packs_id_seq'::regclass);
 
 
 --
@@ -8422,13 +7395,6 @@ ALTER TABLE ONLY dash.dash_autosim_runs ALTER COLUMN id SET DEFAULT nextval('das
 
 
 --
--- Name: dash_brain_evidence id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_brain_evidence ALTER COLUMN id SET DEFAULT nextval('dash.dash_brain_evidence_id_seq'::regclass);
-
-
---
 -- Name: dash_brainbench_corpus id; Type: DEFAULT; Schema: dash; Owner: -
 --
 
@@ -8436,31 +7402,10 @@ ALTER TABLE ONLY dash.dash_brainbench_corpus ALTER COLUMN id SET DEFAULT nextval
 
 
 --
--- Name: dash_brainbench_results id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_brainbench_results ALTER COLUMN id SET DEFAULT nextval('dash.dash_brainbench_results_id_seq'::regclass);
-
-
---
--- Name: dash_brainbench_runs id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_brainbench_runs ALTER COLUMN id SET DEFAULT nextval('dash.dash_brainbench_runs_id_seq'::regclass);
-
-
---
 -- Name: dash_campaign_events id; Type: DEFAULT; Schema: dash; Owner: -
 --
 
 ALTER TABLE ONLY dash.dash_campaign_events ALTER COLUMN id SET DEFAULT nextval('dash.dash_campaign_events_id_seq'::regclass);
-
-
---
--- Name: dash_campaign_metrics id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_campaign_metrics ALTER COLUMN id SET DEFAULT nextval('dash.dash_campaign_metrics_id_seq'::regclass);
 
 
 --
@@ -8555,13 +7500,6 @@ ALTER TABLE ONLY dash.dash_dream_findings ALTER COLUMN id SET DEFAULT nextval('d
 
 
 --
--- Name: dash_dream_insights id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_dream_insights ALTER COLUMN id SET DEFAULT nextval('dash.dash_dream_insights_id_seq'::regclass);
-
-
---
 -- Name: dash_dream_lite_runs id; Type: DEFAULT; Schema: dash; Owner: -
 --
 
@@ -8622,20 +7560,6 @@ ALTER TABLE ONLY dash.dash_eval_baselines ALTER COLUMN id SET DEFAULT nextval('d
 --
 
 ALTER TABLE ONLY dash.dash_eval_results ALTER COLUMN id SET DEFAULT nextval('dash.dash_eval_results_id_seq'::regclass);
-
-
---
--- Name: dash_exa_cache id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_exa_cache ALTER COLUMN id SET DEFAULT nextval('dash.dash_exa_cache_id_seq'::regclass);
-
-
---
--- Name: dash_forecast_runs id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_forecast_runs ALTER COLUMN id SET DEFAULT nextval('dash.dash_forecast_runs_id_seq'::regclass);
 
 
 --
@@ -8758,13 +7682,6 @@ ALTER TABLE ONLY dash.dash_segment_snapshots ALTER COLUMN id SET DEFAULT nextval
 
 
 --
--- Name: dash_sim_comparison_runs id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_sim_comparison_runs ALTER COLUMN id SET DEFAULT nextval('dash.dash_sim_comparison_runs_id_seq'::regclass);
-
-
---
 -- Name: dash_sim_recommendations id; Type: DEFAULT; Schema: dash; Owner: -
 --
 
@@ -8811,20 +7728,6 @@ ALTER TABLE ONLY dash.dash_slack_channel_routes ALTER COLUMN id SET DEFAULT next
 --
 
 ALTER TABLE ONLY dash.dash_slide_critique ALTER COLUMN id SET DEFAULT nextval('dash.dash_slide_critique_id_seq'::regclass);
-
-
---
--- Name: dash_slide_live_data id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_slide_live_data ALTER COLUMN id SET DEFAULT nextval('dash.dash_slide_live_data_id_seq'::regclass);
-
-
---
--- Name: dash_slide_narration id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_slide_narration ALTER COLUMN id SET DEFAULT nextval('dash.dash_slide_narration_id_seq'::regclass);
 
 
 --
@@ -8902,13 +7805,6 @@ ALTER TABLE ONLY dash.dash_workflow_run_steps ALTER COLUMN id SET DEFAULT nextva
 --
 
 ALTER TABLE ONLY dash.dash_workflow_schedules ALTER COLUMN id SET DEFAULT nextval('dash.dash_workflow_schedules_id_seq'::regclass);
-
-
---
--- Name: dash_yf_cache id; Type: DEFAULT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_yf_cache ALTER COLUMN id SET DEFAULT nextval('dash.dash_yf_cache_id_seq'::regclass);
 
 
 --
@@ -9508,38 +8404,6 @@ ALTER TABLE ONLY citypharma.shop_flat
 
 
 --
--- Name: agent_audit_log agent_audit_log_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.agent_audit_log
-    ADD CONSTRAINT agent_audit_log_pkey PRIMARY KEY (id);
-
-
---
--- Name: agent_memory_events agent_memory_events_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.agent_memory_events
-    ADD CONSTRAINT agent_memory_events_pkey PRIMARY KEY (id);
-
-
---
--- Name: agent_simulations agent_simulations_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.agent_simulations
-    ADD CONSTRAINT agent_simulations_pkey PRIMARY KEY (id);
-
-
---
--- Name: aos_agent_overrides aos_agent_overrides_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.aos_agent_overrides
-    ADD CONSTRAINT aos_agent_overrides_pkey PRIMARY KEY (id);
-
-
---
 -- Name: aos_capabilities aos_capabilities_name_key; Type: CONSTRAINT; Schema: dash; Owner: -
 --
 
@@ -9588,22 +8452,6 @@ ALTER TABLE ONLY dash.aos_models
 
 
 --
--- Name: aos_quotas aos_quotas_agent_id_key; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.aos_quotas
-    ADD CONSTRAINT aos_quotas_agent_id_key UNIQUE (agent_id);
-
-
---
--- Name: aos_quotas aos_quotas_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.aos_quotas
-    ADD CONSTRAINT aos_quotas_pkey PRIMARY KEY (id);
-
-
---
 -- Name: aos_tool_registry aos_tool_registry_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
 --
 
@@ -9617,22 +8465,6 @@ ALTER TABLE ONLY dash.aos_tool_registry
 
 ALTER TABLE ONLY dash.aos_tool_registry
     ADD CONSTRAINT aos_tool_registry_tool_name_key UNIQUE (tool_name);
-
-
---
--- Name: dash_ab_revert_events dash_ab_revert_events_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_ab_revert_events
-    ADD CONSTRAINT dash_ab_revert_events_pkey PRIMARY KEY (id);
-
-
---
--- Name: dash_ab_revert_runs dash_ab_revert_runs_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_ab_revert_runs
-    ADD CONSTRAINT dash_ab_revert_runs_pkey PRIMARY KEY (id);
 
 
 --
@@ -9724,67 +8556,11 @@ ALTER TABLE ONLY dash.dash_auto_apply_history
 
 
 --
--- Name: dash_automl_experiments dash_automl_experiments_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_automl_experiments
-    ADD CONSTRAINT dash_automl_experiments_pkey PRIMARY KEY (id);
-
-
---
--- Name: dash_automl_followups dash_automl_followups_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_automl_followups
-    ADD CONSTRAINT dash_automl_followups_pkey PRIMARY KEY (id);
-
-
---
--- Name: dash_automl_reports dash_automl_reports_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_automl_reports
-    ADD CONSTRAINT dash_automl_reports_pkey PRIMARY KEY (id);
-
-
---
--- Name: dash_automl_staging dash_automl_staging_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_automl_staging
-    ADD CONSTRAINT dash_automl_staging_pkey PRIMARY KEY (id);
-
-
---
--- Name: dash_automl_upload_sets dash_automl_upload_sets_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_automl_upload_sets
-    ADD CONSTRAINT dash_automl_upload_sets_pkey PRIMARY KEY (id);
-
-
---
 -- Name: dash_autonomous_workflows dash_autonomous_workflows_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
 --
 
 ALTER TABLE ONLY dash.dash_autonomous_workflows
     ADD CONSTRAINT dash_autonomous_workflows_pkey PRIMARY KEY (id);
-
-
---
--- Name: dash_autosim_briefs dash_autosim_briefs_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_autosim_briefs
-    ADD CONSTRAINT dash_autosim_briefs_pkey PRIMARY KEY (id);
-
-
---
--- Name: dash_autosim_packs dash_autosim_packs_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_autosim_packs
-    ADD CONSTRAINT dash_autosim_packs_pkey PRIMARY KEY (id);
 
 
 --
@@ -9796,35 +8572,11 @@ ALTER TABLE ONLY dash.dash_autosim_runs
 
 
 --
--- Name: dash_brain_evidence dash_brain_evidence_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_brain_evidence
-    ADD CONSTRAINT dash_brain_evidence_pkey PRIMARY KEY (id);
-
-
---
 -- Name: dash_brainbench_corpus dash_brainbench_corpus_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
 --
 
 ALTER TABLE ONLY dash.dash_brainbench_corpus
     ADD CONSTRAINT dash_brainbench_corpus_pkey PRIMARY KEY (id);
-
-
---
--- Name: dash_brainbench_results dash_brainbench_results_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_brainbench_results
-    ADD CONSTRAINT dash_brainbench_results_pkey PRIMARY KEY (id);
-
-
---
--- Name: dash_brainbench_runs dash_brainbench_runs_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_brainbench_runs
-    ADD CONSTRAINT dash_brainbench_runs_pkey PRIMARY KEY (id);
 
 
 --
@@ -9836,27 +8588,11 @@ ALTER TABLE ONLY dash.dash_campaign_events
 
 
 --
--- Name: dash_campaign_metrics dash_campaign_metrics_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_campaign_metrics
-    ADD CONSTRAINT dash_campaign_metrics_pkey PRIMARY KEY (id);
-
-
---
 -- Name: dash_campaigns dash_campaigns_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
 --
 
 ALTER TABLE ONLY dash.dash_campaigns
     ADD CONSTRAINT dash_campaigns_pkey PRIMARY KEY (id);
-
-
---
--- Name: dash_canvas dash_canvas_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_canvas
-    ADD CONSTRAINT dash_canvas_pkey PRIMARY KEY (id);
 
 
 --
@@ -9913,14 +8649,6 @@ ALTER TABLE ONLY dash.dash_compression_stats
 
 ALTER TABLE ONLY dash.dash_connection_audit
     ADD CONSTRAINT dash_connection_audit_pkey PRIMARY KEY (id);
-
-
---
--- Name: dash_connection_user_tokens dash_connection_user_tokens_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_connection_user_tokens
-    ADD CONSTRAINT dash_connection_user_tokens_pkey PRIMARY KEY (connection_id, user_id);
 
 
 --
@@ -10044,14 +8772,6 @@ ALTER TABLE ONLY dash.dash_dream_findings
 
 
 --
--- Name: dash_dream_insights dash_dream_insights_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_dream_insights
-    ADD CONSTRAINT dash_dream_insights_pkey PRIMARY KEY (id);
-
-
---
 -- Name: dash_dream_lite_runs dash_dream_lite_runs_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
 --
 
@@ -10172,30 +8892,6 @@ ALTER TABLE ONLY dash.dash_eval_suites
 
 
 --
--- Name: dash_exa_cache dash_exa_cache_cache_key_key; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_exa_cache
-    ADD CONSTRAINT dash_exa_cache_cache_key_key UNIQUE (cache_key);
-
-
---
--- Name: dash_exa_cache dash_exa_cache_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_exa_cache
-    ADD CONSTRAINT dash_exa_cache_pkey PRIMARY KEY (id);
-
-
---
--- Name: dash_forecast_runs dash_forecast_runs_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_forecast_runs
-    ADD CONSTRAINT dash_forecast_runs_pkey PRIMARY KEY (id);
-
-
---
 -- Name: dash_generated_files dash_generated_files_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
 --
 
@@ -10308,14 +9004,6 @@ ALTER TABLE ONLY dash.dash_minions
 
 
 --
--- Name: dash_pack_installs dash_pack_installs_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_pack_installs
-    ADD CONSTRAINT dash_pack_installs_pkey PRIMARY KEY (pack_id, project_slug);
-
-
---
 -- Name: dash_packs dash_packs_name_key; Type: CONSTRAINT; Schema: dash; Owner: -
 --
 
@@ -10417,14 +9105,6 @@ ALTER TABLE ONLY dash.dash_secret_leaks
 
 ALTER TABLE ONLY dash.dash_segment_snapshots
     ADD CONSTRAINT dash_segment_snapshots_pkey PRIMARY KEY (id);
-
-
---
--- Name: dash_sim_comparison_runs dash_sim_comparison_runs_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_sim_comparison_runs
-    ADD CONSTRAINT dash_sim_comparison_runs_pkey PRIMARY KEY (id);
 
 
 --
@@ -10540,22 +9220,6 @@ ALTER TABLE ONLY dash.dash_slide_critique
 
 
 --
--- Name: dash_slide_live_data dash_slide_live_data_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_slide_live_data
-    ADD CONSTRAINT dash_slide_live_data_pkey PRIMARY KEY (id);
-
-
---
--- Name: dash_slide_narration dash_slide_narration_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_slide_narration
-    ADD CONSTRAINT dash_slide_narration_pkey PRIMARY KEY (id);
-
-
---
 -- Name: dash_slide_templates dash_slide_templates_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
 --
 
@@ -10668,30 +9332,6 @@ ALTER TABLE ONLY dash.dash_venture_deals
 
 
 --
--- Name: dash_venture_financials dash_venture_financials_deal_id_year_key; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_venture_financials
-    ADD CONSTRAINT dash_venture_financials_deal_id_year_key UNIQUE (deal_id, year);
-
-
---
--- Name: dash_venture_financials dash_venture_financials_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_venture_financials
-    ADD CONSTRAINT dash_venture_financials_pkey PRIMARY KEY (id);
-
-
---
--- Name: dash_venture_partners dash_venture_partners_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_venture_partners
-    ADD CONSTRAINT dash_venture_partners_pkey PRIMARY KEY (id);
-
-
---
 -- Name: dash_venture_scenarios dash_venture_scenarios_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
 --
 
@@ -10772,22 +9412,6 @@ ALTER TABLE ONLY dash.dash_workflow_schedules
 
 
 --
--- Name: dash_yf_cache dash_yf_cache_cache_key_key; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_yf_cache
-    ADD CONSTRAINT dash_yf_cache_cache_key_key UNIQUE (cache_key);
-
-
---
--- Name: dash_yf_cache dash_yf_cache_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_yf_cache
-    ADD CONSTRAINT dash_yf_cache_pkey PRIMARY KEY (id);
-
-
---
 -- Name: training_signals training_signals_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
 --
 
@@ -10817,30 +9441,6 @@ ALTER TABLE ONLY dash.dash_entity_links
 
 ALTER TABLE ONLY dash.dash_dream_findings
     ADD CONSTRAINT uq_dream_findings_project_hash UNIQUE (project_slug, finding_hash);
-
-
---
--- Name: dash_dream_insights uq_dream_insights_project_hash; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_dream_insights
-    ADD CONSTRAINT uq_dream_insights_project_hash UNIQUE (project_slug, insight_hash);
-
-
---
--- Name: user_agents user_agents_pkey; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.user_agents
-    ADD CONSTRAINT user_agents_pkey PRIMARY KEY (id);
-
-
---
--- Name: user_agents user_agents_user_id_key; Type: CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.user_agents
-    ADD CONSTRAINT user_agents_user_id_key UNIQUE (user_id);
 
 
 --
@@ -11945,55 +10545,6 @@ CREATE INDEX idx_aah_slug ON dash.dash_auto_apply_history USING btree (project_s
 
 
 --
--- Name: idx_ab_events_project_target; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_ab_events_project_target ON dash.dash_ab_revert_events USING btree (project_slug, target_type, created_at DESC);
-
-
---
--- Name: idx_ab_revert_runs_project_time; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_ab_revert_runs_project_time ON dash.dash_ab_revert_runs USING btree (project_slug, started_at DESC);
-
-
---
--- Name: idx_agent_audit_user_ts; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_agent_audit_user_ts ON dash.agent_audit_log USING btree (user_id, ts DESC);
-
-
---
--- Name: idx_agent_mem_agent_ts; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_agent_mem_agent_ts ON dash.agent_memory_events USING btree (agent_id, ts DESC);
-
-
---
--- Name: idx_agent_mem_type; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_agent_mem_type ON dash.agent_memory_events USING btree (agent_id, event_type);
-
-
---
--- Name: idx_agent_sim_status; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_agent_sim_status ON dash.agent_simulations USING btree (status);
-
-
---
--- Name: idx_agent_sim_user; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_agent_sim_user ON dash.agent_simulations USING btree (user_id, created_at DESC);
-
-
---
 -- Name: idx_agstate_session; Type: INDEX; Schema: dash; Owner: -
 --
 
@@ -12005,20 +10556,6 @@ CREATE INDEX idx_agstate_session ON dash.dash_agentic_state USING btree (session
 --
 
 CREATE INDEX idx_anti_patterns_project_confidence_active ON dash.dash_anti_patterns USING btree (project_slug, confidence DESC) WHERE (status = 'active'::text);
-
-
---
--- Name: idx_aos_overrides_agent; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_aos_overrides_agent ON dash.aos_agent_overrides USING btree (agent_id);
-
-
---
--- Name: idx_aos_quotas_agent; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_aos_quotas_agent ON dash.aos_quotas USING btree (agent_id);
 
 
 --
@@ -12064,27 +10601,6 @@ CREATE INDEX idx_attr_tp_model ON dash.dash_attribution_credits USING btree (tou
 
 
 --
--- Name: idx_automl_exp_active; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_automl_exp_active ON dash.dash_automl_experiments USING btree (status) WHERE (status = ANY (ARRAY['queued'::text, 'running'::text]));
-
-
---
--- Name: idx_automl_exp_slug_created; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_automl_exp_slug_created ON dash.dash_automl_experiments USING btree (project_slug, created_at DESC);
-
-
---
--- Name: idx_automl_exp_template; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_automl_exp_template ON dash.dash_automl_experiments USING btree (template_id);
-
-
---
 -- Name: idx_autonomous_wf_cron; Type: INDEX; Schema: dash; Owner: -
 --
 
@@ -12096,13 +10612,6 @@ CREATE INDEX idx_autonomous_wf_cron ON dash.dash_autonomous_workflows USING btre
 --
 
 CREATE INDEX idx_autonomous_wf_owner ON dash.dash_autonomous_workflows USING btree (owner_user_id);
-
-
---
--- Name: idx_autosim_briefs_unread; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_autosim_briefs_unread ON dash.dash_autosim_briefs USING btree (project_slug, user_id, created_at DESC) WHERE (read_at IS NULL);
 
 
 --
@@ -12120,27 +10629,6 @@ CREATE INDEX idx_autosim_runs_status ON dash.dash_autosim_runs USING btree (stat
 
 
 --
--- Name: idx_brain_evidence_brain_recent; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_brain_evidence_brain_recent ON dash.dash_brain_evidence USING btree (brain_id, created_at DESC);
-
-
---
--- Name: idx_brain_evidence_session; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_brain_evidence_session ON dash.dash_brain_evidence USING btree (source_session_id) WHERE (source_session_id IS NOT NULL);
-
-
---
--- Name: idx_brain_evidence_source; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_brain_evidence_source ON dash.dash_brain_evidence USING btree (source_type, source_id);
-
-
---
 -- Name: idx_brainbench_corpus_project_recent; Type: INDEX; Schema: dash; Owner: -
 --
 
@@ -12152,27 +10640,6 @@ CREATE INDEX idx_brainbench_corpus_project_recent ON dash.dash_brainbench_corpus
 --
 
 CREATE INDEX idx_brainbench_corpus_session ON dash.dash_brainbench_corpus USING btree (session_id);
-
-
---
--- Name: idx_brainbench_results_corpus; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_brainbench_results_corpus ON dash.dash_brainbench_results USING btree (corpus_id);
-
-
---
--- Name: idx_brainbench_results_run; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_brainbench_results_run ON dash.dash_brainbench_results USING btree (run_id);
-
-
---
--- Name: idx_brainbench_runs_project_recent; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_brainbench_runs_project_recent ON dash.dash_brainbench_runs USING btree (project_slug, started_at DESC);
 
 
 --
@@ -12194,20 +10661,6 @@ CREATE INDEX idx_cagent_usage ON dash.dash_custom_agents USING btree (usage_coun
 --
 
 CREATE INDEX idx_campaign_events_camp ON dash.dash_campaign_events USING btree (campaign_id, occurred_at DESC);
-
-
---
--- Name: idx_campaign_metrics_camp; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_campaign_metrics_camp ON dash.dash_campaign_metrics USING btree (campaign_id, recorded_at DESC);
-
-
---
--- Name: idx_campaign_metrics_name; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_campaign_metrics_name ON dash.dash_campaign_metrics USING btree (campaign_id, metric_name);
 
 
 --
@@ -12253,13 +10706,6 @@ CREATE INDEX idx_compstats_recent ON dash.dash_compression_stats USING btree (cr
 
 
 --
--- Name: idx_conn_user_tokens_expires; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_conn_user_tokens_expires ON dash.dash_connection_user_tokens USING btree (expires_at);
-
-
---
 -- Name: idx_conv_slug_cust_time; Type: INDEX; Schema: dash; Owner: -
 --
 
@@ -12299,13 +10745,6 @@ CREATE INDEX idx_cs_project ON dash.dash_customer_scores USING btree (project_sl
 --
 
 CREATE INDEX idx_cs_segment ON dash.dash_customer_scores USING btree (project_slug, rfm_segment);
-
-
---
--- Name: idx_dash_canvas_project_updated; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_dash_canvas_project_updated ON dash.dash_canvas USING btree (project_slug, updated_at DESC);
 
 
 --
@@ -12351,20 +10790,6 @@ CREATE INDEX idx_dash_entity_links_src ON dash.dash_entity_links USING btree (pr
 
 
 --
--- Name: idx_dash_forecast_runs_slug_created; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_dash_forecast_runs_slug_created ON dash.dash_forecast_runs USING btree (project_slug, created_at DESC);
-
-
---
--- Name: idx_dash_forecast_runs_tier; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_dash_forecast_runs_tier ON dash.dash_forecast_runs USING btree (tier);
-
-
---
 -- Name: idx_dash_links_dst; Type: INDEX; Schema: dash; Owner: -
 --
 
@@ -12390,20 +10815,6 @@ CREATE INDEX idx_dash_links_src ON dash.dash_links USING btree (src_type, src_id
 --
 
 CREATE INDEX idx_dash_llm_keys_enabled ON dash.dash_llm_keys USING btree (provider, enabled) WHERE (enabled = true);
-
-
---
--- Name: idx_dash_pack_installs_enabled; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_dash_pack_installs_enabled ON dash.dash_pack_installs USING btree (project_slug) WHERE (enabled = true);
-
-
---
--- Name: idx_dash_pack_installs_project; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_dash_pack_installs_project ON dash.dash_pack_installs USING btree (project_slug);
 
 
 --
@@ -12533,20 +10944,6 @@ CREATE INDEX idx_dream_findings_type ON dash.dash_dream_findings USING btree (fi
 
 
 --
--- Name: idx_dream_insights_project_last_used; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_dream_insights_project_last_used ON dash.dash_dream_insights USING btree (project_slug, last_used_at DESC NULLS LAST);
-
-
---
--- Name: idx_dream_insights_project_status_upvotes; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_dream_insights_project_status_upvotes ON dash.dash_dream_insights USING btree (project_slug, status, upvotes DESC);
-
-
---
 -- Name: idx_dream_lite_runs_bootstrap; Type: INDEX; Schema: dash; Owner: -
 --
 
@@ -12635,20 +11032,6 @@ CREATE INDEX idx_eval_runs_recent ON dash.dash_eval_runs USING btree (started_at
 --
 
 CREATE INDEX idx_eval_runs_suite ON dash.dash_eval_runs USING btree (suite_id, started_at DESC);
-
-
---
--- Name: idx_exa_cache_cached_at; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_exa_cache_cached_at ON dash.dash_exa_cache USING btree (cached_at);
-
-
---
--- Name: idx_followups_exp; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_followups_exp ON dash.dash_automl_followups USING btree (experiment_id, created_at);
 
 
 --
@@ -12911,13 +11294,6 @@ CREATE INDEX idx_refusal_marks_session ON dash.dash_refusal_marks USING btree (s
 
 
 --
--- Name: idx_reports_exp; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_reports_exp ON dash.dash_automl_reports USING btree (experiment_id);
-
-
---
 -- Name: idx_rls_audit_blocked; Type: INDEX; Schema: dash; Owner: -
 --
 
@@ -13023,13 +11399,6 @@ CREATE INDEX idx_segment_snapshots_slug_time ON dash.dash_segment_snapshots USIN
 
 
 --
--- Name: idx_sim_comparison_proj; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_sim_comparison_proj ON dash.dash_sim_comparison_runs USING btree (project_slug, created_at DESC);
-
-
---
 -- Name: idx_sim_recs_popularity; Type: INDEX; Schema: dash; Owner: -
 --
 
@@ -13114,20 +11483,6 @@ CREATE INDEX idx_slide_critique_pres ON dash.dash_slide_critique USING btree (pr
 
 
 --
--- Name: idx_slide_live_pres; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_slide_live_pres ON dash.dash_slide_live_data USING btree (pres_id);
-
-
---
--- Name: idx_slide_narration_pres; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_slide_narration_pres ON dash.dash_slide_narration USING btree (pres_id);
-
-
---
 -- Name: idx_slide_templates_created_at; Type: INDEX; Schema: dash; Owner: -
 --
 
@@ -13139,13 +11494,6 @@ CREATE INDEX idx_slide_templates_created_at ON dash.dash_slide_templates USING b
 --
 
 CREATE INDEX idx_slide_templates_project ON dash.dash_slide_templates USING btree (project_slug);
-
-
---
--- Name: idx_staging_created; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_staging_created ON dash.dash_automl_staging USING btree (created_at);
 
 
 --
@@ -13254,34 +11602,6 @@ CREATE INDEX idx_training_signals_project ON dash.training_signals USING btree (
 
 
 --
--- Name: idx_upload_sets_status; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_upload_sets_status ON dash.dash_automl_upload_sets USING btree (status);
-
-
---
--- Name: idx_upload_sets_user; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_upload_sets_user ON dash.dash_automl_upload_sets USING btree (user_id, created_at DESC);
-
-
---
--- Name: idx_user_agents_state; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_user_agents_state ON dash.user_agents USING btree (state);
-
-
---
--- Name: idx_user_agents_user; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_user_agents_user ON dash.user_agents USING btree (user_id);
-
-
---
 -- Name: idx_venture_comp_deal; Type: INDEX; Schema: dash; Owner: -
 --
 
@@ -13307,20 +11627,6 @@ CREATE INDEX idx_venture_deals_status ON dash.dash_venture_deals USING btree (pr
 --
 
 CREATE INDEX idx_venture_drift_proj ON dash.dash_venture_verdict_drift USING btree (project_slug, detected_at DESC);
-
-
---
--- Name: idx_venture_fin_deal; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_venture_fin_deal ON dash.dash_venture_financials USING btree (deal_id);
-
-
---
--- Name: idx_venture_part_deal; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_venture_part_deal ON dash.dash_venture_partners USING btree (deal_id);
 
 
 --
@@ -13380,13 +11686,6 @@ CREATE INDEX idx_wfrunstep_run ON dash.dash_workflow_run_steps USING btree (run_
 
 
 --
--- Name: idx_yf_cache_cached_at; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE INDEX idx_yf_cache_cached_at ON dash.dash_yf_cache USING btree (cached_at);
-
-
---
 -- Name: ix_dash_aw_project; Type: INDEX; Schema: dash; Owner: -
 --
 
@@ -13398,13 +11697,6 @@ CREATE INDEX ix_dash_aw_project ON dash.dash_autonomous_workflows USING btree (p
 --
 
 CREATE INDEX ix_dash_bindings_project ON dash.dash_template_bindings USING btree (project_slug, status);
-
-
---
--- Name: uq_autosim_packs; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE UNIQUE INDEX uq_autosim_packs ON dash.dash_autosim_packs USING btree (vertical, pack_name, version);
 
 
 --
@@ -13433,20 +11725,6 @@ CREATE UNIQUE INDEX uq_precompute_question ON dash.dash_dream_precompute_cache U
 --
 
 CREATE UNIQUE INDEX uq_skill_marketplace_name_template ON dash.dash_skill_marketplace USING btree (name, template_name);
-
-
---
--- Name: uq_slide_live_pres_slide; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE UNIQUE INDEX uq_slide_live_pres_slide ON dash.dash_slide_live_data USING btree (pres_id, slide_idx);
-
-
---
--- Name: uq_slide_narration_pres_slide; Type: INDEX; Schema: dash; Owner: -
---
-
-CREATE UNIQUE INDEX uq_slide_narration_pres_slide ON dash.dash_slide_narration USING btree (pres_id, slide_idx);
 
 
 --
@@ -14276,37 +12554,6 @@ CREATE UNIQUE INDEX uq_training_steps_cache ON public.dash_training_steps USING 
 
 
 --
--- Name: user_agents trg_user_agents_updated_at; Type: TRIGGER; Schema: dash; Owner: -
---
-
-CREATE TRIGGER trg_user_agents_updated_at BEFORE UPDATE ON dash.user_agents FOR EACH ROW EXECUTE FUNCTION dash.user_agents_set_updated_at();
-
-
---
--- Name: agent_memory_events agent_memory_events_agent_id_fkey; Type: FK CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.agent_memory_events
-    ADD CONSTRAINT agent_memory_events_agent_id_fkey FOREIGN KEY (agent_id) REFERENCES dash.user_agents(id) ON DELETE CASCADE;
-
-
---
--- Name: agent_simulations agent_simulations_agent_id_fkey; Type: FK CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.agent_simulations
-    ADD CONSTRAINT agent_simulations_agent_id_fkey FOREIGN KEY (agent_id) REFERENCES dash.user_agents(id) ON DELETE SET NULL;
-
-
---
--- Name: dash_ab_revert_events dash_ab_revert_events_run_id_fkey; Type: FK CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_ab_revert_events
-    ADD CONSTRAINT dash_ab_revert_events_run_id_fkey FOREIGN KEY (run_id) REFERENCES dash.dash_ab_revert_runs(id) ON DELETE CASCADE;
-
-
---
 -- Name: dash_agent_schedule_runs dash_agent_schedule_runs_schedule_id_fkey; Type: FK CONSTRAINT; Schema: dash; Owner: -
 --
 
@@ -14339,14 +12586,6 @@ ALTER TABLE ONLY dash.dash_campaign_events
 
 
 --
--- Name: dash_campaign_metrics dash_campaign_metrics_campaign_id_fkey; Type: FK CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_campaign_metrics
-    ADD CONSTRAINT dash_campaign_metrics_campaign_id_fkey FOREIGN KEY (campaign_id) REFERENCES dash.dash_campaigns(id) ON DELETE CASCADE;
-
-
---
 -- Name: dash_channel_messages dash_channel_messages_thread_id_fkey; Type: FK CONSTRAINT; Schema: dash; Owner: -
 --
 
@@ -14363,14 +12602,6 @@ ALTER TABLE ONLY dash.dash_connection_audit
 
 
 --
--- Name: dash_connection_user_tokens dash_connection_user_tokens_connection_id_fkey; Type: FK CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_connection_user_tokens
-    ADD CONSTRAINT dash_connection_user_tokens_connection_id_fkey FOREIGN KEY (connection_id) REFERENCES dash.dash_connections(id) ON DELETE CASCADE;
-
-
---
 -- Name: dash_correction_rules dash_correction_rules_source_correction_id_fkey; Type: FK CONSTRAINT; Schema: dash; Owner: -
 --
 
@@ -14384,14 +12615,6 @@ ALTER TABLE ONLY dash.dash_correction_rules
 
 ALTER TABLE ONLY dash.dash_dream_findings
     ADD CONSTRAINT dash_dream_findings_run_id_fkey FOREIGN KEY (run_id) REFERENCES dash.dash_dream_runs(id) ON DELETE CASCADE;
-
-
---
--- Name: dash_dream_insights dash_dream_insights_source_dream_run_id_fkey; Type: FK CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_dream_insights
-    ADD CONSTRAINT dash_dream_insights_source_dream_run_id_fkey FOREIGN KEY (source_dream_run_id) REFERENCES dash.dash_dream_runs(id) ON DELETE SET NULL;
 
 
 --
@@ -14451,14 +12674,6 @@ ALTER TABLE ONLY dash.dash_mcp_tool_bindings
 
 
 --
--- Name: dash_pack_installs dash_pack_installs_pack_id_fkey; Type: FK CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_pack_installs
-    ADD CONSTRAINT dash_pack_installs_pack_id_fkey FOREIGN KEY (pack_id) REFERENCES dash.dash_packs(id) ON DELETE CASCADE;
-
-
---
 -- Name: dash_page_evidence dash_page_evidence_page_id_fkey; Type: FK CONSTRAINT; Schema: dash; Owner: -
 --
 
@@ -14504,22 +12719,6 @@ ALTER TABLE ONLY dash.dash_subagent_runs
 
 ALTER TABLE ONLY dash.dash_venture_competitors
     ADD CONSTRAINT dash_venture_competitors_deal_id_fkey FOREIGN KEY (deal_id) REFERENCES dash.dash_venture_deals(id) ON DELETE CASCADE;
-
-
---
--- Name: dash_venture_financials dash_venture_financials_deal_id_fkey; Type: FK CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_venture_financials
-    ADD CONSTRAINT dash_venture_financials_deal_id_fkey FOREIGN KEY (deal_id) REFERENCES dash.dash_venture_deals(id) ON DELETE CASCADE;
-
-
---
--- Name: dash_venture_partners dash_venture_partners_deal_id_fkey; Type: FK CONSTRAINT; Schema: dash; Owner: -
---
-
-ALTER TABLE ONLY dash.dash_venture_partners
-    ADD CONSTRAINT dash_venture_partners_deal_id_fkey FOREIGN KEY (deal_id) REFERENCES dash.dash_venture_deals(id) ON DELETE CASCADE;
 
 
 --
@@ -14627,5 +12826,5 @@ CREATE POLICY vec_scope ON dash.dash_vectors USING (((COALESCE(current_setting('
 -- PostgreSQL database dump complete
 --
 
-\unrestrict snhegY9y8CFyXa7DcNBolA0FcxRT2Bi6gzrPynGAIn8swINvNjlBCk1Tp09vvdh
+\unrestrict 7mCQm2rlrXfdkFhFKDGnzYlPuATnq005MEjseRsSjZEnluhZhzZ2H7sQ963B6Ke
 
