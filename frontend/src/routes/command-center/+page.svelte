@@ -551,6 +551,28 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  }
  }
 
+ // Quick on/off toggle (Cockpit Integrations card) — posts immediately.
+ let togglingKey = $state<string | null>(null);
+ function settingOn(key: string): boolean {
+   const s = allSettings.find((x) => x.key === key);
+   const v = s ? s.effective_value : true;
+   return !(v === false || v === 'false' || v === 0 || v === '0');
+ }
+ async function toggleIntegration(key: string) {
+   togglingKey = key;
+   const next = !settingOn(key);
+   try {
+     await fetch('/api/admin/settings', {
+       method: 'POST',
+       headers: { ..._h(), 'Content-Type': 'application/json' },
+       body: JSON.stringify({ settings: [{ key, value: next, scope: 'global' }] }),
+     });
+     await loadAdminSettings();
+   } finally {
+     togglingKey = null;
+   }
+ }
+
  async function resetSetting(key: string) {
  await fetch('/api/admin/settings/reset', {
  method: 'POST',
@@ -928,6 +950,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  /* ─── cockpit (folded-in Super Dashboard landing) ─── */
  let cockpit = $state<any>({});
  async function loadCockpit() {
+   loadAdminSettings();   // for the Integrations on/off toggles
    const j = async (u: string) => { try { const r = await fetch(u, { headers: _h() }); return r.ok ? await r.json() : null; } catch { return null; } };
    const [arch, hl, dm, g] = await Promise.all([
      j('/api/architecture'), j('/api/health'), j('/api/health/daemons'), j('/api/auth/apigw-usage'),
@@ -3081,6 +3104,31 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
     </div>
   </section>
   <section class="ccc-panel">
+    <div class="ccc-h">INTEGRATIONS</div>
+    <div class="ccc-toggles">
+      <div class="ccc-toggle-row">
+        <div class="ccc-toggle-lbl">
+          <span class="ccc-toggle-name">🔑 API Gateway</span>
+          <span class="ccc-toggle-sub">OpenAI-compatible REST /api/v1 — {settingOn('gateway_enabled') ? 'live' : 'disabled (routes 403, hidden from nav)'}</span>
+        </div>
+        <button class="ccc-switch" class:on={settingOn('gateway_enabled')} disabled={togglingKey === 'gateway_enabled'}
+                onclick={() => toggleIntegration('gateway_enabled')} aria-label="Toggle API Gateway">
+          <span class="ccc-knob"></span>
+        </button>
+      </div>
+      <div class="ccc-toggle-row">
+        <div class="ccc-toggle-lbl">
+          <span class="ccc-toggle-name">&lt;/&gt; Embed</span>
+          <span class="ccc-toggle-sub">Chat widget for external sites — {settingOn('embed_enabled') ? 'live' : 'disabled (routes 403, hidden from nav)'}</span>
+        </div>
+        <button class="ccc-switch" class:on={settingOn('embed_enabled')} disabled={togglingKey === 'embed_enabled'}
+                onclick={() => toggleIntegration('embed_enabled')} aria-label="Toggle Embed">
+          <span class="ccc-knob"></span>
+        </button>
+      </div>
+    </div>
+  </section>
+  <section class="ccc-panel">
     <div class="ccc-h">JUMP TO</div>
     <div class="ccc-jump">
       <button onclick={() => switchTab('users')}>👥 Users</button>
@@ -3707,4 +3755,14 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  .ccc-jump button { text-align: left; border: 1px solid var(--pw-border, #e7e1d6); border-radius: 8px; padding: 14px 16px; background: var(--pw-bg-alt, #faf7f1); font-size: 14px; font-weight: 600; color: var(--pw-ink, #1a1614); cursor: pointer; transition: background 0.12s, border-color 0.12s; }
  .ccc-jump button:hover { background: rgba(201,99,66,0.06); border-color: var(--pw-accent, #c96342); }
  @media (max-width: 900px) { .ccc-kpis { grid-template-columns: repeat(2, 1fr); } .ccc-jump { grid-template-columns: 1fr; } }
+ .ccc-toggles { display: flex; flex-direction: column; gap: 14px; }
+ .ccc-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+ .ccc-toggle-lbl { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+ .ccc-toggle-name { font-size: 14px; font-weight: 600; color: var(--pw-ink, #1a1614); }
+ .ccc-toggle-sub { font-size: 11px; color: var(--pw-muted, #877f74); }
+ .ccc-switch { position: relative; width: 46px; height: 26px; border-radius: 13px; border: none; background: var(--pw-border, #d9d2c6); cursor: pointer; flex-shrink: 0; transition: background 0.15s; padding: 0; }
+ .ccc-switch.on { background: var(--pw-accent, #c96342); }
+ .ccc-switch:disabled { opacity: 0.5; cursor: wait; }
+ .ccc-knob { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: transform 0.15s; }
+ .ccc-switch.on .ccc-knob { transform: translateX(20px); }
 </style>
