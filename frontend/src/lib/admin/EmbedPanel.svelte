@@ -341,6 +341,64 @@
   }
   function monIsTail(b: string) { return b === '30-60s' || b === '>60s'; }
 
+  // ---- widget detail (full-screen drill-down, mirrors gateway outlet detail) ----
+  let wdId = $state<string | null>(null);     // embed_id whose detail screen is open (null = list)
+  let wdRange = $state<'24h' | '7d' | '30d'>('7d');
+  let wdData = $state<any>(null);
+  let wdErr = $state('');
+  let wdBusy = $state(false);
+  let wdCallOpen = $state<number | null>(null);  // expanded call id
+
+  async function loadWidgetDetail() {
+    if (!wdId) return;
+    wdErr = ''; wdBusy = true;
+    try {
+      const r = await apiFetch(`/api/admin/usage/embed-detail?embed_id=${encodeURIComponent(wdId)}&range=${wdRange}`);
+      if (r.ok) wdData = await r.json();
+      else { wdData = null; wdErr = `detail ${r.status}`; }
+    } catch (e) { wdData = null; wdErr = 'unreachable'; }
+    wdBusy = false;
+  }
+  function openWidget(embed_id: string) {
+    wdId = embed_id; wdData = null; wdErr = ''; wdCallOpen = null;
+    loadWidgetDetail();
+  }
+  function backToMonitoring() { wdId = null; wdData = null; wdCallOpen = null; }
+  function setWdRange(r: '24h' | '7d' | '30d') { wdRange = r; loadWidgetDetail(); }
+  function toggleWdCall(id: number) { wdCallOpen = wdCallOpen === id ? null : id; }
+  function fmtS(ms: any) { const n = Number(ms); return n ? `${(n / 1000).toFixed(1)}s` : '—'; }
+
+  // activity bars for the detail screen
+  let wdActBars = $derived.by(() => {
+    const s: any[] = wdData?.series || [];
+    const max = Math.max(1, ...s.map((x: any) => Number(x.requests) || 0));
+    const bkt = wdData?.bucket || 'day';
+    return s.map((x: any) => {
+      const t = String(x.t || '');
+      let label = t;
+      try {
+        const d = new Date(t);
+        if (!isNaN(d.getTime())) {
+          label = bkt === 'hour'
+            ? `${String(d.getMonth() + 1)}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}h`
+            : `${String(d.getMonth() + 1)}/${d.getDate()}`;
+        }
+      } catch { /* keep raw */ }
+      return { label, pct: Math.round(((Number(x.requests) || 0) / max) * 100),
+               title: `${t} · ${x.requests} req · ${x.errors} err · p95 ${x.p95_ms}ms` };
+    });
+  });
+
+  function wdExportJson() {
+    if (!wdData) return;
+    const blob = new Blob([JSON.stringify(wdData, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `embed-detail-${wdId}-${wdRange}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   // ---- copy ----
   let copied = $state('');
   function flashCopied(which: string) { copied = which; setTimeout(() => { if (copied === which) copied = ''; }, 1500); }
@@ -1065,7 +1123,197 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
       {/if}
 
       <!-- ==================== MONITORING ==================== -->
-      {#if view === 'monitoring'}
+      {#if view === 'monitoring' && wdId}
+        <!-- ============ WIDGET DETAIL (full-screen drill-down) ============ -->
+        {@const wh = wdData?.header || {}}
+        {@const wk = wdData?.kpi || {}}
+        <section class="emp-panel emp-wd-headpanel">
+          <div class="emp-wd-headbar">
+            <button class="emp-btn emp-btn-sm" onclick={backToMonitoring}>← Back to Monitoring</button>
+            <div class="emp-wd-headmeta">
+              <strong class="emp-wd-name">{wh.name || wdId}</strong>
+              <code class="emp-code">{wdId}</code>
+              {#if wh.scope}<span class="emp-scope-badge">● {wh.scope}</span>{/if}
+              {#if wh.store}<span class="emp-muted"><span class="emp-k">store</span>{wh.store}</span>{/if}
+              {#if wh.enabled === false}<span class="emp-err">✗ disabled</span>{/if}
+              {#if wdBusy}<span class="emp-muted">◐ loading…</span>{/if}
+            </div>
+            <div class="emp-wd-headact">
+              <div class="emp-pills">
+                <button class="emp-pill" class:emp-pill-on={wdRange === '24h'} onclick={() => setWdRange('24h')}>24h</button>
+                <button class="emp-pill" class:emp-pill-on={wdRange === '7d'} onclick={() => setWdRange('7d')}>7d</button>
+                <button class="emp-pill" class:emp-pill-on={wdRange === '30d'} onclick={() => setWdRange('30d')}>30d</button>
+              </div>
+              <button class="emp-btn emp-btn-sm" onclick={wdExportJson} disabled={!wdData}>⬇ JSON</button>
+            </div>
+          </div>
+        </section>
+
+        {#if wdErr}
+          <section class="emp-panel"><div class="emp-row emp-err">✗ widget detail unavailable ({wdErr})</div></section>
+        {:else if wdBusy && !wdData}
+          <section class="emp-panel"><div class="emp-row emp-muted">◐ loading widget…</div></section>
+        {:else if wdData}
+          <!-- KPI STRIP -->
+          <section class="emp-panel">
+            <div class="emp-kpi-grid">
+              {#snippet wdKpi(label: string, value: any, sub: string = '', warn: boolean = false)}
+                <div class="emp-kpi" class:emp-kpi-warn={warn}>
+                  <div class="emp-kpi-label">{label}</div>
+                  <div class="emp-kpi-val">{value}{#if warn} <span class="emp-err">⚠</span>{/if}</div>
+                  {#if sub}<div class="emp-kpi-sub">{sub}</div>{/if}
+                </div>
+              {/snippet}
+              {@render wdKpi('Calls', wk.requests ?? 0)}
+              {@render wdKpi('Error %', `${Number(wk.error_pct ?? 0).toFixed(1)}%`, '', Number(wk.error_pct) > 5)}
+              {@render wdKpi('Avg latency', fmtS(wk.latency_avg_ms), '', Number(wk.latency_avg_ms) > 10000)}
+              {@render wdKpi('p95 latency', fmtS(wk.latency_p95_ms))}
+              {@render wdKpi('p99 latency', fmtS(wk.latency_p99_ms))}
+              {@render wdKpi('Users', wk.uniq_users ?? 0)}
+              {@render wdKpi('Sessions', wk.uniq_sessions ?? 0)}
+              {@render wdKpi('Errors', wk.errors ?? 0, '', Number(wk.errors) > 0)}
+              {@render wdKpi('Avg reply', `${wk.avg_resp_chars ?? 0}ch`, `${wk.avg_msg_chars ?? 0}ch in`)}
+            </div>
+          </section>
+
+          <div class="emp-mon-2col">
+            <!-- ACTIVITY -->
+            <section class="emp-panel">
+              <div class="emp-subh">Activity <span class="emp-muted">· requests per {wdData.bucket}</span></div>
+              {#if wdActBars.length === 0}
+                <div class="emp-row emp-muted">no activity in window</div>
+              {:else}
+                <div class="emp-chart">
+                  {#each wdActBars as b}
+                    <div class="emp-chart-col" title={b.title}>
+                      <div class="emp-chart-barwrap"><div class="emp-chart-bar" style={`height:${Math.max(2, b.pct)}%`}></div></div>
+                      <div class="emp-chart-x">{b.label}</div>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </section>
+
+            <!-- LATENCY DIST -->
+            <section class="emp-panel">
+              <div class="emp-subh">Latency distribution</div>
+              <div class="emp-lat-pcts">
+                <span><span class="emp-k">p50</span>{fmtS(wk.latency_p50_ms)}</span>
+                <span><span class="emp-k">p95</span>{fmtS(wk.latency_p95_ms)}</span>
+                <span><span class="emp-k">p99</span>{fmtS(wk.latency_p99_ms)}</span>
+              </div>
+              {#if (wdData.latency_hist || []).every((h: any) => !h.count)}
+                <div class="emp-row emp-muted">no latency data</div>
+              {:else}
+                <div class="emp-hbars">
+                  {#each wdData.latency_hist as h}
+                    <div class="emp-hbar-row" class:emp-hbar-tail={monIsTail(h.bucket)}>
+                      <div class="emp-hbar-lbl">{h.bucket}{#if monIsTail(h.bucket) && h.count} <span class="emp-warn">⚠</span>{/if}</div>
+                      <div class="emp-hbar-track"><div class="emp-hbar-fill" class:emp-hbar-fill-tail={monIsTail(h.bucket)} style={`width:${Math.max(1, Number(h.pct) || 0)}%`}></div></div>
+                      <div class="emp-hbar-val">{h.count} <span class="emp-muted">({(Number(h.pct) || 0).toFixed(0)}%)</span></div>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </section>
+          </div>
+
+          <div class="emp-mon-2col">
+            <!-- ERRORS -->
+            <section class="emp-panel">
+              <div class="emp-subh">Errors & reliability</div>
+              {#if !wdData.errors || Number(wdData.errors.total) === 0}
+                <div class="emp-row emp-muted">✓ no errors in window</div>
+              {:else}
+                <div class="emp-row"><span class="emp-k">total</span>{wdData.errors.total}</div>
+                {#if (wdData.errors.recent || []).length}
+                  <table class="emp-table emp-mt">
+                    <thead><tr><th>time</th><th>user</th><th>error</th></tr></thead>
+                    <tbody>
+                      {#each wdData.errors.recent as e}
+                        <tr><td class="emp-muted">{e.ts}</td><td><code class="emp-code">{e.user}</code></td><td><span class="emp-err">{e.error}</span></td></tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                {/if}
+              {/if}
+            </section>
+
+            <!-- USERS + ORIGINS -->
+            <section class="emp-panel">
+              <div class="emp-subh">Top users</div>
+              {#if (wdData.top_users || []).length === 0}
+                <div class="emp-row emp-muted">no identified users</div>
+              {:else}
+                <table class="emp-table">
+                  <tbody>
+                    {#each wdData.top_users as u (u.user)}
+                      <tr><td><code class="emp-code">{u.user}</code></td><td>{u.requests ?? 0}</td></tr>
+                    {/each}
+                  </tbody>
+                </table>
+              {/if}
+              <div class="emp-subh emp-mt">Origins</div>
+              {#if (wdData.origins || []).length === 0}
+                <div class="emp-row emp-muted">no origin data</div>
+              {:else}
+                <table class="emp-table">
+                  <tbody>
+                    {#each wdData.origins as o (o.origin)}
+                      <tr><td><code class="emp-code">{o.origin}</code></td><td>{o.requests ?? 0}</td></tr>
+                    {/each}
+                  </tbody>
+                </table>
+              {/if}
+            </section>
+          </div>
+
+          <!-- CALLS -->
+          <section class="emp-panel">
+            <div class="emp-subh">Calls ({(wdData.calls || []).length})</div>
+            {#if !wdData.messages_enabled}
+              <div class="emp-row emp-muted emp-wd-notice">chat bodies not logged · enable <code class="emp-code">EMBED_LOG_BODIES</code> to capture question/answer text</div>
+            {/if}
+            {#if (wdData.calls || []).length === 0}
+              <div class="emp-row emp-muted">no calls in window</div>
+            {:else}
+              <table class="emp-table emp-table-click">
+                <thead><tr><th>time</th><th>user</th><th>status</th><th>msg→resp</th><th>latency</th><th>origin</th><th></th></tr></thead>
+                <tbody>
+                  {#each wdData.calls as c (c.id)}
+                    <tr class="emp-mon-row" onclick={() => toggleWdCall(c.id)}>
+                      <td class="emp-muted">{c.ts}</td>
+                      <td><code class="emp-code">{c.user}</code></td>
+                      <td>{#if c.success}<span class="emp-wd-ok">✓</span>{:else}<span class="emp-err" title={c.error || 'error'}>✗</span>{/if}</td>
+                      <td>{c.msg_chars}→{c.resp_chars}ch</td>
+                      <td>{fmtS(c.latency_ms)}</td>
+                      <td class="emp-muted">{c.origin}</td>
+                      <td class="emp-mon-chev">{wdCallOpen === c.id ? '▾' : '›'}</td>
+                    </tr>
+                    {#if wdCallOpen === c.id}
+                      <tr class="emp-wd-calldetail"><td colspan="7">
+                        <div class="emp-wd-callfull">
+                          <div class="emp-wd-qlabel">QUESTION</div>
+                          <div class="emp-wd-qtext">{c.question ?? '— not logged —'}</div>
+                          <div class="emp-wd-qlabel emp-mt">ANSWER</div>
+                          <div class="emp-wd-qtext">{c.answer ?? '— not logged —'}</div>
+                          {#if c.error}<div class="emp-wd-qlabel emp-mt">ERROR</div><div class="emp-row emp-err">{c.error}</div>{/if}
+                          <div class="emp-wd-qmeta emp-mt">
+                            <span class="emp-k">session</span><code class="emp-code">{c.session ?? '—'}</code>
+                            <span class="emp-k">latency</span>{fmtS(c.latency_ms)}
+                            <span class="emp-k">chars</span>{c.msg_chars}→{c.resp_chars}
+                            <span class="emp-k">origin</span>{c.origin}
+                          </div>
+                        </div>
+                      </td></tr>
+                    {/if}
+                  {/each}
+                </tbody>
+              </table>
+            {/if}
+          </section>
+        {/if}
+      {:else if view === 'monitoring'}
         <!-- A. FILTER ROW -->
         <section class="emp-panel">
           <div class="emp-h-row">
@@ -1171,17 +1419,18 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
             {#if (monData.by_embed || []).length === 0}
               <div class="emp-row emp-muted">no widget traffic in window</div>
             {:else}
-              <table class="emp-table">
-                <thead><tr><th>widget</th><th>store</th><th>req</th><th>err</th><th>p95</th><th>last</th></tr></thead>
+              <table class="emp-table emp-table-click">
+                <thead><tr><th>widget</th><th>store</th><th>req</th><th>err</th><th>p95</th><th>last</th><th></th></tr></thead>
                 <tbody>
                   {#each monData.by_embed as r (r.embed_id)}
-                    <tr>
+                    <tr class="emp-mon-row" onclick={() => openWidget(r.embed_id)} title="open widget detail">
                       <td>{r.name}<br /><code class="emp-code">{r.embed_id}</code></td>
                       <td><code class="emp-code">{r.store}</code></td>
                       <td>{r.requests ?? 0}</td>
                       <td>{r.errors ?? 0}{#if Number(r.errors) > 0} <span class="emp-err">⚠</span>{/if}</td>
                       <td>{r.p95_ms ? `${(r.p95_ms / 1000).toFixed(1)}s` : '—'}</td>
                       <td class="emp-muted">{r.last ?? '—'}</td>
+                      <td class="emp-mon-chev">›</td>
                     </tr>
                   {/each}
                 </tbody>
@@ -1431,7 +1680,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
   .emp-rg-on .emp-rg-icon { color: var(--pw-accent); }
   .emp-rg-text { flex: 1; }
 
-  .emp-main { padding: 28px 48px 80px; max-width: 1100px; font-family: inherit; }
+  .emp-main { padding: 28px 48px 80px; max-width: 1340px; margin: 0 auto; width: 100%; font-family: inherit; box-sizing: border-box; }
   .emp-pagehead { margin-bottom: 22px; }
   .emp-pagetitle { font-family: var(--pw-serif, Georgia, serif); font-size: 26px; font-weight: 600; color: var(--pw-ink, #2c2a26); margin: 0 0 4px; }
   .emp-pagesub { color: var(--pw-muted, #877f74); font-size: 13px; margin: 0; }
@@ -1686,4 +1935,24 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
   .emp-hbar-fill-tail { background: #d98b6a; }
   .emp-hbar-tail .emp-hbar-lbl { color: #9a4a2f; }
   .emp-hbar-val { text-align: right; color: var(--pw-ink-soft, #4a4438); }
+
+  /* ---- clickable rows + widget detail screen ---- */
+  .emp-scope-badge { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: rgba(201,99,66,0.1); color: var(--pw-accent, #c96342); font-weight: 600; }
+  .emp-table-click tbody tr.emp-mon-row { cursor: pointer; }
+  .emp-table-click tbody tr.emp-mon-row:hover { background: rgba(201,99,66,0.05); }
+  .emp-mon-chev { text-align: right; color: var(--pw-muted, #877f74); font-size: 15px; width: 20px; }
+
+  .emp-wd-headpanel { padding: 12px 16px; }
+  .emp-wd-headbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .emp-wd-headmeta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; flex: 1; min-width: 0; }
+  .emp-wd-name { font-family: var(--pw-serif, Georgia, serif); font-size: 16px; color: var(--pw-ink, #2c2a26); }
+  .emp-wd-headact { display: flex; align-items: center; gap: 10px; }
+  .emp-wd-notice { font-size: 12px; color: #9a4a2f; background: rgba(201,99,66,0.06); padding: 6px 10px; border-radius: 4px; margin-bottom: 8px; }
+  .emp-wd-ok { color: #4a7c59; }
+  .emp-wd-calldetail > td { background: #faf7f1; padding: 0 !important; }
+  .emp-wd-callfull { padding: 14px 16px; }
+  .emp-wd-qlabel { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pw-muted, #877f74); font-weight: 600; margin-bottom: 3px; }
+  .emp-wd-qtext { font-size: 13px; line-height: 1.5; color: var(--pw-ink, #2c2a26); white-space: pre-wrap; word-break: break-word; }
+  .emp-wd-qmeta { display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap; font-size: 12px; color: var(--pw-ink-soft, #4a4438); }
+  .emp-wd-qmeta .emp-k { min-width: 0; margin-right: 2px; }
 </style>

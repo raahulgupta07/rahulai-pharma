@@ -81,7 +81,42 @@ def _verify_password(password: str, stored_hash: str) -> bool:
 
 
 def _bootstrap_tables():
-    """Create auth tables if they don't exist."""
+    """Create auth/core tables — serialized across workers via advisory lock.
+
+    `CREATE TABLE IF NOT EXISTS` is NOT concurrency-safe: parallel DDL from
+    multiple gunicorn workers on a fresh DB throws "tuple concurrently
+    updated" / "relation already exists" and aborts the whole bootstrap txn →
+    partial or empty schema (the root cause of UndefinedTable errors on a clean
+    cloud install). We take pg_advisory_lock(72157424) on a DIRECT
+    (pgbouncer-bypassing) connection so the first worker builds the schema while
+    the rest wait, then run their IF NOT EXISTS as no-ops. The lock is held on a
+    direct conn because a transaction-mode pgbouncer would release a
+    session-level lock at txn end.
+    """
+    from sqlalchemy.pool import NullPool as _NP
+    try:
+        from dash.db_runner.migrate import _direct_db_url as _ddu
+        _lock_eng = _sa_create_engine(_ddu(), poolclass=_NP)
+    except Exception:
+        _lock_eng = _sa_create_engine(db_url, poolclass=_NP)
+    _lock_conn = _lock_eng.connect()
+    try:
+        _lock_conn.execute(text("SELECT pg_advisory_lock(72157424)"))
+        _bootstrap_tables_locked()
+    finally:
+        try:
+            _lock_conn.execute(text("SELECT pg_advisory_unlock(72157424)"))
+        except Exception:
+            pass
+        try:
+            _lock_conn.close()
+            _lock_eng.dispose()
+        except Exception:
+            pass
+
+
+def _bootstrap_tables_locked():
+    """Create auth tables if they don't exist. Caller holds the advisory lock."""
     with _engine.connect() as conn:
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS public.dash_users (

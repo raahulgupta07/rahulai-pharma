@@ -32,6 +32,37 @@ from sqlalchemy.pool import NullPool
 from db import db_url
 
 _LOCK_KEY = 72157423
+
+
+def _direct_db_url() -> str:
+    """DB URL for migrations that BYPASSES pgbouncer.
+
+    The runner serializes concurrent workers with ``pg_advisory_lock`` — a
+    SESSION-level lock. Through a pgbouncer in ``transaction`` pool mode that
+    lock is released the instant its txn ends, so the guard is void and N
+    workers stampede a fresh DB (CREATE TABLE / INSERT collisions → partial
+    schema). Migrations therefore run against the DB directly.
+
+    Resolution order:
+      1. ``MIGRATION_DB_URL`` (explicit override), else
+      2. ``DB_HOST``/``DB_PORT`` with the host swapped pgbouncer→direct:
+         ``MIGRATION_DB_HOST`` if set, else a ``*pgbouncer*`` host rewritten to
+         ``dash-db`` (this compose's direct Postgres service), else DB_HOST as-is.
+    """
+    explicit = os.environ.get("MIGRATION_DB_URL")
+    if explicit:
+        return explicit
+    from urllib.parse import quote
+    driver = os.environ.get("DB_DRIVER", "postgresql+psycopg")
+    user = os.environ.get("DB_USER", "ai")
+    password = quote(os.environ.get("DB_PASS", "ai"), safe="")
+    host = os.environ.get("DB_HOST", "localhost")
+    direct_host = os.environ.get("MIGRATION_DB_HOST")
+    if not direct_host:
+        direct_host = "dash-db" if "pgbouncer" in host.lower() else host
+    port = os.environ.get("MIGRATION_DB_PORT", os.environ.get("DB_PORT", "5432"))
+    database = os.environ.get("DB_DATABASE", "ai")
+    return f"{driver}://{user}:{password}@{direct_host}:{port}/{database}"
 _TRACKING_TABLE_DDL = """
 CREATE TABLE IF NOT EXISTS public.dash_migrations (
     filename   TEXT PRIMARY KEY,
@@ -118,7 +149,10 @@ def run_migrations() -> dict[str, Any]:
         log.info("no migration files found")
         return {"applied": applied, "skipped": skipped, "errors": errors}
 
-    engine = create_engine(db_url, poolclass=NullPool)
+    mig_url = _direct_db_url()
+    if mig_url != db_url:
+        log.info("migrations: using direct DB connection (bypassing pgbouncer)")
+    engine = create_engine(mig_url, poolclass=NullPool)
     lock_conn = None
     try:
         # Ensure tracking table exists (separate connection, autocommit).
@@ -205,7 +239,13 @@ def run_migrations() -> dict[str, Any]:
                     trans = conn.begin()
                     try:
                         conn.execute(text("SET search_path = dash, public, ai"))
-                        conn.exec_driver_sql(content)
+                        # psycopg3 parses '%' in exec_driver_sql as a param
+                        # placeholder ("only %s/%b/%t allowed, got %I") — breaks
+                        # any migration with a literal % (e.g. format('%I',…) in a
+                        # PL/pgSQL DO block, or '%' in a LIKE/comment). Double them;
+                        # psycopg halves '%%'→'%' on the wire, so the server sees
+                        # the original SQL unchanged.
+                        conn.exec_driver_sql(content.replace("%", "%%"))
                         conn.execute(
                             text(
                                 "INSERT INTO public.dash_migrations (filename, checksum) "

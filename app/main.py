@@ -251,18 +251,25 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
     # DB migration auto-runner: applies db/migrations/*.sql files in lexical
     # order, tracked in public.dash_migrations. Multi-worker safe via
     # pg_advisory_lock. Failures log + continue unless RAISE_ON_MIGRATION_FAIL=1.
-    try:
-        from dash.db_runner.migrate import run_migrations as _run_migrations
-        _mig_result = _run_migrations()
-        import logging as _mig_log
-        _mig_log.getLogger(__name__).info(
-            f"migrations: applied={len(_mig_result.get('applied', []))} "
-            f"skipped={_mig_result.get('skipped', 0)} "
-            f"errors={len(_mig_result.get('errors', []))}"
-        )
-    except Exception as _mig_e:
-        import logging as _mig_log
-        _mig_log.getLogger(__name__).warning(f"migration runner skipped: {_mig_e}")
+    # WORKER_RANK gate: only worker 0 migrates. preload=False means every
+    # gunicorn worker runs this lifespan; without the gate, N workers stampede
+    # a fresh DB concurrently (the advisory lock alone is void through a
+    # transaction-mode pgbouncer) → partial/empty schema. The runner also now
+    # connects DIRECT (bypasses pgbouncer) so its advisory lock holds for the
+    # multi-container case. Both guards together = no migration race.
+    if getenv("WORKER_RANK", "0") == "0":
+        try:
+            from dash.db_runner.migrate import run_migrations as _run_migrations
+            _mig_result = _run_migrations()
+            import logging as _mig_log
+            _mig_log.getLogger(__name__).info(
+                f"migrations: applied={len(_mig_result.get('applied', []))} "
+                f"skipped={_mig_result.get('skipped', 0)} "
+                f"errors={len(_mig_result.get('errors', []))}"
+            )
+        except Exception as _mig_e:
+            import logging as _mig_log
+            _mig_log.getLogger(__name__).warning(f"migration runner skipped: {_mig_e}")
     # Register builtin skills (idempotent upsert into dash_skill_registry).
     # Includes skl_dash_builder / skl_panel_designer / skl_dash_critic for
     # Deep Dash 9-stage pipeline. Worker-rank gated to avoid 8x duplicate inserts.

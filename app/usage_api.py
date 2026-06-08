@@ -854,6 +854,158 @@ def embed_overview(request: Request, days: int = 7, embed_id: str | None = None,
                 "origins": [], "error": str(e)}
 
 
+@router.get("/embed-detail")
+def embed_detail(request: Request, embed_id: str, range: str = "7d"):
+    """Single-widget drill-down screen (mirrors gateway outlet-detail).
+
+    Returns header (name/store/scope/created), KPIs, bucketed activity series,
+    latency histogram, errors block, top users/origins, and a per-CALL list for
+    one embed_id. Chat bodies (question/answer text) are surfaced only if the
+    optional message_text/response_text columns exist AND hold data
+    (`messages_enabled`); embeds do not log bodies today, so it returns False and
+    the calls list carries metadata only. No token/cost for embeds.
+    """
+    _gate(request)
+    try:
+        from dash.single_agent import locked_slug
+        slug = locked_slug()
+    except Exception:
+        slug = "citypharma"
+    # range -> window + bucket
+    rg = (range or "7d").lower()
+    days = {"24h": 1, "7d": 7, "30d": 30}.get(rg, 7)
+    bkt = "hour" if days <= 1 else "day"
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(days=days)
+    p: dict = {"s": start, "e": now, "slug": slug, "eid": embed_id}
+    W = "c.ts >= :s AND c.ts < :e AND c.embed_id = :eid AND e.project_slug = :slug"
+    FROM = ("FROM public.dash_embed_calls c "
+            "JOIN public.dash_agent_embeds e ON e.embed_id = c.embed_id")
+
+    # detect optional chat-body columns (future EMBED_LOG_BODIES); absent today
+    try:
+        body_cols = {r[0] for r in _rows(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema='public' AND table_name='dash_embed_calls' "
+            "AND column_name IN ('message_text','response_text')", {})}
+    except Exception:
+        body_cols = set()
+    has_q = "message_text" in body_cols
+    has_a = "response_text" in body_cols
+
+    empty = {"embed_id": embed_id, "range": rg, "bucket": bkt,
+             "header": {}, "messages_enabled": False,
+             "kpi": {"requests": 0, "error_pct": 0.0, "latency_avg_ms": 0,
+                     "latency_p50_ms": 0, "latency_p95_ms": 0, "latency_p99_ms": 0,
+                     "uniq_users": 0, "uniq_sessions": 0, "avg_resp_chars": 0,
+                     "avg_msg_chars": 0, "errors": 0},
+             "series": [], "latency_hist": [], "errors": {"total": 0, "recent": []},
+             "top_users": [], "origins": [], "calls": []}
+    try:
+        # --- header (embed meta) ---
+        hr = _rows(
+            "SELECT name, bound_scope_id, bound_intent, created_at, enabled "
+            "FROM public.dash_agent_embeds WHERE embed_id = :eid AND project_slug = :slug",
+            {"eid": embed_id, "slug": slug})
+        if not hr:
+            return empty
+        h = hr[0]
+        header = {"embed_id": embed_id, "name": h[0] or embed_id,
+                  "store": h[1] or "(global)", "scope": h[2] or "private",
+                  "created": str(h[3]) if h[3] else None, "enabled": bool(h[4])}
+
+        # --- KPI ---
+        k = _rows(
+            f"SELECT COUNT(*), COALESCE(SUM(c.success::int),0), "
+            f"COALESCE(AVG(c.latency_ms) FILTER (WHERE c.latency_ms IS NOT NULL),0), "
+            f"COUNT(DISTINCT c.external_user) FILTER (WHERE c.external_user IS NOT NULL), "
+            f"COUNT(DISTINCT c.session_token) FILTER (WHERE c.session_token IS NOT NULL), "
+            f"COALESCE(AVG(c.response_chars) FILTER (WHERE c.response_chars IS NOT NULL),0), "
+            f"COALESCE(AVG(c.message_chars) FILTER (WHERE c.message_chars IS NOT NULL),0) "
+            f"{FROM} WHERE {W}", p)
+        kr = k[0] if k else (0, 0, 0, 0, 0, 0, 0)
+        reqs = int(kr[0] or 0)
+        ok = int(kr[1] or 0)
+        pct = _rows(
+            f"SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY c.latency_ms), "
+            f"percentile_disc(0.95) WITHIN GROUP (ORDER BY c.latency_ms), "
+            f"percentile_disc(0.99) WITHIN GROUP (ORDER BY c.latency_ms) "
+            f"{FROM} WHERE {W} AND c.latency_ms IS NOT NULL", p)
+        pr = pct[0] if pct else (None, None, None)
+        kpi = {
+            "requests": reqs,
+            "error_pct": round(100.0 * (1 - (ok / reqs)), 2) if reqs else 0.0,
+            "latency_avg_ms": int(kr[2] or 0),
+            "latency_p50_ms": int(pr[0] or 0),
+            "latency_p95_ms": int(pr[1] or 0),
+            "latency_p99_ms": int(pr[2] or 0),
+            "uniq_users": int(kr[3] or 0),
+            "uniq_sessions": int(kr[4] or 0),
+            "avg_resp_chars": int(kr[5] or 0),
+            "avg_msg_chars": int(kr[6] or 0),
+            "errors": reqs - ok,
+        }
+
+        # --- activity series ---
+        series = [{"t": str(r[0]), "requests": int(r[1] or 0), "errors": int(r[2] or 0),
+                   "p95_ms": int(r[3] or 0)}
+                  for r in _rows(
+            f"SELECT date_trunc('{bkt}', c.ts) b, COUNT(*), "
+            f"COALESCE(SUM((NOT c.success)::int),0), "
+            f"COALESCE(percentile_disc(0.95) WITHIN GROUP (ORDER BY c.latency_ms),0) "
+            f"{FROM} WHERE {W} GROUP BY b ORDER BY b", p)]
+
+        # --- latency histogram ---
+        lat = _rows(
+            f"SELECT CASE WHEN c.latency_ms < 2000 THEN '<2s' WHEN c.latency_ms < 10000 THEN '2-10s' "
+            f"WHEN c.latency_ms < 30000 THEN '10-30s' WHEN c.latency_ms < 60000 THEN '30-60s' ELSE '>60s' END b, "
+            f"COUNT(*) {FROM} WHERE {W} AND c.latency_ms IS NOT NULL GROUP BY b", p)
+        order = ['<2s', '2-10s', '10-30s', '30-60s', '>60s']
+        lmap = {r[0]: int(r[1]) for r in lat}
+        ltot = sum(lmap.values()) or 1
+        latency_hist = [{"bucket": b, "count": lmap.get(b, 0),
+                         "pct": round(100.0 * lmap.get(b, 0) / ltot, 1)} for b in order]
+
+        # --- errors block (recent failures) ---
+        err_recent = [{"ts": str(r[0]), "user": r[1] or "anon", "error": r[2] or "error"}
+                      for r in _rows(
+            f"SELECT c.ts, c.external_user, c.error {FROM} WHERE {W} AND c.success IS FALSE "
+            f"ORDER BY c.ts DESC LIMIT 20", p)]
+        errors = {"total": reqs - ok, "recent": err_recent}
+
+        # --- top users / origins ---
+        top_users = [{"user": r[0], "requests": int(r[1] or 0)} for r in _rows(
+            f"SELECT c.external_user, COUNT(*) {FROM} WHERE {W} AND c.external_user IS NOT NULL "
+            f"GROUP BY c.external_user ORDER BY 2 DESC LIMIT 10", p)]
+        origins = [{"origin": r[0], "requests": int(r[1] or 0)} for r in _rows(
+            f"SELECT COALESCE(NULLIF(c.origin,''),'(direct)'), COUNT(*) {FROM} WHERE {W} "
+            f"GROUP BY 1 ORDER BY 2 DESC LIMIT 10", p)]
+
+        # --- per-call list (metadata; bodies only if columns exist) ---
+        qcol = "c.message_text" if has_q else "NULL"
+        acol = "c.response_text" if has_a else "NULL"
+        calls = [{"id": r[0], "ts": str(r[1]), "user": r[2] or "anon",
+                  "session": r[3], "success": bool(r[4]), "error": r[5],
+                  "msg_chars": int(r[6] or 0), "resp_chars": int(r[7] or 0),
+                  "latency_ms": int(r[8] or 0) if r[8] is not None else None,
+                  "origin": r[9] or "(direct)",
+                  "question": r[10], "answer": r[11]}
+                 for r in _rows(
+            f"SELECT c.id, c.ts, c.external_user, c.session_token, c.success, c.error, "
+            f"c.message_chars, c.response_chars, c.latency_ms, c.origin, {qcol}, {acol} "
+            f"{FROM} WHERE {W} ORDER BY c.ts DESC LIMIT 100", p)]
+        messages_enabled = has_q and any(c.get("question") for c in calls)
+
+        return {"embed_id": embed_id, "range": rg, "bucket": bkt, "header": header,
+                "messages_enabled": messages_enabled, "kpi": kpi, "series": series,
+                "latency_hist": latency_hist, "errors": errors, "top_users": top_users,
+                "origins": origins, "calls": calls}
+    except Exception as e:
+        logger.warning("GET /api/admin/usage/embed-detail failed: %s", e)
+        empty["error"] = str(e)
+        return empty
+
+
 @router.get("/gateway-questions")
 def gateway_questions(request: Request, range: str = "7d", key: str | None = None):
     _gate(request)

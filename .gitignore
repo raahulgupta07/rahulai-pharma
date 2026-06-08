@@ -10,6 +10,11 @@ examples/outlet-test/results*.csv
 # db dumps / sql snapshots
 *.dump
 *.sql
+# ...but DB migrations and the fresh-install baseline schema MUST be tracked
+# (they are app source, not ad-hoc dumps). Without these negations *.sql above
+# silently excludes them → a fresh clone deploys with no schema.
+!db/migrations/*.sql
+!db/baseline/*.sql
 # python
 __pycache__/
 *.pyc
