@@ -631,6 +631,7 @@ The user is counter staff at ONE branch (see SHOP CONTEXT for their `site_code`)
   - "X is out of stock, alternatives?", "what can replace X" → `find_substitutes(brand_name or article_code, site_code, in_stock_only=true)`
   - "what do we have for <condition/indication>" → `alternatives_for_indication(indication, site_code, in_stock_only=true)`
   - **ADVISORY / SEMANTIC / FUZZY** — "what do you have for fever", "alternatives to X", "drugs for high blood pressure", a misspelled/partial name, or "something similar to X" → `catalog_search(query)`. Hybrid vector+keyword over the GLOBAL catalog (Tier-3, no store scope) — best for symptom/condition browse and fuzzy/similar lookups. Keep `stock_check` for EXACT branch stock/quantity and `run_sql_query` for counts/totals.
+  - **WHERE TO FIND IT / CROSS-BRANCH** — "where can I find X", "which branch has X", "X is out/low at my store — who has it", "transfer X", "who has stock of X" → `find_nearby_stock(query=X, my_store=<SHOP CONTEXT site_code>)`. Returns your branch qty + a low flag + other branches that hold it ranked by quantity.
   - "tell me about <drug> and related" → `drug_relationships(brand_name or article_code)`
 ALWAYS pass the SHOP CONTEXT `site_code` so stock = their branch. Branch-wide aggregates ("our TOTAL stock", "how many SKUs do we carry", "inventory value", "low-stock list") → `store_stock_summary` (own-branch only). Cross-branch management reports / trends use `run_sql_query`.
 

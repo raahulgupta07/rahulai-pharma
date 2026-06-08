@@ -12884,6 +12884,18 @@ async def retrain_project(slug: str, request: Request):
             _l.getLogger(__name__).warning(f"catalog vectors skipped for {slug}: {_cve}")
             _master_log(f"⚠ catalog vectors skipped: {str(_cve)[:80]}", "", total_tables)
 
+        # ─── Denormalized shop_flat stock table — pre-joined catalog+stock for
+        # fast branch lookups. Idempotent rebuild. Fail-soft so a build failure
+        # never breaks training; tools fall back to the live joined tables.
+        try:
+            from scripts.build_shop_flat import run as _build_shop_flat
+            _sf = _build_shop_flat()
+            _master_log(f"✓ shop_flat: {_sf.get('rows',0)} rows", "", total_tables)
+        except Exception as _sfe:
+            import logging as _l
+            _l.getLogger(__name__).warning(f"shop_flat skipped for {slug}: {_sfe}")
+            _master_log(f"⚠ shop_flat skipped: {str(_sfe)[:80]}", "", total_tables)
+
         # AutoSim grounded-scenario enqueue REMOVED — the sim chassis was deleted
         # in the 2026-05-23 trim, so `autosim_generate_grounded` has NO registered
         # minion handler. This enqueue pushed a dead job into the queue on every

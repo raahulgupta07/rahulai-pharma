@@ -2,6 +2,22 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-08 (latest+33) — `shop_flat` denormalized stock table (kill runtime join) + `find_nearby_stock` cross-store locator
+
+**Why:** every stock query ran `articles ⋈ balance_stock ON a.article_code::text = b.article_code` at runtime — cast = no index + full scan, and the Excel `1E+12` corruption silently dropped rows mid-join. Asked: improve SQL, no real-time join. Also: "where can I find this medicine if it's out/low at my outlet" (cross-store locator).
+
+**Data reality found (Phase 1):** the corruption is in the **source file itself**, not ingest. Raw `balance_stock_07052026.csv` (OneDrive) = 102,107 rows, **1 distinct** `article_code` (`1E+12`), 100% bad. `articles_list` is perfect (4,886 codes, 0 bad). The stock↔product link is **unrecoverable** from this file (no name/2nd key) — needs a fresh non-Excel export. So built the **plumbing** now; it goes live the moment a clean stock file lands.
+
+**Built (denorm read path, no runtime join):**
+- `scripts/build_shop_flat.py` (`run()`, idempotent TRUNCATE+INSERT) — pre-joins ART+STOCK ONCE into `citypharma.shop_flat` (PK `(art_key, site_code)`; brand/generic/composition/category/stock_qty/cost/is_in_stock/**linked**; pg_trgm idx on brand+generic, partial idx on in-stock). Key fix in the BUILD: `_norm(code)=str(int(float(s)))` normalizes BOTH sides → exact match, **no `::text` at read**. Corrupt `1E+12` rows collapse to one junk key matching no catalog row → land `linked=false` + NULL brand (**visible**, never dropped).
+- Hook in `app/upload.py` after the catalog-vector block (fail-soft) → rebuilds on every training.
+- `dash/tools/pharma_shop_tool.py` — `stock_check` + `store_stock_summary` rewritten to read `shop_flat` directly. ALL `JOIN`/`::text` gone (only comments remain). **3-tier store-scope + masking preserved 1:1** (locked SUM over `bound_stores()` + per-outlet `your_stores` + Tier-2 availability-only; single-site qty; global SUM). The dead P3 `linkage_warning`/`stock_linkable:false`/`admin_note` branch **removed** (flat key already resolved → no false "out of stock").
+- `dash/tools/find_nearby_stock.py` (NEW) — `find_nearby_stock(query, my_store, low_threshold=5)`: your branch qty + `is_low` flag + other branches holding it ranked by qty DESC. Scope-aware (locked → `{site, available:true}` no qty; UI → `{site, qty}`). Registered in `dash/tools/build.py` (trace-spanned `@tool`, +6→+7) + routing nudge in `dash/instructions.py` ("where can I find / which branch has / out-low at my store / transfer / who has stock").
+
+**Result (verified, tools called directly post-deploy):** `stock_check('paracetamol')` → 5 real rows w/ true qty (PARACAP 1100, BIOGESIC 500…) — was 0/`linkage_warning`. `store_stock_summary` → real totals (was zeroed). `find_nearby_stock('paracetamol', my_store='OTHER-99')` → `is_low=true` + points to branch `20003-CCJ8` ranked by qty (PARACAP 1100 top). Plumbing proven on the 5 linked rows; full payoff after clean stock re-upload.
+
+**Deferred:** (1) clean `balance_stock` re-export (Text codes) — the data fix, user chasing; (2) geo-distance locator ranking — needs outlet lat/long/township upload (none today), ranks by qty meanwhile.
+
 ### Session 2026-06-08 (latest+32) — Hybrid `catalog_search` vector tool (semantic advisory) — keep SQL for counts/stock
 
 **Why:** catalog questions ("what do you have for fever", "alternatives to X", fuzzy/similar) were answered by `ILIKE '%word%'` — keyword-only, misses synonyms/intent/typos. The catalog (4,886 products, mostly static clinical text) is ideal for embeddings. Counts + per-store stock stay SQL (exact + scoped); vectors AUGMENT for semantic find/advisory.

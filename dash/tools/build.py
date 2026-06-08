@@ -691,14 +691,30 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
                         pass
                     return _pgj.dumps(_res)
 
+            from dash.tools.find_nearby_stock import find_nearby_stock as _pg_nearby
+
+            @tool(name="find_nearby_stock", description="CROSS-STORE LOCATOR: find which OTHER branches have a medicine when it's out or low at your branch. Use for 'where can I find X', 'which branch has X', 'X is out/low at my store — who has it', 'transfer X', 'who has stock of X'. Args: query (str — brand or salt), my_store (str — the staff branch from SHOP CONTEXT), low_threshold (int, optional). Returns your own qty, an is_low flag, and other branches that hold it ranked by quantity (most stock first).")
+            def _nearby_tool(query: str = "", my_store: str = "", low_threshold: int = 5) -> str:
+                _meta = {"agent": "analyst", "tool": "find_nearby_stock",
+                         "args": _preview_args(query, my_store, low_threshold)}
+                with _trace_span("chat.analyst.find_nearby_stock", kind="chat",
+                                 project_slug=project_slug, meta=_meta):
+                    _res = _pg_nearby(query, my_store, low_threshold)
+                    try:
+                        _meta["row_count"] = _res.get("count") if isinstance(_res, dict) else None
+                    except Exception:
+                        pass
+                    return _pgj.dumps(_res)
+
             tools.append(_stock_tool)
             tools.append(_summary_tool)
             tools.append(_subs_tool)
             tools.append(_alt_tool)
             tools.append(_rel_tool)
             tools.append(_catalog_search_tool)
+            tools.append(_nearby_tool)
             import logging as _pgl
-            _pgl.getLogger(__name__).info("pharma graph+shop tools enabled: +6 (stock_check, store_stock_summary, find_substitutes, alternatives_for_indication, drug_relationships, catalog_search)")
+            _pgl.getLogger(__name__).info("pharma graph+shop tools enabled: +7 (stock_check, store_stock_summary, find_substitutes, alternatives_for_indication, drug_relationships, catalog_search, find_nearby_stock)")
         except Exception as _pge:
             import logging as _pgl
             _pgl.getLogger(__name__).warning(f"pharma graph tools not loaded: {_pge}")

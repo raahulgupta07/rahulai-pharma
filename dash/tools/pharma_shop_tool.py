@@ -82,126 +82,112 @@ def stock_check(query: str = "", site_code: str = "", limit: int = 15) -> dict:
     allowed = bound_stores() if _locked else []
     _site_label = ",".join(allowed) if _locked else (site_code or "all")
     q = f"%{query.strip()}%"
+    FLAT = f'"{SCHEMA}".shop_flat'
     try:
         c, cur = _conn()
         try:
-            # matched articles (by brand OR salt), with this key's owned stock
+            # matched medicines (by brand OR generic), with this key's owned stock.
+            # Reads the denormalized citypharma.shop_flat (one row per article×store;
+            # brand/generic/category folded in from the catalog) — NO runtime join,
+            # NO article_code::text cast, no 1E+12 linkage guard needed.
             if _locked:
                 # Tier-1 stock = SUM across ALL owned outlets (ANY of the set).
                 cur.execute(
-                    f"""SELECT a.article_code, a.brand_name, a.generic_name, a.category,
-                               COALESCE(SUM(b.stock_qty),0) AS your_qty,
-                               COALESCE(MAX(b.weighted_cost_price),0) AS cost
-                        FROM {ART} a
-                        LEFT JOIN {STOCK} b
-                          ON b.article_code = a.article_code::text AND b.site_code = ANY(%s)
-                        WHERE a.brand_name ILIKE %s OR a.generic_name ILIKE %s
-                        GROUP BY 1,2,3,4
-                        ORDER BY your_qty DESC, a.brand_name
+                    f"""SELECT art_key,
+                               MAX(brand)        AS brand,
+                               MAX(generic)      AS generic,
+                               MAX(category)     AS category,
+                               COALESCE(SUM(stock_qty) FILTER (WHERE site_code = ANY(%s)),0) AS your_qty,
+                               COALESCE(MAX(cost)  FILTER (WHERE site_code = ANY(%s)),0)      AS cost
+                        FROM {FLAT}
+                        WHERE brand ILIKE %s OR generic ILIKE %s
+                        GROUP BY art_key
+                        ORDER BY your_qty DESC, brand
                         LIMIT %s""",
-                    (allowed, q, q, int(limit)))
+                    (allowed, allowed, q, q, int(limit)))
             elif site_code:
                 cur.execute(
-                    f"""SELECT a.article_code, a.brand_name, a.generic_name, a.category,
-                               COALESCE(b.stock_qty,0) AS your_qty, COALESCE(b.weighted_cost_price,0) AS cost
-                        FROM {ART} a
-                        LEFT JOIN {STOCK} b
-                          ON b.article_code = a.article_code::text AND b.site_code = %s
-                        WHERE a.brand_name ILIKE %s OR a.generic_name ILIKE %s
-                        ORDER BY (COALESCE(b.stock_qty,0) > 0) DESC, COALESCE(b.stock_qty,0) DESC,
-                                 a.brand_name
+                    f"""SELECT art_key,
+                               MAX(brand)    AS brand,
+                               MAX(generic)  AS generic,
+                               MAX(category) AS category,
+                               COALESCE(SUM(stock_qty) FILTER (WHERE site_code = %s),0) AS your_qty,
+                               COALESCE(MAX(cost)  FILTER (WHERE site_code = %s),0)      AS cost
+                        FROM {FLAT}
+                        WHERE brand ILIKE %s OR generic ILIKE %s
+                        GROUP BY art_key
+                        ORDER BY (COALESCE(SUM(stock_qty) FILTER (WHERE site_code = %s),0) > 0) DESC,
+                                 your_qty DESC, brand
                         LIMIT %s""",
-                    (site_code, q, q, int(limit)))
+                    (site_code, site_code, q, q, site_code, int(limit)))
             else:
                 cur.execute(
-                    f"""SELECT a.article_code, a.brand_name, a.generic_name, a.category,
-                               COALESCE(SUM(b.stock_qty),0) AS your_qty,
-                               COALESCE(MAX(b.weighted_cost_price),0) AS cost
-                        FROM {ART} a
-                        LEFT JOIN {STOCK} b ON b.article_code = a.article_code::text
-                        WHERE a.brand_name ILIKE %s OR a.generic_name ILIKE %s
-                        GROUP BY 1,2,3,4
-                        ORDER BY your_qty DESC, a.brand_name
+                    f"""SELECT art_key,
+                               MAX(brand)    AS brand,
+                               MAX(generic)  AS generic,
+                               MAX(category) AS category,
+                               COALESCE(SUM(stock_qty),0) AS your_qty,
+                               COALESCE(MAX(cost),0)      AS cost
+                        FROM {FLAT}
+                        WHERE brand ILIKE %s OR generic ILIKE %s
+                        GROUP BY art_key
+                        ORDER BY your_qty DESC, brand
                         LIMIT %s""",
                     (q, q, int(limit)))
             rows = cur.fetchall()
             if not rows:
                 return {"ok": True, "site": _site_label, "query": query, "count": 0, "results": []}
 
-            codes = [int(r[0]) for r in rows]
-            # P3 — linkage guard: if the matched catalog codes don't appear in the
-            # stock table AT ALL, the article_code join is broken (e.g. stock exported
-            # as scientific notation). Report "can't link" — never a false "out of stock".
-            if codes:
-                # STOCK.article_code is TEXT (source CSV scientific-notation safety);
-                # ART.article_code is bigint. Quote literals so IN matches the text col.
-                _ph0 = ",".join("'" + str(x) + "'" for x in codes)
+            # art_key is text; keep both the raw key (for the shop_flat lookups below)
+            # and the int form (downstream find_substitutes expects an int code).
+            art_keys = [r[0] for r in rows]
+
+            def _ac(art_key):
+                """int(art_key) when numeric, else the raw string."""
                 try:
-                    cur.execute(f"SELECT COUNT(*) FROM {STOCK} WHERE article_code IN ({_ph0})")
-                    _linked = int(cur.fetchone()[0] or 0)
-                except Exception:
-                    _linked = 1  # fail-open: assume linkable
-                if _linked == 0:
-                    return {
-                        "ok": True, "site": _site_label, "query": query,
-                        "count": len(rows), "stock_linkable": False,
-                        # USER-FACING guidance — short, no internal/file/Excel details.
-                        "linkage_warning": (
-                            "Live stock for these products is temporarily unavailable for this "
-                            "branch (inventory sync issue). Reply in ONE short, friendly sentence: "
-                            "you can't confirm the exact quantity right now — ask the user to try "
-                            "again shortly or have staff refresh the branch inventory. Do NOT say "
-                            "'out of stock'. Do NOT mention file names, Excel, article codes, "
-                            "scientific notation, re-uploading, or any technical/data details."),
-                        # ADMIN/LOG detail — root cause + fix, NOT for the end user.
-                        "admin_note": (
-                            "Stock article_code corrupted by Excel scientific-notation ('1E+12') — "
-                            "catalog↔stock join returns 0. Fix: re-upload balance_stock with "
-                            "article_code as TEXT, or export CSV from source without opening in Excel."),
-                        "results": [{
-                            "brand": (r[1] or "").strip(),
-                            "salt": (r[2] or "").strip(),
-                            "category": (r[3] or "").strip(),
-                            "stock": "temporarily unavailable",
-                        } for r in rows],
-                    }
-            # other branches holding each matched article (top few)
+                    return int(art_key)
+                except (TypeError, ValueError):
+                    return art_key
+
+            # other branches holding each matched article (top few), from shop_flat
             other = {}      # Tier-2 / availability hint for un-owned outlets
             owned_bd = {}   # per-owned-outlet breakdown (Tier-1), multi-outlet keys
-            if codes:
-                ph = ",".join("'" + str(x) + "'" for x in codes)  # text literals (STOCK.article_code is text)
+            if art_keys:
                 if _locked:
                     # Tier-1 per-outlet breakdown across the owned set
                     cur.execute(
-                        f"""SELECT article_code, site_code, stock_qty FROM {STOCK}
-                            WHERE article_code IN ({ph}) AND site_code = ANY(%s) AND stock_qty > 0
-                            ORDER BY stock_qty DESC""", (allowed,))
-                    for ac, sc, qty in cur.fetchall():
-                        owned_bd.setdefault(int(ac), [])
-                        if len(owned_bd[int(ac)]) < 8:
-                            owned_bd[int(ac)].append({"site": sc, "qty": int(qty)})
+                        f"""SELECT art_key, site_code, stock_qty FROM {FLAT}
+                            WHERE art_key = ANY(%s) AND site_code = ANY(%s) AND stock_qty > 0
+                            ORDER BY stock_qty DESC""", (art_keys, allowed))
+                    for ak, sc, qty in cur.fetchall():
+                        k = _ac(ak)
+                        owned_bd.setdefault(k, [])
+                        if len(owned_bd[k]) < 8:
+                            owned_bd[k].append({"site": sc, "qty": int(qty)})
                     # Tier-2: outlets NOT in the owned set = availability only
                     cur.execute(
-                        f"""SELECT article_code, site_code, stock_qty FROM {STOCK}
-                            WHERE article_code IN ({ph}) AND NOT (site_code = ANY(%s)) AND stock_qty > 0
-                            ORDER BY stock_qty DESC""", (allowed,))
-                    for ac, sc, qty in cur.fetchall():
-                        other.setdefault(int(ac), [])
-                        if len(other[int(ac)]) < 4:
-                            other[int(ac)].append({"site": sc, "available": True})
+                        f"""SELECT art_key, site_code, stock_qty FROM {FLAT}
+                            WHERE art_key = ANY(%s) AND NOT (site_code = ANY(%s)) AND stock_qty > 0
+                            ORDER BY stock_qty DESC""", (art_keys, allowed))
+                    for ak, sc, qty in cur.fetchall():
+                        k = _ac(ak)
+                        other.setdefault(k, [])
+                        if len(other[k]) < 4:
+                            other[k].append({"site": sc, "available": True})
                 elif site_code:
                     cur.execute(
-                        f"""SELECT article_code, site_code, stock_qty FROM {STOCK}
-                            WHERE article_code IN ({ph}) AND site_code <> %s AND stock_qty > 0
-                            ORDER BY stock_qty DESC""", (site_code,))
-                    for ac, sc, qty in cur.fetchall():
-                        other.setdefault(int(ac), [])
-                        if len(other[int(ac)]) < 4:
-                            other[int(ac)].append({"site": sc, "qty": int(qty)})
+                        f"""SELECT art_key, site_code, stock_qty FROM {FLAT}
+                            WHERE art_key = ANY(%s) AND site_code <> %s AND stock_qty > 0
+                            ORDER BY stock_qty DESC""", (art_keys, site_code))
+                    for ak, sc, qty in cur.fetchall():
+                        k = _ac(ak)
+                        other.setdefault(k, [])
+                        if len(other[k]) < 4:
+                            other[k].append({"site": sc, "qty": int(qty)})
 
             results = []
-            for ac, brand, salt, cat, your_qty, cost in rows:
-                ac = int(ac)
+            for art_key, brand, salt, cat, your_qty, cost in rows:
+                ac = _ac(art_key)
                 _row = {
                     "article_code": ac,
                     "brand": (brand or "").strip(),
@@ -264,17 +250,20 @@ def store_stock_summary(
     _locked = is_store_locked()
     allowed = bound_stores() if _locked else []
     site_code = ",".join(allowed) if _locked else ""  # display label only
+    FLAT = f'"{SCHEMA}".shop_flat'
     try:
         c, cur = _conn()
         try:
-            # WHERE fragment: forced owned-store SET (locked) + optional category filter.
+            # WHERE fragment: forced owned-store SET (locked) + optional category
+            # filter. Reads the denormalized citypharma.shop_flat (brand/generic/
+            # category folded in) — NO runtime join, NO article_code::text cast.
             where = []
             params: list = []
             if allowed:
-                where.append("b.site_code = ANY(%s)")
+                where.append("site_code = ANY(%s)")
                 params.append(allowed)
             if category and category.strip():
-                where.append("a.category ILIKE %s")
+                where.append("category ILIKE %s")
                 params.append(f"%{category.strip()}%")
             where_sql = ("WHERE " + " AND ".join(where)) if where else ""
 
@@ -282,18 +271,21 @@ def store_stock_summary(
             if low_stock_threshold and int(low_stock_threshold) > 0:
                 thr = int(low_stock_threshold)
                 cur.execute(
-                    f"""SELECT a.article_code, a.brand_name, a.generic_name,
-                               a.category, b.stock_qty
-                        FROM {STOCK} b
-                        JOIN {ART} a ON a.article_code::text = b.article_code
+                    f"""SELECT art_key, brand, generic, category, stock_qty
+                        FROM {FLAT}
                         {where_sql}{' AND' if where_sql else 'WHERE'}
-                              b.stock_qty > 0 AND b.stock_qty <= %s
-                        ORDER BY b.stock_qty ASC, a.brand_name
+                              stock_qty > 0 AND stock_qty <= %s
+                        ORDER BY stock_qty ASC, brand
                         LIMIT %s""",
                     (*params, thr, int(limit)))
+                def _ac(art_key):
+                    try:
+                        return int(art_key)
+                    except (TypeError, ValueError):
+                        return art_key
                 low = [
                     {
-                        "article_code": int(r[0]),
+                        "article_code": _ac(r[0]),
                         "brand": (r[1] or "").strip(),
                         "salt": (r[2] or "").strip(),
                         "category": (r[3] or "").strip(),
@@ -310,13 +302,12 @@ def store_stock_summary(
             # ── per-category breakdown ──────────────────────────────────────
             if group_by and group_by.strip().lower() == "category":
                 cur.execute(
-                    f"""SELECT a.category,
-                               COALESCE(SUM(b.stock_qty),0) AS total_qty,
-                               COUNT(DISTINCT a.article_code) AS articles
-                        FROM {STOCK} b
-                        LEFT JOIN {ART} a ON a.article_code::text = b.article_code
+                    f"""SELECT category,
+                               COALESCE(SUM(stock_qty),0) AS total_qty,
+                               COUNT(DISTINCT art_key) AS articles
+                        FROM {FLAT}
                         {where_sql}
-                        GROUP BY a.category
+                        GROUP BY category
                         ORDER BY total_qty DESC
                         LIMIT %s""",
                     (*params, int(limit)))
@@ -336,15 +327,10 @@ def store_stock_summary(
 
             # ── overall totals (default) ────────────────────────────────────
             cur.execute(
-                f"""SELECT COALESCE(SUM(b.stock_qty),0) AS total_qty,
-                           COUNT(DISTINCT a.article_code) AS articles,
-                           COALESCE(SUM(b.stock_qty * b.weighted_cost_price),0) AS inv_value
-                    FROM {STOCK} b
-                    -- LEFT JOIN: stock_qty lives in {STOCK} alone; the article
-                    -- join only enriches unique_articles. An INNER join here
-                    -- drops EVERY stock row when article_code is corrupt
-                    -- (1E+12 scientific-notation text ≠ bigint::text) → total 0.
-                    LEFT JOIN {ART} a ON a.article_code::text = b.article_code
+                f"""SELECT COALESCE(SUM(stock_qty),0) AS total_qty,
+                           COUNT(DISTINCT art_key) AS articles,
+                           COALESCE(SUM(stock_qty * cost),0) AS inv_value
+                    FROM {FLAT}
                     {where_sql}""",
                 tuple(params))
             row = cur.fetchone() or (0, 0, 0)
