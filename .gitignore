@@ -38,3 +38,4 @@ knowledge/
 # embed load-test artifacts (per-embed keys + result data)
 examples/embed-test/embed_fixtures.json
 examples/embed-test/embed_results.csv
+examples/embed-test/store_embeds.tsv

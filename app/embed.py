@@ -545,6 +545,20 @@ def rotate_embed_secret_endpoint(slug: str, embed_id: str, request: Request):
     }
 
 
+@router.post("/{slug}/embeds/{embed_id}/rotate-key")
+def rotate_embed_public_key_endpoint(slug: str, embed_id: str, request: Request):
+    """Rotate the embed's PUBLIC key (the credential for public-auth widgets).
+    Old key stops working immediately — the store must update its snippet."""
+    user = _get_user(request)
+    _check_access(user, slug)
+    _load_embed_or_404(embed_id, slug)
+    try:
+        public_key = embed_mgr.rotate_public_key(embed_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    return {"status": "ok", "public_key": public_key}
+
+
 @router.post("/{slug}/embeds/{embed_id}/reprovision-secret")
 def reprovision_embed_secret_endpoint(slug: str, embed_id: str, request: Request):
     """Super-admin only. Rotates secret for HMAC embeds that are missing the

@@ -265,6 +265,29 @@ def delete_embed(embed_id: str) -> bool:
     return res.rowcount > 0
 
 
+def rotate_public_key(embed_id: str) -> str:
+    """Generate a new public_key for the embed (invalidates the old one).
+
+    For public-auth embeds the public_key IS the credential, so this is the
+    'rotate key' action. Any site still using the old key stops working until
+    its snippet is updated. Returns the new public_key.
+    """
+    public_key = gen_public_key()
+    eng = _get_engine()
+    with eng.connect() as conn:
+        res = conn.execute(
+            text(
+                "UPDATE public.dash_agent_embeds SET public_key = :pk "
+                "WHERE embed_id = :e"
+            ),
+            {"pk": public_key, "e": embed_id},
+        )
+        conn.commit()
+        if res.rowcount == 0:
+            raise ValueError("embed not found")
+    return public_key
+
+
 def rotate_secret(embed_id: str) -> str:
     """Generate a new secret_key, persist hash + encrypted ciphertext, return plaintext once.
 

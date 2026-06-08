@@ -157,10 +157,26 @@
   }
 
   async function revokeEmbed(embedId: string) {
+    if (!confirm('Revoke this widget? Its snippet stops working immediately.')) return;
     try {
       await apiFetch(`/api/projects/${slug}/embeds/${embedId}`, { method: 'DELETE' });
     } catch (e) { /* fail-soft */ }
     await loadEmbeds();
+  }
+
+  let rotatingKey = $state<string | null>(null);
+  async function rotateEmbedKey(embedId: string) {
+    if (!confirm('Rotate the public key? The OLD key stops working now — the store must update its snippet with the new key.')) return;
+    rotatingKey = embedId;
+    try {
+      const r = await apiFetch(`/api/projects/${slug}/embeds/${embedId}/rotate-key`, { method: 'POST' });
+      if (r.ok) {
+        const d = await r.json();
+        // patch the in-memory row so the expansion shows the new key without a full reload
+        embeds = embeds.map((x) => ((x.embed_id || x.id) === embedId ? { ...x, public_key: d.public_key } : x));
+      }
+    } catch (e) { /* fail-soft */ }
+    rotatingKey = null;
   }
 
   // ---- config (first / selected embed) ----
@@ -293,6 +309,18 @@
     const a = document.createElement('a');
     a.href = `${baseUrl}/api/embed/sdk.zip?${sdkQuery()}`;
     a.download = 'cityagent-sdk.zip'; document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  // ---- expandable widget rows (mirror Gateway Outlet Keys) ----
+  let expandedEmbed = $state<string | null>(null);
+  function toggleEmbedRow(id: string) { expandedEmbed = expandedEmbed === id ? null : id; }
+  function embedScopeLabel(e: any): string {
+    const intent = (e.bound_intent || 'public');
+    const qty = intent === 'private' ? 'qty + cost'
+              : intent === 'network' ? 'availability + cost'
+              : 'availability only';
+    if (e.bound_scope_id) return `store ${e.bound_scope_id} · ${qty}`;
+    return `global · full`;
   }
 
   // ---- snippet helpers ----
@@ -703,8 +731,10 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
               <tbody>
                 {#each embeds as e (e.embed_id || e.id)}
                   {@const isLive = e.enabled !== false && e.status !== 'revoked' && e.status !== 'disabled'}
-                  <tr>
-                    <td><code class="emp-code">{e.name || e.embed_id || e.id}</code></td>
+                  {@const eid = e.embed_id || e.id}
+                  {@const isOpen = expandedEmbed === eid}
+                  <tr class="emp-row-click" class:emp-row-open={isOpen} onclick={() => toggleEmbedRow(eid)}>
+                    <td><button class="emp-expand" onclick={(ev) => { ev.stopPropagation(); toggleEmbedRow(eid); }}>{isOpen ? '▾' : '▸'}</button> <code class="emp-code">{e.name || eid}</code></td>
                     <td>{e.auth_mode ?? 'public'}</td>
                     <td>
                       {#if Array.isArray(e.allowed_origins) && e.allowed_origins.length}
@@ -721,22 +751,71 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
                       {/if}
                     </td>
                     <td>
-                      <button class="emp-btn emp-btn-sm" onclick={() => {
-                        const snip = buildSnippet(e.embed_id || e.id, e.public_key || '', e.store_id || '');
-                        copyText(snip, `snip-${e.embed_id}`);
-                      }}>{copied === `snip-${e.embed_id}` ? '✓ copied' : 'snippet'}</button>
+                      <button class="emp-btn emp-btn-sm" onclick={(ev) => {
+                        ev.stopPropagation();
+                        const snip = buildSnippet(eid, e.public_key || '', e.bound_scope_id || e.store_id || '');
+                        copyText(snip, `snip-${eid}`);
+                      }}>{copied === `snip-${eid}` ? '✓ copied' : 'snippet'}</button>
                     </td>
                     <td>
                       {#if isLive}
-                        <button class="emp-btn emp-btn-sm" onclick={() => window.open(`${baseUrl}/api/embed/try/${e.embed_id || e.id}`, '_blank')} title="Open a live chat sandbox for this widget">▶ Test chat</button>
+                        <button class="emp-btn emp-btn-sm" onclick={(ev) => { ev.stopPropagation(); window.open(`${baseUrl}/api/embed/try/${eid}`, '_blank'); }} title="Open a live chat sandbox for this widget">▶ Test chat</button>
                       {/if}
                     </td>
                     <td>
                       {#if isLive}
-                        <button class="emp-btn emp-btn-sm emp-btn-danger" onclick={() => revokeEmbed(e.embed_id || e.id)}>Revoke</button>
+                        <button class="emp-btn emp-btn-sm emp-btn-danger" onclick={(ev) => { ev.stopPropagation(); revokeEmbed(eid); }}>Revoke</button>
                       {/if}
                     </td>
                   </tr>
+
+                  {#if isOpen}
+                    <tr class="emp-detail-row">
+                      <td colspan="7">
+                        <div class="emp-detail">
+                          <div class="emp-detail-line">
+                            <span class="emp-dl-k">EMBED ID</span>
+                            <code class="emp-code emp-code-key">{eid}</code>
+                            <button class="emp-btn emp-btn-sm" onclick={(ev) => { ev.stopPropagation(); copyText(eid, `eid-${eid}`); }}>{copied === `eid-${eid}` ? '✓' : 'copy'}</button>
+                          </div>
+                          <div class="emp-detail-line">
+                            <span class="emp-dl-k">PUBLIC KEY</span>
+                            <code class="emp-code emp-code-key">{e.public_key || '—'}</code>
+                            {#if e.public_key}<button class="emp-btn emp-btn-sm" onclick={(ev) => { ev.stopPropagation(); copyText(e.public_key, `pk-${eid}`); }}>{copied === `pk-${eid}` ? '✓' : 'copy'}</button>{/if}
+                            <button class="emp-btn emp-btn-sm" disabled={rotatingKey === eid} onclick={(ev) => { ev.stopPropagation(); rotateEmbedKey(eid); }} title="Generate a new public key — the old one stops working">{rotatingKey === eid ? '◐…' : '↻ rotate'}</button>
+                            {#if isLive}<button class="emp-btn emp-btn-sm emp-btn-danger" onclick={(ev) => { ev.stopPropagation(); revokeEmbed(eid); }} title="Disable this widget entirely">Revoke</button>{/if}
+                          </div>
+                          <div class="emp-detail-line">
+                            <span class="emp-dl-k">ENDPOINT</span>
+                            <code class="emp-code">{baseUrl}/api/embed/chat</code>
+                          </div>
+                          <div class="emp-detail-line">
+                            <span class="emp-dl-k">SCOPE</span>
+                            <span class="emp-muted">{embedScopeLabel(e)}</span>
+                          </div>
+                          <div class="emp-detail-line">
+                            <span class="emp-dl-k">RATE</span>
+                            <span class="emp-muted">{e.rate_limit_per_min ?? 30}/min · auth {e.auth_mode ?? 'public'}</span>
+                          </div>
+
+                          <div class="emp-dl-snip">
+                            <div class="emp-dl-snip-head">
+                              <span class="emp-dl-k">SNIPPET</span>
+                              <button class="emp-btn emp-btn-sm" onclick={(ev) => { ev.stopPropagation(); copyText(buildSnippet(eid, e.public_key || '', e.bound_scope_id || e.store_id || ''), `dsnip-${eid}`); }}>{copied === `dsnip-${eid}` ? '✓ copied' : 'copy'}</button>
+                            </div>
+                            <pre class="emp-codeblock">{buildSnippet(eid, e.public_key || '', e.bound_scope_id || e.store_id || '')}</pre>
+                          </div>
+
+                          {#if isLive}
+                            <div class="emp-detail-actions">
+                              <button class="emp-btn emp-btn-sm emp-btn-accent" onclick={(ev) => { ev.stopPropagation(); window.open(`${baseUrl}/api/embed/try/${eid}`, '_blank'); }}>▶ Open chat test</button>
+                              <button class="emp-btn emp-btn-sm" onclick={(ev) => { ev.stopPropagation(); configEmbed = e; view = 'playground'; }}>⚙ Playground</button>
+                            </div>
+                          {/if}
+                        </div>
+                      </td>
+                    </tr>
+                  {/if}
                 {/each}
               </tbody>
             </table>
@@ -1056,6 +1135,19 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
 {/if}
 
 <style>
+  /* expandable widget rows (mirror Gateway Outlet Keys) */
+  .emp-row-click { cursor: pointer; }
+  .emp-row-click:hover { background: var(--pw-bg-alt, #f6f2ea); }
+  .emp-row-open { background: var(--pw-bg-alt, #f6f2ea); }
+  .emp-expand { background: none; border: none; cursor: pointer; color: var(--pw-accent, #9a4a2f); font-size: 12px; padding: 0 4px 0 0; font-family: inherit; }
+  .emp-detail-row > td { padding: 0 !important; background: var(--pw-bg-alt, #f6f2ea); border-bottom: 1px solid var(--pw-border, #e5ddcf); }
+  .emp-detail { display: flex; flex-direction: column; gap: 8px; padding: 14px 18px 18px; }
+  .emp-detail-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .emp-dl-k { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pw-muted, #877f74); font-weight: 600; min-width: 90px; }
+  .emp-dl-snip { margin-top: 6px; }
+  .emp-dl-snip-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .emp-detail-actions { display: flex; gap: 8px; margin-top: 8px; }
+
   .emp-center { min-height: 60vh; display: flex; align-items: center; justify-content: center; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .emp-denied { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
   .emp-denied-mark { font-size: 32px; color: #c0392b; }
