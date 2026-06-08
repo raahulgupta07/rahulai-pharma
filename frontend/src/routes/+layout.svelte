@@ -888,6 +888,9 @@
  let singleAgent = $state(false);
  let lockedSlug = $state<string | null>(null);
  let productName = $state('Dash');
+ // Integration kill switches (from /api/flags) — default true so nav doesn't flicker off while loading
+ let gatewayEnabled = $state(true);
+ let embedEnabled = $state(true);
  const chatHref = $derived(singleAgent && lockedSlug ? `/ui/project/${lockedSlug}` : '/ui/chat');
  const overviewHref = $derived(singleAgent && lockedSlug ? `/ui/project/${lockedSlug}/overview` : '/ui/projects');
  const agentBrainHref = $derived(singleAgent && lockedSlug ? `/ui/project/${lockedSlug}/settings#datasets` : '/ui/projects');
@@ -925,7 +928,7 @@
  // Product flags (public) — single-agent lock
  try {
  const fr = await fetch('/api/flags');
- if (fr.ok) { const f = await fr.json(); singleAgent = !!f.single_agent; lockedSlug = f.locked_slug || null; productName = f.product_name || 'Dash'; }
+ if (fr.ok) { const f = await fr.json(); singleAgent = !!f.single_agent; lockedSlug = f.locked_slug || null; productName = f.product_name || 'Dash'; gatewayEnabled = f.gateway_enabled !== false; embedEnabled = f.embed_enabled !== false; }
  } catch {}
  // Load tenant branding (public endpoint, no auth required)
  await loadBrand();
@@ -1232,7 +1235,7 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
             <span class="pw-nav-label">Workspace</span>
           </button>
-          {#if isSuper}
+          {#if isSuper && (gatewayEnabled || embedEnabled)}
             <div class="pw-nav-group" class:pw-group-active={routeMatches('/gateway') || routeMatches('/embed')}>
               <button class="pw-nav"
                       class:pw-nav-active={(routeMatches('/gateway') || routeMatches('/embed')) && openMenu !== 'integrations'}
@@ -1243,6 +1246,7 @@
               </button>
               {#if openMenu === 'integrations'}
                 <div class="pw-menu">
+                  {#if gatewayEnabled}
                   <button class="pw-menu-row" class:pw-menu-active={routeMatches('/gateway')} onclick={() => navTo('/ui/gateway')}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
                     <div class="pw-menu-text">
@@ -1250,6 +1254,8 @@
                       <span class="pw-menu-sub">OpenAI-compatible REST /api/v1</span>
                     </div>
                   </button>
+                  {/if}
+                  {#if embedEnabled}
                   <button class="pw-menu-row" class:pw-menu-active={routeMatches('/embed')} onclick={() => navTo('/ui/embed')}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
                     <div class="pw-menu-text">
@@ -1257,6 +1263,7 @@
                       <span class="pw-menu-sub">Chat widget for external sites</span>
                     </div>
                   </button>
+                  {/if}
                 </div>
               {/if}
             </div>

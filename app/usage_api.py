@@ -726,6 +726,134 @@ def gateway_overview(request: Request, range: str = "7d", gran: str = "day",
                 "errors": {"rate": 0.0, "total": 0, "by_status": [], "recent": []}, "error": str(e)}
 
 
+@router.get("/embed-overview")
+def embed_overview(request: Request, days: int = 7, embed_id: str | None = None,
+                   bucket: str = "day"):
+    """Embed widget monitoring — aggregates public.dash_embed_calls for citypharma.
+
+    No token/cost data exists for embeds (do NOT report tokens/cost). Returns
+    request/latency/error KPIs, bucketed activity series, latency histogram,
+    per-widget rollup (joined to dash_agent_embeds for name + store), top users,
+    and origins.
+    """
+    _gate(request)
+    try:
+        from dash.single_agent import locked_slug
+        slug = locked_slug()
+    except Exception:
+        slug = "citypharma"
+    now = datetime.now(timezone.utc)
+    try:
+        days = max(1, int(days))
+    except Exception:
+        days = 7
+    start = now - timedelta(days=days)
+    bkt = "hour" if bucket == "hour" else "day"
+
+    # scope calls to embeds bound to this project; optional single-widget filter
+    filt = ["c.ts >= :s", "c.ts < :e", "e.project_slug = :slug"]
+    p: dict = {"s": start, "e": now, "slug": slug}
+    if embed_id:
+        filt.append("c.embed_id = :eid"); p["eid"] = embed_id
+    W = " AND ".join(filt)
+    # base join: calls -> embeds (so we can scope by project + enrich name/store)
+    FROM = ("FROM public.dash_embed_calls c "
+            "JOIN public.dash_agent_embeds e ON e.embed_id = c.embed_id")
+
+    try:
+        # --- KPI ---
+        k = _rows(
+            f"SELECT COUNT(*), COALESCE(SUM(c.success::int),0), "
+            f"COALESCE(AVG(c.latency_ms) FILTER (WHERE c.latency_ms IS NOT NULL),0), "
+            f"COUNT(DISTINCT c.external_user) FILTER (WHERE c.external_user IS NOT NULL), "
+            f"COUNT(DISTINCT c.session_token) FILTER (WHERE c.session_token IS NOT NULL), "
+            f"COALESCE(AVG(c.response_chars) FILTER (WHERE c.response_chars IS NOT NULL),0), "
+            f"COUNT(DISTINCT c.embed_id) "
+            f"{FROM} WHERE {W}", p)
+        kr = k[0] if k else (0, 0, 0, 0, 0, 0, 0)
+        reqs = int(kr[0] or 0)
+        ok = int(kr[1] or 0)
+        # percentiles (all calls with a latency value)
+        pct = _rows(
+            f"SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY c.latency_ms), "
+            f"percentile_disc(0.95) WITHIN GROUP (ORDER BY c.latency_ms), "
+            f"percentile_disc(0.99) WITHIN GROUP (ORDER BY c.latency_ms) "
+            f"{FROM} WHERE {W} AND c.latency_ms IS NOT NULL", p)
+        pr = pct[0] if pct else (None, None, None)
+        # active embeds = distinct embeds with a call in window / total enabled embeds bound to a store
+        total_bound = _rows(
+            "SELECT COUNT(*) FROM public.dash_agent_embeds "
+            "WHERE project_slug = :slug AND enabled IS TRUE AND bound_scope_id IS NOT NULL",
+            {"slug": slug})
+        total_embeds = int(total_bound[0][0]) if total_bound else 0
+        active_embeds = int(kr[6] or 0)
+        kpi = {
+            "requests": reqs,
+            "error_pct": round(100.0 * (1 - (ok / reqs)), 2) if reqs else 0.0,
+            "latency_avg_ms": int(kr[2] or 0),
+            "latency_p50_ms": int(pr[0] or 0),
+            "latency_p95_ms": int(pr[1] or 0),
+            "latency_p99_ms": int(pr[2] or 0),
+            "uniq_users": int(kr[3] or 0),
+            "uniq_sessions": int(kr[4] or 0),
+            "active_embeds": f"{active_embeds}/{total_embeds}",
+            "avg_resp_chars": int(kr[5] or 0),
+        }
+
+        # --- time series (bucketed) ---
+        series = [{"t": str(r[0]), "requests": int(r[1] or 0), "errors": int(r[2] or 0),
+                   "p95_ms": int(r[3] or 0)}
+                  for r in _rows(
+            f"SELECT date_trunc('{bkt}', c.ts) b, COUNT(*), "
+            f"COALESCE(SUM((NOT c.success)::int),0), "
+            f"COALESCE(percentile_disc(0.95) WITHIN GROUP (ORDER BY c.latency_ms),0) "
+            f"{FROM} WHERE {W} GROUP BY b ORDER BY b", p)]
+
+        # --- latency histogram (fixed buckets, seconds) ---
+        lat = _rows(
+            f"SELECT CASE WHEN c.latency_ms < 2000 THEN '<2s' WHEN c.latency_ms < 10000 THEN '2-10s' "
+            f"WHEN c.latency_ms < 30000 THEN '10-30s' WHEN c.latency_ms < 60000 THEN '30-60s' ELSE '>60s' END b, "
+            f"COUNT(*) {FROM} WHERE {W} AND c.latency_ms IS NOT NULL GROUP BY b", p)
+        order = ['<2s', '2-10s', '10-30s', '30-60s', '>60s']
+        lmap = {r[0]: int(r[1]) for r in lat}
+        ltot = sum(lmap.values()) or 1
+        latency_hist = [{"bucket": b, "count": lmap.get(b, 0),
+                         "pct": round(100.0 * lmap.get(b, 0) / ltot, 1)} for b in order]
+
+        # --- per-widget / per-store ---
+        by_embed = [{"embed_id": r[0], "name": r[1] or r[0], "store": r[2] or "(global)",
+                     "requests": int(r[3] or 0), "errors": int(r[4] or 0),
+                     "p95_ms": int(r[5] or 0), "last": str(r[6]) if r[6] else None}
+                    for r in _rows(
+            f"SELECT c.embed_id, MAX(e.name), MAX(e.bound_scope_id), COUNT(*), "
+            f"COALESCE(SUM((NOT c.success)::int),0), "
+            f"COALESCE(percentile_disc(0.95) WITHIN GROUP (ORDER BY c.latency_ms),0), MAX(c.ts) "
+            f"{FROM} WHERE {W} GROUP BY c.embed_id ORDER BY 4 DESC LIMIT 50", p)]
+
+        # --- top users ---
+        top_users = [{"user": r[0], "requests": int(r[1] or 0)} for r in _rows(
+            f"SELECT c.external_user, COUNT(*) {FROM} WHERE {W} AND c.external_user IS NOT NULL "
+            f"GROUP BY c.external_user ORDER BY 2 DESC LIMIT 10", p)]
+
+        # --- origins ---
+        origins = [{"origin": r[0], "requests": int(r[1] or 0)} for r in _rows(
+            f"SELECT COALESCE(NULLIF(c.origin,''),'(direct)'), COUNT(*) {FROM} WHERE {W} "
+            f"GROUP BY 1 ORDER BY 2 DESC LIMIT 10", p)]
+
+        return {"days": days, "bucket": bkt, "embed_id": embed_id, "kpi": kpi,
+                "series": series, "latency_hist": latency_hist, "by_embed": by_embed,
+                "top_users": top_users, "origins": origins}
+    except Exception as e:
+        logger.warning("GET /api/admin/usage/embed-overview failed: %s", e)
+        return {"days": days, "bucket": bkt, "embed_id": embed_id,
+                "kpi": {"requests": 0, "error_pct": 0.0, "latency_avg_ms": 0,
+                        "latency_p50_ms": 0, "latency_p95_ms": 0, "latency_p99_ms": 0,
+                        "uniq_users": 0, "uniq_sessions": 0, "active_embeds": "0/0",
+                        "avg_resp_chars": 0},
+                "series": [], "latency_hist": [], "by_embed": [], "top_users": [],
+                "origins": [], "error": str(e)}
+
+
 @router.get("/gateway-questions")
 def gateway_questions(request: Request, range: str = "7d", key: str | None = None):
     _gate(request)

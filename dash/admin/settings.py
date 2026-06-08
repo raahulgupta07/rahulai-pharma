@@ -96,6 +96,11 @@ REGISTRY: dict[str, dict] = {
     "mid_model":                      {"type": "string", "default": "google/gemini-3-flash-preview",        "env": "MID_MODEL",       "scope": "global", "desc": "Complexity-router ANALYSIS tier (compare/trend/breakdown questions)"},
     "reasoning_model":                {"type": "string", "default": "openai/gpt-5.4-mini",                  "env": "REASONING_MODEL", "scope": "global", "desc": "Complexity-router REASONING tier (heavy multi-step questions)"},
     "ultra_model":                    {"type": "string", "default": "openai/gpt-5.4-mini",                  "env": "ULTRA_MODEL",     "scope": "global", "desc": "Complexity-router ULTRA tier (hardest multi-dataset planning)"},
+
+    # Integrations kill switches (super-admin) — when off, the surface vanishes
+    # from the top-nav Integrations dropdown AND its API routes return 403.
+    "gateway_enabled":                {"type": "bool", "default": True,  "env": None, "scope": "global", "desc": "Enable the API Gateway (/api/v1). Off → routes 403 + nav item hidden"},
+    "embed_enabled":                  {"type": "bool", "default": True,  "env": None, "scope": "global", "desc": "Enable Embed widgets (/api/embed). Off → routes 403 + nav item hidden"},
 }
 
 
@@ -250,21 +255,38 @@ def set_setting(key: str, value: Any, *, scope: str = "global",
         except Exception:
             from db.session import get_sql_engine
             eng = get_sql_engine()
+        params = {
+            "k": key, "v": serialized, "vt": spec["type"],
+            "s": scope, "p": project_slug,
+            "d": spec.get("desc", ""), "u": user_id,
+        }
         with eng.begin() as conn:
-            conn.execute(text(
-                "INSERT INTO public.dash_admin_settings "
-                "(key, value, value_type, scope, project_slug, description, updated_by) "
-                "VALUES (:k, :v, :vt, :s, :p, :d, :u) "
-                "ON CONFLICT (key, scope, project_slug) DO UPDATE SET "
-                " value = EXCLUDED.value, "
-                " updated_by = EXCLUDED.updated_by, "
-                " updated_at = NOW()"
-            ), {
-                "k": key, "v": serialized, "vt": spec["type"],
-                "s": scope, "p": project_slug,
-                "d": spec.get("desc", ""), "u": user_id,
-            })
-            conn.commit()
+            if project_slug is None:
+                # GLOBAL rows store project_slug = NULL. A unique index on
+                # (key, scope, project_slug) does NOT dedup NULLs (NULL != NULL),
+                # so ON CONFLICT would silently insert duplicates. Do a manual
+                # UPDATE-then-INSERT against the IS NULL row instead.
+                res = conn.execute(text(
+                    "UPDATE public.dash_admin_settings SET "
+                    " value = :v, value_type = :vt, updated_by = :u, updated_at = NOW() "
+                    "WHERE key = :k AND scope = :s AND project_slug IS NULL"
+                ), params)
+                if (res.rowcount or 0) == 0:
+                    conn.execute(text(
+                        "INSERT INTO public.dash_admin_settings "
+                        "(key, value, value_type, scope, project_slug, description, updated_by) "
+                        "VALUES (:k, :v, :vt, :s, NULL, :d, :u)"
+                    ), params)
+            else:
+                conn.execute(text(
+                    "INSERT INTO public.dash_admin_settings "
+                    "(key, value, value_type, scope, project_slug, description, updated_by) "
+                    "VALUES (:k, :v, :vt, :s, :p, :d, :u) "
+                    "ON CONFLICT (key, scope, project_slug) DO UPDATE SET "
+                    " value = EXCLUDED.value, "
+                    " updated_by = EXCLUDED.updated_by, "
+                    " updated_at = NOW()"
+                ), params)
     except Exception as e:
         logger.warning(f"set_setting failed: {e}")
         return False, str(e)[:200]
@@ -318,16 +340,36 @@ def reset_setting(key: str, *, scope: str = "global",
         return False
 
 
+def integrations_enabled() -> dict:
+    """Return the kill-switch state for the integration surfaces.
+
+    {"gateway": bool, "embed": bool} — reads the global `gateway_enabled` /
+    `embed_enabled` settings. Fail-open to True on any error (missing row → the
+    registry default is True anyway; DB hiccup → don't lock operators out).
+    """
+    try:
+        gw = get_setting("gateway_enabled")
+        em = get_setting("embed_enabled")
+        return {
+            "gateway": True if gw is None else bool(gw),
+            "embed": True if em is None else bool(em),
+        }
+    except Exception:
+        return {"gateway": True, "embed": True}
+
+
 def _read_db(key: str, scope: str, project_slug: Optional[str]) -> Optional[str]:
     try:
         from sqlalchemy import text
         from db.session import get_sql_engine
         eng = get_sql_engine()
         with eng.connect() as conn:
+            # ORDER BY updated_at DESC LIMIT 1 → latest wins (tolerate legacy dup rows)
             row = conn.execute(text(
                 "SELECT value FROM public.dash_admin_settings "
                 "WHERE key = :k AND scope = :s AND "
-                " (project_slug = :p OR (project_slug IS NULL AND :p IS NULL))"
+                " (project_slug = :p OR (project_slug IS NULL AND :p IS NULL)) "
+                "ORDER BY updated_at DESC LIMIT 1"
             ), {"k": key, "s": scope, "p": project_slug}).fetchone()
         if not row:
             return None

@@ -1286,10 +1286,19 @@ def _global_flags():
     import os as _os_flags
     _on = lambda k: _os_flags.getenv(k, "").strip().lower() in ("1", "true", "yes", "on")
     from dash.single_agent import is_single_agent, locked_slug, product_name
+    # Integration kill switches (super-admin). Fail-open to enabled.
+    try:
+        from dash.admin.settings import integrations_enabled
+        _integ = integrations_enabled()
+    except Exception:
+        _integ = {"gateway": True, "embed": True}
     return {
         # sim_lab_enabled DELETED 2026-05-23
         "automl_enabled": _on("AUTOML_ENABLED"),
         "investment_vertical_enabled": _on("INVESTMENT_VERTICAL_ENABLED"),
+        # Integration surface kill switches (API Gateway / Embed)
+        "gateway_enabled": bool(_integ.get("gateway", True)),
+        "embed_enabled": bool(_integ.get("embed", True)),
         # Single-agent product (CityPharma)
         "single_agent": is_single_agent(),
         "locked_slug": locked_slug() if is_single_agent() else None,
@@ -1625,6 +1634,28 @@ for var in _required_env:
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
+# Integration kill-switch cache: (value_dict, ts). Reading the settings on
+# every request would hit the DB; cache for ~30s and fail-open to enabled.
+import time as _integ_time
+_INTEG_CACHE: list = [None, 0.0]
+_INTEG_TTL_S = 30.0
+
+
+def _integrations_state() -> dict:
+    """Cached {gateway: bool, embed: bool}. Fail-open to enabled on any error."""
+    now = _integ_time.time()
+    cached, ts = _INTEG_CACHE[0], _INTEG_CACHE[1]
+    if cached is not None and (now - ts) < _INTEG_TTL_S:
+        return cached
+    try:
+        from dash.admin.settings import integrations_enabled
+        state = integrations_enabled()
+    except Exception:
+        state = {"gateway": True, "embed": True}
+    _INTEG_CACHE[0] = state
+    _INTEG_CACHE[1] = now
+    return state
+
 
 class AuthMiddleware(BaseHTTPMiddleware):
     SKIP_PATHS = {"/health", "/api/health", "/api/flags", "/", "/info", "/config", "/api/auth/login", "/api/auth/register", "/api/auth/methods", "/api/auth/ldap/login", "/api/sharepoint/callback", "/api/gdrive/callback", "/api/onedrive/callback", "/api/embed/session/create", "/api/embed/chat", "/api/embed/chat/stream", "/api/embed/widget.js", "/api/embed/docs"}
@@ -1637,6 +1668,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if path == "/":
             from starlette.responses import RedirectResponse
             return RedirectResponse(url="/ui/home", status_code=302)
+
+        # Integration kill switches — block disabled surfaces with a 403.
+        # Never block /api/flags itself or /api/admin/* (operators must be able
+        # to read state + re-enable). Fail-open on any error.
+        if path.startswith("/api/v1") or path.startswith("/api/embed"):
+            try:
+                _state = _integrations_state()
+                if path.startswith("/api/v1") and not _state.get("gateway", True):
+                    return JSONResponse({"detail": "API Gateway is disabled"}, status_code=403)
+                if path.startswith("/api/embed") and not _state.get("embed", True):
+                    return JSONResponse({"detail": "Embed is disabled"}, status_code=403)
+            except Exception:
+                pass
 
         # Skip auth for UI, docs, health, and auth endpoints
         if path in self.SKIP_PATHS or any(path.startswith(p) for p in self.SKIP_PREFIXES):

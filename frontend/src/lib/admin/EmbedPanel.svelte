@@ -26,7 +26,7 @@
   }
 
   // ---- left-rail view (persisted in URL hash so refresh stays put) ----
-  const _validViews = ['overview', 'widgets', 'playground', 'usage', 'developer'];
+  const _validViews = ['overview', 'widgets', 'playground', 'usage', 'monitoring', 'developer'];
   function _viewFromHash(): string {
     if (typeof window === 'undefined') return 'overview';
     const h = (window.location.hash || '').replace(/^#/, '');
@@ -46,7 +46,10 @@
       { id: 'widgets', label: 'Widgets', icon: 'grid' },
       { id: 'playground', label: 'Playground', icon: 'rocket' },
     ] },
-    { group: 'ANALYTICS', items: [{ id: 'usage', label: 'Usage', icon: 'chart' }] },
+    { group: 'ANALYTICS', items: [
+      { id: 'monitoring', label: 'Monitoring', icon: 'activity' },
+      { id: 'usage', label: 'Usage', icon: 'chart' },
+    ] },
     { group: 'DEVELOPER', items: [
       { id: 'developer', label: 'Snippet & Docs', icon: 'code' },
     ] },
@@ -74,6 +77,7 @@
     overview: { title: 'Overview', sub: 'Embed status, endpoints + quick test' },
     widgets: { title: 'Widgets', sub: 'List, create + revoke embed widgets' },
     playground: { title: 'Playground', sub: 'Appearance · live chat test · shareable test link' },
+    monitoring: { title: 'Monitoring', sub: 'Live widget traffic, latency, errors + per-store breakdown' },
     usage: { title: 'Usage Analytics', sub: 'Calls, tokens + sessions over time' },
     developer: { title: 'Developer Docs', sub: 'Snippet, code examples + 3-tier access reference' },
   };
@@ -262,6 +266,80 @@
     } catch (e) { usageErr = 'unreachable'; }
   }
   function setUsageDays(n: number) { usageDays = n; loadUsage(); }
+
+  // ---- monitoring (rich embed usage dashboard) ----
+  let monDays = $state(7);
+  let monBucket = $state<'hour' | 'day'>('day');
+  let monEmbed = $state('');            // '' = all widgets, else embed_id
+  let monData = $state<any>(null);
+  let monErr = $state('');
+  let monBusy = $state(false);
+
+  async function loadMonitoring() {
+    monErr = ''; monBusy = true;
+    try {
+      const q = `days=${monDays}&bucket=${monBucket}${monEmbed ? '&embed_id=' + encodeURIComponent(monEmbed) : ''}`;
+      const r = await apiFetch(`/api/admin/usage/embed-overview?${q}`);
+      if (r.ok) monData = await r.json();
+      else { monData = null; monErr = `monitoring ${r.status}`; }
+    } catch (e) { monData = null; monErr = 'unreachable'; }
+    monBusy = false;
+  }
+  function setMonDays(n: number) { monDays = n; loadMonitoring(); }
+  function setMonBucket(b: 'hour' | 'day') { monBucket = b; loadMonitoring(); }
+  function onMonEmbed() { loadMonitoring(); }
+
+  // activity bars derived from series (height = requests / max)
+  let monActBars = $derived.by(() => {
+    const s: any[] = monData?.series || [];
+    const max = Math.max(1, ...s.map((x: any) => Number(x.requests) || 0));
+    return s.map((x: any) => {
+      const t = String(x.t || '');
+      // label: short date or hour
+      let label = t;
+      try {
+        const d = new Date(t);
+        if (!isNaN(d.getTime())) {
+          label = monBucket === 'hour'
+            ? `${String(d.getMonth() + 1)}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}h`
+            : `${String(d.getMonth() + 1)}/${d.getDate()}`;
+        }
+      } catch { /* keep raw */ }
+      return {
+        label,
+        requests: Number(x.requests) || 0,
+        errors: Number(x.errors) || 0,
+        p95: Number(x.p95_ms) || 0,
+        pct: Math.round(((Number(x.requests) || 0) / max) * 100),
+        title: `${t} · ${x.requests} req · ${x.errors} err · p95 ${x.p95_ms}ms`,
+      };
+    });
+  });
+
+  function monExportJson() {
+    if (!monData) return;
+    const blob = new Blob([JSON.stringify(monData, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `embed-monitoring-${monDays}d.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+  function monExportCsv() {
+    const rows: any[] = monData?.by_embed || [];
+    const head = ['embed_id', 'name', 'store', 'requests', 'errors', 'p95_ms', 'last'];
+    const esc = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const lines = [head.join(',')].concat(
+      rows.map((r: any) => head.map((h) => esc(r[h])).join(',')),
+    );
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `embed-by-widget-${monDays}d.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+  function monIsTail(b: string) { return b === '30-60s' || b === '>60s'; }
 
   // ---- copy ----
   let copied = $state('');
@@ -541,6 +619,9 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
   });
   $effect(() => {
     if (view === 'usage' && embeds.length > 0) { usageEmbed = embeds[0]; loadUsage(); }
+  });
+  $effect(() => {
+    if (view === 'monitoring' && monData === null && !monBusy) loadMonitoring();
   });
 </script>
 
@@ -983,6 +1064,177 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
         {/if}
       {/if}
 
+      <!-- ==================== MONITORING ==================== -->
+      {#if view === 'monitoring'}
+        <!-- A. FILTER ROW -->
+        <section class="emp-panel">
+          <div class="emp-h-row">
+            <div class="emp-h">WIDGET MONITORING <span class="emp-an-live" title="live from dash_embed_calls">● LIVE</span></div>
+            <div class="emp-btnrow">
+              <button class="emp-btn emp-btn-sm" onclick={monExportCsv} disabled={!monData}>⬇ CSV</button>
+              <button class="emp-btn emp-btn-sm" onclick={monExportJson} disabled={!monData}>⬇ JSON</button>
+            </div>
+          </div>
+          <div class="emp-mon-filters">
+            <div class="emp-pills">
+              <button class="emp-pill" class:emp-pill-on={monDays === 1} onclick={() => setMonDays(1)}>24h</button>
+              <button class="emp-pill" class:emp-pill-on={monDays === 7} onclick={() => setMonDays(7)}>7d</button>
+              <button class="emp-pill" class:emp-pill-on={monDays === 30} onclick={() => setMonDays(30)}>30d</button>
+            </div>
+            <select class="emp-sel" bind:value={monEmbed} onchange={onMonEmbed} title="filter by widget">
+              <option value="">all widgets</option>
+              {#each embeds as e (e.embed_id || e.id)}
+                <option value={e.embed_id || e.id}>{e.name || e.bound_scope_id || e.embed_id || e.id}</option>
+              {/each}
+            </select>
+            <div class="emp-pills" title="bucket granularity">
+              <button class="emp-pill" class:emp-pill-on={monBucket === 'hour'} onclick={() => setMonBucket('hour')}>○ hour</button>
+              <button class="emp-pill" class:emp-pill-on={monBucket === 'day'} onclick={() => setMonBucket('day')}>● day</button>
+            </div>
+            {#if monBusy}<span class="emp-muted">◐ loading…</span>{/if}
+          </div>
+        </section>
+
+        {#if monErr}
+          <section class="emp-panel"><div class="emp-row emp-err">✗ monitoring unavailable ({monErr})</div></section>
+        {:else if !monData && monBusy}
+          <section class="emp-panel"><div class="emp-row emp-muted">◐ loading monitoring…</div></section>
+        {:else if monData}
+          {@const k = monData.kpi || {}}
+          <!-- B. KPI STRIP -->
+          <section class="emp-panel">
+            <div class="emp-kpi-grid">
+              {#snippet kpi(label: string, value: any, sub: string = '', warn: boolean = false)}
+                <div class="emp-kpi" class:emp-kpi-warn={warn}>
+                  <div class="emp-kpi-label">{label}</div>
+                  <div class="emp-kpi-val">{value}{#if warn} <span class="emp-err">⚠</span>{/if}</div>
+                  {#if sub}<div class="emp-kpi-sub">{sub}</div>{/if}
+                </div>
+              {/snippet}
+              {@render kpi('Requests', k.requests ?? 0)}
+              {@render kpi('Error %', `${Number(k.error_pct ?? 0).toFixed(1)}%`, '', Number(k.error_pct) > 5)}
+              {@render kpi('Avg latency', k.latency_avg_ms ? `${(k.latency_avg_ms / 1000).toFixed(1)}s` : '—', '', Number(k.latency_avg_ms) > 10000)}
+              {@render kpi('p95 latency', k.latency_p95_ms ? `${(k.latency_p95_ms / 1000).toFixed(1)}s` : '—')}
+              {@render kpi('p99 latency', k.latency_p99_ms ? `${(k.latency_p99_ms / 1000).toFixed(1)}s` : '—')}
+              {@render kpi('Unique users', k.uniq_users ?? 0)}
+              {@render kpi('Sessions', k.uniq_sessions ?? 0)}
+              {@render kpi('Active widgets', k.active_embeds ?? '0/0')}
+              {@render kpi('Avg reply chars', k.avg_resp_chars ?? 0)}
+            </div>
+          </section>
+
+          <div class="emp-mon-2col">
+            <!-- C. ACTIVITY CHART -->
+            <section class="emp-panel">
+              <div class="emp-subh">Activity <span class="emp-muted">· requests per {monBucket}</span></div>
+              {#if monActBars.length === 0}
+                <div class="emp-row emp-muted">no activity in window</div>
+              {:else}
+                <div class="emp-chart">
+                  {#each monActBars as b}
+                    <div class="emp-chart-col" title={b.title}>
+                      <div class="emp-chart-barwrap"><div class="emp-chart-bar" style={`height:${Math.max(2, b.pct)}%`}></div></div>
+                      <div class="emp-chart-x">{b.label}</div>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </section>
+
+            <!-- D. LATENCY DISTRIBUTION -->
+            <section class="emp-panel">
+              <div class="emp-subh">Latency distribution</div>
+              <div class="emp-lat-pcts">
+                <span><span class="emp-k">p50</span>{k.latency_p50_ms ? `${(k.latency_p50_ms / 1000).toFixed(1)}s` : '—'}</span>
+                <span><span class="emp-k">p95</span>{k.latency_p95_ms ? `${(k.latency_p95_ms / 1000).toFixed(1)}s` : '—'}</span>
+                <span><span class="emp-k">p99</span>{k.latency_p99_ms ? `${(k.latency_p99_ms / 1000).toFixed(1)}s` : '—'}</span>
+              </div>
+              {#if (monData.latency_hist || []).every((h: any) => !h.count)}
+                <div class="emp-row emp-muted">no latency data</div>
+              {:else}
+                <div class="emp-hbars">
+                  {#each monData.latency_hist as h}
+                    <div class="emp-hbar-row" class:emp-hbar-tail={monIsTail(h.bucket)}>
+                      <div class="emp-hbar-lbl">{h.bucket}{#if monIsTail(h.bucket) && h.count} <span class="emp-warn">⚠</span>{/if}</div>
+                      <div class="emp-hbar-track"><div class="emp-hbar-fill" class:emp-hbar-fill-tail={monIsTail(h.bucket)} style={`width:${Math.max(1, Number(h.pct) || 0)}%`}></div></div>
+                      <div class="emp-hbar-val">{h.count} <span class="emp-muted">({(Number(h.pct) || 0).toFixed(0)}%)</span></div>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </section>
+          </div>
+
+          <!-- E. PER-WIDGET / PER-STORE -->
+          <section class="emp-panel">
+            <div class="emp-subh">By widget / store</div>
+            {#if (monData.by_embed || []).length === 0}
+              <div class="emp-row emp-muted">no widget traffic in window</div>
+            {:else}
+              <table class="emp-table">
+                <thead><tr><th>widget</th><th>store</th><th>req</th><th>err</th><th>p95</th><th>last</th></tr></thead>
+                <tbody>
+                  {#each monData.by_embed as r (r.embed_id)}
+                    <tr>
+                      <td>{r.name}<br /><code class="emp-code">{r.embed_id}</code></td>
+                      <td><code class="emp-code">{r.store}</code></td>
+                      <td>{r.requests ?? 0}</td>
+                      <td>{r.errors ?? 0}{#if Number(r.errors) > 0} <span class="emp-err">⚠</span>{/if}</td>
+                      <td>{r.p95_ms ? `${(r.p95_ms / 1000).toFixed(1)}s` : '—'}</td>
+                      <td class="emp-muted">{r.last ?? '—'}</td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            {/if}
+          </section>
+
+          <div class="emp-mon-2col">
+            <!-- F. TOP USERS -->
+            <section class="emp-panel">
+              <div class="emp-subh">Top users</div>
+              {#if (monData.top_users || []).length === 0}
+                <div class="emp-row emp-muted">no identified users</div>
+              {:else}
+                <table class="emp-table">
+                  <thead><tr><th>user</th><th>req</th></tr></thead>
+                  <tbody>
+                    {#each monData.top_users as u (u.user)}
+                      <tr><td><code class="emp-code">{u.user}</code></td><td>{u.requests ?? 0}</td></tr>
+                    {/each}
+                  </tbody>
+                </table>
+              {/if}
+            </section>
+
+            <!-- G. ORIGINS -->
+            <section class="emp-panel">
+              <div class="emp-subh">Origins</div>
+              {#if (monData.origins || []).length === 0}
+                <div class="emp-row emp-muted">no origin data</div>
+              {:else}
+                <table class="emp-table">
+                  <thead><tr><th>origin</th><th>req</th></tr></thead>
+                  <tbody>
+                    {#each monData.origins as o (o.origin)}
+                      <tr><td><code class="emp-code">{o.origin}</code></td><td>{o.requests ?? 0}</td></tr>
+                    {/each}
+                  </tbody>
+                </table>
+              {/if}
+            </section>
+          </div>
+        {:else}
+          <section class="emp-panel">
+            <div class="emp-empty-state emp-muted">
+              <div class="emp-empty-icon">○</div>
+              <div>No monitoring data yet</div>
+              <div class="emp-fineprint">Traffic will appear here once your embed widgets receive calls.</div>
+            </div>
+          </section>
+        {/if}
+      {/if}
+
       <!-- ==================== USAGE ==================== -->
       {#if view === 'usage'}
         <section class="emp-panel">
@@ -1404,4 +1656,34 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
   .emp-chat-input:focus { border-color: var(--pw-accent, #c96342); }
   .emp-chat-send { width: 36px; height: 36px; border-radius: 50%; border: none; color: #fff; font-size: 16px; cursor: pointer; flex-shrink: 0; }
   .emp-chat-send:disabled { opacity: .5; cursor: default; }
+
+  /* ---- monitoring dashboard ---- */
+  .emp-an-live { color: #3a7563; font-size: 10px; font-weight: 700; letter-spacing: .05em; margin-left: 8px; }
+  .emp-mon-filters { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+  .emp-mon-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .emp-mon-2col { grid-template-columns: 1fr; } }
+
+  .emp-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+  .emp-kpi { border: 1px solid var(--pw-border, #e5ddcf); border-radius: 8px; padding: 10px 12px; background: #fdfbf6; }
+  .emp-kpi-warn { border-color: #d98b6a; background: #fbf2ec; }
+  .emp-kpi-label { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--pw-muted, #877f74); }
+  .emp-kpi-val { font-size: 20px; font-weight: 700; color: var(--pw-ink, #2a2620); margin-top: 2px; font-family: var(--pw-font-body); }
+  .emp-kpi-sub { font-size: 10px; color: var(--pw-muted, #877f74); margin-top: 2px; }
+
+  .emp-chart { display: flex; align-items: flex-end; gap: 3px; height: 140px; padding-top: 8px; }
+  .emp-chart-col { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; height: 100%; }
+  .emp-chart-barwrap { flex: 1; width: 100%; display: flex; align-items: flex-end; justify-content: center; }
+  .emp-chart-bar { width: 70%; min-height: 2px; background: var(--pw-accent, #c96342); border-radius: 2px 2px 0 0; transition: height .2s; }
+  .emp-chart-x { font-size: 9px; color: var(--pw-muted, #877f74); margin-top: 4px; white-space: nowrap; transform: rotate(-30deg); transform-origin: top center; }
+
+  .emp-lat-pcts { display: flex; gap: 16px; font-size: 12px; margin-bottom: 8px; }
+  .emp-lat-pcts .emp-k { min-width: 0; margin-right: 4px; }
+  .emp-hbars { display: flex; flex-direction: column; gap: 6px; }
+  .emp-hbar-row { display: grid; grid-template-columns: 56px 1fr 78px; align-items: center; gap: 8px; font-size: 12px; }
+  .emp-hbar-lbl { color: var(--pw-ink-soft, #4a4438); }
+  .emp-hbar-track { height: 10px; background: #efeadd; border-radius: 5px; overflow: hidden; }
+  .emp-hbar-fill { height: 100%; background: var(--pw-accent, #c96342); border-radius: 5px; }
+  .emp-hbar-fill-tail { background: #d98b6a; }
+  .emp-hbar-tail .emp-hbar-lbl { color: #9a4a2f; }
+  .emp-hbar-val { text-align: right; color: var(--pw-ink-soft, #4a4438); }
 </style>

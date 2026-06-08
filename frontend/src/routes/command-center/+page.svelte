@@ -2801,6 +2801,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
     {name: 'NOTIFICATIONS', keys: ['enable_digest_slack','slack_webhook_url','enable_email_digest']},
     {name: 'SECURITY', keys: ['rate_limit_per_minute','agno_debug']},
     {name: 'SCHEDULER', keys: ['enable_in_process_scheduler','enable_k8s_cronjob_mode']},
+    {name: 'INTEGRATIONS', keys: ['gateway_enabled','embed_enabled']},
   ] as section}
     <div class="ink-border" style="margin-top:8px;">
       <div onclick={() => openSection = openSection === section.name ? null : section.name}
