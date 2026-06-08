@@ -36,12 +36,14 @@ Primary persona = **pharmacy counter staff**. The chat answers branch-scoped med
 | "is X in stock at my branch?" / "do we have X" | `stock_check` (relational, branch-scoped) |
 | "find `<salt>`" (e.g. paracetamol) | `stock_check` by generic_name |
 | "X is out of stock — alternatives?" | `find_substitutes` / `substitutes` (same generic, relational) |
-| "what do we have for `<condition>`" | `alternatives_for_indication` / `indication_search` |
+| "what do we have for `<condition>`" / "something for a bad headache" | **`catalog_search`** (hybrid vector + keyword — semantic) |
+| "X is out of stock — alternatives to `<brand>`?" | **`catalog_search`** / `find_substitutes` |
 | "tell me about `<drug>` and related" | `drug_relationships` / `drug_profile` |
 
 - **Branch scoping:** each login is bound to a branch (`dash_users.site_code`); the chat injects `## SHOP CONTEXT` so "stock" = their branch, with other branches shown as a transfer hint. 53 sites in the demo data.
 - **All drug-relationship tools are RELATIONAL** over the catalog (drugs sharing `generic_name` = substitutes; `indication` ILIKE = therapeutic alternatives). No Apache AGE dependency — survives any cp-db recreate. Tables auto-detected (data lands as `*_07052026`). Tools in `dash/tools/pharma_graph_tool.py` + `pharma_shop_tool.py`.
 - **Output = shop medicine-finder** (name · salt · branch stock · cost · substitutes), not analyst KPI cards — for stock/find/substitute queries.
+- **Semantic catalog search** (`dash/tools/catalog_search.py`): advisory/find/"what for `<symptom>`"/fuzzy/similar runs **hybrid vector + keyword (RRF)** over 4,886 embedded products (`dash.dash_vectors`, `namespace='catalog'`, built by `scripts/build_catalog_vectors.py`, refreshed on training). Counts + per-store stock stay SQL — vectors only FIND, SQL COUNTS. Catalog is Tier-3 global (no store scope). Beats ILIKE on synonyms/intent (e.g. "high blood pressure" → real antihypertensives, not vitamins).
 
 ### Pharma Chemist — the clinical brain
 

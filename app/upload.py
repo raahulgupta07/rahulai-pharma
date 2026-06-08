@@ -12872,6 +12872,18 @@ async def retrain_project(slug: str, request: Request):
             _l.getLogger(__name__).warning(f"bilingual regen skipped for {slug}: {_bie}")
             _master_log(f"⚠ bilingual regen skipped: {str(_bie)[:80]}", "", total_tables)
 
+        # ─── Semantic catalog vectors — hybrid (vector+keyword) catalog_search
+        # corpus. Idempotent (unchanged blobs skipped). Fail-soft so an embed
+        # failure never breaks training; catalog_search falls back to ILIKE.
+        try:
+            from scripts.build_catalog_vectors import run as _build_catalog
+            _cv = _build_catalog()
+            _master_log(f"✓ catalog vectors: {_cv.get('embedded',0)} products", "", total_tables)
+        except Exception as _cve:
+            import logging as _l
+            _l.getLogger(__name__).warning(f"catalog vectors skipped for {slug}: {_cve}")
+            _master_log(f"⚠ catalog vectors skipped: {str(_cve)[:80]}", "", total_tables)
+
         # AutoSim grounded-scenario enqueue REMOVED — the sim chassis was deleted
         # in the 2026-05-23 trim, so `autosim_generate_grounded` has NO registered
         # minion handler. This enqueue pushed a dead job into the queue on every

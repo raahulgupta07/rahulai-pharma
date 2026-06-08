@@ -676,13 +676,29 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
                                  project_slug=project_slug, meta=_meta):
                     return _pgj.dumps(_pg_rel(article_code, brand_name))
 
+            from dash.tools.catalog_search import catalog_search as _cat_search
+
+            @tool(name="catalog_search", description="ADVISORY/SEMANTIC catalog search — find medicines by symptom/condition ('what for fever'), fuzzy name, or similar-drug. Hybrid vector+keyword over the product catalog (Tier-3 global, NOT store stock). Use for 'what do you have for X', 'alternatives to X', browse. For exact stock/qty at a store use stock_check; for counts use SQL.")
+            def _catalog_search_tool(query: str = "", limit: int = 12) -> str:
+                _meta = {"agent": "analyst", "tool": "catalog_search",
+                         "args": _preview_args(query, limit)}
+                with _trace_span("chat.analyst.catalog_search", kind="chat",
+                                 project_slug=project_slug, meta=_meta):
+                    _res = _cat_search(query, limit)
+                    try:
+                        _meta["row_count"] = _res.get("count") if isinstance(_res, dict) else None
+                    except Exception:
+                        pass
+                    return _pgj.dumps(_res)
+
             tools.append(_stock_tool)
             tools.append(_summary_tool)
             tools.append(_subs_tool)
             tools.append(_alt_tool)
             tools.append(_rel_tool)
+            tools.append(_catalog_search_tool)
             import logging as _pgl
-            _pgl.getLogger(__name__).info("pharma graph+shop tools enabled: +5 (stock_check, store_stock_summary, find_substitutes, alternatives_for_indication, drug_relationships)")
+            _pgl.getLogger(__name__).info("pharma graph+shop tools enabled: +6 (stock_check, store_stock_summary, find_substitutes, alternatives_for_indication, drug_relationships, catalog_search)")
         except Exception as _pge:
             import logging as _pgl
             _pgl.getLogger(__name__).warning(f"pharma graph tools not loaded: {_pge}")

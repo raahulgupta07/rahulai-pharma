@@ -2,6 +2,19 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-08 (latest+32) — Hybrid `catalog_search` vector tool (semantic advisory) — keep SQL for counts/stock
+
+**Why:** catalog questions ("what do you have for fever", "alternatives to X", fuzzy/similar) were answered by `ILIKE '%word%'` — keyword-only, misses synonyms/intent/typos. The catalog (4,886 products, mostly static clinical text) is ideal for embeddings. Counts + per-store stock stay SQL (exact + scoped); vectors AUGMENT for semantic find/advisory.
+
+**Built:**
+- `scripts/build_catalog_vectors.py` (idempotent) — resolves the live catalog table, builds a per-product blob (`brand | generic | composition | treats: indication | dosage | side effects | category`, empties skipped), embeds via the existing `dash.tools.embeddings_helper.embed_batch` (async, 1536-dim, real OpenRouter — NOT pseudo), UPSERTs into the EXISTING `dash.dash_vectors` table with `namespace='catalog'`, `source_id=str(article_code)`, sha256 `text_hash` (skips unchanged), `metadata` jsonb {article_code, brand, generic, category, indication}. **4,886 vectors built.** No new table — reuses dash_vectors (HNSW cosine + tsv FTS already there).
+- `dash/tools/catalog_search.py` — `catalog_search(query, limit=12)`. HYBRID: embed query (`asyncio.run(embed_batch([q]))` — runs in the team.run worker thread, no live loop, safe; try/except → keyword-only fallback) → vector top-30 (`embedding <=> %s::vector`) ∪ keyword top-30 (`tsv @@ plainto_tsquery`, ILIKE fallback) → **RRF fuse** (k=60) → top-k. Returns products from `dash_vectors.metadata`. Tier-3 GLOBAL — NO store scope (catalog has no site_code). Empty namespace → pure ILIKE on the live catalog so it never hard-fails.
+- Registered in `dash/tools/build.py` as `@tool catalog_search` (trace-spanned, json.dumps), next to the pharma tools (+5 → +6). Rebuild hook in `app/upload.py` after the bilingual regen block (fail-soft) → catalog vectors refresh on every training. Instruction nudge in `dash/instructions.py` (SHOP COUNTER + pharma carve-out): use `catalog_search` FIRST for symptom/condition/fuzzy/similar; `stock_check` for branch qty; SQL for counts.
+
+**Result (verified, gateway):** "fever symptoms" → PARACAP/BIOGESIC/LEN SEN (paracetamol family); "alternatives to PANADOL" → same-molecule BIOGESIC/PARA-DENK; "high blood pressure" → real antihypertensives (Amlodipine/Spironolactone/Metoprolol) — where the old SQL-only path returned vitamins + BP monitors. Division of labour holds: `catalog_search` FINDS (semantic), SQL/`stock_check` COUNT + per-store qty. Bonus: pure advisory ("what treats X") needs no stock join → sidesteps the `article_code` 1E+12 corruption entirely.
+
+---
+
 ### Session 2026-06-08 (latest+31) — Parallel multi-store embed test → found + fixed a cross-store DATA-LEAK (3 bugs)
 
 **Goal:** load-test the embed widget with 20 stores asking in parallel (EN+MY), measure latency/accuracy. Built a reusable harness — and it surfaced a serious correctness+security bug.
