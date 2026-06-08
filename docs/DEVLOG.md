@@ -2,6 +2,14 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-08 (latest+36) — Cockpit integration toggles (Save button) + fresh /api/flags so nav hides disabled surface
+
+Follow-up to the kill switch (latest+35). Added quick **API Gateway / Embed on-off switches on the Cockpit** landing (`command-center/+page.svelte`, new INTEGRATIONS card) so a super-admin flips them without digging into Admin settings sections.
+
+Two fixes after first cut:
+- **Nav didn't hide the disabled surface.** Root cause: the top-nav reads `/api/flags` only at page mount, AND `integrations_enabled()` read through the 30s `get_setting` cache → `/api/flags` was stale up to 30s. Fix: `integrations_enabled()` (`dash/admin/settings.py`) now reads the DB **directly** via `_read_db` (bypasses the cache) so `/api/flags` is always current. The route-block middleware keeps its own 30s `_INTEG_CACHE` (eventual; nav is the user-visible part and is now instant-on-reload).
+- **Save button.** Toggles now STAGE changes (`integPending`) + an explicit **Save** → POST `/api/admin/settings` then `window.location.reload()` so the shared nav re-fetches the (now-fresh) flags and shows/hides the items. `integDirty` derived gates the button; "Unsaved — click Save (page reloads)" hint. Commit d715848. Verified: set gateway off → `/api/flags` flips instantly (no 30s lag), 1 row each (dup fix holds).
+
 ### Session 2026-06-08 (latest+35) — embed Monitoring dashboard + gateway/embed kill switch (+ global-settings dup-row bug fix)
 
 **Embed Monitoring dashboard (new Embed page):** `GET /api/admin/usage/embed-overview?days=&embed_id=&bucket=` in `app/usage_api.py` (sibling of `gateway-overview`, super-admin gated) reads `public.dash_embed_calls` joined to `dash_agent_embeds` (project-scoped). Returns kpi{requests, error_pct, latency_avg/p50/p95/p99, uniq_users, uniq_sessions, active_embeds "N/M", avg_resp_chars}, series (hour/day bucket), latency_hist (5 fixed buckets), by_embed (per store/widget), top_users, origins. **NO token/cost** — embeds don't log them (gateway-only). New `EmbedPanel.svelte` rail view **Monitoring** (ANALYTICS group, basic Usage kept): KPI strip + activity bars + latency distribution + per-store table + top users + origins + 24h/7d/30d / widget-picker / hour-day filters + CSV/JSON export. Mirrors GatewayPanel analytics styling.
