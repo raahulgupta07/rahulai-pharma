@@ -555,7 +555,8 @@ def _bootstrap_tables():
         try:
             conn.execute(text("ALTER TABLE public.dash_projects ADD CONSTRAINT dash_projects_slug_unique UNIQUE (slug)"))
         except Exception:
-            logger.exception("auth: add projects.slug unique constraint failed")
+            # idempotent — constraint already exists on re-boot; not an error
+            logger.debug("auth: projects.slug unique constraint already exists")
         # Smart upload fingerprints
         try:
             conn.execute(text("ALTER TABLE public.dash_table_metadata ADD COLUMN IF NOT EXISTS fingerprint TEXT"))
@@ -610,6 +611,8 @@ def _bootstrap_tables():
                 ("store_id",   "ALTER TABLE public.dash_users ADD COLUMN IF NOT EXISTS store_id TEXT"),
                 ("store_ids",  "ALTER TABLE public.dash_users ADD COLUMN IF NOT EXISTS store_ids TEXT"),
                 ("scope_mode", "ALTER TABLE public.dash_users ADD COLUMN IF NOT EXISTS scope_mode TEXT DEFAULT 'global'"),
+                # Access tier: 'user' (default) | 'admin' (day-to-day ops). super = SUPER_ADMIN username.
+                ("role",       "ALTER TABLE public.dash_users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user'"),
             ):
                 try:
                     _sc_conn.execute(text(_ddl))
@@ -678,6 +681,8 @@ def validate_token(token: str) -> Optional[dict]:
             if info["expiry"] > time.time():
                 if "aad_groups" not in info:
                     info["aad_groups"] = _extract_aad_groups(token)
+                if "is_admin" not in info:
+                    info["is_admin"] = info.get("is_super", False)
                 return info
             else:
                 del _token_cache[token]
@@ -686,10 +691,14 @@ def validate_token(token: str) -> Optional[dict]:
     try:
         with _engine.connect() as conn:
             row = conn.execute(text(
-                "SELECT user_id, username, expiry FROM public.dash_tokens WHERE token = :t"
+                "SELECT t.user_id, t.username, t.expiry, COALESCE(u.role, 'user') "
+                "FROM public.dash_tokens t LEFT JOIN public.dash_users u ON u.id = t.user_id "
+                "WHERE t.token = :t"
             ), {"t": token}).fetchone()
             if row and row[2] > time.time():
-                info = {"user_id": row[0], "username": row[1], "expiry": row[2], "is_super": row[1] == SUPER_ADMIN, "aad_groups": _extract_aad_groups(token)}
+                _is_super = row[1] == SUPER_ADMIN
+                _is_admin = _is_super or (row[3] in ("admin", "super"))
+                info = {"user_id": row[0], "username": row[1], "expiry": row[2], "is_super": _is_super, "is_admin": _is_admin, "aad_groups": _extract_aad_groups(token)}
                 with _token_cache_lock:
                     # Enforce size limit BEFORE inserting
                     now = time.time()
@@ -712,6 +721,24 @@ def validate_token(token: str) -> Optional[dict]:
     return None
 
 
+def _get_user(request: Request) -> dict:
+    """FastAPI dependency: resolve the request user (real dict w/ is_super/is_admin),
+    falling back to an anonymous record. Imported by evals_api / reporter_api / skills_api —
+    without this they silently fall to an anonymous noop and 403 every gated call."""
+    user = getattr(getattr(request, "state", None), "user", None)
+    if not user:
+        user = get_current_user(request)
+    if not user:
+        return {"id": 0, "user_id": 0, "username": "anonymous", "is_super": False, "is_admin": False}
+    # normalize id/user_id (get_current_user emits user_id; some consumers read id)
+    if "id" not in user and "user_id" in user:
+        try:
+            user = {**user, "id": user["user_id"]}
+        except Exception:
+            pass
+    return user
+
+
 def _validate_api_key(key: str) -> Optional[dict]:
     """Validate a dash-key-* API key. Carries the key's store-scope binding
     (site_code/store_id/scope_mode) so the API gateway can enforce the
@@ -726,7 +753,7 @@ def _validate_api_key(key: str) -> Optional[dict]:
                 return {
                     "user_id": row[0], "username": row[1],
                     "expiry": float('inf'),
-                    "is_super": row[1] == SUPER_ADMIN, "aad_groups": [],
+                    "is_super": row[1] == SUPER_ADMIN, "is_admin": row[1] == SUPER_ADMIN, "aad_groups": [],
                     "site_code": row[2], "store_id": row[3],
                     "scope_mode": row[4] or "global",
                     "store_ids": row[5] or "",
@@ -912,10 +939,20 @@ def login(req: LoginRequest):
     try:
         with _engine.connect() as conn:
             row = conn.execute(text(
-                "SELECT id, username, password_hash FROM public.dash_users WHERE username = :u"
+                "SELECT id, username, password_hash, COALESCE(role, 'user') FROM public.dash_users WHERE username = :u"
             ), {"u": req.username}).fetchone()
 
             if not row or not _verify_password(req.password, row[2]):
+                # Security telemetry — failed login (Usage › Security panel).
+                try:
+                    conn.execute(text(
+                        "INSERT INTO public.dash_security_events "
+                        "(kind, severity, service_account, detail) "
+                        "VALUES ('auth_fail', 'WARN', :u, 'invalid username or password')"
+                    ), {"u": req.username})
+                    conn.commit()
+                except Exception:
+                    pass
                 raise HTTPException(401, "Invalid username or password")
 
             # Generate token
@@ -928,9 +965,10 @@ def login(req: LoginRequest):
             conn.commit()
 
             is_super = row[1] == SUPER_ADMIN
-            _token_cache[token] = {"user_id": row[0], "username": row[1], "expiry": expiry, "is_super": is_super}
+            is_admin = is_super or (row[3] in ("admin", "super"))
+            _token_cache[token] = {"user_id": row[0], "username": row[1], "expiry": expiry, "is_super": is_super, "is_admin": is_admin}
 
-            return {"status": "ok", "token": token, "username": row[1], "user_id": row[0], "is_super": is_super}
+            return {"status": "ok", "token": token, "username": row[1], "user_id": row[0], "is_super": is_super, "is_admin": is_admin}
     except HTTPException:
         raise
     except Exception as e:
@@ -949,6 +987,7 @@ def check(request: Request):
         "username": user["username"],
         "user_id": user["user_id"],
         "is_super": user.get("is_super", False),
+        "is_admin": user.get("is_admin", user.get("is_super", False)),
         "active_scope_id": active_scope_id,
     }
 
@@ -1021,15 +1060,57 @@ def _require_super(request: Request):
     return user
 
 
+def _require_admin(request: Request):
+    """Raise 403 if not admin (admin tier OR super admin)."""
+    user = get_current_user(request)
+    if not user or not user.get("is_admin"):
+        raise HTTPException(403, "Admin access required")
+    return user
+
+
+def _guard_admin_target(request: Request, target_username: str):
+    """For destructive user-management ops: a plain admin (not super) may NOT
+    act on the super admin or on any admin-tier account. Super admin can do anything."""
+    actor = get_current_user(request)
+    if actor and actor.get("is_super"):
+        return  # super can touch anyone
+    if target_username == SUPER_ADMIN:
+        raise HTTPException(403, "Only the super admin can manage the super admin account")
+    try:
+        with _engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT COALESCE(role, 'user') FROM public.dash_users WHERE username = :u"
+            ), {"u": target_username}).fetchone()
+        if row and (row[0] in ("admin", "super")):
+            raise HTTPException(403, "Only the super admin can manage admin-tier accounts")
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("auth: admin-target guard failed for %s", target_username)
+
+
+def _clear_user_token_cache(username: str):
+    """Drop cached tokens for a username so a role change takes effect immediately."""
+    try:
+        with _token_cache_lock:
+            stale = [t for t, info in _token_cache.items() if info.get("username") == username]
+            for t in stale:
+                del _token_cache[t]
+    except Exception:
+        logger.exception("auth: clear token cache failed for %s", username)
+
+
 @router.get("/users")
 def list_users(request: Request):
-    """List all users with full profiles. Super admin only."""
-    _require_super(request)
+    """List all users with full profiles. Admin tier (admin or super)."""
+    _require_admin(request)
     try:
         with _engine.connect() as conn:
             rows = conn.execute(text(
                 "SELECT id, username, email, first_name, last_name, department, job_title, "
-                "auth_provider, is_active, last_login, created_at FROM public.dash_users ORDER BY id"
+                "auth_provider, is_active, last_login, created_at, COALESCE(role, 'user'), "
+                "external_id, site_code "
+                "FROM public.dash_users ORDER BY id"
             )).fetchall()
             users = []
             for row in rows:
@@ -1042,6 +1123,8 @@ def list_users(request: Request):
                     "last_login": str(row[9]) if row[9] else None,
                     "created_at": str(row[10]) if row[10] else None,
                     "is_super": row[1] == SUPER_ADMIN,
+                    "role": "super" if row[1] == SUPER_ADMIN else (row[11] or "user"),
+                    "external_id": row[12], "site_code": row[13],
                 }
                 pc = conn.execute(text("SELECT COUNT(*) FROM public.dash_projects WHERE user_id = :uid"), {"uid": row[0]}).scalar() or 0
                 u["project_count"] = pc
@@ -1051,10 +1134,33 @@ def list_users(request: Request):
         raise HTTPException(500, str(e))
 
 
+@router.post("/users/{username}/role")
+def set_user_role(request: Request, username: str, role: str):
+    """Grant/revoke the 'admin' tier for a user. Super admin only.
+    role ∈ {user, admin}. The super admin is a fixed username and cannot be changed here."""
+    _require_super(request)
+    role = (role or "").strip().lower()
+    if role not in ("user", "admin"):
+        raise HTTPException(400, "role must be 'user' or 'admin'")
+    if username == SUPER_ADMIN:
+        raise HTTPException(400, "Cannot change the super admin's role")
+    with _engine.connect() as conn:
+        exists = conn.execute(text("SELECT 1 FROM public.dash_users WHERE username = :u"), {"u": username}).fetchone()
+        if not exists:
+            raise HTTPException(404, f"User '{username}' not found")
+        conn.execute(text("UPDATE public.dash_users SET role = :r WHERE username = :u"), {"r": role, "u": username})
+        conn.commit()
+    _clear_user_token_cache(username)
+    admin_user = getattr(getattr(request, 'state', None), 'user', None)
+    log_action(admin_user, "set_user_role", "user", username, f"role={role}")
+    return {"status": "ok", "username": username, "role": role}
+
+
 @router.post("/users/create")
 def create_user(request: Request, username: str, password: str, email: str = "", role: str = "user"):
-    """Create a new user. Super admin only."""
-    _require_super(request)
+    """Create a new user. Admin tier (admin or super). New users are always role='user';
+    only the super admin can elevate via Roles & Access."""
+    _require_admin(request)
     if not username or len(username) < 2:
         raise HTTPException(400, "Username must be at least 2 characters")
     if not password or len(password) < 4:
@@ -1136,10 +1242,11 @@ def update_user_profile(username: str, request: Request,
 
 @router.post("/users/{username}/toggle-active")
 def toggle_user_active(username: str, request: Request):
-    """Enable/disable a user. Super admin only."""
-    _require_super(request)
+    """Enable/disable a user. Admin tier; plain admins cannot touch admin-tier accounts."""
+    _require_admin(request)
     if username == SUPER_ADMIN:
         raise HTTPException(403, "Cannot disable super admin")
+    _guard_admin_target(request, username)
 
     with _engine.connect() as conn:
         row = conn.execute(text("SELECT is_active FROM public.dash_users WHERE username = :u"), {"u": username}).fetchone()
@@ -1263,10 +1370,11 @@ def oidc_callback(code: str, request: Request):
 
 @router.delete("/users/{username}")
 def delete_user(username: str, request: Request):
-    """Delete a user and their schema. Super admin only."""
-    _require_super(request)
+    """Delete a user and their schema. Admin tier; plain admins cannot delete admin-tier accounts."""
+    _require_admin(request)
     if username == SUPER_ADMIN:
         raise HTTPException(403, "Cannot delete super admin")
+    _guard_admin_target(request, username)
 
     try:
         with _engine.connect() as conn:
@@ -1307,8 +1415,9 @@ def change_password(request: Request, old_password: str, new_password: str):
 
 @router.post("/users/{username}/reset-password")
 def reset_password(username: str, new_password: str, request: Request):
-    """Reset a user's password. Super admin only."""
-    _require_super(request)
+    """Reset a user's password. Admin tier; plain admins cannot reset admin-tier accounts."""
+    _require_admin(request)
+    _guard_admin_target(request, username)
     if len(new_password) < 4:
         raise HTTPException(400, "Password must be at least 4 characters")
 
@@ -1456,7 +1565,7 @@ def mint_service_key(req: ServiceKeyMintRequest, request: Request):
                 from dash.single_agent import locked_slug as _ls
                 _slug = _ls()
             except Exception:
-                _slug = "proj_demo_citypharma"
+                _slug = "citypharma"
             proj = conn.execute(text(
                 "SELECT id, user_id FROM public.dash_projects WHERE slug = :s"
             ), {"s": _slug}).fetchone()
@@ -1578,25 +1687,298 @@ def list_service_keys(request: Request):
     return {"keys": keys}
 
 
+# ---------------------------------------------------------------------------
+# Bulk per-outlet provisioning (Outlets page) — mint 1 store-locked key per
+# outlet, list keyed/missing, reveal plaintext for copy/test. Super admin only.
+# ---------------------------------------------------------------------------
+
+def _provision_account_name(outlet: str) -> str:
+    """Stable service-account name for a single outlet's auto-provisioned key."""
+    return f"outlet-{(outlet or '').strip()}"
+
+
+def _mint_store_key_conn(conn, admin_id, name: str, ids: list[str], scope_mode: str = "store") -> tuple[int, str]:
+    """Mint/refresh a service-account key inside an OPEN connection (no commit).
+    Mirrors mint_service_key's row + project-share logic. Returns (sa_id, key)."""
+    primary = ids[0] if ids else ""
+    ids_csv = ",".join(ids)
+    key = f"dash-key-{secrets.token_urlsafe(24)}"
+    username = f"svc:{name}"
+    existing = conn.execute(text(
+        "SELECT id FROM public.dash_users WHERE username = :u"
+    ), {"u": username}).fetchone()
+    if existing:
+        conn.execute(text(
+            "UPDATE public.dash_users SET api_key = :k, store_id = :sid, site_code = :sid, "
+            "store_ids = :sids, scope_mode = :sm WHERE username = :u"
+        ), {"k": key, "sid": primary, "sids": ids_csv, "sm": scope_mode, "u": username})
+        sa_id = existing[0]
+    else:
+        conn.execute(text(
+            "INSERT INTO public.dash_users "
+            "(username, password_hash, api_key, store_id, site_code, store_ids, scope_mode) "
+            "VALUES (:u, :p, :k, :sid, :sid, :sids, :sm)"
+        ), {"u": username, "p": _hash_password(secrets.token_urlsafe(32)),
+            "k": key, "sid": primary, "sids": ids_csv, "sm": scope_mode})
+        sa_id = conn.execute(text(
+            "SELECT id FROM public.dash_users WHERE username = :u"
+        ), {"u": username}).fetchone()[0]
+    # viewer-share the locked project so /api/v1 access check passes
+    try:
+        from dash.single_agent import locked_slug as _ls
+        _slug = _ls()
+    except Exception:
+        _slug = "citypharma"
+    proj = conn.execute(text(
+        "SELECT id, user_id FROM public.dash_projects WHERE slug = :s"
+    ), {"s": _slug}).fetchone()
+    if proj and proj[1] != sa_id:
+        already = conn.execute(text(
+            "SELECT 1 FROM public.dash_project_shares "
+            "WHERE project_id = :pid AND shared_with_user_id = :uid"
+        ), {"pid": proj[0], "uid": sa_id}).fetchone()
+        if not already:
+            conn.execute(text(
+                "INSERT INTO public.dash_project_shares "
+                "(project_id, shared_with_user_id, shared_by, role) "
+                "VALUES (:pid, :uid, :by, 'viewer')"
+            ), {"pid": proj[0], "uid": sa_id, "by": admin_id})
+    return sa_id, key
+
+
+def _live_outlets(conn) -> list[str]:
+    """Distinct site_codes from the latest stock upload (shared resolver)."""
+    schema = "citypharma"
+    try:
+        from dash.tools.table_sync import latest_table_sa, STOCK_COLS
+        stock_tbl = latest_table_sa(conn, schema, STOCK_COLS) or "balance_stock_07052026"
+        rows = conn.execute(text(
+            f'SELECT DISTINCT site_code FROM "{schema}"."{stock_tbl}" '
+            "WHERE site_code IS NOT NULL AND site_code <> '' ORDER BY site_code ASC"
+        )).fetchall()
+        return [r[0] for r in rows if r[0]]
+    except Exception:
+        logger.exception("auth: _live_outlets failed")
+        return []
+
+
+def _auto_provision_missing() -> int:
+    """Mint a store-locked key for every live outlet that has no active svc:outlet-<code> key.
+
+    Gated by env APIGW_AUTO_PROVISION (default '1' = on).
+    Fully fail-soft: any exception is logged and swallowed; never raises.
+    Returns the count of keys minted this call (0 if gate is off or nothing to do).
+    """
+    if os.getenv("APIGW_AUTO_PROVISION", "1") != "1":
+        return 0
+    try:
+        with _engine.connect() as conn:
+            outlets = _live_outlets(conn)
+            if not outlets:
+                return 0
+            # Existing active outlet accounts keyed by outlet code
+            acct_rows = conn.execute(text(
+                "SELECT username FROM public.dash_users "
+                "WHERE username LIKE 'svc:outlet-%' AND api_key IS NOT NULL"
+            )).fetchall()
+            existing_active: set[str] = set()
+            for r in acct_rows:
+                uname = r[0] or ""
+                if uname.startswith("svc:outlet-"):
+                    existing_active.add(uname[len("svc:outlet-"):])
+            missing = [o for o in outlets if o not in existing_active]
+            if not missing:
+                return 0
+            # Resolve the locked project owner's user_id so shared_by (TEXT NOT NULL) is valid
+            try:
+                from dash.single_agent import locked_slug as _ls
+                _slug = _ls()
+            except Exception:
+                _slug = "citypharma"
+            owner_row = conn.execute(text(
+                "SELECT user_id FROM public.dash_projects WHERE slug = :s LIMIT 1"
+            ), {"s": _slug}).fetchone()
+            admin_id = str(owner_row[0]) if owner_row and owner_row[0] is not None else "system"
+            minted = 0
+            for o in missing:
+                try:
+                    name = _provision_account_name(o)
+                    _mint_store_key_conn(conn, admin_id, name, [o], "store")
+                    minted += 1
+                except Exception:
+                    logger.exception("auth: _auto_provision_missing failed for outlet %s", o)
+            if minted:
+                conn.commit()
+            return minted
+    except Exception:
+        logger.exception("auth: _auto_provision_missing outer error")
+        return 0
+
+
+@router.get("/apigw-provision")
+def apigw_provision_list(request: Request):
+    """Per-outlet provisioning table: every live outlet joined with its
+    auto-provisioned single-outlet key (name 'outlet-<code>') + request count.
+    Super admin only. NEVER returns the plaintext key (use /apigw-key-reveal).
+    Auto-provisions any missing outlet keys before building the response
+    (when APIGW_AUTO_PROVISION=1, the default)."""
+    _require_super_session(request)
+    # Lazy auto-provision: mint keys for any new outlets before listing
+    if os.getenv("APIGW_AUTO_PROVISION", "1") == "1":
+        try:
+            _auto_provision_missing()
+        except Exception:
+            logger.exception("auth: lazy auto-provision failed (ignored)")
+    rows_out: list[dict] = []
+    summary = {"total": 0, "keyed": 0, "missing": 0}
+    try:
+        with _engine.connect() as conn:
+            outlets = _live_outlets(conn)
+            # all auto-provisioned outlet accounts in one query
+            accts = conn.execute(text(
+                "SELECT username, store_id, store_ids, scope_mode, (api_key IS NOT NULL) AS active "
+                "FROM public.dash_users WHERE username LIKE 'svc:outlet-%'"
+            )).fetchall()
+            by_outlet: dict[str, dict] = {}
+            for a in accts:
+                uname = a[0] or ""
+                name = uname[4:] if uname.startswith("svc:") else uname  # outlet-<code>
+                code = name[len("outlet-"):] if name.startswith("outlet-") else ""
+                if code:
+                    by_outlet[code] = {"name": name, "active": bool(a[4]), "scope_mode": a[3]}
+            # request counts per service account (best-effort)
+            reqs: dict[str, int] = {}
+            try:
+                rc = conn.execute(text(
+                    "SELECT service_account, count(*) FROM public.dash_apigw_usage "
+                    "GROUP BY service_account"
+                )).fetchall()
+                for r in rc:
+                    if r[0]:
+                        reqs[str(r[0])] = int(r[1])
+            except Exception:
+                reqs = {}
+            for o in outlets:
+                acct = by_outlet.get(o)
+                keyed = bool(acct and acct["active"])
+                rows_out.append({
+                    "outlet": o,
+                    "name": acct["name"] if acct else _provision_account_name(o),
+                    "keyed": keyed,
+                    "scope_mode": acct["scope_mode"] if acct else "store",
+                    "reqs": reqs.get(f"svc:{acct['name']}", reqs.get(acct["name"], 0)) if acct else 0,
+                })
+            summary["total"] = len(outlets)
+            summary["keyed"] = sum(1 for r in rows_out if r["keyed"])
+            summary["missing"] = summary["total"] - summary["keyed"]
+    except Exception as e:
+        logger.exception("auth: apigw_provision_list failed")
+        raise HTTPException(500, f"provision list failed: {e}")
+    return {"rows": rows_out, "summary": summary}
+
+
+@router.post("/apigw-provision-auto")
+def apigw_provision_auto(request: Request):
+    """Trigger auto-provisioning of store-locked keys for all outlets that have
+    no active key yet. Respects the APIGW_AUTO_PROVISION gate (returns minted=0
+    when the gate is off). Super admin only. Safe to call from a scheduler/daemon."""
+    _require_super_session(request)
+    minted = _auto_provision_missing()
+    return {"minted": minted}
+
+
+class ApigwProvisionRequest(BaseModel):
+    outlets: Optional[list[str]] = None   # specific outlets; None/empty = all missing
+    all_missing: bool = False
+    rotate: bool = False                  # re-mint even if already keyed
+
+
+@router.post("/apigw-provision")
+def apigw_provision(req: ApigwProvisionRequest, request: Request):
+    """Bulk-mint one store-locked key per outlet. Returns plaintext keys for the
+    rows minted THIS call (shown once in UI; also retrievable via reveal).
+    Super admin only."""
+    admin = _require_super_session(request)
+    results: list[dict] = []
+    try:
+        with _engine.connect() as conn:
+            outlets = _live_outlets(conn)
+            existing = {r[0][4:][len("outlet-"):]: bool(r[1]) for r in conn.execute(text(
+                "SELECT username, (api_key IS NOT NULL) FROM public.dash_users "
+                "WHERE username LIKE 'svc:outlet-%'"
+            )).fetchall() if (r[0] or "").startswith("svc:outlet-")}
+            # decide target set
+            want = [x.strip() for x in (req.outlets or []) if x and x.strip()]
+            if not want:
+                want = list(outlets)  # all
+            targets = []
+            for o in want:
+                if o not in outlets:
+                    continue  # only provision real outlets
+                if req.rotate or not existing.get(o, False):
+                    targets.append(o)
+            for o in targets:
+                name = _provision_account_name(o)
+                sa_id, key = _mint_store_key_conn(conn, admin.get("user_id"), name, [o], "store")
+                results.append({"outlet": o, "name": name, "api_key": key})
+            conn.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("auth: apigw_provision failed")
+        raise HTTPException(500, f"provision failed: {e}")
+    log_action(admin, "apigw_provision", "service_account", f"{len(results)} keys",
+               f"rotate={req.rotate}")
+    return {"status": "ok", "minted": len(results), "results": results}
+
+
+@router.get("/apigw-key-reveal")
+def apigw_key_reveal(request: Request, name: str = ""):
+    """Reveal the plaintext key for an outlet service account (copy / test /
+    .env export). Super admin only. Keys are stored plaintext in dash_users, so
+    a super-admin (who can already read the DB) revealing here is consistent."""
+    admin = _require_super_session(request)
+    nm = (name or "").strip()
+    if not nm:
+        raise HTTPException(400, "name required")
+    try:
+        with _engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT api_key, store_ids, store_id, scope_mode FROM public.dash_users "
+                "WHERE username = :u"
+            ), {"u": f"svc:{nm}"}).fetchone()
+    except Exception as e:
+        logger.exception("auth: apigw_key_reveal failed")
+        raise HTTPException(500, f"reveal failed: {e}")
+    if not row or not row[0]:
+        raise HTTPException(404, "no active key for that account")
+    log_action(admin, "apigw_key_reveal", "service_account", nm, "")
+    ids_csv = (row[1] or "").strip()
+    store_ids = [x.strip() for x in ids_csv.split(",") if x.strip()] or ([row[2]] if row[2] else [])
+    return {"name": nm, "api_key": row[0], "store_ids": store_ids, "scope_mode": row[3]}
+
+
 @router.get("/apigw-outlets")
 def apigw_outlets(request: Request):
     """Distinct outlet site_codes (for the mint-key outlet picker). Super admin only."""
     _require_super_session(request)
     outlets: list[str] = []
-    schema = "proj_demo_citypharma"
+    schema = "citypharma"
+    source_table: str | None = None
+    updated_at: str | None = None
+    row_count: int | None = None
     try:
         with _engine.connect() as conn:
-            # Auto-detect the stock table — data was re-uploaded as
-            # balance_stock_07052026; the old citypharma_balance_stock is gone.
-            # Pick any table in the schema that has site_code + stock_qty.
-            stock_tbl = conn.execute(text(
-                "SELECT table_name FROM information_schema.columns "
-                "WHERE table_schema = :s AND column_name IN ('site_code','stock_qty') "
-                "GROUP BY table_name HAVING count(DISTINCT column_name) = 2 "
-                "ORDER BY table_name LIMIT 1"
-            ), {"s": schema}).scalar()
+            # Resolve the stock table to the CURRENT upload (latest
+            # dash_table_metadata.updated_at) via the shared resolver — same
+            # table the pharma agent tools query, so the outlet list never drifts
+            # from what the agent actually sees. Data lands as dated tables
+            # (balance_stock_DDMMYYYY); a re-upload is picked up automatically.
+            from dash.tools.table_sync import latest_table_sa, STOCK_COLS
+            stock_tbl = latest_table_sa(conn, schema, STOCK_COLS)
             if not stock_tbl:
                 stock_tbl = "balance_stock_07052026"
+            source_table = stock_tbl
             # stock_tbl comes from the DB catalog (not user input); still
             # double-quote it to be safe.
             rows = conn.execute(text(
@@ -1604,10 +1986,34 @@ def apigw_outlets(request: Request):
                 "WHERE site_code IS NOT NULL AND site_code <> '' "
                 "ORDER BY site_code ASC"
             )).fetchall()
-        outlets = [r[0] for r in rows if r[0]]
+            outlets = [r[0] for r in rows if r[0]]
+            # Freshness signal — total stock rows + when the table was last
+            # uploaded (NOW() written on every ingest into dash_table_metadata).
+            # Lets the Outlets view prove the list reflects the latest upload.
+            try:
+                row_count = conn.execute(text(
+                    f'SELECT count(*) FROM "{schema}"."{stock_tbl}"'
+                )).scalar()
+            except Exception:
+                row_count = None
+            try:
+                ua = conn.execute(text(
+                    "SELECT updated_at FROM public.dash_table_metadata "
+                    "WHERE project_slug = :s AND table_name = :t "
+                    "ORDER BY updated_at DESC NULLS LAST LIMIT 1"
+                ), {"s": schema, "t": stock_tbl}).scalar()
+                updated_at = ua.isoformat() if ua else None
+            except Exception:
+                updated_at = None
     except Exception:
         logger.exception("auth: apigw_outlets query failed")
-    return {"outlets": outlets, "count": len(outlets)}
+    return {
+        "outlets": outlets,
+        "count": len(outlets),
+        "source_table": source_table,
+        "updated_at": updated_at,
+        "row_count": row_count,
+    }
 
 
 # ---------------------------------------------------------------------------

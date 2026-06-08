@@ -457,6 +457,67 @@ async def update_embed_endpoint(slug: str, embed_id: str, request: Request):
     return {"status": "ok", "embed": emb}
 
 
+# Embed logo storage — persisted volume (knowledge_data), served publicly by
+# app/embed_public.py at GET /api/embed/logo/{file} so the widget can load it
+# from any external origin.
+_EMBED_LOGO_DIR = "/app/knowledge/embed_logos"
+_LOGO_EXT = {
+    "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp",
+    "image/svg+xml": "svg", "image/gif": "gif",
+}
+_LOGO_MAX_BYTES = 1024 * 1024  # 1MB
+
+
+@router.post("/{slug}/embeds/{embed_id}/logo")
+async def upload_embed_logo(slug: str, embed_id: str, request: Request):
+    """Upload a logo image for an embed. Saves to the persisted volume, sets the
+    embed's logo_url to the public served URL, returns it. Super-admin only."""
+    import os
+    import re
+    from pathlib import Path
+    from fastapi import UploadFile
+
+    user = _get_user(request)
+    _check_access(user, slug)
+    _load_embed_or_404(embed_id, slug)
+
+    form = await request.form()
+    file = form.get("file")
+    if not isinstance(file, UploadFile):
+        raise HTTPException(400, "no file uploaded (multipart field 'file')")
+    ext = _LOGO_EXT.get((file.content_type or "").lower())
+    if not ext:
+        raise HTTPException(400, "unsupported image type — use png, jpg, webp, svg, or gif")
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "empty file")
+    if len(data) > _LOGO_MAX_BYTES:
+        raise HTTPException(400, "logo too large (max 1MB)")
+
+    safe_id = re.sub(r"[^A-Za-z0-9_-]", "", embed_id)[:64] or "embed"
+    fname = f"{safe_id}.{ext}"
+    path = Path(_EMBED_LOGO_DIR) / fname
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # remove any stale variant with a different extension for this embed
+    try:
+        for old in path.parent.glob(f"{safe_id}.*"):
+            if old.name != fname:
+                old.unlink()
+    except Exception:
+        pass
+    path.write_bytes(data)
+
+    base = (os.getenv("PUBLIC_URL") or os.getenv("WEBUI_URL") or str(request.base_url)).rstrip("/")
+    # cache-bust so a re-upload of the same filename refreshes in browsers
+    logo_url = f"{base}/api/embed/logo/{fname}?v={len(data)}"
+    try:
+        embed_mgr.update_embed(embed_id, logo_url=logo_url)
+    except Exception:
+        logger.exception("upload_embed_logo: persist logo_url failed for %s/%s", slug, embed_id)
+        raise HTTPException(500, "saved file but failed to update embed")
+    return {"status": "ok", "logo_url": logo_url}
+
+
 @router.delete("/{slug}/embeds/{embed_id}")
 def delete_embed_endpoint(slug: str, embed_id: str, request: Request):
     user = _get_user(request)

@@ -22,13 +22,19 @@ DEFAULT_CONFIG: dict = {
         "sources": True,
         "exec_view": True,    # 2026-05-26: default ON — consistent AnswerCard render across cached+full agent paths
     },
+    # 2026-06-07: HARDCODED for the fixed CityPharma chemist agent — CORE ONLY.
+    # This is a single locked pharma agent, not a multi-vertical tenant. The
+    # Config toggle UI + APPLY VERTICAL + industry templates were removed; these
+    # values are the product's fixed capability set. Pharma tools
+    # (stock_check/substitutes/indications) are gated by PHARMA_GRAPH_DISABLED,
+    # NOT feature_config, so they're always on regardless of this dict.
     "tools": {
         "sql": True,
         "charts": True,
         "dashboards": True,
-        "forecast": True,
-        "anomaly": True,
-        "auto_campaign_daemon": True,
+        "forecast": False,               # off — chemist counter agent, no demand-forecasting
+        "anomaly": False,                # off — no outlier/diagnostics lane
+        "auto_campaign_daemon": False,   # off — no marketing campaigns
         "office_skills": False,
         "table_usage_boost": False,
     },
@@ -36,14 +42,8 @@ DEFAULT_CONFIG: dict = {
         "analyst": True,
         "engineer": True,
         "researcher": True,
-        # Vertical agents — DEFAULT ON. Agents always loaded in team. Their tools
-        # self-check data presence and fail-soft when not applicable. Leader routes
-        # by keyword. No table-name auto-detect (CLAUDE.md anti-pattern).
-        # Disable per-project via Settings → CONFIG → toggle capability card OFF.
-        "customer_strategist": True,
-        # 2026-05-27: VentureDesk verticals flipped default-OFF after audit found
-        # ~600 tokens/chat overhead on generic projects with no venture/portfolio
-        # data. Enable per-project via Settings → CONFIG when actually needed.
+        # Venture/portfolio agents — permanently OFF for the pharma chemist.
+        "customer_strategist": False,
         "deal_analyst": False,           # VentureDesk: DCF/IRR/MOIC
         "market_sentinel": False,        # external intel — needs web access
         "ops_optimizer": False,          # KPI tracking — needs portfolio data

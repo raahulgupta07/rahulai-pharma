@@ -1539,9 +1539,12 @@ def _clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if renamed:
         df = df.rename(columns=renamed)
 
-    # 4b. Currency/comma/percentage cleanup — coerce text columns to numeric
+    # 4b. Currency/comma/percentage cleanup — coerce text columns to numeric.
+    # P1: NEVER coerce ID/code columns (would re-float a large code → precision loss).
     _CURRENCY_RE = re.compile(r'^[\s$€£¥₹]*([-+]?[\d,]+\.?\d*)\s*%?\s*$')
     for col in df.columns:
+        if _is_id_colname(col):
+            continue
         if df[col].dtype != object:
             continue
         non_null = df[col].dropna()
@@ -1556,6 +1559,20 @@ def _clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = pd.to_numeric(cleaned, errors='coerce')
             if is_pct:
                 df[col] = df[col] / 100.0
+
+    # 4c. P1 — repair ID/code columns that slipped in as float (e.g. NaN forced
+    # float64): cast whole-valued floats → nullable Int64 so the DB column is
+    # bigint, not double precision (no silent rounding of large codes downstream).
+    for col in df.columns:
+        if not _is_id_colname(col):
+            continue
+        try:
+            if pd.api.types.is_float_dtype(df[col]):
+                nn = df[col].dropna()
+                if len(nn) and (nn == nn.round()).all():
+                    df[col] = df[col].astype("Int64")
+        except Exception:
+            pass
 
     # 5. Clean ALL column names (after smart rename)
     df.columns = [re.sub(r"[^a-z0-9_]", "_", str(c).lower().strip()).strip("_") or f"col_{i}" for i, c in enumerate(df.columns)]
@@ -1595,16 +1612,37 @@ def _detect_delimiter(file_path: str) -> str:
         return ','
 
 
+# P1 — ID/code columns must NEVER be read as float (large codes lose precision,
+# e.g. "1E+12" or a 13-digit barcode → silently rounded, join key destroyed).
+# Read them as string at parse time + exempt them from numeric coercion.
+_ID_COL_RE = re.compile(r'(^|_)(id|code|barcode|sku|ean|upc|gtin|ref|refno|acct|account)($|_|no$)', re.I)
+
+def _is_id_colname(name) -> bool:
+    return bool(_ID_COL_RE.search(str(name)))
+
+def _id_dtypes(file_path: str, ext: str, header_row, sep: str | None = None) -> dict:
+    """Header-only pre-scan → {col: str} for ID/code columns so pandas keeps them
+    as text (exact) instead of float (lossy). Fail-soft → {} (normal read)."""
+    try:
+        if ext == ".csv":
+            hdr = pd.read_csv(file_path, header=header_row, sep=sep or ",", nrows=0).columns
+        else:
+            hdr = pd.read_excel(file_path, header=header_row, nrows=0).columns
+        return {c: "string" for c in hdr if _is_id_colname(c)}
+    except Exception:
+        return {}
+
+
 def _read_file(file_path: str, ext: str) -> pd.DataFrame:
     """Read a data file into a DataFrame with smart header detection and cleanup."""
     if ext == ".csv":
         header_row = _find_header_row(file_path, ext)
         sep = _detect_delimiter(file_path)
-        df = pd.read_csv(file_path, header=header_row, sep=sep)
+        df = pd.read_csv(file_path, header=header_row, sep=sep, dtype=_id_dtypes(file_path, ext, header_row, sep))
         return _clean_dataframe(df)
     elif ext in (".xlsx", ".xls"):
         header_row = _find_header_row(file_path, ext)
-        df = pd.read_excel(file_path, header=header_row)
+        df = pd.read_excel(file_path, header=header_row, dtype=_id_dtypes(file_path, ext, header_row))
         return _clean_dataframe(df)
     elif ext == ".json":
         try:
@@ -1728,6 +1766,47 @@ def _profile_table(df: pd.DataFrame, project_slug: str, table_name: str) -> dict
         dup_rows = int(df.duplicated().sum())
         if dup_rows > 0:
             alerts.append(f"{dup_rows} duplicate rows detected")
+
+        # Scientific-notation ID corruption detection (Excel large-ID collapse)
+        # Runs over every text/object column whose name matches an ID/code pattern.
+        # A column with >1000 rows but ≤2 distinct values, or where a high fraction
+        # of non-null values match sci-notation form, is flagged as corrupt.
+        import re as _re_sci
+        _SCI_RE = _re_sci.compile(r'^\d(\.\d+)?[eE]\+?\d+$')
+        _ID_NAME_RE = _re_sci.compile(r'code|_id$|^id$|article|sku|barcode', _re_sci.IGNORECASE)
+        for col in df.columns:
+            if not _ID_NAME_RE.search(str(col)):
+                continue
+            series = df[col]
+            # Only inspect text/object columns (numeric already collapsed by pandas)
+            if pd.api.types.is_numeric_dtype(series):
+                continue
+            clean = series.dropna().astype(str)
+            n_total = len(clean)
+            if n_total == 0:
+                continue
+            n_distinct = int(clean.nunique())
+            # Heuristic 1: >1000 rows but ≤2 distinct values → suspiciously collapsed
+            collapsed = n_total > 1000 and n_distinct <= 2
+            # Heuristic 2: >50% of values match scientific-notation pattern
+            sci_hits = int(clean.apply(lambda v: bool(_SCI_RE.match(v.strip()))).sum())
+            sci_frac = sci_hits / n_total if n_total > 0 else 0
+            sci_dominant = sci_frac > 0.5
+            if collapsed or sci_dominant:
+                sample_val = clean.iloc[0] if len(clean) > 0 else "?"
+                logger.warning(
+                    "CORRUPT ID COLUMN detected in '%s': column '%s' has %d distinct value(s) "
+                    "over %d rows (sci-notation fraction=%.0f%%). Excel has collapsed large IDs "
+                    "to scientific notation (e.g. '%s'). Catalog↔stock joins WILL break. "
+                    "Re-upload with article_code formatted as TEXT, or export CSV directly from source.",
+                    table_name, col, n_distinct, n_total, sci_frac * 100, sample_val,
+                )
+                alerts.append(
+                    f"[DATA CORRUPTION] Column '{col}' looks corrupted by Excel scientific-notation "
+                    f"(e.g. '{sample_val}', only {n_distinct} distinct value(s) over {n_total:,} rows). "
+                    f"Re-upload this file with '{col}' formatted as TEXT (not General/Number), "
+                    f"or export CSV directly from source without opening in Excel."
+                )
 
         # Compute REAL health %
         health = 100
@@ -1954,6 +2033,52 @@ def _compute_table_quality(project_slug: str, table_name: str, engine=None) -> d
             "reasons": reasons, "rows": rows, "cols": n_cols}
 
 
+def _live_tables(project_slug: str) -> set[str]:
+    """Base table names that actually exist in the project's DB schema.
+    Used to skip orphaned knowledge artifacts (dimensions/qa/business JSON)
+    left behind by a raw-SQL wipe / external drop."""
+    try:
+        schema = re.sub(r"[^a-z0-9_]", "_", project_slug.lower())[:63]
+        return set(inspect(create_engine(db_url)).get_table_names(schema=schema))
+    except Exception:
+        return set()
+
+
+def _purge_orphan_knowledge(project_slug: str, log_fn=None) -> int:
+    """Delete knowledge files whose table no longer exists in the DB.
+    Covers tables/, dimensions/, business/, queries/, training/ — so a dropped
+    table can't keep seeding ghost relationships, Q&A, or eval cases.
+    Returns count removed. Fail-soft."""
+    _log = log_fn or (lambda m: None)
+    live = _live_tables(project_slug)
+    if not live:
+        return 0  # can't confirm liveness → don't risk deleting good files
+    base = KNOWLEDGE_DIR / project_slug
+    removed = 0
+    # (subdir, suffix-to-strip-from-stem)
+    targets = [
+        ("tables", ""), ("dimensions", ""), ("business", "_rules"),
+        ("queries", "_queries"), ("training", "_qa"),
+    ]
+    for sub, suffix in targets:
+        d = base / sub
+        if not d.exists():
+            continue
+        for f in d.glob("*.*"):
+            stem = f.stem
+            if suffix and stem.endswith(suffix):
+                stem = stem[: -len(suffix)]
+            if stem and stem not in live:
+                try:
+                    f.unlink(missing_ok=True)
+                    removed += 1
+                except Exception:
+                    pass
+    if removed:
+        _log(f"🧹 purged {removed} orphan knowledge file(s) for dropped tables")
+    return removed
+
+
 def _build_dimension_catalog(project_slug: str, table_name: str, profiles: list[dict], engine=None) -> dict:
     """Build catalog of exact values for all dimension columns via SQL.
     Returns {col_name: [{value, count, pct}, ...]}."""
@@ -1963,14 +2088,43 @@ def _build_dimension_catalog(project_slug: str, table_name: str, profiles: list[
         engine = create_engine(db_url)
 
     catalog = {}
+    date_text_cols: list[str] = []   # text cols holding DD/MM/YYYY dates (#3)
     total_rows = profiles[0]["total_rows"] if profiles else 0
+
+    def _is_lineage(c: str) -> bool:
+        cl = (c or "").lower()
+        return cl.startswith("_") or cl in (
+            "source_file", "source_sheet", "batch_id", "content_hash",
+            "row_key", "ingested_at", "period",
+        )
+
+    def _clean_val(v) -> str:
+        # Strip null bytes + control chars (data had '\0' in mmlabel) (#5).
+        s = str(v)
+        return "".join(ch for ch in s if ch == "\n" or ch == "\t" or ord(ch) >= 32).strip()
+
+    _DDMMYYYY = re.compile(r"^\s*\d{1,2}/\d{1,2}/\d{4}\b")
 
     for p in profiles:
         if p.get("classification") != "dimension":
             continue
         col = p["name"]
+        # #5 — skip ingest/lineage cols (single-valued bookkeeping, not real dims)
+        if _is_lineage(col):
+            continue
         try:
             with engine.connect() as conn:
+                # #2 — a "dimension" with long average text is actually FREE TEXT
+                # (e.g. the `other` col = 76-char Burmese instructions). Catalog-ing
+                # it dumps 100+ sentences into the brain. Skip when avg len > 40.
+                try:
+                    avglen = conn.execute(text(
+                        f'SELECT AVG(LENGTH("{col}")) FROM {qualified} WHERE "{col}" IS NOT NULL'
+                    )).scalar()
+                    if avglen is not None and float(avglen) > 40:
+                        continue
+                except Exception:
+                    pass
                 rows = conn.execute(text(f"""
                     SELECT "{col}", COUNT(*) as freq
                     FROM {qualified}
@@ -1979,7 +2133,38 @@ def _build_dimension_catalog(project_slug: str, table_name: str, profiles: list[
                     ORDER BY freq DESC
                     LIMIT 100
                 """)).fetchall()
-                catalog[col] = [{"value": str(r[0]), "count": int(r[1]), "pct": round(int(r[1]) / max(total_rows, 1) * 100, 1)} for r in rows]
+                cleaned = [{"value": _clean_val(r[0]), "count": int(r[1]),
+                            "pct": round(int(r[1]) / max(total_rows, 1) * 100, 1)} for r in rows]
+                cleaned = [c for c in cleaned if c["value"]]  # drop now-empty (null-byte-only)
+                # #4 — a single-value column (e.g. stock created_at = one snapshot
+                # timestamp on every row) is useless as a dimension. Skip it.
+                if len(cleaned) <= 1:
+                    continue
+                catalog[col] = cleaned
+                # #3 — detect text cols storing DD/MM/YYYY dates
+                if cleaned and sum(1 for c in cleaned[:20] if _DDMMYYYY.match(c["value"])) >= max(1, min(10, len(cleaned[:20])) // 2):
+                    date_text_cols.append(col)
+        except Exception:
+            pass
+
+    # #3 — write a brain rule so the agent uses to_date(col,'DD/MM/YYYY HH24:MI')
+    # instead of `col::date` (which throws DatetimeFieldOverflow on DD/MM/YYYY).
+    if date_text_cols:
+        try:
+            from db.session import get_write_engine as _gwe
+            _we = _gwe()
+            with _we.begin() as _bc:
+                for _dc in date_text_cols:
+                    _defn = (f'Column "{_dc}" stores dates as TEXT in DD/MM/YYYY HH24:MI format. '
+                             f"To filter/group by date use to_date(\"{_dc}\", 'DD/MM/YYYY HH24:MI') "
+                             f"or to_timestamp(...); NEVER \"{_dc}\"::date (raises DatetimeFieldOverflow).")
+                    _bc.execute(text("""
+                        INSERT INTO public.dash_company_brain
+                          (project_slug, category, name, definition, metadata)
+                        VALUES (:s, 'pattern', :n, :d, '{}'::jsonb)
+                        ON CONFLICT (project_slug, name) WHERE project_slug IS NOT NULL
+                          DO UPDATE SET definition = EXCLUDED.definition
+                    """), {"s": project_slug, "n": f"date_format:{table_name}.{_dc}", "d": _defn})
         except Exception:
             pass
 
@@ -2012,11 +2197,27 @@ def _detect_hierarchies(project_slug: str, table_name: str, catalog: dict, engin
         # If row count fails, fall through to original behavior
         pass
 
-    dim_cols = list(catalog.keys())
+    # Exclude ingest/lineage columns (_source_file, _period, _batch_id,
+    # _content_hash, _row_key, _ingested_at, etc). These are single- or
+    # low-cardinality bookkeeping cols — a single-valued parent makes EVERY
+    # other column a false "child" (all rows map to the one parent value),
+    # producing junk hierarchies that pollute the agent brain.
+    def _is_lineage_col(c: str) -> bool:
+        cl = (c or "").lower()
+        return cl.startswith("_") or cl in (
+            "source_file", "source_sheet", "batch_id", "content_hash",
+            "row_key", "ingested_at", "period",
+        )
+
+    dim_cols = [c for c in catalog.keys() if not _is_lineage_col(c)]
     hierarchies = []
 
     for parent in dim_cols:
         parent_unique = len(catalog.get(parent, []))
+        # Degenerate parent (0 or 1 distinct value) → every child trivially
+        # maps to 1 parent → false hierarchy. Skip.
+        if parent_unique <= 1:
+            continue
         for child in dim_cols:
             if child == parent:
                 continue
@@ -2191,7 +2392,14 @@ def _generate_sample_queries(table_name: str, col_analyses: list[dict]) -> str:
         if (dt_col.get("unique_count") or 0) > 1:
             dt = dt_col["name"]
             num = numeric_cols[0]["name"]
-            queries.append(f"-- <query {table_name}_trend>\n-- <description>Monthly trend for {table_name}</description>\n-- <query>\nSELECT DATE_TRUNC('month', {dt}::timestamp) AS month, COUNT(*) AS count, ROUND(SUM({num}), 2) AS total_{num}\nFROM {table_name}\nGROUP BY 1\nORDER BY 1;\n-- </query>")
+            # text DD/MM/YYYY → to_date(); real datetime → ::timestamp.
+            _dsv = dt_col.get("sample_values") or []
+            if dt_col.get("type") != "datetime" and any(
+                    re.match(r"^\s*\d{1,2}/\d{1,2}/\d{4}\b", str(v)) for v in _dsv[:6]):
+                _dt_expr = f"to_date({dt}, 'DD/MM/YYYY HH24:MI')"
+            else:
+                _dt_expr = f"{dt}::timestamp"
+            queries.append(f"-- <query {table_name}_trend>\n-- <description>Monthly trend for {table_name}</description>\n-- <query>\nSELECT DATE_TRUNC('month', {_dt_expr}) AS month, COUNT(*) AS count, ROUND(SUM({num}), 2) AS total_{num}\nFROM {table_name}\nGROUP BY 1\nORDER BY 1;\n-- </query>")
 
     # Top records
     queries.append(f"-- <query {table_name}_sample>\n-- <description>Sample rows from {table_name}</description>\n-- <query>\nSELECT * FROM {table_name} LIMIT 10;\n-- </query>")
@@ -2401,11 +2609,22 @@ def _llm_generate_training(table_name: str, metadata: dict, col_analyses: list[d
     # one unique value. CityPharma `created_at` was constant → trend QA returned
     # 1 row → useless cached oracle.
     constant_cols: list[str] = []
+    date_text_cols: list[str] = []   # TEXT cols holding DD/MM/YYYY dates
+    import re as _re_dt
+    _DDMMYYYY = _re_dt.compile(r"^\s*\d{1,2}/\d{1,2}/\d{4}\b")
     if col_analyses:
         total = col_analyses[0].get("total_count", 0) if col_analyses else 0
         dist_lines = [f"ROWS: {total:,}"]
         for ca in col_analyses:
             name = ca.get("name", "?")
+            # DD/MM/YYYY text-date detection — these need to_date(), not ::date.
+            try:
+                _sv = ca.get("sample_values") or []
+                if ca.get("type") != "numeric" and _sv and \
+                        sum(1 for v in _sv[:6] if _DDMMYYYY.match(str(v))) >= max(1, len(_sv[:6]) // 2):
+                    date_text_cols.append(name)
+            except Exception:
+                pass
             _uc = ca.get("unique_count") or 0
             line = f"  {name}: {_uc} unique, {ca.get('null_pct', 0)}% null"
             tag = ""
@@ -2440,6 +2659,16 @@ def _llm_generate_training(table_name: str, metadata: dict, col_analyses: list[d
                 f"  → DO NOT use in GROUP BY, DATE_TRUNC, time-series, or 'trend' questions.\n"
                 f"  → DO NOT generate Q&A involving 'by {constant_cols[0]}' / 'over time' on these.\n"
                 f"  → Use them ONLY as a filter (WHERE) or as a static fact.\n"
+            )
+        if date_text_cols:
+            _dc0 = date_text_cols[0]
+            dist_info += (
+                f"\n⚠ TEXT-DATE columns (stored as TEXT in DD/MM/YYYY HH24:MI): {', '.join(date_text_cols)}\n"
+                f"  → These are NOT real date/timestamp types. {_dc0}::date THROWS DatetimeFieldOverflow.\n"
+                f"  → ALWAYS wrap with to_date(\"{_dc0}\", 'DD/MM/YYYY HH24:MI') (or to_timestamp) before\n"
+                f"    DATE_TRUNC / comparison / extraction. Example:\n"
+                f"    DATE_TRUNC('month', to_date(\"{_dc0}\", 'DD/MM/YYYY HH24:MI'))\n"
+                f"  → NEVER emit \"{_dc0}\"::date or \"{_dc0}\"::timestamp directly.\n"
             )
 
     # SQL-VALIDATED — inject Postgres dialect rules so LLM emits correct SQL first try.
@@ -3109,8 +3338,15 @@ def _generate_project_evals(project_slug: str, max_evals: int = 15, per_table: i
         # Collect up to `per_table` valid (question, sql) pairs from each table's
         # Q&A file, then round-robin across tables so the bounded final set is a
         # representative sample rather than dominated by the first table.
+        # Only sample Q&A from tables that still exist — a ghost
+        # {table}_qa.json (left by a wipe) generates eval SQL against a
+        # dropped table → every such eval ERRORs ("relation does not exist").
+        _live = _live_tables(project_slug)
         per_table_pairs: list[list[tuple[str, str]]] = []
         for qa_file in sorted(training_dir.glob("*_qa.json")):
+            _tbl = qa_file.stem[:-3] if qa_file.stem.endswith("_qa") else qa_file.stem
+            if _live and _tbl not in _live:
+                continue
             try:
                 with open(qa_file) as f:
                     qa_pairs = json.load(f)
@@ -3263,7 +3499,7 @@ def _run_auto_training(project_slug: str, table_name: str, col_analyses: list[di
             with train_engine.connect() as conn:
                 conn.execute(text(
                     "UPDATE public.dash_training_runs SET logs = COALESCE(logs, '[]'::jsonb) || CAST(:entry AS jsonb) WHERE id = :id"
-                ), {"entry": json.dumps([{"ts": _time.strftime('%H:%M:%S'), "msg": msg, "table": table_name, "table_index": table_index, "total_tables": total_tables}]), "id": run_id})
+                ), {"entry": json.dumps([{"ts": _time.strftime('%H:%M:%S'), "tsabs": _time.time(), "msg": msg, "table": table_name, "table_index": table_index, "total_tables": total_tables}]), "id": run_id})
                 conn.commit()
         except Exception:
             pass
@@ -3273,12 +3509,26 @@ def _run_auto_training(project_slug: str, table_name: str, col_analyses: list[di
         return _training_cancel_flags.get(project_slug, False)
 
     num_cols = len(col_analyses)
-    # Get actual row count from the first column's total_count (most reliable)
+    # Real row count via COUNT(*). The caller's col_analyses come from a
+    # LIMIT-100 speed sample, so total_count there is capped at 100 — using it
+    # made the log say "100 rows" for a 4,886-row table AND made the
+    # change-detection below always see "unchanged" (sample is always 100).
+    # Query the true count; fall back to the sample only if it fails.
     num_rows = 0
-    for c in col_analyses:
-        tc = c.get("total_count", 0) or c.get("non_null_count", 0)
-        if tc > num_rows:
-            num_rows = tc
+    try:
+        _nr_schema = re.sub(r"[^a-z0-9_]", "_", project_slug.lower())[:63]
+        _nr_eng = engine if 'engine' in dir() and engine else create_engine(db_url)
+        with _nr_eng.connect() as _nrc:
+            num_rows = int(_nrc.execute(text(
+                f'SELECT COUNT(*) FROM "{_nr_schema}"."{table_name}"'
+            )).scalar() or 0)
+    except Exception:
+        num_rows = 0
+    if num_rows == 0:
+        for c in col_analyses:
+            tc = c.get("total_count", 0) or c.get("non_null_count", 0)
+            if tc > num_rows:
+                num_rows = tc
     _log(f"analyzing table: {table_name} ({num_rows} rows, {num_cols} columns)")
 
     if num_rows == 0:
@@ -3359,10 +3609,13 @@ def _run_auto_training(project_slug: str, table_name: str, col_analyses: list[di
         _update_run("running", "hierarchy_detection")
         _log("detecting column hierarchies...")
         hierarchies = _detect_hierarchies(project_slug, table_name, dim_catalog)
+        # Always persist the freshly-detected list — even when EMPTY — so a
+        # prior run's stale/false hierarchies (e.g. the old _period→* lineage
+        # junk) get cleared from metadata + brain, not left behind by a
+        # `if hierarchies:` guard.
+        metadata["hierarchies"] = hierarchies
         if hierarchies:
             _log(f"✓ found {len(hierarchies)} hierarchies: {', '.join(h['parent'] + ' → ' + h['child'] for h in hierarchies)}")
-            # Save to table metadata
-            metadata["hierarchies"] = hierarchies
         else:
             _log("· no hierarchies detected")
 
@@ -3738,7 +3991,16 @@ Return ONLY valid JSON (no markdown):
         all_meta = []
         proj_td = KNOWLEDGE_DIR / project_slug / "tables"
         if proj_td.exists():
+            # Only synthesize over tables that still exist in the DB — skip
+            # orphaned {table}.json left by a raw-SQL wipe / external drop.
+            try:
+                _ms = re.sub(r"[^a-z0-9_]", "_", project_slug.lower())[:63]
+                _live = set(inspect(create_engine(db_url)).get_table_names(schema=_ms))
+            except Exception:
+                _live = None
             for f in proj_td.glob("*.json"):
+                if _live is not None and f.stem not in _live:
+                    continue
                 try:
                     with open(f) as fh:
                         all_meta.append(json.load(fh))
@@ -3778,7 +4040,20 @@ Return ONLY valid JSON (no markdown):
         _update_run("failed", "cancelled"); _log("⊘ training cancelled by user"); return
     _update_run("running", "relationships")
     proj_tables_dir = KNOWLEDGE_DIR / project_slug / "tables"
-    table_count = len(list(proj_tables_dir.glob("*.json"))) if proj_tables_dir.exists() else 0
+    # Count only knowledge JSONs whose table STILL EXISTS in the DB. A raw-SQL
+    # wipe / external drop can orphan a {table}.json on disk; trusting the glob
+    # alone made retrain discover relationships + run multi-file synthesis
+    # against a ghost table (e.g. a stale balance_stock_*.json), wasting LLM
+    # calls and seeding a phantom relationship into the brain.
+    table_count = 0
+    if proj_tables_dir.exists():
+        try:
+            _schema = re.sub(r"[^a-z0-9_]", "_", project_slug.lower())[:63]
+            _live = set(inspect(create_engine(db_url)).get_table_names(schema=_schema))
+            table_count = sum(1 for j in proj_tables_dir.glob("*.json") if j.stem in _live)
+        except Exception:
+            # If the liveness check fails, fall back to the raw glob count.
+            table_count = len(list(proj_tables_dir.glob("*.json")))
     if table_count >= 2:
         _log(f"discovering relationships across {table_count} tables...")
         try:
@@ -4695,7 +4970,8 @@ Return ONLY valid JSON (no markdown):
     # KG now builds ONCE at end of TRAIN ALL (see master loop ~line 9611) — saves 9 LLM calls/train.
     try:
         _update_run("running", "knowledge_graph")
-        _log("· knowledge graph build deferred to TRAIN ALL master loop (skipped per-table)")
+        # KG builds once in the master loop — silent here (was a noise log line).
+        pass
     except Exception:
         pass
 
@@ -4705,7 +4981,8 @@ Return ONLY valid JSON (no markdown):
     # redundant (ran N+1 times on an N-table train, re-fetching all Q&A each time).
     try:
         _update_run("running", "subagent_synthesis")
-        _log("· sub-agent synthesis deferred to TRAIN ALL master loop (skipped per-table)")
+        # sub-agent synthesis is a dead feature — silent here (was noise).
+        pass
     except Exception:
         pass
 
@@ -4808,21 +5085,13 @@ Return ONLY valid JSON (no markdown):
                 mem_count = int(_mr or 0)
         except Exception:
             pass
-        kg_count = 0
-        try:
-            with train_engine.connect() as _kc:
-                _kr = _kc.execute(text(
-                    "SELECT COUNT(*) FROM public.dash_knowledge_triples WHERE project_slug = :s"
-                ), {"s": project_slug}).scalar()
-                kg_count = int(_kr or 0)
-        except Exception:
-            pass
-
         _log(f"┌─ SUMMARY · {table_name}")
         _log(f"│  rows: {num_rows} · cols: {num_cols} · dim: {dim_count} · measure: {len(measures) if 'measures' in dir() else '?'} · fk: {fk_count}")
         _log(f"│  hierarchy: {hier_str}")
         _log(f"│  Q&A: {qa_verified}/{qa_count} verified")
-        _log(f"│  memories: {mem_count} · KG triples: {kg_count}")
+        # KG triples are built globally AFTER all tables train — per-table count
+        # is always 0 (misleading), so it's omitted here.
+        _log(f"│  memories: {mem_count}")
         _log(f"└─ quality: {quality_score if 'quality_score' in dir() else '?'}%")
     except Exception as _se:
         _log(f"⚠ summary card error: {str(_se)[:80]}")
@@ -7292,7 +7561,9 @@ def _handle_csv(file_path: str, filename: str) -> dict:
 
         header_row = _find_header_row(file_path, ".csv")
         sep = _detect_delimiter(file_path)
-        df = pd.read_csv(file_path, header=header_row, sep=sep, encoding=encoding, encoding_errors="replace")
+        # P1: keep ID/code columns as text (exact), never float (lossy on big codes).
+        df = pd.read_csv(file_path, header=header_row, sep=sep, encoding=encoding,
+                         encoding_errors="replace", dtype=_id_dtypes(file_path, ".csv", header_row, sep))
 
         # Normalize null values: N/A, NULL, None, -, ? → NaN
         null_values = {"N/A", "n/a", "#N/A", "NA", "na", "NULL", "null", "None", "none", "NONE", "-", "?", ".", " "}
@@ -7700,6 +7971,21 @@ def _run_pandasai_experiments(project_slug: str, table_name: str, col_analyses: 
         dc = date_cols[0] if date_cols else None
         t = f'"{schema}"."{table_name}"'
 
+        # A "date" col may be TEXT in DD/MM/YYYY (DATE_TRUNC on raw text throws).
+        # Build a safe date expression: real datetime → use as-is; text-date →
+        # wrap with to_date(...,'DD/MM/YYYY HH24:MI').
+        def _date_expr(col: str) -> str:
+            if not col:
+                return col
+            _ca = _ca_by_name.get(col, {})
+            if _ca.get("type") == "datetime":
+                return f'"{col}"'
+            sv = _ca.get("sample_values") or []
+            if any(re.match(r"^\s*\d{1,2}/\d{1,2}/\d{4}\b", str(v)) for v in sv[:6]):
+                return f'to_date("{col}", \'DD/MM/YYYY HH24:MI\')'
+            return f'"{col}"'
+        dc_expr = _date_expr(dc) if dc else None
+
         # Build SQL experiments: (question, SQL)
         experiments = [("How many rows in total?", f"SELECT COUNT(*) FROM {t}")]
         if nc:
@@ -7727,9 +8013,9 @@ def _run_pandasai_experiments(project_slug: str, table_name: str, col_analyses: 
             ])
         if nc and dc:
             experiments.extend([
-                (f"Total {nc} by month", f'SELECT DATE_TRUNC(\'month\', "{dc}") as month, SUM("{nc}") as total FROM {t} GROUP BY 1 ORDER BY 1'),
-                (f"Which month had highest {nc}?", f'SELECT DATE_TRUNC(\'month\', "{dc}") as month, SUM("{nc}") as total FROM {t} GROUP BY 1 ORDER BY total DESC LIMIT 1'),
-                (f"Date range of data", f'SELECT MIN("{dc}"), MAX("{dc}") FROM {t}'),
+                (f"Total {nc} by month", f'SELECT DATE_TRUNC(\'month\', {dc_expr}) as month, SUM("{nc}") as total FROM {t} GROUP BY 1 ORDER BY 1'),
+                (f"Which month had highest {nc}?", f'SELECT DATE_TRUNC(\'month\', {dc_expr}) as month, SUM("{nc}") as total FROM {t} GROUP BY 1 ORDER BY total DESC LIMIT 1'),
+                (f"Date range of data", f'SELECT MIN({dc_expr}), MAX({dc_expr}) FROM {t}'),
             ])
         if len(num_cols) >= 2:
             nc2 = num_cols[1]
@@ -9142,6 +9428,28 @@ async def upload_file(request: Request, file: UploadFile, table_name: str | None
         if project:
             try:
                 _suggest_template_for_project(project, [tbl])
+            except Exception:
+                pass
+
+        # Auto-train hook — enqueue retrain if AUTO_TRAIN_ON_UPLOAD enabled
+        if os.getenv("AUTO_TRAIN_ON_UPLOAD", "1") != "0":
+            try:
+                from dash.cron.auto_train_daemon import _enqueue_retrain, _is_training_running
+                import asyncio as _at_aio
+                _proj = project
+                if _proj:
+                    # Run check in background, don't block upload response
+                    async def _deferred_retrain():
+                        await _at_aio.sleep(5)  # 5s grace — let upload finish fully
+                        already = await _is_training_running(_proj)
+                        if not already:
+                            _enqueue_retrain(_proj, "upload_trigger")
+                    try:
+                        _loop = _at_aio.get_event_loop()
+                        if _loop.is_running():
+                            _at_aio.create_task(_deferred_retrain())
+                    except Exception:
+                        pass
             except Exception:
                 pass
 
@@ -11174,14 +11482,23 @@ async def retrain_project(slug: str, request: Request):
 
     # Optional selective-train list from request body (fail-soft on empty body).
     selected_tables: list[str] | None = None
+    force = False  # when True, bypass fingerprint "unchanged" skip (train untrained tables)
     try:
         body = await request.json()
         if isinstance(body, dict):
             tn = body.get("table_names")
             if isinstance(tn, list) and tn:
                 selected_tables = [str(x) for x in tn]
+            force = bool(body.get("force"))
     except Exception:
         selected_tables = None
+    # also accept ?force=1 query param
+    try:
+        _qf = request.query_params.get("force")
+        if _qf and str(_qf).strip().lower() in ("1", "true", "yes"):
+            force = True
+    except Exception:
+        pass
 
     from db.session import create_project_schema
     schema = create_project_schema(slug)
@@ -11228,7 +11545,7 @@ async def retrain_project(slug: str, request: Request):
         def _bg_docs_only():
             _log_entries = []
             def _dlog(msg):
-                _log_entries.append({"ts": _time.strftime('%H:%M:%S'), "msg": msg})
+                _log_entries.append({"ts": _time.strftime('%H:%M:%S'), "tsabs": _time.time(), "msg": msg})
 
             try:
                 from dash.settings import training_llm_call
@@ -11867,7 +12184,7 @@ async def retrain_project(slug: str, request: Request):
                 with master_engine.connect() as conn:
                     conn.execute(text(
                         "UPDATE public.dash_training_runs SET logs = COALESCE(logs, '[]'::jsonb) || CAST(:entry AS jsonb) WHERE id = :id"
-                    ), {"entry": json.dumps([{"ts": _time.strftime('%H:%M:%S'), "msg": msg, "table": tbl_name, "table_index": tbl_idx, "total_tables": total_tables}]), "id": master_run_id})
+                    ), {"entry": json.dumps([{"ts": _time.strftime('%H:%M:%S'), "tsabs": _time.time(), "msg": msg, "table": tbl_name, "table_index": tbl_idx, "total_tables": total_tables}]), "id": master_run_id})
                     conn.commit()
             except Exception:
                 pass
@@ -11932,6 +12249,13 @@ async def retrain_project(slug: str, request: Request):
         # appends to public.dash_evals every run with no dedup, so the set grew
         # unbounded (15→30→90...) and post-training evals got slower each retrain.
         # Wiping here means each retrain regenerates a fresh, bounded eval set.
+        # Purge orphaned knowledge files for tables that no longer exist (e.g.
+        # a raw-SQL wipe drops the DB table but leaves dimensions/qa/business
+        # JSON on disk → ghost relationships + eval cases against dead tables).
+        try:
+            _purge_orphan_knowledge(slug, log_fn=lambda m: _master_log(m, "", total_tables))
+        except Exception:
+            pass
         try:
             with master_engine.begin() as _evc:
                 _evc.execute(text("DELETE FROM public.dash_evals WHERE project_slug = :s"),
@@ -11964,10 +12288,10 @@ async def retrain_project(slug: str, request: Request):
                     row_count = conn.execute(text(f'SELECT COUNT(*) FROM "{schema}"."{tbl}"')).scalar() or 0
                 tbl_cols = [c["name"] for c in insp.get_columns(tbl, schema=schema)]
 
-                # Check fingerprint — skip if unchanged
+                # Check fingerprint — skip if unchanged (unless force=True)
                 change_type = check_fingerprint_changed(slug, tbl, row_count, tbl_cols)
 
-                if change_type == "unchanged":
+                if change_type == "unchanged" and not force:
                     _master_log(f"⊘ skipping {tbl} — unchanged (fingerprint match)", tbl, tbl_idx)
                     # Update master run step to show skip
                     if master_run_id:
@@ -12215,8 +12539,8 @@ async def retrain_project(slug: str, request: Request):
                 import logging
                 logging.exception("subagent_synthesis failed (non-fatal)")
                 _master_log(f"⚠ subagent_synthesis skipped: {str(_sa_e)[:80]}", "", total_tables)
-        else:
-            _master_log("· sub-agent synthesis disabled (dead feature; SUBAGENT_SYNTHESIS_ENABLED=1 to re-enable)", "", total_tables)
+        # else: sub-agent synthesis is a dead feature (SUBAGENT_SYNTHESIS_ENABLED=1
+        # to re-enable) — silent, no log line.
 
         # Step 14b: Vector backfill — guarantee dash_vectors populated post-TRAIN ALL.
         # Reembed loop is async + can lag; this explicit pass ensures CMHL-class
@@ -12530,18 +12854,28 @@ async def retrain_project(slug: str, request: Request):
             except Exception:
                 pass
 
-        # AutoSim W2: enqueue grounded scenario generation now that training is done
+        # ─── Bilingual (EN+Burmese) twin refresh — runs AFTER English memories /
+        # schema / training-qa are all written above. Idempotent + fail-soft, so a
+        # regen failure never breaks training and re-runs (force-retrain) just
+        # refresh the Burmese twins of any newly-added English rows.
         try:
-            from dash.minions import queue as _q
-            _q.enqueue(
-                project=slug,
-                kind="autosim_generate_grounded",
-                payload={"project": slug, "n_scenarios": 5},
-                priority=8,
+            from scripts.regen_bilingual import run as _regen_bilingual
+            _bi = _regen_bilingual()
+            _master_log(
+                f"✓ bilingual twins refreshed · {_bi.get('memories_my',0)} mem · "
+                f"{_bi.get('patterns_twin',0)} pat · {_bi.get('rules_my',0)} rules · "
+                f"{_bi.get('brain_my',0)} brain · {_bi.get('schema_bilingual',0)} schema",
+                "", total_tables,
             )
-        except Exception:
+        except Exception as _bie:
             import logging as _l
-            _l.getLogger(__name__).exception("autosim grounded enqueue failed (non-blocking)")
+            _l.getLogger(__name__).warning(f"bilingual regen skipped for {slug}: {_bie}")
+            _master_log(f"⚠ bilingual regen skipped: {str(_bie)[:80]}", "", total_tables)
+
+        # AutoSim grounded-scenario enqueue REMOVED — the sim chassis was deleted
+        # in the 2026-05-23 trim, so `autosim_generate_grounded` has NO registered
+        # minion handler. This enqueue pushed a dead job into the queue on every
+        # retrain (nothing consumed it). Dropped.
 
         # Issue #10 — Enqueue first dream-lite cycle so Day-1 user has anti-patterns
         # / insights / reflections without waiting for nightly 03:15 UTC cron.
@@ -13403,10 +13737,10 @@ async def re_ingest_with_overrides(slug: str, plan_id: int, request: Request):
 
 @router.get("/admin/upload-cache/stats")
 def get_upload_cache_stats(request: Request):
-    """Super-admin: cache stats."""
+    """Admin: cache stats."""
     user = _get_user(request)
-    if not user or not user.get("is_super"):
-        raise HTTPException(403, "Super admin only")
+    if not user or not user.get("is_admin"):
+        raise HTTPException(403, "Admin only")
     from db.session import get_sql_engine
     from sqlalchemy import text as _slt
     e = get_sql_engine()
@@ -13433,10 +13767,10 @@ def get_upload_cache_stats(request: Request):
 
 @router.delete("/admin/upload-cache/{file_hash}")
 def delete_upload_cache_entry(file_hash: str, request: Request):
-    """Super-admin: evict cache entry."""
+    """Admin: evict cache entry."""
     user = _get_user(request)
-    if not user or not user.get("is_super"):
-        raise HTTPException(403, "Super admin only")
+    if not user or not user.get("is_admin"):
+        raise HTTPException(403, "Admin only")
     from db.session import get_write_engine
     from sqlalchemy import text as _slt
     e = get_write_engine()

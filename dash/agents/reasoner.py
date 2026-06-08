@@ -42,9 +42,10 @@ def build_reasoner_agent(project_slug: Optional[str] = None, user_id: Optional[i
         return None
 
     try:
-        from dash.settings import DEEP_MODEL
+        from dash.settings import DEEP_MODEL, OR_DATA_POLICY
     except Exception:
         DEEP_MODEL = os.getenv("DEEP_MODEL", "openai/gpt-5.4-mini")
+        OR_DATA_POLICY = {"provider": {"data_collection": "allow"}}
 
     # Extended thinking config (best-effort; OpenRouter passes through provider-specific kwargs)
     model_kwargs = {}
@@ -55,8 +56,14 @@ def build_reasoner_agent(project_slug: Optional[str] = None, user_id: Optional[i
     elif "gpt-5" in (DEEP_MODEL or "").lower() or "o1" in (DEEP_MODEL or "").lower() or "o3" in (DEEP_MODEL or "").lower():
         model_kwargs["reasoning_effort"] = "high"
 
+    # Opt into training-permitted providers (merge into any existing extra_body) so
+    # the account data policy can't 404 this sub-agent. See dash.settings.OR_DATA_POLICY.
+    _eb = model_kwargs.get("extra_body") or {}
+    _eb.setdefault("provider", {})["data_collection"] = "allow"
+    model_kwargs["extra_body"] = _eb
+
     try:
-        model = OpenRouter(id=DEEP_MODEL, **model_kwargs) if model_kwargs else OpenRouter(id=DEEP_MODEL)
+        model = OpenRouter(id=DEEP_MODEL, **model_kwargs)
         return Agent(name="Reasoner", model=model, tools=[], instructions=_INSTRUCTIONS)
     except Exception as e:
         logger.warning("Reasoner agent build failed: %s", e)

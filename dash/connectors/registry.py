@@ -13,22 +13,14 @@ from typing import Type
 from pydantic import BaseModel
 
 from .schemas import (
-    BigQueryConfig,
-    BigQueryCredentials,
-    FabricConfig,
-    FabricCredentials,
-    MssqlConfig,
-    MssqlCredentials,
     PostgresConfig,
     PostgresCredentials,
-    PowerBIConfig,
-    PowerBICredentials,
 )
 
 
 @dataclass(frozen=True)
 class RegistryEntry:
-    type: str                        # "postgresql"|"mssql"|"fabric"|"bigquery"|"powerbi"
+    type: str                        # "postgresql"
     title: str
     kind: str                        # "database"|"service"
     description: str
@@ -46,42 +38,6 @@ REGISTRY: dict[str, RegistryEntry] = {
         config_schema=PostgresConfig,
         credentials_schema=PostgresCredentials,
         client_path="dash.connectors.clients.postgres_client.PostgresClient",
-    ),
-    "mssql": RegistryEntry(
-        type="mssql",
-        title="Microsoft SQL Server",
-        kind="database",
-        description="Connect to a Microsoft SQL Server database using SQL authentication.",
-        config_schema=MssqlConfig,
-        credentials_schema=MssqlCredentials,
-        client_path="dash.connectors.clients.mssql_client.MssqlClient",
-    ),
-    "fabric": RegistryEntry(
-        type="fabric",
-        title="Microsoft Fabric",
-        kind="database",
-        description="Connect to a Microsoft Fabric warehouse via Azure AD Service Principal.",
-        config_schema=FabricConfig,
-        credentials_schema=FabricCredentials,
-        client_path="dash.connectors.clients.fabric_client.FabricClient",
-    ),
-    "bigquery": RegistryEntry(
-        type="bigquery",
-        title="Google BigQuery",
-        kind="database",
-        description="Connect to a Google BigQuery dataset using a service-account JSON.",
-        config_schema=BigQueryConfig,
-        credentials_schema=BigQueryCredentials,
-        client_path="dash.connectors.clients.bigquery_client.BigQueryClient",
-    ),
-    "powerbi": RegistryEntry(
-        type="powerbi",
-        title="Microsoft Power BI",
-        kind="service",
-        description="Query a Power BI dataset (DAX) via Azure AD Service Principal.",
-        config_schema=PowerBIConfig,
-        credentials_schema=PowerBICredentials,
-        client_path="dash.connectors.clients.powerbi_client.PowerBIClient",
     ),
 }
 

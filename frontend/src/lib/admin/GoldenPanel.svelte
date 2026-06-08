@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dashFetch } from '$lib/api';
   import { onMount } from 'svelte';
 
   type GoldenEntry = {
@@ -62,8 +63,8 @@
     try {
       const slug = encodeURIComponent(projectSlug.trim());
       const [listR, driftR] = await Promise.allSettled([
-        fetch(`/api/golden?project_slug=${slug}`, { headers: { Accept: 'application/json' } }),
-        fetch(`/api/golden/drift?project_slug=${slug}`, { headers: { Accept: 'application/json' } })
+        dashFetch(`/api/golden?project_slug=${slug}`, { headers: { Accept: 'application/json' } }),
+        dashFetch(`/api/golden/drift?project_slug=${slug}`, { headers: { Accept: 'application/json' } })
       ]);
 
       if (listR.status === 'fulfilled') {
@@ -101,7 +102,7 @@
     error = null;
     try {
       const slug = encodeURIComponent(projectSlug.trim());
-      const r = await fetch(`/api/golden/run?project_slug=${slug}`, {
+      const r = await dashFetch(`/api/golden/run?project_slug=${slug}`, {
         method: 'POST',
         headers: { Accept: 'application/json' }
       });
@@ -174,7 +175,7 @@
       };
       const isEdit = editingId !== null;
       const url = isEdit ? `/api/golden/${editingId}` : `/api/golden`;
-      const r = await fetch(url, {
+      const r = await dashFetch(url, {
         method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify(body)
@@ -195,7 +196,7 @@
     if (!confirm(`Delete this golden Q&A?\n\n${question.slice(0, 120)}`)) return;
     try {
       const slug = encodeURIComponent(projectSlug.trim());
-      const r = await fetch(`/api/golden/${id}?project_slug=${slug}`, {
+      const r = await dashFetch(`/api/golden/${id}?project_slug=${slug}`, {
         method: 'DELETE',
         headers: { Accept: 'application/json' }
       });

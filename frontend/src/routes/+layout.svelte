@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte';
+  import RobotPanel from '$lib/RobotPanel.svelte';
  import '../app.css';
  import { page } from '$app/state';
  import { onMount } from 'svelte';
@@ -111,17 +112,23 @@
  page.url.pathname.includes('/dashboard') ||
  page.url.pathname.includes('/presentations') ||
  page.url.pathname.includes('/automl') ||
- page.url.pathname.startsWith('/ui/agent-os/workflows') ||
  page.url.pathname.startsWith('/ui/skills')
  );
- const isKnowledgeActive = $derived(
- page.url.pathname.includes('/brain') ||
- page.url.pathname.includes('/ontology') ||
- page.url.pathname.includes('/ml-insights')
- );
+ const isKnowledgeActive = $derived(page.url.pathname.includes('/brain'));
+ // Usage & Cost = its own standalone full page (no command-center rail).
+ const isUsageActive = $derived(page.url.pathname.includes('/usage'));
  const isAdminActive = $derived(
  page.url.pathname.includes('/command-center') ||
  page.url.pathname.includes('/ui/admin')
+ );
+ // Admin ▾ dropdown active when on any admin-group surface
+ const isAdminGroupActive = $derived(
+ isAdminActive ||
+ isUsageActive ||
+ page.url.pathname.includes('/users') ||
+ page.url.pathname.includes('/super') ||
+ page.url.pathname.includes('/roles') ||
+ page.url.pathname.includes('/auth-admin')
  );
  // Admin dropdown badge counts
  // Human-in-loop (approvals/HITL) removed 2026-05-20 — no producers.
@@ -161,6 +168,7 @@
  let checking = $state(true);
  let showChangePassword = $state(false);
  let isSuper = $state(false);
+ let isAdmin = $state(false);
  let cpOld = $state('');
  let cpNew = $state('');
  let cpConfirm = $state('');
@@ -428,7 +436,7 @@
  let _userScrolledUp = $state(false);
 
  // Completion patterns — when matched, training session ends, start grace timer
- const _COMPLETE_RE = /pipeline complete|all done|training complete|cockpit\s*100\s*%| all|complete\s*\(100%\)/i;
+ const _COMPLETE_RE = /pipeline complete|all done|training complete|training done|cockpit\s*100\s*%| all|complete\s*\(100%\)/i;
 
  // Format timestamp as full ISO local: 2026-05-15 08:46:11
  function formatTs(ts: number): string {
@@ -482,8 +490,10 @@
 
  function _markActivity() {
  _lastActivityAt = Date.now();
- cliHasActivity = true; // real training/pipeline event → reveal the terminal
- if (cliVisible && !cliExpanded) cliExpanded = true;
+ cliHasActivity = true; // marks unread badge on the thin console bar
+ // Do NOT auto-expand the console on activity — the floating robot panel is the
+ // glanceable live surface. Console stays a thin bar; user expands for the full
+ // dev log (pause/clear/csv) on demand. (Differentiate, not duplicate.)
  cliTraining = true;
  // Cancel any pending collapse — stay open until completion
  if (_cliActivityTimer) { clearTimeout(_cliActivityTimer); _cliActivityTimer = null; }
@@ -498,6 +508,30 @@
  if (cliExpanded && !_userPinned) cliExpanded = false;
  }, 8000);
  }
+
+ // Backstop: if no training/pipeline log has arrived for 15s, the run is over
+ // (or its terminal log didn't match) — force the robot/badge back to idle so
+ // "TRAINING" can never stick. Runs for the app lifetime (SPA root layout).
+ setInterval(() => {
+ if (cliTraining && Date.now() - _lastActivityAt > 15000) _markComplete();
+ }, 5000);
+
+ // Authoritative training flag for the footer badge + robot — polls the REAL
+ // active run (dash_training_runs) so the badge agrees with the pipeline strip,
+ // not the log-text heuristic (which only sees the global tail steps).
+ let srvTraining = $state(false);
+ async function _fetchSrvTraining() {
+ try {
+ const token = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
+ if (!token) return;
+ const slug = 'citypharma';
+ const r = await fetch(`/api/projects/${slug}/auto-train/status`, { headers: { 'Authorization': `Bearer ${token}`, 'X-Scope-Id': slug } });
+ if (!r.ok) return;
+ const d = await r.json();
+ srvTraining = !!d.is_training;
+ } catch { /* fail-soft */ }
+ }
+ setInterval(_fetchSrvTraining, 5000);
 
  function manualMinimize() {
  cliExpanded = false;
@@ -855,6 +889,7 @@
  let lockedSlug = $state<string | null>(null);
  let productName = $state('Dash');
  const chatHref = $derived(singleAgent && lockedSlug ? `/ui/project/${lockedSlug}` : '/ui/chat');
+ const overviewHref = $derived(singleAgent && lockedSlug ? `/ui/project/${lockedSlug}/overview` : '/ui/projects');
  const agentBrainHref = $derived(singleAgent && lockedSlug ? `/ui/project/${lockedSlug}/settings#datasets` : '/ui/projects');
  const uploadHref = $derived(singleAgent && lockedSlug ? `/ui/project/${lockedSlug}/settings#upload` : '/ui/projects');
  let showDashPicker = $state(false);
@@ -919,6 +954,7 @@
  authenticated = true;
  username = data.username;
  isSuper = data.is_super || false;
+ isAdmin = data.is_admin || data.is_super || false;
  // Refresh active scope chip from localStorage (set by scope-picker)
  activeScope = getActiveScope();
  // Load notifications
@@ -947,9 +983,9 @@
  if (!authenticated) return;
  const p = page.url.pathname;
  if (singleAgent && lockedSlug) {
- // Land straight in the locked agent's chat; never show projects/home grids.
+ // Land on the Dashboard cockpit; never show projects/home grids.
  if (p === '/ui' || p === '/ui/home' || p === '/ui/projects' || p === '/ui/chat') {
- window.location.href = `/ui/project/${lockedSlug}`;
+ window.location.href = `/ui/project/${lockedSlug}/overview`;
  }
  } else if (p === '/ui') {
  window.location.href = '/ui/home';
@@ -1172,35 +1208,101 @@
   <div class="flex flex-col h-screen" style="background: var(--pw-bg); font-family: var(--pw-font-body); color: var(--pw-ink);">
     <!-- Header -->
     <header class="flex items-center justify-between shrink-0 pw-header">
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-3 pw-header-left">
         <button class="pw-brand-btn" onclick={() => navTo('/ui/home')} title="Home">
-          <img src="/brand/cityagent.png" alt="CityAgent Insights" class="pw-brand-img" />
+          <img src="/brand/cityagent.png?v=3" alt={productName} class="pw-brand-img" />
         </button>
 
         <!-- Desktop Nav -->
         <nav class="pw-nav-row" onclick={(e) => e.stopPropagation()}>
         {#if singleAgent}
-          <button onclick={() => navTo(chatHref)} class="pw-nav" class:pw-nav-active={page.url.pathname.includes('/project/') && !page.url.pathname.includes('/settings')}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-            Chat
+          <button onclick={() => navTo(overviewHref)} class="pw-nav" class:pw-nav-active={page.url.pathname.includes('/overview')}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+            <span class="pw-nav-label">Dashboard</span>
           </button>
-          <button onclick={() => { openMenu = null; window.location.href = agentBrainHref; }} class="pw-nav" class:pw-nav-active={page.url.pathname.includes('/settings') && page.url.hash !== '#upload'}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2a3 3 0 0 0-3 3v1a3 3 0 0 0-2 5 3 3 0 0 0 2 5v1a3 3 0 0 0 6 0V2H9zM15 2a3 3 0 0 1 3 3v1a3 3 0 0 1 2 5 3 3 0 0 1-2 5v1a3 3 0 0 1-6 0"/></svg>
-            Agent Brain
+          <button onclick={() => navTo(chatHref)} class="pw-nav" class:pw-nav-active={page.url.pathname.includes('/project/') && !page.url.pathname.includes('/settings') && !page.url.pathname.includes('/overview')}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            <span class="pw-nav-label">Chat</span>
           </button>
           <button onclick={() => { openMenu = null; window.location.href = uploadHref; }} class="pw-nav" class:pw-nav-active={page.url.pathname.includes('/settings') && page.url.hash === '#upload'}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Upload
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>
+            <span class="pw-nav-label">Data Source</span>
           </button>
-          <button onclick={() => navTo('/ui/brain')} class="pw-nav" class:pw-nav-active={routeMatches('/brain') || routeMatches('/ontology')}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><line x1="7.5" y1="7.5" x2="10.5" y2="16"/><line x1="16.5" y1="7.5" x2="13.5" y2="16"/><line x1="8.5" y1="6" x2="15.5" y2="6"/></svg>
-            Company Brain
+          <button onclick={() => { openMenu = null; window.location.href = agentBrainHref; }} class="pw-nav" class:pw-nav-active={page.url.pathname.includes('/settings') && page.url.hash !== '#upload'}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            <span class="pw-nav-label">Workspace</span>
           </button>
           {#if isSuper}
-            <button onclick={() => { openMenu = null; navTo('/ui/command-center'); }} class="pw-nav" class:pw-nav-active={isAdminActive}>
-              Admin
-              {#if adminCounts.skill_drafts > 0}<span class="pw-badge-coral">{adminCounts.skill_drafts}</span>{/if}
-            </button>
+            <div class="pw-nav-group" class:pw-group-active={routeMatches('/gateway') || routeMatches('/embed')}>
+              <button class="pw-nav"
+                      class:pw-nav-active={(routeMatches('/gateway') || routeMatches('/embed')) && openMenu !== 'integrations'}
+                      onclick={() => toggleMenu('integrations')}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                <span class="pw-nav-label">Integrations</span>
+                <svg class="pw-chev" class:pw-chev-open={openMenu === 'integrations'} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              {#if openMenu === 'integrations'}
+                <div class="pw-menu">
+                  <button class="pw-menu-row" class:pw-menu-active={routeMatches('/gateway')} onclick={() => navTo('/ui/gateway')}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                    <div class="pw-menu-text">
+                      <span class="pw-menu-name">API Gateway</span>
+                      <span class="pw-menu-sub">OpenAI-compatible REST /api/v1</span>
+                    </div>
+                  </button>
+                  <button class="pw-menu-row" class:pw-menu-active={routeMatches('/embed')} onclick={() => navTo('/ui/embed')}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                    <div class="pw-menu-text">
+                      <span class="pw-menu-name">Embed</span>
+                      <span class="pw-menu-sub">Chat widget for external sites</span>
+                    </div>
+                  </button>
+                </div>
+              {/if}
+            </div>
+          {/if}
+          {#if isAdmin}
+            <div class="pw-nav-group" class:pw-group-active={isAdminGroupActive}>
+              <button class="pw-nav"
+                      class:pw-nav-active={isAdminGroupActive && openMenu !== 'admingrp'}
+                      onclick={() => toggleMenu('admingrp')}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 11 4.6-2.5 8-6 8-11V5z"/></svg>
+                <span class="pw-nav-label">Admin</span>
+                {#if adminCounts.skill_drafts > 0}<span class="pw-badge-coral">{adminCounts.skill_drafts}</span>{/if}
+                <svg class="pw-chev" class:pw-chev-open={openMenu === 'admingrp'} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              {#if openMenu === 'admingrp'}
+                <div class="pw-menu">
+                  {#if isSuper}
+                    <div class="pw-menu-label">Super admin</div>
+                    <button class="pw-menu-row" class:pw-menu-active={isAdminActive} onclick={() => navTo('/ui/command-center')}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                      <div class="pw-menu-text">
+                        <span class="pw-menu-name">Admin Console{#if adminCounts.skill_drafts > 0}<span class="pw-badge-coral">{adminCounts.skill_drafts}</span>{/if}</span>
+                        <span class="pw-menu-sub">Governance, traces, audit, LLM config</span>
+                      </div>
+                    </button>
+                    <div class="pw-menu-label">People</div>
+                  {/if}
+                  <button class="pw-menu-row" class:pw-menu-active={routeMatches('/users')} onclick={() => navTo('/ui/users')}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <div class="pw-menu-text">
+                      <span class="pw-menu-name">Users &amp; Access</span>
+                      <span class="pw-menu-sub">Accounts + roles — create, reset, grant admin</span>
+                    </div>
+                  </button>
+                  {#if isSuper}
+                    <button class="pw-menu-row" class:pw-menu-active={isUsageActive} onclick={() => navTo('/ui/usage')}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><path d="M3 20h18"/></svg>
+                      <div class="pw-menu-text">
+                        <span class="pw-menu-name">Usage &amp; Cost</span>
+                        <span class="pw-menu-sub">Tokens · cost · requests — API keys, embeddings, platform, training</span>
+                      </div>
+                    </button>
+                  {/if}
+                </div>
+              {/if}
+            </div>
           {/if}
         {:else}
           <button onclick={() => navTo('/ui/projects')} class="pw-nav" class:pw-nav-active={isProjectsActive}>
@@ -1234,13 +1336,6 @@
                     <span class="pw-menu-sub">Slide decks from chat</span>
                   </div>
                 </button>
-                <button class="pw-menu-row" class:pw-menu-active={routeMatches('/agent-os/workflows')} onclick={() => navTo('/ui/agent-os/workflows')}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
-                  <div class="pw-menu-text">
-                    <span class="pw-menu-name">Workflows</span>
-                    <span class="pw-menu-sub">scheduled · cross-agent · DAGs</span>
-                  </div>
-                </button>
                 <button class="pw-menu-row" class:pw-menu-active={routeMatches('/skills')} onclick={() => navTo('/ui/skills')}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
                   <div class="pw-menu-text">
@@ -1260,18 +1355,11 @@
             </button>
             {#if openMenu === 'knowledge'}
               <div class="pw-menu">
-                <button class="pw-menu-row" class:pw-menu-active={routeMatches('/brain')} onclick={() => navTo('/ui/brain')}>
+                <button class="pw-menu-row" class:pw-menu-active={routeMatches('/brain') || page.url.hash.startsWith('#brain-')} onclick={() => { openMenu = null; window.location.href = singleAgent && lockedSlug ? `/ui/project/${lockedSlug}/settings#brain-glossary` : '/ui/brain'; }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2a3 3 0 0 0-3 3v1a3 3 0 0 0-2 5 3 3 0 0 0 2 5v1a3 3 0 0 0 6 0V2H9zM15 2a3 3 0 0 1 3 3v1a3 3 0 0 1 2 5 3 3 0 0 1-2 5v1a3 3 0 0 1-6 0"/></svg>
                   <div class="pw-menu-text">
-                    <span class="pw-menu-name">Company Brain</span>
+                    <span class="pw-menu-name">Brain</span>
                     <span class="pw-menu-sub">Glossary, formulas, org map</span>
-                  </div>
-                </button>
-                <button class="pw-menu-row" class:pw-menu-active={routeMatches('/ontology')} onclick={() => navTo('/ui/ontology')}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><line x1="7.5" y1="7.5" x2="10.5" y2="16"/><line x1="16.5" y1="7.5" x2="13.5" y2="16"/><line x1="8.5" y1="6" x2="15.5" y2="6"/></svg>
-                  <div class="pw-menu-text">
-                    <span class="pw-menu-name">Ontology Workbench</span>
-                    <span class="pw-menu-sub">Entities, links, lineage</span>
                   </div>
                 </button>
                 <button class="pw-menu-row" class:pw-menu-active={routeMatches('/embed-templates')} onclick={() => navTo('/ui/embed-templates')}>
@@ -1304,7 +1392,7 @@
         </button>
       </div>
 
-      <div class="flex items-center gap-2" onclick={(e) => e.stopPropagation()}>
+      <div class="flex items-center gap-2 pw-header-right" onclick={(e) => e.stopPropagation()}>
         {#if activeScope}
           <button
             onclick={switchScope}
@@ -1318,7 +1406,8 @@
           </button>
         {/if}
 
-        <!-- Agents online + sub-agents combined pill (live from OS Hub) -->
+        <!-- Agents online + sub-agents combined pill (live from OS Hub) — hidden for single-agent product -->
+        {#if !singleAgent}
         <button
           class="pw-agents-pill"
           title="View fleet — {agentsOnline ?? '—'} of {agentsTotal ?? '—'} active · {subAgentCount ?? '—'} sub-agents"
@@ -1332,6 +1421,7 @@
             <span>{agentsOnline} agents · {subAgentCount ?? 0} sub-agents</span>
           {/if}
         </button>
+        {/if}
 
         <!-- Feed bell -->
         <button onmousedown={(e) => { e.stopPropagation(); e.preventDefault(); showNotifications = !showNotifications; if (showNotifications) loadNotifications(); }} onclick={(e) => { e.stopPropagation(); }} class="pw-feed-btn" title="Notifications">
@@ -1350,44 +1440,32 @@
           </button>
         {/if}
 
-        <!-- User chip -->
+        <!-- User chip (role folded in as sub-line — replaces standalone tier pill) -->
         <div class="pw-nav-group">
           <button class="pw-user-chip" onclick={() => toggleMenu('user')} title="Account">
             <span class="pw-user-avatar">{username.charAt(0).toUpperCase()}</span>
-            <span class="pw-user-name">{username}</span>
+            <span class="pw-user-id" class:pw-user-id-bare={!isAdmin}>
+              <span class="pw-user-name">{username}</span>
+              {#if isSuper}
+                <span class="pw-user-tier pw-user-tier-super">🔒 SUPER ADMIN</span>
+              {:else if isAdmin}
+                <span class="pw-user-tier pw-user-tier-admin">⚙ ADMIN</span>
+              {/if}
+            </span>
             <svg class="pw-chev" class:pw-chev-open={openMenu === 'user'} width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           {#if openMenu === 'user'}
             <div class="pw-menu pw-menu-right" style="width: 240px;">
-              <button class="pw-menu-row" onclick={() => { openMenu = null; navTo('/ui/me/agent'); }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 0-4 4v2a4 4 0 0 0 8 0V6a4 4 0 0 0-4-4z"/><path d="M8 12a4 4 0 0 0 8 0"/><path d="M6 16a6 6 0 0 0 12 0"/><circle cx="19" cy="5" r="1.5" fill="currentColor"/></svg>
-                <div class="pw-menu-text"><span class="pw-menu-name"><Icon name="dna" size={14} /> My Agent</span><span class="pw-menu-sub">Your personal AI w/ memory</span></div>
-              </button>
+              <div class="pw-menu-ident">
+                <span class="pw-menu-ident-name">{username}</span>
+                <span class="pw-menu-ident-role" class:is-super={isSuper} class:is-admin={isAdmin && !isSuper}>
+                  {isSuper ? 'SUPER ADMIN' : (isAdmin ? 'ADMIN' : 'USER')}
+                </span>
+              </div>
               <div class="pw-menu-divider"></div>
               <button class="pw-menu-row" onclick={() => navTo('/ui/profile')}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.5a5 5 0 0 1 10 0"/></svg>
-                <div class="pw-menu-text"><span class="pw-menu-name">Profile</span></div>
-              </button>
-              <button class="pw-menu-row" onclick={() => navTo('/ui/profile?tab=settings')}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                <div class="pw-menu-text"><span class="pw-menu-name">Account settings</span></div>
-              </button>
-              <button class="pw-menu-row" onclick={() => { closeMenus(); showChangePassword = true; cpSuccess = false; cpError = ''; }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                <div class="pw-menu-text"><span class="pw-menu-name">Change password</span></div>
-              </button>
-              <button class="pw-menu-row" onclick={() => { closeMenus(); showApiKey = true; loadApiKey(); }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-                <div class="pw-menu-text"><span class="pw-menu-name">API key</span></div>
-              </button>
-              <div class="pw-menu-divider"></div>
-              <button class="pw-menu-row" onclick={() => navTo('/ui/help')}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                <div class="pw-menu-text"><span class="pw-menu-name">Help docs</span></div>
-              </button>
-              <button class="pw-menu-row" onclick={() => { closeMenus(); showSearch = true; }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <div class="pw-menu-text"><span class="pw-menu-name">Search</span><span class="pw-menu-sub">K</span></div>
+                <div class="pw-menu-text"><span class="pw-menu-name">Profile &amp; Settings</span><span class="pw-menu-sub">Profile · account · password</span></div>
               </button>
               <div class="pw-menu-divider"></div>
               <button class="pw-menu-row" onclick={() => { closeMenus(); logout(); }}>
@@ -1453,17 +1531,21 @@
       <div class="pw-mobile-backdrop" onclick={() => mobileNavOpen = false}></div>
       <aside class="pw-mobile-panel" onclick={(e) => e.stopPropagation()}>
         <div class="pw-mobile-header">
-          <span class="pw-wordmark">{$brand?.name || 'Dash'}</span>
+          <span class="pw-wordmark">{productName}</span>
           <button class="pw-icon-btn" onclick={() => mobileNavOpen = false}><Icon name="x" size={14} /></button>
         </div>
         <button class="pw-mobile-row" onclick={() => navTo('/ui/projects')}>Projects</button>
         <button class="pw-mobile-row" onclick={() => navTo('/ui/chat')}>Chat</button>
+        {#if singleAgent}
+          <button class="pw-mobile-row" onclick={() => { mobileNavOpen = false; window.location.href = overviewHref; }}>Dashboard</button>
+          <button class="pw-mobile-row" onclick={() => { mobileNavOpen = false; window.location.href = uploadHref; }}>Data Source</button>
+          <button class="pw-mobile-row" onclick={() => { mobileNavOpen = false; window.location.href = agentBrainHref; }}>Workspace</button>
+        {/if}
         <div class="pw-mobile-section">Build</div>
         <button class="pw-mobile-row pw-mobile-sub" onclick={() => navTo('/ui/dashboard')}>Dashboards</button>
         <button class="pw-mobile-row pw-mobile-sub" onclick={() => navTo('/ui/presentations')}>Presentations</button>
         <div class="pw-mobile-section">Knowledge</div>
-        <button class="pw-mobile-row pw-mobile-sub" onclick={() => navTo('/ui/brain')}>Company Brain</button>
-        <button class="pw-mobile-row pw-mobile-sub" onclick={() => navTo('/ui/ontology')}>Ontology Workbench</button>
+        <button class="pw-mobile-row pw-mobile-sub" onclick={() => { mobileNavOpen = false; window.location.href = singleAgent && lockedSlug ? `/ui/project/${lockedSlug}/settings#brain-glossary` : '/ui/brain'; }}>Brain</button>
         {#if isSuper}
           <div class="pw-mobile-section">Admin</div>
           <button class="pw-mobile-row pw-mobile-sub" onclick={() => navTo('/ui/command-center')}>Command Center</button>
@@ -1518,8 +1600,8 @@
       <SearchModal bind:open={showChatSearch} {recents} />
     {/if}
 
-    <!-- PULSE-style auto-show CLI bottom bar — only after real training/pipeline activity -->
-    {#if showCli && cliVisible && cliHasActivity}
+    <!-- Bottom CONSOLE bar DISABLED — the floating RobotPanel is now the single CLI surface (no separate window). -->
+    {#if false && showCli && cliVisible && cliHasActivity}
       {@const _errCount = cliLogs.filter(l => /\b(error|err|fail|✗|✕)\b/i.test((l as any).text || '')).length}
       {@const _warnCount = cliLogs.filter(l => /\b(warn|warning|⚠)\b/i.test((l as any).text || '')).length}
       {@const _evtCount = cliLogs.length}
@@ -1592,7 +1674,7 @@
     {/if}
     <footer class="shrink-0 flex items-center justify-between px-5 pw-footer">
       <div class="flex items-center gap-2">
-        {#if cliTraining}
+        {#if srvTraining}
           <span class="pw-pulse-dot pw-pulse-dot-warn"></span>
           <span>Training in progress</span>
         {:else}
@@ -1600,17 +1682,21 @@
           <span>System active</span>
         {/if}
       </div>
-      {#if showCli}
-        <div class="flex items-center gap-2" style="color: var(--pw-ink-soft);">
-          <span style="font-size: 10px;">{cliExpanded ? '▼' : '▲'}</span>
-          <span>Terminal</span>
-        </div>
-      {:else}
-        <div style="color: var(--pw-muted);">CityAgent Insights Agent can make mistakes. Verify critical information. · © 2026 CityAgent Insights</div>
-      {/if}
-      <div style="color: var(--pw-muted);">Demo · SaaS analytics</div>
+      <div style="color: var(--pw-muted);">{productName} Analyst can make mistakes. Verify critical information. · © 2026 {productName}</div>
     </footer>
   </div>
+{/if}
+
+<!-- ── Floating Robot Panel (always visible when logged in) ── -->
+{#if !isLogin}
+  <RobotPanel
+    logs={cliLogs}
+    isTraining={srvTraining || cliTraining}
+    trainStatus={cliTraining ? 'training' : (cliLogs.some(l => /✓ COMPLETE|DONE/i.test((l as any).text || '')) ? 'done' : 'idle')}
+    trainStep={cliLogs.slice().reverse().find(l => /step \d/i.test((l as any).text || ''))?.text || ''}
+    trainProgress={(() => { const m = cliLogs.slice().reverse().find(l => /step (\d+)\/14/i.test((l as any).text || '')); if (!m) return 0; const mt = ((m as any).text || '').match(/step (\d+)\/14/i); return mt ? parseInt(mt[1]) : 0; })()}
+    autoTrainStatus="watching"
+  />
 {/if}
 
 <style>
@@ -1709,6 +1795,16 @@
  position: sticky;
  top: 0;
  z-index: 50;
+ gap: 8px;
+ }
+ /* Left group (logo + nav) can shrink; nav-row shrinks before user cluster disappears */
+ .pw-header-left {
+ min-width: 0;
+ flex: 1 1 auto;
+ }
+ /* Right cluster (feed, bell, user menu) is ALWAYS visible — never clipped */
+ .pw-header-right {
+ flex-shrink: 0;
  }
  .pw-logomark {
  width: 32px;
@@ -2233,11 +2329,31 @@
  font-size: 12px;
  font-weight: 500;
  }
+ .pw-user-id {
+ display: flex;
+ flex-direction: column;
+ align-items: flex-start;
+ justify-content: center;
+ line-height: 1.1;
+ gap: 1px;
+ }
+ .pw-user-id-bare {
+ justify-content: center;
+ }
  .pw-user-name {
  font-size: 12px;
  font-weight: 500;
  color: var(--pw-ink);
  }
+ .pw-user-tier {
+ font-size: 9px;
+ font-weight: 700;
+ letter-spacing: 0.05em;
+ text-transform: uppercase;
+ line-height: 1;
+ }
+ .pw-user-tier-super { color: var(--pw-accent); }
+ .pw-user-tier-admin { color: var(--pw-ink-soft); }
 
  /* ───── Footer ───── */
  .pw-footer {
@@ -2287,7 +2403,9 @@
  align-items: center;
  gap: 2px;
  margin-left: 18px;
+ min-width: 0;
  }
+ .pw-nav-label { white-space: nowrap; }
  .pw-nav-group {
  position: relative;
  display: inline-flex;
@@ -2394,6 +2512,58 @@
  height: 1px;
  background: var(--pw-border);
  margin: 4px 0;
+ }
+ .pw-role-badge {
+ display: inline-flex;
+ align-items: center;
+ height: 26px;
+ padding: 0 10px;
+ margin-right: 8px;
+ border-radius: 13px;
+ font-size: 11px;
+ font-weight: 800;
+ letter-spacing: 0.04em;
+ white-space: nowrap;
+ cursor: pointer;
+ font-family: inherit;
+ }
+ .pw-role-badge:hover { filter: brightness(0.95); }
+ .pw-role-super {
+ background: rgba(192, 57, 43, 0.12);
+ color: var(--pw-error, #c0392b);
+ border: 1px solid rgba(192, 57, 43, 0.3);
+ }
+ .pw-role-admin {
+ background: rgba(201, 99, 66, 0.12);
+ color: var(--pw-accent, #c96342);
+ border: 1px solid rgba(201, 99, 66, 0.3);
+ }
+ .pw-menu-ident {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ gap: 8px;
+ padding: 8px 12px 6px;
+ }
+ .pw-menu-ident-name { font-size: 13px; font-weight: 700; color: var(--pw-ink); }
+ .pw-menu-ident-role {
+ font-size: 10px;
+ font-weight: 800;
+ letter-spacing: 0.05em;
+ padding: 2px 7px;
+ border-radius: 10px;
+ background: var(--pw-bg-alt, rgba(0,0,0,0.05));
+ color: var(--pw-ink-soft, #777);
+ }
+ .pw-menu-ident-role.is-super { background: rgba(192,57,43,0.12); color: var(--pw-error, #c0392b); }
+ .pw-menu-ident-role.is-admin { background: rgba(201,99,66,0.12); color: var(--pw-accent, #c96342); }
+ .pw-menu-label {
+ padding: 6px 12px 2px;
+ font-size: 10px;
+ font-weight: 800;
+ letter-spacing: 0.06em;
+ text-transform: uppercase;
+ color: var(--pw-ink-soft, #999);
  }
  .pw-pill-new {
  display: inline-block;
@@ -2694,12 +2864,36 @@
  .pw-mobile-row:hover { background: var(--pw-surface-warm); color: var(--pw-accent); }
  .pw-mobile-sub { padding-left: 22px; font-weight: 400; color: var(--pw-ink-soft); }
 
- @media (max-width: 900px) {
- .pw-nav-row { display: none; }
- .pw-hamburger { display: inline-flex; }
+ /* ≤1100px (tablet / narrow desktop): shrink logo + nav to fit the 5 items */
+ @media (max-width: 1100px) {
+ .pw-header { padding: 10px 12px; }
+ .pw-brand-img { height: 40px; max-width: 180px; }
+ .pw-nav-row { margin-left: 8px; gap: 0; }
+ .pw-nav { height: 38px; padding: 0 10px; font-size: 12.5px; gap: 6px; }
  .pw-agents-pill { display: none; }
- .pw-user-name { display: none; }
  .pw-hide-md { display: none; }
+ }
+
+ /* ≤900px: nav-row scrolls horizontally instead of overflowing; user cluster stays pinned right */
+ @media (max-width: 900px) {
+ .pw-nav-row {
+ overflow-x: auto;
+ flex-wrap: nowrap;
+ scrollbar-width: none;
+ -ms-overflow-style: none;
+ -webkit-overflow-scrolling: touch;
+ }
+ .pw-nav-row::-webkit-scrollbar { display: none; }
+ .pw-nav { flex-shrink: 0; }
+ .pw-user-name { display: none; }
+ }
+
+ /* ≤640px (mobile): drop nav text labels — icon-only scroll strip; tighter header */
+ @media (max-width: 640px) {
+ .pw-header { padding: 8px 8px; }
+ .pw-brand-img { height: 32px; max-width: 120px; }
+ .pw-nav-label { display: none; }
+ .pw-nav { padding: 0 8px; gap: 0; }
  }
  .pw-badge-coral { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 16px; padding: 0 5px; margin-left: 4px; background: var(--pw-accent, #c96342); color: #fff; border-radius: 0; font: 600 10px Inter; }
  .pw-badge-gray { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 16px; padding: 0 5px; margin-left: 4px; background: var(--pw-bg-alt, #f1ede4); color: var(--pw-ink-soft, #87837a); border-radius: 0; font: 600 10px Inter; }

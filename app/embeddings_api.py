@@ -48,14 +48,14 @@ def _check(user: dict, slug: str, role: str = "viewer") -> None:
 
 # ───────────────────── helper imports ─────────────────────
 
-def _embed_batch(texts: list[str], model: str | None = None) -> tuple[list[list[float]], int]:
-    """Lazy import. Returns (vectors, prompt_tokens)."""
+async def _embed_batch(texts: list[str], model: str | None = None) -> tuple[list[list[float]], int]:
+    """Lazy import. Returns (vectors, prompt_tokens). embed_batch is async."""
     try:
         from dash.tools.embeddings_helper import embed_batch  # type: ignore
     except Exception as e:
         logger.error("embeddings_helper missing: %s", e)
         raise HTTPException(503, f"embeddings backend unavailable: {e}")
-    out = embed_batch(texts, model=model) if model else embed_batch(texts)
+    out = await (embed_batch(texts, model=model) if model else embed_batch(texts))
     # Helper may return either list[list[float]] or (list[list[float]], tokens)
     if isinstance(out, tuple) and len(out) == 2:
         vectors, tokens = out
@@ -84,16 +84,32 @@ def _engine():
     return get_sql_engine()
 
 
+def _write_engine():
+    # get_sql_engine() has a read-only guard on the public/dash schema, so any
+    # INSERT/UPDATE/DELETE silently rolls back. Writes MUST use get_write_engine().
+    from db.session import get_write_engine
+    return get_write_engine()
+
+
 def _audit(conn, slug: str, user_id: int | None, action: str, details: dict | None = None) -> None:
+    """Best-effort audit row. Runs in its OWN transaction so a failure can never
+    poison the caller's write transaction (a failed statement aborts the whole
+    PG txn → the final COMMIT silently rolls back the real inserts).
+    Real schema: (project_slug, op, query, scope_attrs, rows_returned, latency_ms, ts).
+    """
     from sqlalchemy import text as _t
+    d = details or {}
+    rows_returned = int(d.get("ingested") or d.get("deleted") or d.get("count") or 0)
     try:
-        conn.execute(
-            _t(
-                f"INSERT INTO {_AUDIT} (project_slug, user_id, action, details, created_at) "
-                "VALUES (:s, :u, :a, CAST(:d AS jsonb), NOW())"
-            ),
-            {"s": slug, "u": user_id, "a": action, "d": json.dumps(details or {})},
-        )
+        with _write_engine().begin() as c2:
+            c2.execute(
+                _t(
+                    f"INSERT INTO {_AUDIT} (project_slug, op, query, scope_attrs, rows_returned, ts) "
+                    "VALUES (:s, :op, :q, CAST(:sa AS jsonb), :rr, NOW())"
+                ),
+                {"s": slug, "op": action, "q": json.dumps(d)[:2000],
+                 "sa": json.dumps({"user_id": user_id}), "rr": rows_returned},
+            )
     except Exception as e:
         logger.debug("audit insert skipped: %s", e)
 
@@ -110,6 +126,9 @@ async def openai_embeddings(request: Request):
 
     inp = body.get("input")
     model = body.get("model") or "default"
+    # "default" is a display label, NOT a real model id — pass None so the
+    # helper resolves its real DEFAULT_MODEL (openai/text-embedding-3-small).
+    real_model = None if model in (None, "", "default") else model
     if inp is None:
         raise HTTPException(400, "missing 'input'")
     if isinstance(inp, str):
@@ -124,7 +143,7 @@ async def openai_embeddings(request: Request):
     if len(texts) > 2048:
         raise HTTPException(413, "max 2048 inputs per request")
 
-    vectors, prompt_tokens = _embed_batch(texts, model=model)
+    vectors, prompt_tokens = await _embed_batch(texts, model=real_model)
 
     data = [
         {"object": "embedding", "index": i, "embedding": v}
@@ -132,6 +151,14 @@ async def openai_embeddings(request: Request):
     ]
     logger.info("embeddings: user=%s n=%d model=%s tokens=%d",
                 user.get("user_id"), len(texts), model, prompt_tokens)
+    # Meter into the unified usage ledger (request_type='embedding'). Fail-soft.
+    try:
+        from app.api_gateway import _log_usage
+        _log_usage(user, real_model or "text-embedding-3-small",
+                   int(prompt_tokens or 0), 0, streamed=False,
+                   request_type="embedding")
+    except Exception:
+        logger.debug("embeddings: usage meter failed (ignored)", exc_info=True)
     return {
         "object": "list",
         "data": data,
@@ -182,7 +209,7 @@ async def vector_search(slug: str, request: Request):
             logger.warning("hybrid_search failed (%s) — falling back to vector path", e)
 
     # Vector path
-    qvecs, _ = _embed_batch([query])
+    qvecs, _ = await _embed_batch([query])
     qvec_str = _vec_to_pg(qvecs[0])
 
     from sqlalchemy import text as _t
@@ -202,9 +229,10 @@ async def vector_search(slug: str, request: Request):
     eng = _engine()
     out: list[dict] = []
     with eng.begin() as conn:
-        # PG session vars used by RLS policies
-        conn.execute(_t("SET LOCAL app.project_slug = :v"), {"v": slug})
-        conn.execute(_t("SET LOCAL app.user_attrs = :v"),
+        # PG session vars used by RLS policies. SET LOCAL can't take bind params
+        # under psycopg/PgBouncer — use set_config(..., is_local=true) instead.
+        conn.execute(_t("SELECT set_config('app.project_slug', :v, true)"), {"v": slug})
+        conn.execute(_t("SELECT set_config('app.user_attrs', :v, true)"),
                      {"v": json.dumps(user_attrs)})
         rows = conn.execute(_t(sql), params).mappings().all()
         for r in rows:
@@ -294,7 +322,7 @@ async def vector_ingest(slug: str, request: Request):
         return {"ingested": 0, "skipped": skipped}
 
     # Embed only changed rows
-    vectors, _tokens = _embed_batch([p["text"] for p in changed])
+    vectors, _tokens = await _embed_batch([p["text"] for p in changed])
 
     upsert = _t(
         f"""
@@ -316,7 +344,7 @@ async def vector_ingest(slug: str, request: Request):
         """
     )
 
-    with eng.begin() as conn:
+    with _write_engine().begin() as conn:
         for p, v in zip(changed, vectors):
             conn.execute(upsert, {
                 "slug": slug,
@@ -402,8 +430,7 @@ def vector_delete(slug: str, source_id: str, request: Request, namespace: str | 
         sql += " AND namespace = :ns"
         params["ns"] = namespace
 
-    eng = _engine()
-    with eng.begin() as conn:
+    with _write_engine().begin() as conn:
         res = conn.execute(_t(sql), params)
         deleted = int(res.rowcount or 0)
         _audit(conn, slug, user.get("user_id"), "delete", {

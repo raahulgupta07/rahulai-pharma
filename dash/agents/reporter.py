@@ -41,14 +41,15 @@ def build_reporter_agent(project_slug: Optional[str] = None, user_id: Optional[i
         return None
 
     try:
-        from dash.settings import CHAT_MODEL
+        from dash.settings import CHAT_MODEL, OR_DATA_POLICY
     except Exception:
         CHAT_MODEL = "google/gemini-3-flash-preview"
+        OR_DATA_POLICY = {"provider": {"data_collection": "allow"}}
 
     try:
         return Agent(
             name="Reporter",
-            model=OpenRouter(id=CHAT_MODEL),
+            model=OpenRouter(id=CHAT_MODEL, extra_body=OR_DATA_POLICY),
             tools=[make_pdf, make_pptx, make_csv, make_xlsx, make_docx, make_json, make_md, list_generated_files],
             instructions=_INSTRUCTIONS,
         )

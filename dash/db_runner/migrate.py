@@ -152,13 +152,16 @@ def run_migrations() -> dict[str, Any]:
 
             checksum = _sha256(content)
 
-            # Phase 8: schema-prefix validator (informational, non-blocking)
-            try:
-                _sp_warnings = _check_schema_prefix(content)
-                for _w in _sp_warnings:
-                    log.warning(f"schema-prefix [{fname}]: {_w}")
-            except Exception:
-                pass
+            # Phase 8: schema-prefix validator (informational, non-blocking).
+            # Only lint migrations about to be APPLIED — re-linting the full
+            # already-applied set on every boot is pure noise.
+            if fname not in applied_set:
+                try:
+                    _sp_warnings = _check_schema_prefix(content)
+                    for _w in _sp_warnings:
+                        log.warning(f"schema-prefix [{fname}]: {_w}")
+                except Exception:
+                    pass
 
             if fname in applied_set:
                 prior = applied_checksums.get(fname, "")

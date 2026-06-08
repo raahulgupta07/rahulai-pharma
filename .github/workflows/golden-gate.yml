@@ -1,0 +1,41 @@
+name: Golden Eval Gate
+
+on:
+  pull_request:
+    branches:
+      - "main"
+  workflow_dispatch:
+
+env:
+  UV_SYSTEM_PYTHON: 1
+
+jobs:
+  golden-gate:
+    name: Golden eval pass-rate gate
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run golden eval gate (min-pass 90)
+        if: ${{ secrets.OPENROUTER_API_KEY != '' }}
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          python -m evals.run --golden --min-pass 90
+          echo "Golden gate result: PASS (pass-rate >= 90%)"
+
+      - name: Skip gate (no OPENROUTER_API_KEY)
+        if: ${{ secrets.OPENROUTER_API_KEY == '' }}
+        run: 'echo "skipped: no OPENROUTER_API_KEY"'

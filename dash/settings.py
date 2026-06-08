@@ -299,7 +299,16 @@ def _fallbacks_for(model: str) -> list[str]:
 # temperature pinned low so the same question yields the same SQL across chats
 # (non-deterministic answers — CRM feedback 2026-05-21). Determinism > creativity
 # for a data agent. Override per-call only where variety is wanted.
-MODEL = OpenRouter(id=CHAT_MODEL, temperature=0.1)
+# extra_body.provider.data_collection="allow" — opt OpenRouter calls into
+# providers that may train on inputs. Without it, the account's restrictive
+# data policy (openrouter.ai/settings/privacy) can yield "No endpoints available
+# matching your data policy" (404) when the only policy-compliant provider for
+# the model is unavailable for the full tool-using request. Trade-off: inputs
+# may be used for provider training. Shared constant so EVERY OpenRouter model
+# (MODEL here + router/reporter/reasoner sub-agents + the per-tier override in
+# app/projects.py) opts in identically — miss one and the team still 404s.
+OR_DATA_POLICY = {"provider": {"data_collection": "allow"}}
+MODEL = OpenRouter(id=CHAT_MODEL, temperature=0.1, extra_body=OR_DATA_POLICY)
 
 # Per-task config: model, temperature, max_tokens, thinking level, timeout
 # Tasks without "model" key use TRAINING_MODEL (Gemini 3 Flash)
@@ -426,6 +435,19 @@ def get_llm_project() -> str | None:
     return getattr(_LLM_CTX, "project_slug", None)
 
 
+def set_llm_actor(username: str | None):
+    """Bind the current thread's LLM activity to a user for usage attribution.
+
+    Powers the Admin Usage dashboard's per-user / "who used what" rollups. Like
+    set_llm_project, this is thread-local and read by _emit_llm_stats.
+    """
+    _LLM_CTX.actor = username or None
+
+
+def get_llm_actor() -> str | None:
+    return getattr(_LLM_CTX, "actor", None)
+
+
 class _BudgetExceeded(Exception):
     """Raised when a project's daily LLM cost cap is reached."""
     def __init__(self, slug: str, today: float, cap: float):
@@ -516,8 +538,8 @@ def _emit_llm_stats(stats: dict):
             with _gse().connect() as conn:
                 conn.execute(_text(
                     "INSERT INTO public.dash_llm_costs "
-                    "(project_slug, task, model, cost_usd, tokens_in, tokens_out, ok) "
-                    "VALUES (:s, :t, :m, :c, :ti, :to, :ok)"
+                    "(project_slug, task, model, cost_usd, tokens_in, tokens_out, ok, actor) "
+                    "VALUES (:s, :t, :m, :c, :ti, :to, :ok, :actor)"
                 ), {
                     "s": slug,
                     "t": stats.get("task"),
@@ -526,6 +548,7 @@ def _emit_llm_stats(stats: dict):
                     "ti": int(stats.get("tokens_in", 0) or 0),
                     "to": int(stats.get("tokens_out", 0) or 0),
                     "ok": bool(stats.get("ok", True)),
+                    "actor": get_llm_actor(),
                 })
                 conn.commit()
             _invalidate_budget_cache(slug)

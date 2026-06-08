@@ -37,6 +37,7 @@ __all__ = [
     "end_trace",
     "record_cost",
     "set_project",
+    "set_root_meta",
 ]
 
 # ── Context state ─────────────────────────────────────────────────────────────
@@ -161,8 +162,11 @@ def set_project(slug: str) -> None:
     _project.set(slug)
 
 
-def record_cost(usd: float | None = None, tokens: int | None = None) -> None:
-    """Attach cost/tokens to the CURRENT span. No-op if none open."""
+def record_cost(usd: float | None = None, tokens: int | None = None,
+                model: str | None = None) -> None:
+    """Attach cost/tokens to the CURRENT span. No-op if none open. When `model`
+    is given, also stamp meta.model (so the Usage dashboard can break cost down
+    by model). Merges into existing meta — never clobbers."""
     if _disabled():
         return
     db_id = _cur_db_id.get()
@@ -172,17 +176,61 @@ def record_cost(usd: float | None = None, tokens: int | None = None) -> None:
         from db.session import get_write_engine
         eng = get_write_engine()
         with eng.begin() as conn:
+            if model:
+                conn.execute(
+                    text(
+                        "UPDATE public.dash_traces SET "
+                        "cost_usd = COALESCE(cost_usd, 0) + COALESCE(:usd, 0), "
+                        "tokens = COALESCE(tokens, 0) + COALESCE(:tokens, 0), "
+                        "meta = COALESCE(meta, '{}'::jsonb) "
+                        "       || jsonb_build_object('model', :model::text) "
+                        "WHERE id = :id"
+                    ),
+                    {"usd": usd, "tokens": tokens, "model": model, "id": db_id},
+                )
+            else:
+                conn.execute(
+                    text(
+                        "UPDATE public.dash_traces SET "
+                        "cost_usd = COALESCE(cost_usd, 0) + COALESCE(:usd, 0), "
+                        "tokens = COALESCE(tokens, 0) + COALESCE(:tokens, 0) "
+                        "WHERE id = :id"
+                    ),
+                    {"usd": usd, "tokens": tokens, "id": db_id},
+                )
+    except Exception as e:  # noqa: BLE001
+        logger.debug("record_cost failed: %s", e)
+
+
+def set_root_meta(**kw) -> None:
+    """Merge attributes (actor, channel, store_id, …) into the ROOT span's meta.
+
+    Powers the Usage dashboard: lets the chat handler tag each run with who ran
+    it (actor), how it came in (channel: web|api), and which store (api keys).
+    Drops None values; merges, never clobbers. Fail-soft."""
+    if _disabled():
+        return
+    db_id = _root_db_id.get()
+    if db_id is None:
+        return
+    attrs = {k: v for k, v in kw.items() if v is not None}
+    if not attrs:
+        return
+    try:
+        import json
+        from db.session import get_write_engine
+        eng = get_write_engine()
+        with eng.begin() as conn:
             conn.execute(
                 text(
                     "UPDATE public.dash_traces SET "
-                    "cost_usd = COALESCE(cost_usd, 0) + COALESCE(:usd, 0), "
-                    "tokens = COALESCE(tokens, 0) + COALESCE(:tokens, 0) "
+                    "meta = COALESCE(meta, '{}'::jsonb) || CAST(:attrs AS jsonb) "
                     "WHERE id = :id"
                 ),
-                {"usd": usd, "tokens": tokens, "id": db_id},
+                {"attrs": json.dumps(attrs), "id": db_id},
             )
     except Exception as e:  # noqa: BLE001
-        logger.debug("record_cost failed: %s", e)
+        logger.debug("set_root_meta failed: %s", e)
 
 
 @contextmanager

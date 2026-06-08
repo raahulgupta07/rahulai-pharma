@@ -14,7 +14,8 @@
     parseForecasts,
     parseRootCause,
     parseAudit,
-    parseSkillUsed
+    parseSkillUsed,
+    parseMonograph
   } from '$lib/answer-tags';
 
   let { content = '', tier = 'standard', msg = {}, onAction = () => {} } = $props();
@@ -42,6 +43,20 @@
   const auditParsed = $derived(parseAudit(recsParsed.stripped));
   const skillUsed = $derived(parseSkillUsed(content || ''));
   const cleanedBody = $derived(auditParsed.stripped);
+
+  // Clinical monograph (chemist → chemist drug card). Present only when the
+  // agent emitted a [DRUG:] tag → renders the monograph instead of exec blocks.
+  const monoParsed = $derived(parseMonograph(content || ''));
+  const mono = $derived(monoParsed.mono);
+  const monoProse = $derived.by(() => {
+    if (!mono) return '';
+    let s = (monoParsed.stripped || '')
+      .replace(/\[[A-Z][A-Z0-9_]{2,}:[^\]]*\]/g, '')
+      .replace(/^\s*\|.*\|\s*$/gm, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    return s.length > 30 ? markdownToHtml(s) : '';
+  });
 
   // ── Legacy-tag fallback helpers (so old assistant messages w/o new exec
   //    tags still render in exec layout). Pulls from HEADLINE / BECAUSE /
@@ -85,17 +100,44 @@
   //  - drop duplicates by label (keep first w/ best change/status)
   //  - drop tiles w/ N/A or empty value
   //  - cap at 4 visible
+  // Significant label tokens for cross-KPI dup detection: drop short/common
+  // words so "BIOGESIC STOCK LEVEL" vs "HIGHEST STOCK (BIOGESIC)" share "biogesic".
+  const _KPI_STOPWORDS = new Set([
+    'the', 'and', 'for', 'with', 'stock', 'level', 'total', 'count',
+    'highest', 'lowest', 'value', 'avg', 'average', 'sum', 'top', 'units'
+  ]);
+  function _kpiTokens(label) {
+    return new Set(
+      String(label || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter((t) => t.length >= 4 && !_KPI_STOPWORDS.has(t))
+    );
+  }
+
   const kpiList = $derived.by(() => {
     const raw = kpisParsed.items || [];
     const seen = new Map();
+    const kept = []; // {value, tokens, kpi}
     for (const k of raw) {
       const v = String(k.value ?? '').trim();
       const lbl = String(k.label ?? '').trim().toLowerCase();
       if (!lbl) continue;
       if (!v || v.toUpperCase() === 'N/A' || v === '—') continue;
-      if (!seen.has(lbl)) seen.set(lbl, k);
+      if (seen.has(lbl)) continue; // exact-label dup
+      // Cross-label dup: same trimmed value AND a shared significant label token.
+      const tokens = _kpiTokens(lbl);
+      const isDup = kept.some((p) => {
+        if (p.value !== v) return false;
+        for (const t of tokens) if (p.tokens.has(t)) return true;
+        return false;
+      });
+      if (isDup) continue;
+      seen.set(lbl, k);
+      kept.push({ value: v, tokens, kpi: k });
     }
-    return Array.from(seen.values()).slice(0, 4);
+    return kept.map((p) => p.kpi).slice(0, 4);
   });
 
   // Plain-English summary: strip ALL legacy + custom tags, KPI tags, markdown
@@ -292,6 +334,13 @@
     return '⚪';
   }
 
+  // Empty-delta gate: only show the change row for a real, non-zero value.
+  const _EMPTY_DELTAS = new Set(['', '0', '--', '—', '-']);
+  function hasRealDelta(kpi) {
+    const d = String(kpi.delta ?? kpi.change ?? '').trim();
+    return d !== '' && !_EMPTY_DELTAS.has(d);
+  }
+
   function fmtMoney(v) {
     if (v == null || !Number.isFinite(Number(v))) return v ?? '';
     const n = Number(v);
@@ -314,9 +363,86 @@
     </span>
   {/if}
 
+  {#if mono}
+    <!-- ─── Clinical monograph (chemist → chemist) ─── -->
+    <div class="mono-head">
+      <span class="mono-icon" aria-hidden="true">🧪</span>
+      <div class="mono-title-wrap">
+        <h2 class="mono-salt">{mono.salt}</h2>
+        {#if mono.brand || mono.article}
+          <div class="mono-sub">{#if mono.brand}{mono.brand}{/if}{#if mono.brand && mono.article} · {/if}{#if mono.article}<span class="mono-art">{mono.article}</span>{/if}</div>
+        {/if}
+      </div>
+      {#if mono.status || mono.klass}
+        <span class="mono-status">{[mono.status, mono.klass].filter(Boolean).join(' · ')}</span>
+      {/if}
+    </div>
+
+    {#if mono.composition || mono.indication || mono.dose}
+      <div class="mono-fields">
+        {#if mono.composition}<div class="mono-row"><span class="mono-k">COMPOSITION</span><span class="mono-v">{mono.composition}</span></div>{/if}
+        {#if mono.indication}<div class="mono-row"><span class="mono-k">INDICATION</span><span class="mono-v">{mono.indication}</span></div>{/if}
+        {#if mono.dose}<div class="mono-row"><span class="mono-k">DOSE</span><span class="mono-v">{mono.dose}</span></div>{/if}
+      </div>
+    {/if}
+
+    {#if mono.caution.length || mono.interacts.length}
+      <div class="mono-safety">
+        {#each mono.caution as c}
+          <div class="mono-safety-row"><span class="mono-safety-tag">⚠ CAUTION</span><span class="mono-safety-text">{c}</span></div>
+        {/each}
+        {#each mono.interacts as it}
+          <div class="mono-safety-row"><span class="mono-safety-tag">⚠ INTERACTS</span><span class="mono-safety-text">{it}</span></div>
+        {/each}
+      </div>
+    {/if}
+
+    {#if mono.stock}
+      <div class="mono-strip">
+        <span class="mono-strip-label">DISPENSING{#if mono.stock.branch} · branch {mono.stock.branch}{/if}</span>
+        <div class="mono-strip-vals">
+          <span class="mono-stock">{mono.stock.status || '✅'} {mono.stock.qty}{#if mono.stock.skus} · {mono.stock.skus} SKUs{/if}</span>
+          {#if mono.stock.cost}<span class="mono-cost">COST {mono.stock.cost}</span>{/if}
+        </div>
+      </div>
+    {/if}
+
+    {#if mono.equiv.length}
+      <hr />
+      <div class="block-label">🔄 Therapeutic equivalents</div>
+      <div class="mono-equiv">
+        {#each mono.equiv as e}
+          <div class="mono-equiv-row">
+            <span class="mono-equiv-name">{e.name}</span>
+            <span class="mono-equiv-meta">{#if e.qty}{e.qty} u{/if}{#if e.qty && (e.cost || e.article)} · {/if}{#if e.cost}{e.cost}{/if}{#if e.cost && e.article} · {/if}{#if e.article}<span class="mono-art">{e.article}</span>{/if}</span>
+          </div>
+        {/each}
+      </div>
+    {/if}
+
+    {#if monoProse}
+      <hr />
+      <div class="summary-card">{@html monoProse}</div>
+    {/if}
+
+    {#if showRelated}
+      <hr />
+      <div class="block-label">Related questions</div>
+      <div class="chips">
+        {#each relatedItems as q}
+          <button class="chip" onclick={() => onAction('related', q)}>{q}</button>
+        {/each}
+      </div>
+    {/if}
+
+    {#if mono.evidence}
+      <div class="mono-evidence">🔗 evidence&nbsp;&nbsp;{mono.evidence.article}{#if mono.evidence.table} · {mono.evidence.table}{/if}<span class="mono-verified">✓ verified</span></div>
+    {/if}
+  {:else}
+
   {#if actionTitle}
     <h2 class="action-title">
-      <span class="title-icon" aria-hidden="true">📈</span>
+      <span class="title-icon" aria-hidden="true">🧪</span>
       {@html formatInline(actionTitle)}
     </h2>
   {/if}
@@ -342,7 +468,7 @@
           <div class="kpi-label">{kpi.label || ''}</div>
           <div class="kpi-value">{kpi.value ?? ''}</div>
           <div class="kpi-meta">
-            {#if kpi.delta || kpi.change}
+            {#if hasRealDelta(kpi)}
               <span class="kpi-delta kpi-delta-{color}">{kpi.delta || kpi.change}</span>
             {/if}
             {#if emoji && emoji !== '⚪'}
@@ -505,7 +631,7 @@
 
   {#if showRecs}
     <hr />
-    <div class="block-label">What you should do</div>
+    <div class="block-label">Read next</div>
     <ol class="recs-list">
       {#each recsList as rec, i}
         {@const pr = (rec.priority || 'P2').toString().toUpperCase()}
@@ -513,16 +639,9 @@
           <span class="priority-badge priority-{pr.toLowerCase()}">{pr}</span>
           <div class="rec-body">
             <div class="rec-action">{@html formatInline(rec.action || rec.text || '')}</div>
-            {#if rec.impact || rec.effort}
-              <div class="rec-meta muted">
-                {#if rec.impact}Impact: {rec.impact}{/if}
-                {#if rec.impact && rec.effort} · {/if}
-                {#if rec.effort}Effort: {rec.effort}{/if}
-              </div>
-            {/if}
           </div>
           <button class="btn-cta" onclick={() => onAction('followup', { question: rec.action || rec.text || '', rec })}>
-            {rec.cta || 'Do it'}
+            Ask →
           </button>
         </li>
       {/each}
@@ -542,33 +661,14 @@
   {#if showAudit}
     <hr />
     <div class="audit-footer">
+      <span class="audit-src">🔗 source</span>
       {#each auditParsed.items as a, i}
         <span>{a}</span>{#if i < auditParsed.items.length - 1}<span class="sep"> · </span>{/if}
       {/each}
     </div>
   {/if}
 
-  <hr />
-  <div class="action-bar">
-    <button class="ab-btn" onclick={() => onAction('save', msg)}>
-      <Icon name="save" size={14} /> <span>Save</span>
-    </button>
-    <button class="ab-btn" onclick={() => onAction('pin', msg)}>
-      <Icon name="pin" size={14} /> <span>Pin</span>
-    </button>
-    <button class="ab-btn" onclick={() => onAction('excel', msg)}>
-      <Icon name="download" size={14} /> <span>Excel</span>
-    </button>
-    <button class="ab-btn" onclick={() => onAction('email', msg)}>
-      <Icon name="mail" size={14} /> <span>Email</span>
-    </button>
-    <button class="ab-btn" onclick={() => onAction('share', msg)}>
-      <Icon name="share" size={14} /> <span>Share</span>
-    </button>
-    <button class="ab-btn" onclick={() => onAction('diary', msg)}>
-      <Icon name="book" size={14} /> <span>Diary</span>
-    </button>
-  </div>
+  {/if}
 </article>
 
 <style>
@@ -966,7 +1066,59 @@
 
   .muted { color: var(--pw-ink-muted, #7a6f60); }
 
+  /* ─── Clinical monograph ─── */
+  .mono-head { display: flex; align-items: flex-start; gap: 10px; padding-right: 90px; }
+  .mono-icon { font-size: 22px; line-height: 1.1; flex-shrink: 0; }
+  .mono-title-wrap { flex: 1; min-width: 0; }
+  .mono-salt {
+    font-family: var(--pw-font-body);
+    font-size: 22px; line-height: 1.15; font-weight: 700; margin: 0;
+    text-transform: uppercase; letter-spacing: 0.01em;
+    color: var(--pw-ink, #1f1a14);
+  }
+  .mono-sub { font-size: 12px; color: var(--pw-ink-muted, #7a6f60); margin-top: 2px; }
+  .mono-art { font-family: ui-monospace, monospace; font-size: 11px; }
+  .mono-status {
+    flex-shrink: 0; align-self: flex-start;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--pw-accent, #c96342); background: rgba(201,99,66,0.10);
+    border-radius: 999px; padding: 3px 10px; white-space: nowrap;
+  }
+  .mono-fields { margin-top: 14px; display: flex; flex-direction: column; }
+  .mono-row { display: grid; grid-template-columns: 120px 1fr; gap: 12px; padding: 7px 0; border-bottom: 1px solid #f1e6d2; font-size: 13.5px; }
+  .mono-row:last-child { border-bottom: none; }
+  .mono-k { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; color: var(--pw-ink-muted, #7a6f60); padding-top: 2px; }
+  .mono-v { color: var(--pw-ink, #1f1a14); }
+
+  /* safety strip — red, surfaced near top */
+  .mono-safety { margin-top: 12px; background: rgba(192,57,43,0.07); border: 1px solid rgba(192,57,43,0.25); border-left: 3px solid #c0392b; border-radius: 4px; padding: 8px 12px; display: flex; flex-direction: column; gap: 5px; }
+  .mono-safety-row { display: flex; gap: 10px; align-items: baseline; font-size: 13px; }
+  .mono-safety-tag { flex-shrink: 0; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: #c0392b; white-space: nowrap; }
+  .mono-safety-text { color: var(--pw-ink, #1f1a14); }
+
+  /* dispensing ledger */
+  .mono-strip { margin-top: 12px; background: var(--pw-bg-alt, #f6ecda); border-radius: 4px; padding: 10px 14px; }
+  .mono-strip-label { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--pw-ink-muted, #7a6f60); }
+  .mono-strip-vals { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 4px; flex-wrap: wrap; }
+  .mono-stock { font-size: 16px; font-weight: 600; color: var(--pw-ink, #1f1a14); }
+  .mono-cost { font-size: 12px; color: var(--pw-ink-muted, #7a6f60); font-variant-numeric: tabular-nums; }
+
+  /* therapeutic equivalents */
+  .mono-equiv { display: flex; flex-direction: column; }
+  .mono-equiv-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #f1e6d2; font-size: 13px; }
+  .mono-equiv-row:last-child { border-bottom: none; }
+  .mono-equiv-name { font-weight: 600; }
+  .mono-equiv-meta { color: var(--pw-ink-muted, #7a6f60); font-variant-numeric: tabular-nums; text-align: right; }
+
+  /* evidence footer */
+  .mono-evidence { margin-top: 14px; font-size: 11px; font-family: ui-monospace, monospace; color: var(--pw-ink-muted, #7a6f60); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .mono-verified { margin-left: auto; color: #16a34a; font-weight: 700; }
+
+  .audit-src { font-weight: 700; margin-right: 4px; }
+
   @media (max-width: 900px) {
+    .mono-row { grid-template-columns: 90px 1fr; }
+    .mono-head { padding-right: 0; flex-wrap: wrap; }
     .kpi-strip { grid-template-columns: 1fr; }
     .topn-row { grid-template-columns: 100px 1fr 60px; font-size: 12px; }
     .seg-row { grid-template-columns: 100px 1fr 50px; }

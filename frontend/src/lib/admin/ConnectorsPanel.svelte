@@ -67,8 +67,6 @@
   /* ─── connector brand logos (simpleicons.org CDN, brand-colored) ─── */
   const LOGO_MAP: Record<string, string> = {
     postgresql: 'https://cdn.simpleicons.org/postgresql/336791',
-    mssql:      'https://cdn.simpleicons.org/microsoftsqlserver/CC2927',
-    fabric:     'https://cdn.simpleicons.org/microsoftfabric/0078D4',
     bigquery:   'https://cdn.simpleicons.org/googlebigquery/669DF6',
     powerbi:    'https://cdn.simpleicons.org/powerbi/F2C811',
   };
@@ -76,11 +74,7 @@
     return LOGO_MAP[type] || 'https://cdn.simpleicons.org/databricks/FF3621';
   }
   function onLogoError(e: Event) {
-    // Fallback to Microsoft icon if Fabric icon 404s on older simpleicons cache
-    const img = e.target as HTMLImageElement;
-    if (img.src.includes('microsoftfabric')) {
-      img.src = 'https://cdn.simpleicons.org/microsoft/0078D4';
-    }
+    void e;
   }
 
   let typePickerOpen = $state(false);

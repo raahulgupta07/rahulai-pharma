@@ -18,9 +18,12 @@
  import PacksPanel from '$lib/admin/PacksPanel.svelte';
  import ConnectorsPanel from '$lib/admin/ConnectorsPanel.svelte';
 import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
+ import GatewayPanel from '$lib/admin/GatewayPanel.svelte';
+ import AuthAdminPanel from '$lib/admin/AuthAdminPanel.svelte';
+ import ObservabilityPanel from '$lib/admin/ObservabilityPanel.svelte';
 
  /* ─── state ─── */
- let activeTab = $state('users');
+ let activeTab = $state('cockpit');
  let loading = $state(false);
 
  /* ─── auth helper ─── */
@@ -48,6 +51,12 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  ];
 
  const tabMeta: Record<string, { label: string; subtitle: string }> = {
+ cockpit: { label: 'Cockpit', subtitle: 'Platform health · access · gateway · data' },
+ observability: { label: 'Observability', subtitle: 'Per-chat traces & context health' },
+ gateway: { label: 'API Gateway', subtitle: 'External /api/v1 keys & usage' },
+ embed: { label: 'Embed', subtitle: 'Embeddable chat widgets + usage' },
+ brain: { label: 'Brain', subtitle: 'Company knowledge — glossary, formulas, graph' },
+ auth: { label: 'Authentication', subtitle: 'Local · LDAP · OIDC / SSO' },
  users: { label: 'Users', subtitle: 'Manage user accounts, roles, and access' },
  projects: { label: 'Projects', subtitle: 'All projects across the platform with brain health' },
  logs: { label: 'Audit logs', subtitle: 'Security and activity audit trail' },
@@ -56,7 +65,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  health: { label: 'System health', subtitle: 'Live status of services, workers, and connectors' },
  stats: { label: 'Platform stats', subtitle: 'Usage, growth, and system metrics' },
  integrations: { label: 'Integrations', subtitle: 'Connector configuration and admin setup' },
- connectors: { label: 'External connectors', subtitle: 'PostgreSQL · MSSQL · Microsoft Fabric · BigQuery · PowerBI (super-admin)' },
+ connectors: { label: 'External connectors', subtitle: 'PostgreSQL · MySQL · BigQuery · PowerBI (super-admin)' },
  governance: { label: 'Governance', subtitle: 'Secret leaks · hooks · refusal audit' },
  'agent-os-admin': { label: 'Agent OS admin', subtitle: 'Drafts · fleet · workflows · evals' },
  'telemetry-admin': { label: 'Telemetry', subtitle: 'Cost · run timeline · skill heatmap' },
@@ -83,12 +92,17 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
 
  // Single-agent product hides multi-project grids (Projects + Schemas).
  let singleAgent = $state(false);
+ // CityPharma single-agent: pruned 6 dead/wrong-domain tabs from the rail —
+ // architecture (multi-service viz), connectors (SharePoint/GDrive/OneDrive — backend gone),
+ // drift (ML monitoring, no consumer), fed-admin (multi-tenant), channels (Slack/Teams fan-out),
+ // mcp (agent-builder). Content blocks left dead-but-unreachable (no rail entry point).
  const _railGroupsBase: { label: string; items: string[] }[] = [
- { label: 'Overview', items: ['stats','health','architecture'] },
+ { label: 'Overview', items: ['cockpit','stats','health','observability'] },
  { label: 'People', items: ['users','projects','chatLogs'] },
- { label: 'Data', items: ['schemas','integrations','connectors','drift'] },
- { label: 'System', items: ['traces','fed-admin','logs','admin-settings','channels','mcp','llm'] },
- { label: 'Trust & Governance', items: ['accuracy','golden','mdl','diff','scope-audit','approvals','actions','metricflow','dataview','packs'] },
+ { label: 'Data', items: ['schemas','integrations'] },
+ { label: 'Platform', items: ['gateway','auth'] },
+ { label: 'System', items: ['traces','logs','admin-settings','llm'] },
+ { label: 'Trust & Governance', items: ['accuracy','golden','mdl','diff','scope-audit','actions','metricflow'] },
  ];
  const railGroups = $derived(
  singleAgent
@@ -906,8 +920,19 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  if (id === 'channels') await loadChannels();
  if (id === 'mcp') await loadMcp();
  if (id === 'traces') await loadTraces();
+ if (id === 'cockpit') await loadCockpit();
  } catch {}
  loading = false;
+ }
+
+ /* ─── cockpit (folded-in Super Dashboard landing) ─── */
+ let cockpit = $state<any>({});
+ async function loadCockpit() {
+   const j = async (u: string) => { try { const r = await fetch(u, { headers: _h() }); return r.ok ? await r.json() : null; } catch { return null; } };
+   const [arch, hl, dm, g] = await Promise.all([
+     j('/api/architecture'), j('/api/health'), j('/api/health/daemons'), j('/api/auth/apigw-usage'),
+   ]);
+   cockpit = { metrics: arch?.metrics || {}, models: arch?.models || {}, health: hl || {}, daemons: dm || {}, gw: g || {} };
  }
 
  /* ═══════════════════════════════════════════════════════════ */
@@ -1098,11 +1123,11 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  }
 
  function _initialTab(): string {
- if (typeof window === 'undefined') return 'users';
+ if (typeof window === 'undefined') return 'cockpit';
  const t = new URL(window.location.href).searchParams.get('tab');
  if (t && LEGACY_TAB_REDIRECT[t]) return LEGACY_TAB_REDIRECT[t];
  if (t && _isSubTab(t)) return t;
- return t && tabMeta[t] ? t : 'users';
+ return t && tabMeta[t] ? t : 'cockpit';
  }
 
  $effect(() => {
@@ -1418,12 +1443,18 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
           {#if meta}
             <button class="cc-rail-btn" class:active={activeTab === id} onclick={() => switchTab(id)}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                {#if id === 'users'}<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+                {#if id === 'cockpit'}<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/>
+                {:else if id === 'gateway'}<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                {:else if id === 'embed'}<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+                {:else if id === 'brain'}<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><line x1="7.5" y1="7.5" x2="10.5" y2="16"/><line x1="16.5" y1="7.5" x2="13.5" y2="16"/><line x1="8.5" y1="6" x2="15.5" y2="6"/>
+                {:else if id === 'auth'}<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                {:else if id === 'users'}<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
                 {:else if id === 'projects'}<path d="M3 7h18M3 12h18M3 17h18"/>
                 {:else if id === 'logs'}<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/>
                 {:else if id === 'schemas'}<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
                 {:else if id === 'chatLogs'}<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                 {:else if id === 'health'}<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                {:else if id === 'observability'}<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/>
                 {:else if id === 'stats'}<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
                 {:else if id === 'integrations'}<path d="M16 3h5v5M21 3l-7 7M8 21H3v-5M3 21l7-7"/>
                 {:else if id === 'architecture'}<circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M9 6h6M6 9v6M18 9v6"/>
@@ -1452,30 +1483,6 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
             </button>
           {/if}
         {/each}
-        {#if g.label === 'System'}
-          <hr class="rail-sep" />
-          <div class="rail-subgroup-label">Governance</div>
-          {#each govSubs as t}
-            <button class="cc-rail-btn" class:active={activeTab===t.id} onclick={() => { activeTab = t.id; }}>
-              <Icon name={t.icon} />
-              <span>{t.label}</span>
-            </button>
-          {/each}
-          <div class="rail-subgroup-label">Agent OS</div>
-          {#each aosSubs as t}
-            <button class="cc-rail-btn" class:active={activeTab===t.id} onclick={() => { activeTab = t.id; }}>
-              <Icon name={t.icon} />
-              <span>{t.label}</span>
-            </button>
-          {/each}
-          <div class="rail-subgroup-label">Telemetry</div>
-          {#each telSubs as t}
-            <button class="cc-rail-btn" class:active={activeTab===t.id} onclick={() => { activeTab = t.id; }}>
-              <Icon name={t.icon} />
-              <span>{t.label}</span>
-            </button>
-          {/each}
-        {/if}
       </div>
     {/each}
   </aside>
@@ -2286,11 +2293,11 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
   {#if dbAdminStep === 'idle'}
     <!-- DB type picker -->
     <div style="display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;">
-      {#each [['postgresql', 'PG', '#336791', '5432'], ['mysql', 'MY', '#00758f', '3306'], ['fabric', 'FB', '#0078d4', '1433']] as [type, icon, color, port]}
+      {#each [['postgresql', 'PG', '#336791', '5432'], ['mysql', 'MY', '#00758f', '3306']] as [type, icon, color, port]}
         <button class="ink-border" style="padding: 14px 20px; background: var(--pw-surface); cursor: pointer; text-align: center; border-width: 2px; min-width: 140px;"
           onclick={() => { dbAdminType = type; dbAdminPort = port; dbAdminStep = 'form'; }}>
           <div style="width: 32px; height: 32px; background: {color}; display: flex; align-items: center; justify-content: center; font-weight: 900; color: white; font-size: 10px; margin: 0 auto 6px;">{icon}</div>
-          <div style="font-size: 11px; font-weight: 900;">{type === 'fabric' ? 'Microsoft Fabric' : type === 'postgresql' ? 'PostgreSQL' : 'MySQL'}</div>
+          <div style="font-size: 11px; font-weight: 900;">{type === 'postgresql' ? 'PostgreSQL' : 'MySQL'}</div>
         </button>
       {/each}
     </div>
@@ -2302,7 +2309,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
       <div style="display: flex; flex-direction: column; gap: 8px;">
         <div>
           <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 2px;">HOST</div>
-          <input type="text" bind:value={dbAdminHost} placeholder={dbAdminType === 'fabric' ? 'workspace.datawarehouse.fabric.microsoft.com' : 'db.company.com'} style="width: 100%; border: 2px solid var(--pw-ink); padding: 6px 10px; font-family: var(--pw-font-body); font-size: 11px; background: var(--pw-bg);" />
+          <input type="text" bind:value={dbAdminHost} placeholder="db.company.com" style="width: 100%; border: 2px solid var(--pw-ink); padding: 6px 10px; font-family: var(--pw-font-body); font-size: 11px; background: var(--pw-bg);" />
         </div>
         <div style="display: flex; gap: 8px;">
           <div style="flex: 1;">
@@ -2437,184 +2444,6 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
       </div>
     </div>
   </div>
-
-{:else if activeTab === 'architecture'}
-  <div class="cli-terminal" style="margin-bottom: 16px; padding: 8px 14px;">
-    <div class="cli-line">
-      <span class="cli-prompt">$</span>
-      <span class="cli-command">dash system --architecture</span>
-      <span style="margin-left: auto; font-size: 11px; opacity: 0.6;">full system blueprint</span>
-    </div>
-  </div>
-
-  {#if arch}
-  <!-- INTERACTIVE FLOW DIAGRAM -->
-  <div style="background: var(--pw-surface); border: 1px solid var(--pw-border); border-radius: var(--pw-radius-sm, 8px); padding: 16px; margin-bottom: 16px;">
-    <div style="font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--pw-muted); margin-bottom: 10px;">
-      Drag to pan, scroll to zoom, hover for details
-    </div>
-    <div bind:this={archFlowEl} style="width: 100%; height: 500px; background: var(--pw-bg); border-radius: var(--pw-radius-sm, 8px);"></div>
-  </div>
-
-  <!-- SYSTEM OVERVIEW -->
-  <div style="background: var(--pw-bg-alt); border: 1px solid var(--pw-border); border-radius: var(--pw-radius-sm, 8px); padding: 14px 16px; color: var(--pw-ink-soft); font-family: var(--pw-font-body); font-size: 11.5px; margin-bottom: 16px; line-height: 1.7;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-      <span style="font-weight: 700; color: var(--pw-ink); text-transform: uppercase; letter-spacing: 0.04em; font-size: 11px;">Dash — Self-learning Data Notebook</span>
-      <span style="font-size: 10.5px; color: var(--pw-muted);"><span style="color: var(--pw-accent);">●</span> Live</span>
-    </div>
-    <div style="color: var(--pw-muted); font-size: 11px; margin-bottom: 10px;">
-      Multi-tenant · {arch.agents?.total} Agents · {arch.knowledge?.layers} Context Layers
-    </div>
-    <div style="border-top: 1px solid var(--pw-border); padding-top: 8px;">
-      <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--pw-muted); margin-bottom: 4px;">Network layer</div>
-      <div>User → <span style="color: var(--pw-ink);">{arch.infra?.proxy}</span> → <span style="color: var(--pw-ink);">FastAPI ({arch.infra?.workers}w)</span> → <span style="color: var(--pw-ink);">{arch.infra?.pooler?.split('(')[0]}</span> → <span style="color: var(--pw-ink);">{arch.infra?.db}</span></div>
-      <div>Rate: <span style="color: var(--pw-ink);">{arch.infra?.rate_limit}</span> · Auth: <span style="color: var(--pw-ink);">SCRAM-SHA-256 + Token</span></div>
-    </div>
-  </div>
-
-  <!-- ROUTING + AGENTS -->
-  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
-    <div class="ink-border" style="padding: 14px; background: var(--pw-surface);">
-      <div style="font-size: 10px; font-weight: 900; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.08em;">ROUTING</div>
-      <div style="font-size: 10px; line-height: 1.8; color: var(--pw-muted);">
-        <div><span style="color: var(--pw-accent); font-weight: 700;">Tier 1:</span> Keyword scoring (7 signals, $0, &lt;1ms)</div>
-        <div><span style="color: #fbbf24; font-weight: 700;">Tier 2:</span> Router Agent + Brain lookup ($0.001, &lt;1.5s)</div>
-        <div style="margin-top: 6px; font-size: 11px; border-top: 1px solid var(--pw-ink); padding-top: 6px;">
-          "revenue by month" → <span style="color: #60a5fa;">Analyst</span><br>
-          "what does report say" → <span style="color: #34d399;">Researcher</span><br>
-          "create view" → <span style="color: #fbbf24;">Engineer</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="ink-border" style="padding: 14px; background: var(--pw-surface);">
-      <div style="font-size: 10px; font-weight: 900; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.08em;">AGENT TEAMS ({arch.agents?.total} total)</div>
-      <div style="font-size: 11px; line-height: 1.7; color: var(--pw-muted);">
-        <div style="font-weight: 700; color: var(--pw-ink); margin-bottom: 2px;">CHAT ({arch.agents?.chat_team?.length})</div>
-        {#each arch.agents?.chat_team || [] as a}<div style="padding-left: 8px;">› {a}</div>{/each}
-        <div style="font-weight: 700; color: var(--pw-ink); margin-top: 6px; margin-bottom: 2px;">SPECIALISTS ({arch.agents?.specialists?.length})</div>
-        <div style="padding-left: 8px;">{(arch.agents?.specialists || []).join(', ')}</div>
-        <div style="font-weight: 700; color: var(--pw-ink); margin-top: 6px; margin-bottom: 2px;">BACKGROUND ({arch.agents?.background?.length})</div>
-        <div style="padding-left: 8px;">{(arch.agents?.background || []).join(', ')}</div>
-        <div style="font-weight: 700; color: var(--pw-ink); margin-top: 6px; margin-bottom: 2px;">UPLOAD ({arch.agents?.upload?.length})</div>
-        <div style="padding-left: 8px;">{(arch.agents?.upload || []).join(', ')}</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- KNOWLEDGE + AI MODELS -->
-  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
-    <div class="ink-border" style="padding: 14px; background: var(--pw-surface);">
-      <div style="font-size: 10px; font-weight: 900; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.08em;">KNOWLEDGE ({arch.knowledge?.layers} layers)</div>
-      <div style="font-size: 11px; line-height: 1.7; color: var(--pw-muted);">
-        <div>Search: {arch.knowledge?.search}</div>
-        <div style="margin-top: 6px; font-weight: 700; color: var(--pw-ink);">EMBEDDING CASCADE</div>
-        {#each arch.knowledge?.embedding_cascade || [] as e, i}<div>{i+1}. {e}</div>{/each}
-        <div style="margin-top: 6px; font-weight: 700; color: var(--pw-ink);">RERANK CASCADE</div>
-        {#each arch.knowledge?.rerank_cascade || [] as r, i}<div>{i+1}. {r}</div>{/each}
-      </div>
-    </div>
-
-    <div class="ink-border" style="padding: 14px; background: var(--pw-surface);">
-      <div style="font-size: 10px; font-weight: 900; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.08em;">AI MODELS (from env)</div>
-      <div style="font-size: 11px; line-height: 1.8; color: var(--pw-muted);">
-        <div><span style="color: var(--pw-accent); font-weight: 700;">CHAT:</span> <code style="background: #222; color: #0f0; padding: 1px 4px; font-size: 11px;">{arch.models?.chat}</code></div>
-        <div><span style="color: #fbbf24; font-weight: 700;">DEEP:</span> <code style="background: #222; color: #0f0; padding: 1px 4px; font-size: 11px;">{arch.models?.deep}</code></div>
-        <div><span style="color: #60a5fa; font-weight: 700;">LITE:</span> <code style="background: #222; color: #0f0; padding: 1px 4px; font-size: 11px;">{arch.models?.lite}</code></div>
-        <div><span style="color: #a78bfa; font-weight: 700;">EMBED:</span> <code style="background: #222; color: #0f0; padding: 1px 4px; font-size: 11px;">{arch.models?.embedding}</code></div>
-        <div style="margin-top: 8px; color: var(--pw-ink);">Provider: <span style="font-weight: 700;">{arch.models?.provider}</span> — single API key</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- DATA PIPELINE + SECURITY -->
-  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
-    <div class="ink-border" style="padding: 14px; background: var(--pw-surface);">
-      <div style="font-size: 10px; font-weight: 900; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.08em;">DATA PIPELINE</div>
-      <div style="font-size: 11px; line-height: 1.7; color: var(--pw-muted);">
-        <div style="font-weight: 700; color: var(--pw-ink);">INGESTION ({arch.pipeline?.formats} formats)</div>
-        <div>{(arch.pipeline?.format_list || []).join(', ')}</div>
-        <div style="margin-top: 6px; font-weight: 700; color: var(--pw-ink);">TRAINING ({arch.pipeline?.training_steps} steps)</div>
-        <div>Drift → Analysis → Q&A → Persona → Workflows → Relationships → KB Index → Brain → Domain → Seed → Enrich → Facts → KG → ML</div>
-        <div style="margin-top: 6px; font-weight: 700; color: var(--pw-ink);">CONNECTORS</div>
-        <div>{(arch.pipeline?.connectors || []).join(' │ ')}</div>
-        <div style="margin-top: 6px; font-weight: 700; color: var(--pw-ink);">EXPORT</div>
-        <div>{(arch.pipeline?.export || []).join(' │ ')}</div>
-      </div>
-    </div>
-
-    <div class="ink-border" style="padding: 14px; background: var(--pw-surface);">
-      <div style="font-size: 10px; font-weight: 900; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.08em;">SECURITY</div>
-      <div style="font-size: 11px; line-height: 1.6; color: var(--pw-muted);">
-        {#each Object.entries(arch.security || {}) as [category, items]}
-          <div style="font-weight: 700; color: var(--pw-ink); text-transform: uppercase; margin-top: 6px; margin-bottom: 2px;">{category}</div>
-          {#each items as item}<div style="padding-left: 8px;">› {item}</div>{/each}
-        {/each}
-      </div>
-    </div>
-  </div>
-
-  <!-- SELF-LEARNING -->
-  <div class="ink-border" style="padding: 14px; background: var(--pw-surface); margin-bottom: 16px;">
-    <div style="font-size: 10px; font-weight: 900; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.08em;">SELF-LEARNING LOOP</div>
-    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; font-size: 11px; color: var(--pw-muted);">
-      <div>
-        <div style="font-weight: 700; color: var(--pw-accent); margin-bottom: 4px;">EVERY CHAT</div>
-        <div>11 background agents run:</div>
-        <div>Quality score │ Extract rules │ KG triples</div>
-        <div>Auto-memory │ User prefs │ Episodic</div>
-        <div>Query plans │ Follow-ups │ Insights</div>
-      </div>
-      <div>
-        <div style="font-weight: 700; color: #fbbf24; margin-bottom: 4px;">PERIODIC</div>
-        <div>Every 20 chats: Auto-evolve instructions</div>
-        <div>On upload: Full 14-step training</div>
-      </div>
-      <div>
-        <div style="font-weight: 700; color: #60a5fa; margin-bottom: 4px;">FEEDBACK LOOP</div>
-        <div>&#128077; → Proven pattern + auto-VIEW (3+ uses)</div>
-        <div>&#128078; → Anti-pattern (agent avoids next time)</div>
-        <div>Self-correction: 3 attempts with diagnosis</div>
-        <div>Meta-learning tracks strategy success rates</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- INFRASTRUCTURE -->
-  <div class="ink-border" style="padding: 14px; background: var(--pw-surface); margin-bottom: 16px;">
-    <div style="font-size: 10px; font-weight: 900; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.08em;">INFRASTRUCTURE</div>
-    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
-      {#each arch.infra?.containers || [] as c}
-        <div style="border: 1px solid var(--pw-ink); padding: 6px 12px; font-size: 11px; font-weight: 700;">{c}</div>
-      {/each}
-    </div>
-  </div>
-
-  <!-- LIVE METRICS -->
-  <div class="ink-border" style="padding: 14px; background: var(--pw-surface);">
-    <div style="font-size: 10px; font-weight: 900; text-transform: uppercase; margin-bottom: 12px; letter-spacing: 0.08em;">LIVE METRICS</div>
-    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
-      {#each [
-        { v: arch.metrics?.projects, l: 'Projects' },
-        { v: arch.metrics?.users, l: 'Users' },
-        { v: arch.metrics?.chats, l: 'Chats' },
-        { v: arch.metrics?.brain_entries, l: 'Brain Entries' },
-        { v: arch.metrics?.memories, l: 'Memories' },
-        { v: arch.metrics?.feedback, l: 'Feedback' },
-        { v: arch.metrics?.kg_triples, l: 'KG Triples' },
-        { v: arch.metrics?.quality_avg ? arch.metrics.quality_avg + '' : '—', l: 'Avg Quality' },
-      ] as m}
-        <div style="text-align: center; border: 1px solid var(--pw-ink); padding: 8px 4px;">
-          <div style="font-size: 16px; font-weight: 900;">{m.v ?? 0}</div>
-          <div style="font-size: 11px; text-transform: uppercase; color: var(--pw-muted); letter-spacing: 0.05em;">{m.l}</div>
-        </div>
-      {/each}
-    </div>
-  </div>
-
-  {:else}
-    <div style="font-size: 11px; color: var(--pw-muted);">Loading architecture...</div>
-  {/if}
 
 {:else if activeTab === 'branding'}
   <div class="cli-terminal" style="margin-bottom: 16px; padding: 8px 14px;">
@@ -2954,91 +2783,6 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
     </div>
   {/if}
 
-{:else if activeTab === 'drift'}
-  <div class="ink-border" style="padding:14px;">
-    <h2 style="font-size:13px;">DRIFT EVENTS — ALL PROJECTS</h2>
-    <button onclick={loadAllDrift} class="send-btn">REFRESH</button>
-  </div>
-
-  {#if allDriftEvents.length === 0}
-    <div class="ink-border" style="padding:20px; margin-top:8px;">
-      No open drift events across any project.
-    </div>
-  {:else}
-    {#each allDriftEvents as ev}
-      <div class="ink-border drift-row sev-{ev.severity}" style="padding:8px; margin-top:4px;">
-        <div style="display:flex; justify-content:space-between;">
-          <strong>{ev.project_slug}</strong>
-          <span>{ev.severity} · {ev.drift_type}</span>
-        </div>
-        <div style="font-size:11px; opacity:0.7;">
-          source #{ev.source_id}
-          {#if ev.table_name}· {ev.table_name}{/if}
-          {#if ev.column_name}.{ev.column_name}{/if}
-          · {ev.ts}
-        </div>
-      </div>
-    {/each}
-  {/if}
-
-{:else if activeTab === 'fed-admin'}
-  <div class="ink-border" style="padding:14px;">
-    <h2 style="font-size:13px;">FEDERATION — ALL PROJECTS · last {fedAdminDays} days</h2>
-    <div style="display:flex; gap:6px; margin-top:8px;">
-      <button onclick={() => { fedAdminDays = 7; loadFedAdmin(); }} class="mini-btn">7D</button>
-      <button onclick={() => { fedAdminDays = 30; loadFedAdmin(); }} class="mini-btn">30D</button>
-      <button onclick={loadFedAdmin} class="send-btn">REFRESH</button>
-    </div>
-  </div>
-
-  {#if fedAdmin.open_circuits?.length}
-    <div class="ink-border" style="padding:12px; margin-top:6px; border-color:#e74c3c;">
-      <h3 style="font-size:11px; color:#e74c3c;"><Icon name="alert-triangle" size={14} /> OPEN CIRCUITS</h3>
-      {#each fedAdmin.open_circuits as c}
-        <div class="ink-border" style="padding:8px; margin-top:4px; font-size:11px;">
-          <div style="display:flex; justify-content:space-between;">
-            <strong>{c.slug}</strong>
-            <button onclick={() => resetCircuitAdmin(c.slug)} class="send-btn">RESET</button>
-          </div>
-          <div style="opacity:0.7;">{c.consecutive_failures} failures · until {c.open_until}</div>
-          <div style="font-family:monospace; opacity:0.7;">{c.last_error}</div>
-        </div>
-      {/each}
-    </div>
-  {/if}
-
-  <div class="ink-border" style="padding:12px; margin-top:6px;">
-    <h3 style="font-size:11px;">FEDERATED QUERIES BY PROJECT</h3>
-    {#if !fedAdmin.by_project?.length}
-      <div style="font-size:11px; opacity:0.6;">No federated query activity in window.</div>
-    {:else}
-      <table style="width:100%; font-size:11px; border-collapse:collapse; margin-top:6px;">
-        <thead>
-          <tr style="text-align:left;">
-            <th style="padding:4px 6px;">PROJECT</th>
-            <th style="padding:4px 6px; text-align:right;">QUERIES</th>
-            <th style="padding:4px 6px; text-align:right;">AVG LATENCY</th>
-            <th style="padding:4px 6px; text-align:right;">AVG ROWS</th>
-            <th style="padding:4px 6px; text-align:right;">COST</th>
-            <th style="padding:4px 6px;"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each fedAdmin.by_project as p}
-            <tr>
-              <td style="padding:3px 6px;"><strong>{p.slug}</strong></td>
-              <td style="padding:3px 6px; text-align:right;">{p.count}</td>
-              <td style="padding:3px 6px; text-align:right;">{p.avg_latency_ms.toFixed(0)}ms</td>
-              <td style="padding:3px 6px; text-align:right;">{p.avg_rows.toFixed(0)}</td>
-              <td style="padding:3px 6px; text-align:right; color:#a06000;">${p.total_cost_usd.toFixed(3)}</td>
-              <td style="padding:3px 6px;"><button onclick={() => resetCircuitAdmin(p.slug)} class="mini-btn">RESET</button></td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    {/if}
-  </div>
-
 {:else if activeTab === 'admin-settings'}
   <div class="ink-border" style="padding:16px;">
     <h2 style="font-size:13px;">ADMIN SETTINGS</h2>
@@ -3132,249 +2876,6 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
       {/if}
     </div>
   {/each}
-
-{:else if activeTab === 'channels'}
-  <div style="padding: 0;">
-    <nav class="pill-tabs" style="margin-bottom: 16px;">
-      {#each ['slack','email','voice','threads'] as s}
-        <button class="pill-tab" class:active={chanSub === s} onclick={() => chanSub = s}>
-          {s}
-          {#if s === 'threads' && chanThreads.length}<span class="pill-count">{chanThreads.length}</span>{/if}
-        </button>
-      {/each}
-    </nav>
-
-    {#if chanSub === 'slack'}
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <h3 style="font: 600 13px Inter; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Workspaces</h3>
-        <button class="send-btn" onclick={() => chanNewWs.open = !chanNewWs.open} style="padding: 6px 12px; font-size: 11px;">+ ADD WORKSPACE</button>
-      </div>
-      {#if chanNewWs.open}
-        <div style="background: var(--pw-bg-alt); border: 1px solid var(--pw-border); border-radius: 0; padding: 12px; margin-bottom: 12px; display: grid; gap: 6px;">
-          <input bind:value={chanNewWs.team_id} placeholder="Slack Team ID (T...)" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;" />
-          <input bind:value={chanNewWs.team_name} placeholder="Team Name" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;" />
-          <input bind:value={chanNewWs.bot_token} placeholder="Bot token (xoxb-...)" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px JetBrains Mono;" />
-          <input bind:value={chanNewWs.signing_secret} placeholder="Signing secret" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px JetBrains Mono;" />
-          <input bind:value={chanNewWs.default_project_slug} placeholder="Default project_slug" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;" />
-          <div style="display: flex; gap: 8px;">
-            <button class="send-btn" onclick={chanAddWs} style="padding: 6px 14px; font-size: 11px;">CREATE</button>
-            <button onclick={() => chanNewWs.open = false} style="padding: 6px 14px; font-size: 11px; background: var(--pw-bg-alt); border: 1px solid var(--pw-border); border-radius: 0; cursor: pointer;">cancel</button>
-          </div>
-        </div>
-      {/if}
-      <table style="width: 100%; border-collapse: collapse; background: var(--pw-surface); border: 1px solid var(--pw-border); border-radius: 0; overflow: hidden; font-size: 11px;">
-        <thead><tr style="background: var(--pw-bg-alt);"><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Team</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Team ID</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Project</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Enabled</th></tr></thead>
-        <tbody>
-          {#each chanSlackWs as w}
-            <tr style="border-top: 1px solid var(--pw-border);"><td style="padding: 8px 12px;"><strong>{w.team_name || '—'}</strong></td><td style="padding: 8px 12px; font-family: JetBrains Mono; font-size: 11px;">{w.team_id}</td><td style="padding: 8px 12px;">{w.default_project_slug || '—'}</td><td style="padding: 8px 12px;">{w.enabled ? '' : ''}</td></tr>
-          {/each}
-          {#if !chanSlackWs.length}<tr><td colspan="4" style="text-align: center; padding: 30px; color: var(--pw-ink-soft);">No workspaces.</td></tr>{/if}
-        </tbody>
-      </table>
-
-      <div style="display: flex; justify-content: space-between; align-items: center; margin: 20px 0 8px;">
-        <h3 style="font: 600 13px Inter; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Channel Routes</h3>
-        <button class="send-btn" onclick={() => chanNewRoute.open = !chanNewRoute.open} style="padding: 6px 12px; font-size: 11px;">+ ADD ROUTE</button>
-      </div>
-      {#if chanNewRoute.open}
-        <div style="background: var(--pw-bg-alt); border: 1px solid var(--pw-border); border-radius: 0; padding: 12px; margin-bottom: 12px; display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 8px;">
-          <select bind:value={chanNewRoute.workspace_id} style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;"><option value="">workspace ▼</option>{#each chanSlackWs as w}<option value={w.id}>{w.team_name || w.team_id}</option>{/each}</select>
-          <input bind:value={chanNewRoute.channel_id} placeholder="Channel ID (C...)" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px JetBrains Mono;" />
-          <input bind:value={chanNewRoute.project_slug} placeholder="project_slug" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;" />
-          <button class="send-btn" onclick={chanAddRoute} style="padding: 6px 12px; font-size: 11px;">ADD</button>
-        </div>
-      {/if}
-    {:else if chanSub === 'email'}
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <h3 style="font: 600 13px Inter; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Email Accounts</h3>
-        <button class="send-btn" onclick={() => chanNewEmail.open = !chanNewEmail.open} style="padding: 6px 12px; font-size: 11px;">+ ADD ACCOUNT</button>
-      </div>
-      {#if chanNewEmail.open}
-        <div style="background: var(--pw-bg-alt); border: 1px solid var(--pw-border); border-radius: 0; padding: 12px; margin-bottom: 12px; display: grid; gap: 6px;">
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-            <input bind:value={chanNewEmail.name} placeholder="Account name" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;" />
-            <select bind:value={chanNewEmail.inbound_kind} style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;"><option value="imap">IMAP poll</option><option value="ses_webhook">SES webhook</option></select>
-          </div>
-          {#if chanNewEmail.inbound_kind === 'imap'}
-            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 6px;">
-              <input bind:value={chanNewEmail.imap_host} placeholder="IMAP host" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;" />
-              <input type="number" bind:value={chanNewEmail.imap_port} placeholder="993" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;" />
-              <input bind:value={chanNewEmail.imap_user} placeholder="IMAP user" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;" />
-              <input type="password" bind:value={chanNewEmail.imap_pass} placeholder="IMAP pass" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;" />
-            </div>
-            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 6px;">
-              <input bind:value={chanNewEmail.smtp_host} placeholder="SMTP host" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;" />
-              <input type="number" bind:value={chanNewEmail.smtp_port} placeholder="587" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;" />
-              <input bind:value={chanNewEmail.smtp_user} placeholder="SMTP user" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;" />
-              <input type="password" bind:value={chanNewEmail.smtp_pass} placeholder="SMTP pass" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;" />
-            </div>
-          {/if}
-          <input bind:value={chanNewEmail.default_project_slug} placeholder="Default project_slug" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;" />
-          <div style="display: flex; gap: 8px;">
-            <button class="send-btn" onclick={chanAddEmail} style="padding: 6px 14px; font-size: 11px;">CREATE</button>
-            <button onclick={() => chanNewEmail.open = false} style="padding: 6px 14px; font-size: 11px; background: var(--pw-bg-alt); border: 1px solid var(--pw-border); border-radius: 0; cursor: pointer;">cancel</button>
-          </div>
-        </div>
-      {/if}
-      <table style="width: 100%; border-collapse: collapse; background: var(--pw-surface); border: 1px solid var(--pw-border); border-radius: 0; overflow: hidden; font-size: 11px;">
-        <thead><tr style="background: var(--pw-bg-alt);"><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Name</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Kind</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">User</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Project</th></tr></thead>
-        <tbody>
-          {#each chanEmailAcc as a}
-            <tr style="border-top: 1px solid var(--pw-border);"><td style="padding: 8px 12px;"><strong>{a.name}</strong></td><td style="padding: 8px 12px;"><span style="background: var(--pw-bg-alt); border-radius: 0; padding: 2px 8px; font-size: 10px; text-transform: uppercase; font-weight: 600;">{a.inbound_kind}</span></td><td style="padding: 8px 12px; font-family: JetBrains Mono; font-size: 11px;">{a.imap_user || a.smtp_user}</td><td style="padding: 8px 12px;">{a.default_project_slug || '—'}</td></tr>
-          {/each}
-          {#if !chanEmailAcc.length}<tr><td colspan="4" style="text-align: center; padding: 30px; color: var(--pw-ink-soft);">No email accounts.</td></tr>{/if}
-        </tbody>
-      </table>
-    {:else if chanSub === 'voice'}
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <h3 style="font: 600 13px Inter; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Phone Numbers</h3>
-        <button class="send-btn" onclick={() => chanNewVoice.open = !chanNewVoice.open} style="padding: 6px 12px; font-size: 11px;">+ ADD NUMBER</button>
-      </div>
-      {#if chanNewVoice.open}
-        <div style="background: var(--pw-bg-alt); border: 1px solid var(--pw-border); border-radius: 0; padding: 12px; margin-bottom: 12px; display: grid; gap: 6px;">
-          <input bind:value={chanNewVoice.phone_number} placeholder="+15551112222" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px JetBrains Mono;" />
-          <input bind:value={chanNewVoice.account_sid} placeholder="Twilio Account SID (AC...)" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px JetBrains Mono;" />
-          <input bind:value={chanNewVoice.auth_token} placeholder="Auth token" type="password" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px JetBrains Mono;" />
-          <input bind:value={chanNewVoice.default_project_slug} placeholder="Default project_slug" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;" />
-          <input bind:value={chanNewVoice.tts_voice} placeholder="Voice (Rachel)" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;" />
-          <div style="display: flex; gap: 8px;">
-            <button class="send-btn" onclick={chanAddVoice} style="padding: 6px 14px; font-size: 11px;">CREATE</button>
-            <button onclick={() => chanNewVoice.open = false} style="padding: 6px 14px; font-size: 11px; background: var(--pw-bg-alt); border: 1px solid var(--pw-border); border-radius: 0; cursor: pointer;">cancel</button>
-          </div>
-        </div>
-      {/if}
-      <table style="width: 100%; border-collapse: collapse; background: var(--pw-surface); border: 1px solid var(--pw-border); border-radius: 0; overflow: hidden; font-size: 11px;">
-        <thead><tr style="background: var(--pw-bg-alt);"><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Number</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Provider</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Project</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Voice</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Enabled</th></tr></thead>
-        <tbody>
-          {#each chanVoiceNums as v}
-            <tr style="border-top: 1px solid var(--pw-border);"><td style="padding: 8px 12px; font-family: JetBrains Mono;"><strong>{v.phone_number}</strong></td><td style="padding: 8px 12px;"><span style="background: var(--pw-bg-alt); border-radius: 0; padding: 2px 8px; font-size: 10px; text-transform: uppercase; font-weight: 600;">{v.provider}</span></td><td style="padding: 8px 12px;">{v.default_project_slug || '—'}</td><td style="padding: 8px 12px;">{v.tts_voice || '—'}</td><td style="padding: 8px 12px;">{v.enabled ? '' : ''}</td></tr>
-          {/each}
-          {#if !chanVoiceNums.length}<tr><td colspan="5" style="text-align: center; padding: 30px; color: var(--pw-ink-soft);">No phone numbers.</td></tr>{/if}
-        </tbody>
-      </table>
-    {:else if chanSub === 'threads'}
-      <div style="display: flex; gap: 6px; margin-bottom: 12px;">
-        {#each ['all','slack','email','voice'] as f}
-          <button onclick={() => chanThreadFilter = f} style="background: {chanThreadFilter === f ? 'var(--pw-accent)' : 'var(--pw-bg-alt)'}; color: {chanThreadFilter === f ? '#fff' : 'var(--pw-ink)'}; border: 1px solid var(--pw-border); border-radius: 0; padding: 4px 10px; font: 600 10px Inter; text-transform: uppercase; cursor: pointer;">{f}</button>
-        {/each}
-      </div>
-      <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 16px;">
-        <div style="background: var(--pw-surface); border: 1px solid var(--pw-border); border-radius: 0; max-height: 60vh; overflow-y: auto;">
-          {#each chanThreads.filter(t => chanThreadFilter === 'all' || t.channel_kind === chanThreadFilter) as t}
-            <button onclick={() => chanViewThread(t.id)} style="display: block; width: 100%; text-align: left; background: {chanOpenThread?.thread?.id === t.id ? 'rgba(201,99,66,0.08)' : 'none'}; border: none; border-bottom: 1px solid var(--pw-border); padding: 10px 12px; cursor: pointer; font-size: 11px;">
-              <span style="background: {t.channel_kind === 'slack' ? '#4a154b' : t.channel_kind === 'email' ? '#1d4ed8' : '#059669'}; color: #fff; border-radius: 0; padding: 2px 6px; font-size: 11px; text-transform: uppercase;">{t.channel_kind}</span>
-              <strong style="margin: 0 6px;">{t.external_user || '—'}</strong>
-              <div style="color: var(--pw-ink-soft); font-size: 11px; margin-top: 2px;">{t.subject || t.external_id?.slice(0, 30)}</div>
-            </button>
-          {/each}
-          {#if !chanThreads.length}<div style="padding: 30px; text-align: center; color: var(--pw-ink-soft); font-size: 11px;">No threads.</div>{/if}
-        </div>
-        <div style="background: var(--pw-surface); border: 1px solid var(--pw-border); border-radius: 0; padding: 16px; min-height: 300px;">
-          {#if chanOpenThread}
-            <h4 style="font: 600 14px 'Source Serif 4', Georgia; margin: 0 0 4px;">{chanOpenThread.thread.subject || chanOpenThread.thread.external_id}</h4>
-            <div style="display: flex; gap: 12px; font-size: 11px; color: var(--pw-ink-soft); margin-bottom: 12px;">
-              <span>From: {chanOpenThread.thread.external_user || '—'}</span>
-              <span>Project: {chanOpenThread.thread.project_slug}</span>
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 8px;">
-              {#each (chanOpenThread.messages || []) as m}
-                <div style="padding: 8px 12px; border-radius: 0; border: 1px solid var(--pw-border); background: {m.direction === 'inbound' ? 'var(--pw-bg-alt)' : 'rgba(201,99,66,0.06)'};">
-                  <div style="display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 4px; color: var(--pw-ink-soft);"><strong>{m.direction === 'inbound' ? (m.author || 'user') : 'agent'}</strong><span>{m.created_at}{m.latency_ms ? ` · ${m.latency_ms}ms` : ''}</span></div>
-                  <div style="white-space: pre-wrap; font-size: 11px;">{m.body}</div>
-                </div>
-              {/each}
-            </div>
-          {:else}
-            <div style="text-align: center; color: var(--pw-ink-soft); font-size: 11px; padding: 40px;">Pick a thread to view messages.</div>
-          {/if}
-        </div>
-      </div>
-    {/if}
-  </div>
-
-{:else if activeTab === 'mcp'}
-  <div style="padding: 0;">
-    <nav class="pill-tabs" style="margin-bottom: 16px;">
-      {#each [['servers','Servers',mcpServers.length], ['bindings','Bindings',0], ['invocations','Invocations',0]] as [k, lbl, cnt]}
-        <button class="pill-tab" class:active={mcpSub === k} onclick={() => { mcpSub = k as any; if (k === 'bindings') loadMcpBindings(); if (k === 'invocations') loadMcpInv(); }}>
-          {lbl}
-          {#if cnt}<span class="pill-count">{cnt}</span>{/if}
-        </button>
-      {/each}
-    </nav>
-
-    {#if mcpSub === 'servers'}
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <h3 style="font: 600 13px Inter; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Registered Servers</h3>
-        <button class="send-btn" onclick={() => mcpNew.open = !mcpNew.open} style="padding: 6px 12px; font-size: 11px;">+ NEW SERVER</button>
-      </div>
-      {#if mcpNew.open}
-        <div style="background: var(--pw-bg-alt); border: 1px solid var(--pw-border); border-radius: 0; padding: 12px; margin-bottom: 12px; display: grid; gap: 6px;">
-          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 6px;">
-            <input bind:value={mcpNew.name} placeholder="Server name (e.g. Exa Search)" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;" />
-            <select bind:value={mcpNew.transport} style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;"><option value="http">http</option><option value="sse">sse</option><option value="stdio">stdio</option></select>
-          </div>
-          {#if mcpNew.transport === 'stdio'}
-            <input bind:value={mcpNew.command} placeholder="Command (e.g. npx -y @mcp/server-exa)" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px JetBrains Mono;" />
-          {:else}
-            <input bind:value={mcpNew.url} placeholder="URL (https://...)" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px JetBrains Mono;" />
-          {/if}
-          <input bind:value={mcpNew.auth_header} placeholder="Auth header (Authorization: Bearer xxx)" style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px JetBrains Mono;" />
-          <div style="display: flex; gap: 8px;">
-            <button class="send-btn" onclick={mcpAdd} style="padding: 6px 14px; font-size: 11px;">CREATE + DISCOVER</button>
-            <button onclick={() => mcpNew.open = false} style="padding: 6px 14px; font-size: 11px; background: var(--pw-bg-alt); border: 1px solid var(--pw-border); border-radius: 0; cursor: pointer;">cancel</button>
-          </div>
-        </div>
-      {/if}
-      <table style="width: 100%; border-collapse: collapse; background: var(--pw-surface); border: 1px solid var(--pw-border); border-radius: 0; overflow: hidden; font-size: 11px;">
-        <thead><tr style="background: var(--pw-bg-alt);"><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Name</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Transport</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Status</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Tools</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Last Health</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Actions</th></tr></thead>
-        <tbody>
-          {#each mcpServers as s}
-            <tr style="border-top: 1px solid var(--pw-border);">
-              <td style="padding: 8px 12px;"><strong>{s.name}</strong></td>
-              <td style="padding: 8px 12px;"><span style="background: var(--pw-bg-alt); border-radius: 0; padding: 2px 8px; font-size: 10px; text-transform: uppercase; font-weight: 600;">{s.transport}</span></td>
-              <td style="padding: 8px 12px;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: {s.status === 'connected' ? '#10b981' : s.status === 'failed' ? '#ef4444' : '#888'}; margin-right: 4px;"></span>{s.status}</td>
-              <td style="padding: 8px 12px;">{s.tool_count || 0}</td>
-              <td style="padding: 8px 12px; color: var(--pw-ink-soft); font-size: 11px;">{s.last_health_at || '—'}</td>
-              <td style="padding: 8px 12px;"><button onclick={() => mcpTest(s.id)} style="background: var(--pw-bg-alt); border: 1px solid var(--pw-border); border-radius: 0; padding: 3px 8px; font-size: 10px; cursor: pointer; margin-right: 4px;">test</button><button onclick={() => mcpDelete(s.id)} style="background: var(--pw-bg-alt); border: 1px solid #d33; border-radius: 0; padding: 3px 8px; font-size: 10px; cursor: pointer; color: #d33;">×</button></td>
-            </tr>
-          {/each}
-          {#if !mcpServers.length}<tr><td colspan="6" style="text-align: center; padding: 30px; color: var(--pw-ink-soft);">No MCP servers. Add Exa, GitHub, Linear, etc.</td></tr>{/if}
-        </tbody>
-      </table>
-    {:else if mcpSub === 'bindings'}
-      <div style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center;">
-        <label style="font: 600 11px Inter; text-transform: uppercase;">Server:</label>
-        <select bind:value={mcpSelectedServer} onchange={loadMcpBindings} style="padding: 6px 10px; border: 1px solid var(--pw-border); border-radius: 0; font: 12px Inter;">{#each mcpServers as s}<option value={s.id}>{s.name}</option>{/each}</select>
-        <button class="send-btn" onclick={mcpSaveBindings} style="padding: 6px 12px; font-size: 11px; margin-left: auto;">SAVE BINDINGS</button>
-      </div>
-      <table style="width: 100%; border-collapse: collapse; background: var(--pw-surface); border: 1px solid var(--pw-border); border-radius: 0; overflow: hidden; font-size: 11px;">
-        <thead><tr style="background: var(--pw-bg-alt);"><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Tool</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Agent</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Enabled</th></tr></thead>
-        <tbody>
-          {#each mcpBindings as b, i}
-            <tr style="border-top: 1px solid var(--pw-border);"><td style="padding: 8px 12px; font-family: JetBrains Mono;">{b.tool_name}</td><td style="padding: 8px 12px;">{b.agent_name}</td><td style="padding: 8px 12px;"><input type="checkbox" bind:checked={mcpBindings[i].enabled} /></td></tr>
-          {/each}
-          {#if !mcpBindings.length}<tr><td colspan="3" style="text-align: center; padding: 30px; color: var(--pw-ink-soft);">No bindings configured. By default all tools available to all agents.</td></tr>{/if}
-        </tbody>
-      </table>
-    {:else if mcpSub === 'invocations'}
-      <div style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center;">
-        <label style="font: 600 11px Inter; text-transform: uppercase;">Days:</label>
-        {#each [1, 7, 14, 30] as d}
-          <button onclick={() => { mcpInvDays = d; loadMcpInv(); }} style="background: {mcpInvDays === d ? 'var(--pw-accent)' : 'var(--pw-bg-alt)'}; color: {mcpInvDays === d ? '#fff' : 'var(--pw-ink)'}; border: 1px solid var(--pw-border); border-radius: 0; padding: 4px 10px; font: 600 11px Inter; cursor: pointer;">{d}d</button>
-        {/each}
-      </div>
-      <table style="width: 100%; border-collapse: collapse; background: var(--pw-surface); border: 1px solid var(--pw-border); border-radius: 0; overflow: hidden; font-size: 11px;">
-        <thead><tr style="background: var(--pw-bg-alt);"><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Server</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Tool</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Project</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Latency</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Status</th><th style="text-align: left; padding: 8px 12px; font: 600 10px Inter; text-transform: uppercase;">Time</th></tr></thead>
-        <tbody>
-          {#each mcpInvocations as inv}
-            <tr style="border-top: 1px solid var(--pw-border);"><td style="padding: 8px 12px; font-family: JetBrains Mono; font-size: 10px;">{inv.server_id?.slice(0, 12)}</td><td style="padding: 8px 12px; font-family: JetBrains Mono;">{inv.tool_name}</td><td style="padding: 8px 12px;">{inv.project_slug || '—'}</td><td style="padding: 8px 12px;">{inv.latency_ms}ms</td><td style="padding: 8px 12px;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: {inv.status === 'ok' ? '#10b981' : '#ef4444'}; margin-right: 4px;"></span>{inv.status}</td><td style="padding: 8px 12px; color: var(--pw-ink-soft); font-size: 11px;">{inv.created_at}</td></tr>
-          {/each}
-          {#if !mcpInvocations.length}<tr><td colspan="6" style="text-align: center; padding: 30px; color: var(--pw-ink-soft);">No invocations yet.</td></tr>{/if}
-        </tbody>
-      </table>
-    {/if}
-  </div>
 
 {:else if activeTab === 'traces'}
   <!-- ═══════════════════════════════════════════════════════════ -->
@@ -3552,35 +3053,52 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
 {:else if activeTab === 'scope-audit'}
   <ScopeAuditPanel />
 
-{:else if activeTab === 'approvals'}
-  <ApprovalsPanel />
-
 {:else if activeTab === 'actions'}
   <ActionsPanel />
 
 {:else if activeTab === 'metricflow'}
   <MetricflowPanel />
 
-{:else if activeTab === 'dataview'}
-  <DataviewPanel />
-
-{:else if activeTab === 'packs'}
-  <PacksPanel />
-
-{:else if activeTab === 'connectors'}
-  <ConnectorsPanel />
-
 {:else if activeTab === 'llm'}
   <LLMConfigPanel />
 
-{:else if activeTab?.startsWith('gov-')}
-  <GovernancePanel sub={activeTab.slice(4)} />
+{:else if activeTab === 'cockpit'}
+  <div class="ccc-kpis">
+    <div class="ccc-kpi"><span class="ccc-n">{cockpit.metrics?.users ?? '—'}</span><span class="ccc-l">Users</span></div>
+    <div class="ccc-kpi"><span class="ccc-n">{cockpit.metrics?.projects ?? '—'}</span><span class="ccc-l">Projects</span></div>
+    <div class="ccc-kpi"><span class="ccc-n">{cockpit.metrics?.chats ?? '—'}</span><span class="ccc-l">Chats</span></div>
+    <div class="ccc-kpi"><span class="ccc-n">{cockpit.metrics?.brain_entries ?? '—'}</span><span class="ccc-l">Brain</span></div>
+    <div class="ccc-kpi"><span class="ccc-n">{cockpit.gw?.totals?.calls ?? '—'}</span><span class="ccc-l">GW calls 7d</span></div>
+  </div>
+  <section class="ccc-panel">
+    <div class="ccc-h">SYSTEM HEALTH</div>
+    <div class="ccc-health">
+      <span class="ccc-hi"><i class="ccc-dot" class:ok={cockpit.health?.status === 'ok'}></i>API <b>{cockpit.health?.status || '—'}</b></span>
+      <span class="ccc-hi"><i class="ccc-dot" class:ok={cockpit.health?.db === 'connected'}></i>DB <b>{cockpit.health?.db || '—'}</b></span>
+      <span class="ccc-hi"><i class="ccc-dot" class:warn={cockpit.health?.staleness_warning} class:ok={!cockpit.health?.staleness_warning}></i>Image <b>{cockpit.health?.staleness_warning ? 'stale' : 'fresh'}</b></span>
+      <span class="ccc-hi"><i class="ccc-dot" class:ok={cockpit.daemons?.daemons_should_run_on_this_worker}></i>Daemons <b>{cockpit.daemons?.daemons_should_run_on_this_worker ? 'leader' : `w${cockpit.daemons?.worker_rank ?? '?'}`}</b></span>
+    </div>
+  </section>
+  <section class="ccc-panel">
+    <div class="ccc-h">JUMP TO</div>
+    <div class="ccc-jump">
+      <button onclick={() => switchTab('users')}>👥 Users</button>
+      <button onclick={() => switchTab('gateway')}>🔑 API Gateway</button>
+      <button onclick={() => switchTab('brain')}>🧠 Brain</button>
+      <button onclick={() => switchTab('llm')}>🤖 Models</button>
+      <button onclick={() => switchTab('integrations')}>🔌 Integrations</button>
+      <button onclick={() => switchTab('auth')}>🔒 Authentication</button>
+    </div>
+  </section>
 
-{:else if activeTab?.startsWith('aos-')}
-  <AgentOsAdminPanel sub={activeTab.slice(4)} />
+{:else if activeTab === 'gateway'}
+  <GatewayPanel embedded />
 
-{:else if activeTab?.startsWith('tel-')}
-  <TelemetryPanel sub={activeTab.slice(4)} />
+{:else if activeTab === 'auth'}
+  <AuthAdminPanel embedded />
+
+{:else if activeTab === 'observability'}
+  <ObservabilityPanel embedded />
 
 {/if}
 
@@ -4171,4 +3689,21 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  }
  :global(.cc-shell .feedback-btn:hover:not(:disabled)) { background: var(--pw-bg-alt); }
  :global(.cc-shell .feedback-btn:disabled) { opacity: 0.5; cursor: not-allowed; }
+ /* cockpit (folded Super Dashboard) */
+ .ccc-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 18px; }
+ .ccc-kpi { border: 1px solid var(--pw-border, #e7e1d6); border-radius: 10px; padding: 18px 16px; background: var(--pw-surface, #fff); display: flex; flex-direction: column; gap: 6px; }
+ .ccc-n { font-size: 30px; font-weight: 800; color: var(--pw-ink, #1a1614); line-height: 1; }
+ .ccc-l { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--pw-ink-soft, #8a8275); font-weight: 600; }
+ .ccc-panel { border: 1px solid var(--pw-border, #e7e1d6); border-radius: 10px; padding: 18px 20px; background: var(--pw-surface, #fff); margin-bottom: 16px; }
+ .ccc-h { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; color: var(--pw-accent, #c96342); margin-bottom: 14px; }
+ .ccc-health { display: flex; flex-wrap: wrap; gap: 22px; }
+ .ccc-hi { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--pw-ink-soft, #6b6557); }
+ .ccc-hi b { color: var(--pw-ink, #1a1614); font-weight: 700; }
+ .ccc-dot { width: 8px; height: 8px; border-radius: 50%; background: #c0392b; display: inline-block; }
+ .ccc-dot.ok { background: #1f9d55; }
+ .ccc-dot.warn { background: #a06000; }
+ .ccc-jump { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+ .ccc-jump button { text-align: left; border: 1px solid var(--pw-border, #e7e1d6); border-radius: 8px; padding: 14px 16px; background: var(--pw-bg-alt, #faf7f1); font-size: 14px; font-weight: 600; color: var(--pw-ink, #1a1614); cursor: pointer; transition: background 0.12s, border-color 0.12s; }
+ .ccc-jump button:hover { background: rgba(201,99,66,0.06); border-color: var(--pw-accent, #c96342); }
+ @media (max-width: 900px) { .ccc-kpis { grid-template-columns: repeat(2, 1fr); } .ccc-jump { grid-template-columns: 1fr; } }
 </style>

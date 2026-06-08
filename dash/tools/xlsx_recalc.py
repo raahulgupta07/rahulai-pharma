@@ -6,6 +6,7 @@ openpyxl-written formula strings with live computed values.
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -26,6 +27,9 @@ def xlsx_recalc(xlsx_path: str, timeout_s: int = 60) -> dict:
         return {"ok": False, "error": "xlsx_path must not contain .."}
     if not p.exists():
         return {"ok": False, "error": f"file not found: {xlsx_path}"}
+
+    if shutil.which("soffice") is None and shutil.which("libreoffice") is None:
+        return {"ok": False, "error": "Office rendering disabled in this build (LibreOffice removed)."}
 
     script = _SKILL_BASE / "xlsx" / "recalc.py"
     cmd = ["python3", str(script), xlsx_path, str(timeout_s)]

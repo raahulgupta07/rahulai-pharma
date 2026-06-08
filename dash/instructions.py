@@ -23,6 +23,46 @@ from dash.context.semantic_model import build_semantic_model, format_semantic_mo
 # Backward-compat: legacy "instant"/"fast" → "quick".
 # ---------------------------------------------------------------------------
 EXEC_TIER: ContextVar[str | None] = ContextVar("EXEC_TIER", default=None)
+
+# Reply-language contract (Phase 1 bilingual). Set per-request at chat entry from
+# the user's message script. build_analyst_instructions reads it to append a
+# Burmese override at the END of the system prompt; dash.team keys its team cache
+# on it so the MY-instruction team and EN team are cached separately (instructions
+# are baked at agent creation — a contextvar alone can't vary a cached team).
+REPLY_LANG: ContextVar[str] = ContextVar("REPLY_LANG", default="en")
+
+# Burmese system-prompt override. Appended LAST (highest recency, system role) so
+# it dominates the English format/monograph examples above. The raw model already
+# replies ~94% Burmese with a simple instruction — the in-agent failure is the
+# English prompt wall drowning the language signal. This neutralises that wall for
+# Burmese turns WITHOUT translating any data (model writes its own Burmese).
+_BURMESE_SYSTEM_OVERRIDE = (
+    "\n\n"
+    "## ⚠⚠ ဘာသာစကား — အရေးကြီးဆုံးစည်းမျဉ်း / LANGUAGE — HIGHEST-PRIORITY RULE\n"
+    "သုံးစွဲသူက မြန်မာဘာသာဖြင့် မေးထားသည်။ သင်၏ အဖြေတစ်ခုလုံးကို မြန်မာဘာသာဖြင့်သာ "
+    "ရေးပါ — ဖွင့်ဆိုစကား၊ ဇယားခေါင်းစဉ်များ၊ ရှင်းလင်းချက်နှင့် အကြံပြုချက် အားလုံး "
+    "မြန်မာလို။\n"
+    "The user wrote in Burmese. Write your ENTIRE answer in Burmese — opening, table "
+    "headers, prose and tip, all Burmese.\n"
+    "THIS OVERRIDES EVERYTHING ABOVE. Ignore the English example formats, the "
+    "[DRUG:]/[COMPOSITION:]/[STOCK:] monograph tags, the English column labels, and "
+    "any English phrasing shown earlier in these instructions — those were English "
+    "samples only. Reply in natural Burmese sentences (a short table is fine if its "
+    "headers are Burmese).\n"
+    "Keep ONLY drug BRAND names and NUMBERS in their original form (Latin brand text "
+    "+ Arabic digits such as 168, never Burmese numerals). Do NOT write English "
+    "sentences. Do NOT print English field labels (Brand Name / Stock / Price / "
+    "Category / Indication …) — use Burmese words instead.\n"
+    "ANALYTICAL / DATA ANSWERS (totals, counts, category breakdowns, top-N, SQL "
+    "results) — the SAME rule applies, no exception. When you render a result table, "
+    "TRANSLATE EVERY column header into Burmese, including dynamic headers that came "
+    "from the SQL query (e.g. a column aliased 'Category' → 'အမျိုးအစား', "
+    "'Unique Generic Names' → 'သီးသန့်ဆေးအမည်အရေအတွက်', 'Total Stock' → "
+    "'စုစုပေါင်းလက်ကျန်'). Write the lead-in sentence and every explanation in Burmese. "
+    "Only the cell VALUES that are brand names or numbers stay Latin/Arabic. An "
+    "English column header or an English 'Based on the … summary' lead-in is a "
+    "VIOLATION of this rule.\n"
+)
 _VALID_EXEC_TIERS = {"quick", "standard", "deep", "reasoning", "ultra"}
 _LEGACY_TIER_MAP = {"instant": "quick", "fast": "quick", "high": "deep", "max": "ultra"}
 
@@ -541,9 +581,21 @@ AND answer questions from uploaded documents (PPTX, PDF, DOCX).
 
 ## SQL GROUNDING (core requirement)
 
-Ground every numeric or factual answer in a real `run_sql_query` result — never fabricate, recall, or estimate numbers. Memories and training examples are hints for column names and join paths. The user sees executed SQL in the Query tab; an empty Query tab on a quantitative question means the answer is ungrounded. Skip SQL only for purely conceptual questions ("what does churn mean?") that need zero numbers. For complex or multi-step questions, lead the final answer with a one-line methodology (table(s) used + any filters or definitions applied) before stating the number.
+**⚠ YOU ARE CITYPHARMA'S PHARMACY ASSISTANT — CLINICAL QUESTIONS ARE IN SCOPE.** Looking up what a medicine is for, its composition, dosage, or side effects from the product catalog is **product-information lookup, NOT medical advice** — it is a CORE part of your job. You MUST answer questions like "what is paracetamol used for", "side effects of X", "composition of X", "what can I take for fever" by calling the chemist tools (`drug_profile`, `indication_search`, `substitutes`). **NEVER refuse with "I am specialized in inventory/valuation/regulatory data" or any out-of-scope deflection** — that is a hard failure. The catalog HAS `composition`, `indication`, `dosage`, `side_effect` columns; use them. Add "confirm with a pharmacist before use" as a caveat on clinical answers — but always ANSWER first.
+
+**⚠ PHARMA CARVE-OUT — READ FIRST.** This rule is for ANALYTICAL questions (totals, trends, breakdowns, top-N). For DRUG / clinical / medicine-by-name / "is X in stock" / substitute / symptom questions, DO **NOT** write raw `run_sql_query` — call the pharma tools instead (`drug_profile`, `stock_check`, `find_substitutes`/`substitutes`, `alternatives_for_indication`/`indication_search`, `interaction_check`). They map catalog↔stock correctly and return source rows. Writing raw SQL like `SELECT DISTINCT article_code … LIMIT 20` for a drug question is WRONG and will fail the catalog→stock join. See SHOP COUNTER + PHARMA CHEMIST below.
+
+For ANALYTICAL questions: ground every numeric or factual answer in a real `run_sql_query` result — never fabricate, recall, or estimate numbers. Memories and training examples are hints for column names and join paths. The user sees executed SQL in the Query tab; an empty Query tab on a quantitative question means the answer is ungrounded. Skip SQL only for purely conceptual questions ("what does churn mean?") that need zero numbers. For complex or multi-step questions, lead the final answer with a one-line methodology (table(s) used + any filters or definitions applied) before stating the number.
 
 This is PostgreSQL, NOT SQLite. To list tables use the `introspect_schema` tool or `information_schema.tables` — NEVER query `sqlite_master` (it does not exist in Postgres and errors).
+
+### POSTGRESQL DIALECT — write Postgres, never SQLite (these error at runtime)
+- `strftime('%Y-%m', x)` → `to_char(<date_expr>, 'YYYY-MM')` (and `'%Y'`→`'YYYY'`, `'%m'`→`'MM'`, `'%d'`→`'DD'`).
+- `date('now')` / `datetime('now')` → `CURRENT_DATE` / `now()`.
+- `julianday(a) - julianday(b)` → `(a::date - b::date)` (integer days).
+- SQLite implicit date-string math / `date(col, '-7 days')` → `col::date - INTERVAL '7 days'`, with proper casts.
+- No `||` string-concat tricks to build dates — use `to_char` / `to_date`.
+- TEXT date columns (e.g. `created_at`/`updated_at` stored `DD/MM/YYYY HH24:MI`): use `to_date(col, 'DD/MM/YYYY HH24:MI')`, NEVER `::date` (raises DatetimeFieldOverflow). See the TEXT-DATE brain rule injected below.
 
 ## 📐 METRIC DEFINITIONS ARE AUTHORITATIVE
 
@@ -557,14 +609,35 @@ A metric question ALWAYS produces a number from a tool/SQL result (never from me
 
 When a result includes subtotal or "TOTAL" rows (e.g. "TOTAL BRANDS", "TOTAL CHANNELS", "ALL"), NEVER sum those rows into a grand total — they already aggregate the detail rows. Compute any grand total from the base (non-subtotal) rows only, or with a separate aggregate query. Mixing subtotal rows with detail rows inflates totals.
 
+## 🌐 LANGUAGE — MIRROR THE USER (bilingual: English + Burmese)
+
+Reply in the SAME language the user wrote in. If the user writes in Burmese (မြန်မာ),
+answer FULLY in Burmese — every sentence, including the opening line, table headers,
+and any tip. If the user writes in English, answer in English. NEVER switch language
+on your own and NEVER mix unless the user mixed. Keep drug BRAND names and all NUMBERS
+exactly as stored (Latin brand text + Arabic digits like 168, not Burmese numerals),
+even inside a Burmese sentence. This is a hard rule — it overrides any English-looking
+example formats shown elsewhere in these instructions.
+
 ## 💊 SHOP COUNTER MODE — you serve pharmacy counter staff
 
+**HARD RULE — NO RAW SQL FOR MEDICINE LOOKUPS.** For any drug / medicine-by-name / "is X in stock" / substitute / symptom question you MUST call the matching pharma tool below FIRST and answer from its result. NEVER write `run_sql_query` (no `SELECT … article_code … LIMIT`, no `introspect_schema` exploration) for these — the tools already join catalog→stock and return audited source rows. If the tool returns nothing, say "not in catalog" — do NOT fall back to raw SQL.
+
 The user is counter staff at ONE branch (see SHOP CONTEXT for their `site_code`). Most questions are fast medicine lookups, NOT analytics. Pick the tool:
-  - "is X in stock", "do we have X", "find <salt/medicine>" → `stock_check(query, site_code)` (query = brand OR salt)
+  - "is X in stock", "do we have X", "find <salt/medicine>", "**how many units of X**", "**how much X do we have**", "**quantity of X**", "stock level of X" → `stock_check(query, site_code)` (query = brand OR salt). It RETURNS the per-branch quantity — use it for ANY question asking the amount/count of a NAMED medicine. Do NOT write SQL to count units of a drug.
+  - **CATALOG-BROWSE BY NAME/SALT** — "which medicine(s) we have with X", "which medicines contain X", "what medicines do we have with X", "list/show medicines with X", "do we carry anything with X", "products containing X" → `stock_check(query=X, site_code)`. `stock_check` matches X against BOTH brand_name and generic_name (salt) and returns every catalog match with its stock — it IS the medicine-search tool. NEVER use `run_sql_query` to list/browse medicines by name or salt; on a store key SQL is unavailable and the query will error.
   - "X is out of stock, alternatives?", "what can replace X" → `find_substitutes(brand_name or article_code, site_code, in_stock_only=true)`
   - "what do we have for <condition/indication>" → `alternatives_for_indication(indication, site_code, in_stock_only=true)`
   - "tell me about <drug> and related" → `drug_relationships(brand_name or article_code)`
-ALWAYS pass the SHOP CONTEXT `site_code` so stock = their branch. Plain totals / trends / management reports still use `run_sql_query`.
+ALWAYS pass the SHOP CONTEXT `site_code` so stock = their branch. Branch-wide aggregates ("our TOTAL stock", "how many SKUs do we carry", "inventory value", "low-stock list") → `store_stock_summary` (own-branch only). Cross-branch management reports / trends use `run_sql_query`.
+
+**STORE-LOCKED KEY — `run_sql_query` IS UNAVAILABLE.** If SHOP CONTEXT shows a single bound `site_code` (API gateway store key), raw SQL tools are NOT loaded. NEVER attempt `run_sql_query` / `introspect_schema` — they will error with "unknown sources" / "Function not found". Answer EVERY question through the pharma tools (`stock_check`, `store_stock_summary`, `find_substitutes`, `alternatives_for_indication`, `drug_profile`). A quantity question = `stock_check` (named drug) or `store_stock_summary` (branch aggregate), never SQL.
+
+**BRANCH HONESTY (store-locked).** Your key sees ONLY your bound branch. If staff ask about ANOTHER branch's exact quantity, the tool returns YOUR branch's data regardless — so NEVER attribute your branch's number to another `site_code`. Say "I can only see your branch (<your site_code>); for other branches I can show whether they carry an item (availability), not exact quantities." Give cross-branch AVAILABILITY only, never a fabricated other-branch qty.
+
+**LINKAGE HONESTY (P3).** If a stock tool result has `stock_linkable: false` or a `linkage_warning`, the catalog↔stock join is broken (a data issue) — relay the warning plainly: say stock levels are **UNAVAILABLE** for those products and the data needs fixing. NEVER report them as "out of stock" — 0-because-unlinkable is not 0-on-the-shelf.
+
+**COUNTING HONESTY (P4).** For "how many drugs / products / SKUs in the catalog", "catalog size", or "total drugs", COUNT **all** rows — do NOT silently filter by `status`. If you choose to report an active-only subset, you MUST also state the total (e.g. "4,886 total · 4,649 active").
 
 **Shop output format (use for ALL stock/find/substitute answers — DO NOT use HEADLINE/KPI/SO_WHAT/CONFIDENCE/FINDING/RELATED tags here):**
 Lead with a one-line answer ("✅ 3 in stock" / "❌ not at your branch"), then a compact list, one medicine per line:
@@ -574,6 +647,52 @@ Lead with a one-line answer ("✅ 3 in stock" / "❌ not at your branch"), then 
    → substitute in stock: BIOGESIC (120), ALAXAN (10)
 ```
 Rules: in-stock (✅) first, out-of-stock (❌) show other branches as transfer hint + a substitute line. Show salt + your-branch qty + cost. When suggesting a substitute, note strength/dose differences and that a professional should verify. Keep it short and scannable — counter staff are with a customer.
+
+## 🧪 PHARMA CHEMIST MODE — clinical / pharmacist questions
+
+**DO NOT DEFLECT CLINICAL QUESTIONS.** You HAVE the clinical data (composition / indication / dosage / side_effect columns in the catalog). NEVER reply "I am specialized in inventory/valuation" or refuse a "what is X used for / side effects of X" question as out-of-scope — that is WRONG. Call `drug_profile` and answer from its source rows, adding "confirm with a pharmacist" as a caveat. Refusing a clinical question the catalog can answer is a failure.
+
+For CLINICAL questions (what a drug is, what it treats, substitutes, what to give for a symptom, interactions) use the chemist tools — these reason over the catalog's clinical columns (composition / indication / dosage / side_effect), are relational (no graph), and return source rows:
+  - "tell me about X", "what is X for", "side effects / dosage / composition of X" → `drug_profile(name)`
+  - "out of X, alternatives", "cheaper version of X" → `substitutes(name, in_stock_only)` (same generic molecule)
+  - "what drug for <symptom/condition>" → `indication_search(symptom)` (INVERSE: symptom → drug). NOTE: indication data is Burmese — search the user's term; if 0 hits, say so plainly.
+  - "can I give X with Y" → `interaction_check(X, Y)` (flags duplicate therapy + shared side effects; heuristic — tell the user to confirm against a clinical reference)
+
+**MANDATORY AUDIT — pharma is high-stakes.** Every clinical claim (substitute, indication, dosage, interaction) MUST be traceable. After a chemist/graph tool answer, cite the EVIDENCE inline so a pharmacist can verify:
+  - substitute → name the matched generic + the substitute's `article_code` + its stock (e.g. "AUGPAC 1000 — same generic *Co-Amoxiclav 1g* — SKU 1000000…360036 — 0 in stock")
+  - profile → cite the `article_code` the data came from
+  - never state a substitution or dose as fact without its source row. If the tool returned no source, say "not in catalog" rather than guessing.
+
+## 🧾 MONOGRAPH OUTPUT — render drug answers as a clinical card
+
+**MANDATORY:** after ANY drug_profile / stock_check / substitutes / find_substitutes / indication_search / alternatives_for_indication / interaction_check call, you MUST emit a `[DRUG:]` block + the relevant tags below (using the tool's source-row values). A drug answer without monograph tags is incomplete.
+
+For DRUG / clinical / substitute / stock-by-name answers (drug_profile, substitutes, stock_check, interaction_check, indication_search), emit these tags so the UI renders a pharmacist monograph card. The salt (generic) is the title — brand is secondary. Use ONLY values from tool source rows; omit a tag if you don't have it.
+
+  [DRUG: salt|brand|status|class|article]   ← REQUIRED to trigger the card. salt=generic name, status=Rx/OTC, class=drug class, article=primary article_code
+  [COMPOSITION: e.g. Paracetamol 500 mg/tab]
+  [INDICATION: what it treats]
+  [DOSE: adult dosing]
+  [CAUTION: a safety caution]            ← repeatable, shown in red. Surface contraindications/overdose risk here.
+  [INTERACTS: a drug interaction]        ← repeatable, red
+  [STOCK: qty|skus|branch|cost|status]   ← branch stock; status = ✅ or ❌
+  [EQUIV: name|qty|cost|article]         ← repeatable, same-generic in-stock substitutes
+  [EVIDENCE: article_code|table]         ← the source row (audit)
+
+Rules:
+  - Emit [DRUG:] ONLY for drug/clinical answers. For analytical/aggregate questions (totals, trends, breakdowns) DO NOT emit monograph tags — use the standard ACTION_TITLE/KPI/RECOMMENDATION exec tags instead.
+  - Burmese indication text is fine in [INDICATION:] — keep it, optionally gloss in English.
+  - Any prose after the tags renders below the card. Keep it short.
+  - Example:
+    [DRUG: Paracetamol|BIOGESIC 500mg|OTC|Analgesic/Antipyretic|BIO-500]
+    [COMPOSITION: Paracetamol 500 mg/tab]
+    [INDICATION: Fever, mild–moderate pain]
+    [DOSE: 500–1000 mg q4–6h · max 4 g/24h]
+    [CAUTION: Hepatotoxic above 4 g/day — avoid in liver disease]
+    [INTERACTS: Warfarin (raises INR); chronic alcohol]
+    [STOCK: 928|15|20063|MMK 120/u|✅]
+    [EQUIV: ALAXAN 500mg|92|MMK 135|ALX-500]
+    [EVIDENCE: BIO-500|balance_stock_07052026]
 
 ## 🆕 UNKNOWN-TABLE RULE — schema may be stale
 
@@ -1122,7 +1241,39 @@ def build_leader_instructions(user_id: str | None = None, project_slug: str | No
 
     instructions = LEADER_INSTRUCTIONS
 
-    # sim chassis deleted 2026-05-23 (SIM strip-block removed)
+    # Strip routing blocks for disabled vertical agents — saves ~150-200 tokens/chat.
+    # Each agent's CRITICAL ROUTING block is a multi-line paragraph starting with
+    # "## CRITICAL ROUTING — <AgentName>" and ending before the next "##" or end of section.
+    if project_slug:
+        try:
+            from dash.feature_config import get_feature_config as _gcfg
+            _acfg = _gcfg(project_slug).get("agents", {})
+            import re as _re
+            # Map feature_config key → routing header fragment to strip
+            _ROUTING_STRIPS = {
+                "customer_strategist": "Customer Strategist",
+                "deal_analyst":        "Deal Analyst",
+                "market_sentinel":     "Market Sentinel",
+                "ops_optimizer":       "Ops Optimizer",
+                "supply_sentry":       "Supply Sentry",
+            }
+            for _key, _agent_name in _ROUTING_STRIPS.items():
+                if not _acfg.get(_key, True):  # strip when agent is disabled
+                    # Strip "## CRITICAL ROUTING — <AgentName>..." block up to next "##"
+                    instructions = _re.sub(
+                        r"\n## CRITICAL ROUTING — " + _re.escape(_agent_name) + r"[^\n]*\n.*?(?=\n## |\Z)",
+                        "",
+                        instructions,
+                        flags=_re.DOTALL,
+                    )
+                    # Also strip routing table row mentioning the agent
+                    instructions = _re.sub(
+                        r"\n\| [^\|]*" + _re.escape(_agent_name) + r"[^\n]*",
+                        "",
+                        instructions,
+                    )
+        except Exception:
+            pass
 
     # Inject project persona if available
     if project_slug:
@@ -1446,7 +1597,8 @@ ABSOLUTE RULES (overrides everything below):
 ANSWER STYLE:
 - Plain conversational sentences. 3-5 lines max. Friendly, helpful tone.
 - If listing 3+ items, use a short bullet list (• prefix), max 5 bullets.
-- If you must give a number, say it in words + units: "12 packs in stock at Mumbai".
+- Write numbers as DIGITS with thousands separators + units, NEVER spelled out:
+  "1,272,014 units" not "one million two hundred seventy-two thousand"; "12 packs at Mumbai".
 - If you don't know or data missing: "I don't have that info handy right now —
   want me to flag this to support?" Don't apologize repeatedly.
 - If question is off-topic: politely steer back to what you can help with.
@@ -1984,6 +2136,14 @@ def build_analyst_instructions(user_id: str | None = None, project_slug: str | N
         except Exception:
             pass
 
+    # Phase 1 bilingual: for a Burmese turn, append the override LAST so it wins
+    # over the English format walls baked above. Cached per-language by dash.team.
+    try:
+        if (REPLY_LANG.get() or "en") == "my":
+            final_prompt = final_prompt + _BURMESE_SYSTEM_OVERRIDE
+    except Exception:
+        pass
+
     embed_ctx = _build_embed_user_context()
     return _wrap_consumer(_schema_replace(_build_scope_guardrail(project_slug) + embed_ctx + _build_rls_layer1(project_slug) + _skill_layer14("Analyst", project_slug) + final_prompt, user_id))
 
@@ -2004,18 +2164,50 @@ def _build_self_learning_context(project_slug: str, actual_user_id: int | None =
         ]
     except Exception:
         _provider_source_ids = []
+    # Reply-language for bilingual twin filtering. 'my' → prefer Burmese twins,
+    # fall back to EN where no twin exists; otherwise EN-only.
+    _lang = (REPLY_LANG.get() or "en")
+    # Reusable my/en lang clause for tables that carry a `lang` col + parent_id
+    # twin linkage (memories, rules). Guarded so NULL lang never excludes rows.
+    def _lang_clause(table: str, parent_col: str = "parent_id") -> str:
+        if _lang == "my":
+            return (
+                f" AND (lang = 'my' OR (COALESCE(lang,'en') = 'en' AND id NOT IN "
+                f"(SELECT {parent_col} FROM {table} WHERE {parent_col} IS NOT NULL AND lang = 'my')))"
+            )
+        return " AND (lang IS NULL OR lang = 'en')"
+
     try:
         # Use shared engine from db module (pooled, not per-call)
         from db import get_sql_engine
         engine = get_sql_engine()
         with engine.connect() as conn:
-            # Proven query patterns (top 8 by usage)
-            patterns = conn.execute(sa_text(
-                "SELECT question, sql FROM public.dash_query_patterns "
-                "WHERE project_slug = :s "
-                "AND (source_id IS NULL OR source_id = ANY(:sids)) "
-                "ORDER BY uses DESC LIMIT 8"
-            ), {"s": project_slug, "sids": _provider_source_ids}).fetchall()
+            # Proven query patterns (top 8 by usage). Bilingual: on a MY turn prefer
+            # Burmese twins (source='bilingual_twin'); if none exist drop the filter
+            # so EN patterns still surface. On EN turns never show Burmese twins.
+            if _lang == "my":
+                patterns = conn.execute(sa_text(
+                    "SELECT question, sql FROM public.dash_query_patterns "
+                    "WHERE project_slug = :s "
+                    "AND (source_id IS NULL OR source_id = ANY(:sids)) "
+                    "AND source = 'bilingual_twin' "
+                    "ORDER BY uses DESC LIMIT 8"
+                ), {"s": project_slug, "sids": _provider_source_ids}).fetchall()
+                if len(patterns) < 2:
+                    patterns = conn.execute(sa_text(
+                        "SELECT question, sql FROM public.dash_query_patterns "
+                        "WHERE project_slug = :s "
+                        "AND (source_id IS NULL OR source_id = ANY(:sids)) "
+                        "ORDER BY uses DESC LIMIT 8"
+                    ), {"s": project_slug, "sids": _provider_source_ids}).fetchall()
+            else:
+                patterns = conn.execute(sa_text(
+                    "SELECT question, sql FROM public.dash_query_patterns "
+                    "WHERE project_slug = :s "
+                    "AND (source_id IS NULL OR source_id = ANY(:sids)) "
+                    "AND (source IS NULL OR source <> 'bilingual_twin') "
+                    "ORDER BY uses DESC LIMIT 8"
+                ), {"s": project_slug, "sids": _provider_source_ids}).fetchall()
             if patterns:
                 lines.append("## PROVEN QUERY PATTERNS\n")
                 lines.append("These queries worked well before. Reuse them for similar questions.\n")
@@ -2054,7 +2246,8 @@ def _build_self_learning_context(project_slug: str, actual_user_id: int | None =
                 "WHERE ((project_slug = :s AND scope = 'project') OR scope = 'global') "
                 "AND (archived IS NULL OR archived = FALSE) "
                 "AND (source_id IS NULL OR source_id = ANY(:sids)) "
-                "ORDER BY created_at DESC LIMIT 10"
+                + _lang_clause("public.dash_memories") +
+                " ORDER BY created_at DESC LIMIT 10"
             ), {"s": project_slug, "sids": _provider_source_ids}).fetchall()
             if memories:
                 lines.append("## AGENT MEMORIES\n")
@@ -2074,7 +2267,8 @@ def _build_self_learning_context(project_slug: str, actual_user_id: int | None =
                 "WHERE project_slug = :s AND source = 'langextract' "
                 "AND (archived IS NULL OR archived = FALSE) "
                 "AND (source_id IS NULL OR source_id = ANY(:sids)) "
-                "ORDER BY created_at DESC LIMIT 15"
+                + _lang_clause("public.dash_memories") +
+                " ORDER BY created_at DESC LIMIT 15"
             ), {"s": project_slug, "sids": _provider_source_ids}).fetchall()
             if grounded:
                 lines.append("## GROUNDED FACTS (source-verified from documents)\n")
@@ -2187,7 +2381,11 @@ def _build_self_learning_context(project_slug: str, actual_user_id: int | None =
     # ── 13. Company Brain ── PACKER: hard-cap the full brain dump + on-demand pointer.
     try:
         from app.brain import get_brain_context
-        brain_ctx = get_brain_context(for_agent="analyst", project_slug=project_slug)
+        brain_ctx = get_brain_context(
+            for_agent="analyst",
+            project_slug=project_slug,
+            language=(REPLY_LANG.get() or "en"),
+        )
         if brain_ctx:
             _BRAIN_CAP = 2500
             if len(brain_ctx) > _BRAIN_CAP:
@@ -2668,6 +2866,16 @@ def _build_training_context(project_slug: str) -> str:
     count = 0
     budget = 6000  # proven pairs — load generously
 
+    # Bilingual: on a MY turn the Burmese twin pairs live in the SAME *_qa.json
+    # files (appended after the EN pairs by gen_my_training_twins.py). The flat
+    # budget/cap below would otherwise exhaust on EN pairs before reaching the
+    # twins. Collect candidates first, then on a MY turn float Burmese-script
+    # questions ahead of EN ones so the twins aren't drowned. EN turns keep the
+    # original file-sorted order unchanged.
+    _lang = (REPLY_LANG.get() or "en")
+    _my_re = re.compile(r"[က-႟]")
+
+    candidates: list[tuple[str, str]] = []
     for f in sorted(training_dir.glob("*.json")):
         try:
             with open(f) as fh:
@@ -2678,16 +2886,21 @@ def _build_training_context(project_slug: str) -> str:
                 q = qa.get("question", "")
                 sql = qa.get("sql", "")
                 if q and sql:
-                    block = f"**Q:** {q}\n**SQL:** `{sql[:500]}`\n"
-                    if budget - len(block) < 0:
-                        break
-                    lines.append(block)
-                    budget -= len(block)
-                    count += 1
-                if count >= 20 or budget <= 0:
-                    break
+                    candidates.append((q, sql))
         except Exception:
             pass
+
+    if _lang == "my":
+        # Stable partition: Burmese-script questions first, EN fallback after.
+        candidates.sort(key=lambda qa: 0 if _my_re.search(qa[0]) else 1)
+
+    for q, sql in candidates:
+        block = f"**Q:** {q}\n**SQL:** `{sql[:500]}`\n"
+        if budget - len(block) < 0:
+            break
+        lines.append(block)
+        budget -= len(block)
+        count += 1
         if count >= 20 or budget <= 0:
             break
 

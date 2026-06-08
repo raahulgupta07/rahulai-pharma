@@ -5,7 +5,7 @@ Failures during :meth:`load_for_project` are logged and the offending provider
 is marked ``degraded`` — they do NOT bubble up, so a single broken source
 cannot prevent an agent session from starting.
 
-Concrete provider classes (PostgresProvider, MySQLProvider, FabricProvider, ...)
+Concrete provider classes (PostgresProvider, MySQLProvider, ...)
 register themselves at import time via :func:`register_provider_class`. The
 registry resolves the right subclass per row in ``dash_data_sources`` using
 the ``provider_class`` column.
@@ -236,8 +236,7 @@ class ProviderRegistry:
                 "agent_scope, site_name, config "
                 "FROM public.dash_data_sources "
                 "WHERE project_slug = :slug AND status = 'active' "
-                "AND source_type IN ('postgresql', 'mysql', 'fabric', "
-                "'gdrive', 'sharepoint', 'onedrive', 'mcp')"
+                "AND source_type IN ('postgresql', 'mysql', 'mcp')"
             )
             with engine.connect() as conn:
                 rows = conn.execute(sql, {"slug": project_slug}).mappings().all()
@@ -248,7 +247,7 @@ class ProviderRegistry:
             )
             return out
 
-        sql_source_types = {"postgresql", "mysql", "fabric"}
+        sql_source_types = {"postgresql", "mysql"}
         for row in rows:
             cfg_raw = row["config"]
             cfg = cfg_raw if isinstance(cfg_raw, dict) else (json.loads(cfg_raw) if cfg_raw else {})
@@ -266,10 +265,6 @@ class ProviderRegistry:
             pclass = row.get("provider_class") or {
                 "postgresql": "postgres_remote",
                 "mysql": "mysql_remote",
-                "fabric": "fabric",
-                "gdrive": "gdrive",
-                "sharepoint": "sharepoint",
-                "onedrive": "onedrive",
                 "mcp": "mcp",
             }.get(row["source_type"])
             if not pclass:

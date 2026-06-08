@@ -7,6 +7,7 @@ from dash.obs.trace import (
     end_trace,
     record_cost,
     set_project,
+    set_root_meta,
     start_trace,
     trace_span,
     trace_step,
@@ -19,4 +20,5 @@ __all__ = [
     "end_trace",
     "record_cost",
     "set_project",
+    "set_root_meta",
 ]

@@ -485,8 +485,10 @@ import AnswerCard from './AnswerCard.svelte';
                   if (act === 'star' || act === 'save') { onAction?.('save'); return; }
                   if (act === 'excel') { onAction?.('csv'); return; }
                   if (act === 'email' || act === 'share') { onAction?.('share'); return; }
-                  // Default — bubble up
-                  onAction?.(act);
+                  // Related-question chip → re-ask. payload carries the question text.
+                  if (act === 'related') { onAction?.('related', payload); return; }
+                  // Default — bubble up (forward payload so arg-aware handlers still work)
+                  onAction?.(act, payload);
                 }}
               />
             {:else}
@@ -961,7 +963,6 @@ import AnswerCard from './AnswerCard.svelte';
               </div>
               <div style="display: flex; gap: 8px; margin-top: 12px;">
                 <button class="feedback-btn" onclick={() => onExportCsv?.(i, [activeTable])} style="font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 4px 10px;">DOWNLOAD CSV</button>
-                <button class="feedback-btn" onclick={() => onPin?.(i, tables)} style="font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 4px 10px;">{pinnedMap[i] ? 'PINNED' : 'PIN TO DASHBOARD'}</button>
               </div>
             </div>
 
@@ -1017,9 +1018,6 @@ import AnswerCard from './AnswerCard.svelte';
               </div>
               <div style="background: var(--pw-surface); padding: 8px; border: 2px solid var(--pw-ink);">
                 <EChartView headers={activeChartTable.headers} rows={activeChartTable.rows} chartType={msg.chartType || chartHint?.type || detectChartType(activeChartTable)} />
-              </div>
-              <div style="display: flex; gap: 8px; margin-top: 12px;">
-                <button class="feedback-btn" onclick={() => onPin?.(i, tables)} style="font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 4px 10px;">{pinnedMap[i] ? 'PINNED' : 'PIN TO DASHBOARD'}</button>
               </div>
             </div>
 
@@ -1250,10 +1248,6 @@ import AnswerCard from './AnswerCard.svelte';
               <button class="msg-action-icon" title={(typeof copiedIndex === 'number' && copiedIndex >= 0 && copiedIndex === i) ? 'Copied' : 'Copy'} aria-label="Copy" onclick={() => onCopy?.(i)}><Icon name={(typeof copiedIndex === 'number' && copiedIndex >= 0 && copiedIndex === i) ? 'check' : 'clipboard'} size={15} /></button>
               {#if hasTables}<button class="msg-action-icon" title="Export CSV" aria-label="Export CSV" onclick={() => onExportCsv?.(i, tables)}><Icon name="download" size={15} /></button>{/if}
               <button class="msg-action-icon" title="Save to memory" aria-label="Save" onclick={() => onSaveMemory?.(i)}><Icon name="star" size={15} /></button>
-              <button class="msg-action-icon" title={pinnedMap[i] ? 'Pinned' : 'Pin to dashboard'} aria-label="Pin" aria-pressed={!!pinnedMap[i]} onclick={() => onPin?.(i, tables)} style={pinnedMap[i] ? 'color: var(--pw-accent, #c96342);' : ''}><Icon name="pin" size={15} /></button>
-              {#if onSchedule && msg.role === 'assistant' && (msg.status === 'done' || (msg as any).status === 'complete')}
-                <button class="msg-action-icon" title="Schedule as workflow" aria-label="Schedule" onclick={() => onSchedule?.(i)}><Icon name="calendar" size={15} /></button>
-              {/if}
               <button class="msg-action-icon" title="Export PDF" aria-label="Export PDF" onclick={() => onExportPdf?.(i)}><Icon name="file-text" size={15} /></button>
             </div>
           {/if}

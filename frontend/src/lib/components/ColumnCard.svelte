@@ -27,6 +27,17 @@
   const suggestedQuestions = $derived(Array.isArray(m?.suggested_questions) ? m.suggested_questions : []);
   const hasLLMBlurb = $derived(Boolean(m?.description && m.description.trim().length > 0));
 
+  // Description may carry an inline Burmese twin as "English\n[မြန်မာ] Burmese".
+  // Split it into the English line + an optional Burmese line (prefix stripped).
+  const descParts = $derived((() => {
+    const lines = String(blurb || '').split('\n');
+    const myIdx = lines.findIndex((l) => l.trim().startsWith('[မြန်မာ]'));
+    if (myIdx === -1) return { en: blurb || '', my: '' };
+    const my = lines[myIdx].trim().replace(/^\[မြန်မာ\]\s*/, '');
+    const en = lines.filter((_, i) => i !== myIdx).join('\n').trim();
+    return { en, my };
+  })());
+
   function _h(): Record<string, string> {
     const t = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
     return t ? { Authorization: `Bearer ${t}` } : {};
@@ -142,12 +153,26 @@
       </div>
     {/if}
     {#if blurb}
-      <div
-        style="font-family: 'Source Serif Pro', Georgia, serif; font-size: 13px; color: var(--pw-ink); max-width: 600px; line-height: 1.45;"
-        style:font-style={hasLLMBlurb ? 'normal' : 'italic'}
-      >
-        {blurb}
-      </div>
+      {#if descParts.my}
+        <div class="col-bi-line">
+          <span class="col-bi-badge">1</span>
+          <span
+            style="font-family: 'Source Serif Pro', Georgia, serif; font-size: 13px; color: var(--pw-ink); max-width: 600px; line-height: 1.45;"
+            style:font-style={hasLLMBlurb ? 'normal' : 'italic'}
+          >{descParts.en}</span>
+        </div>
+        <div class="col-bi-line" style="margin-top: 3px;">
+          <span class="col-bi-badge">2</span>
+          <span lang="my" style="font-size: 12.5px; color: var(--pw-muted); max-width: 600px; line-height: 1.45;">{descParts.my}</span>
+        </div>
+      {:else}
+        <div
+          style="font-family: 'Source Serif Pro', Georgia, serif; font-size: 13px; color: var(--pw-ink); max-width: 600px; line-height: 1.45;"
+          style:font-style={hasLLMBlurb ? 'normal' : 'italic'}
+        >
+          {blurb}
+        </div>
+      {/if}
     {:else}
       <span style="font-size: 11px; color: var(--pw-muted); font-style: italic;">No description yet</span>
     {/if}
@@ -291,5 +316,25 @@
   .col-card-ask:hover {
     background: rgba(201, 99, 66, 0.08);
     border-color: rgba(201, 99, 66, 0.20) !important;
+  }
+  .col-bi-line {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .col-bi-badge {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--pw-ink);
+    background: var(--pw-bg-alt);
+    border: 1px solid var(--pw-border);
+    border-radius: 50%;
   }
 </style>

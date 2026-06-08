@@ -283,8 +283,8 @@ def list_leaks(
     limit: int = Query(100, ge=1, le=1000),
     user=Depends(_get_user),
 ):
-    if not user or not user.get("is_super_admin"):
-        raise HTTPException(403, "super_admin_required")
+    if not user or not user.get("is_admin"):
+        raise HTTPException(403, "admin_required")
     eng = _get_engine()
     if eng is None:
         return {"leaks": []}

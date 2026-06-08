@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import glob
 import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -33,6 +34,9 @@ def generate_deck_thumbnail_grid(
         return {"ok": False, "error": "pptx_path must not contain .."}
     if not p.exists():
         return {"ok": False, "error": f"file not found: {pptx_path}"}
+
+    if shutil.which("soffice") is None and shutil.which("libreoffice") is None:
+        return {"ok": False, "error": "Office rendering disabled in this build (LibreOffice removed)."}
 
     pid = os.getpid()
     ts = time.time_ns()

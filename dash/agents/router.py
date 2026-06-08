@@ -13,7 +13,7 @@ try:
 except ImportError:
     OpenRouterResponses = None
 
-from dash.settings import LITE_MODEL
+from dash.settings import LITE_MODEL, OR_DATA_POLICY
 from dash.tools.router_tools import (
     create_inspect_catalog_tool,
     create_inspect_detail_tool,
@@ -25,7 +25,7 @@ from dash.tools.router_tools import (
 def _build_router_model():
     """Build the router model, falling back to string ID if OpenRouterResponses unavailable."""
     if OpenRouterResponses is not None:
-        return OpenRouterResponses(id=LITE_MODEL)
+        return OpenRouterResponses(id=LITE_MODEL, extra_body=OR_DATA_POLICY)
     return LITE_MODEL
 
 

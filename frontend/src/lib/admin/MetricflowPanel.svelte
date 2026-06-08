@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dashFetch } from '$lib/api';
   // Admin UI for the MetricFlow → MDL import endpoint (Phase 4).
   // Style: matches /admin/accuracy, /admin/approvals (cream borders, coral accents,
   // serif h1, Svelte 5 runes).
@@ -69,7 +70,7 @@
       fd.append('dry_run', String(dryRun));
       for (const f of pickedFiles) fd.append('files', f, f.name);
 
-      const r = await fetch('/api/metricflow/import', {
+      const r = await dashFetch('/api/metricflow/import', {
         method: 'POST',
         body: fd
       });
@@ -101,7 +102,7 @@
     }
     busy = true;
     try {
-      const r = await fetch('/api/metricflow/import-text', {
+      const r = await dashFetch('/api/metricflow/import-text', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -131,7 +132,7 @@
     exampleLoading = true;
     exampleError = null;
     try {
-      const r = await fetch('/api/metricflow/example', {
+      const r = await dashFetch('/api/metricflow/example', {
         headers: { 'Accept': 'application/json' }
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);

@@ -271,7 +271,7 @@
   <!-- Sidebar -->
   {#if sidebarOpen}
     <div class="chat-sidebar">
-      <div class="flex items-center justify-between p-3" style="border-bottom: 2px solid var(--color-on-surface);">
+      <div class="flex items-center justify-between p-3" style="border-bottom: 2px solid var(--pw-border, #e5ddcf);">
         <span style="font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em;">SESSIONS</span>
         <button onclick={() => sidebarOpen = false} style="background: none; border: none; cursor: pointer; font-size: 11px; font-weight: 900; color: var(--color-on-surface);">&#10005;</button>
       </div>
@@ -429,7 +429,7 @@
 
                       <!-- Feedback bar -->
                       {#if msg.status === 'done' && msg.content}
-                        <div class="flex items-center justify-between" style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--color-on-surface); opacity: 0.6;">
+                        <div class="flex items-center justify-between" style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--pw-border, #e5ddcf); opacity: 0.6;">
                           <div class="flex items-center gap-2" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700;">
                             HELPFUL?
                             <button class="feedback-btn" title="Helpful"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg></button>
@@ -484,7 +484,7 @@
                       {#if msg.showSql}
                         <div style="margin-top: 4px;">
                           {#each msg.sqlQueries as sql}
-                            <pre style="background: var(--color-on-surface); color: var(--color-primary-container); padding: 10px 14px; font-size: 11px; font-family: var(--font-family-display); overflow-x: auto; margin: 4px 0; border: 2px solid var(--color-on-surface);">{sql}</pre>
+                            <pre style="background: var(--color-on-surface); color: var(--color-primary-container); padding: 10px 14px; font-size: 11px; font-family: var(--font-family-display); overflow-x: auto; margin: 4px 0; border: 2px solid var(--pw-border, #e5ddcf);">{sql}</pre>
                           {/each}
                         </div>
                       {/if}

@@ -26,18 +26,17 @@ from pathlib import Path
 def _tier_label(complexity: str | None = None, reasoning: str | None = None) -> str:
     """Map router complexity + explicit override → exec-view tier.
 
-    5 tiers (un-merged 2026-05-26 evening per user direction):
-      quick     — instant lookup, 1 KPI + 1 line, <500ms, $0.0001
-      standard  — default analytical card (KPI strip + 2 recs), ~2s, $0.005
-      deep      — RCA + segments + benchmarks + scenarios + forecast, ~8-15s, $0.05
-      ultra     — deep + multi-step reasoning + verification + counter-hypothesis, ~30-60s, $0.15
-      reasoning — explicit reasoning chain (visible thinking trace), ~10-20s, $0.08
-
-    User-visible modes (UI dropdown): AUTO, FAST, STANDARD, DEEP, ULTRA.
-    `reasoning` tier is router-only (forced via classifier on complex multi-step questions).
+    CityPharma (pharmacy counter) ships only 3 presentation tiers (2026-06-08):
+      quick     — instant lookup, 1 KPI + 1 line  (UI "FAST")
+      standard  — analytical card, KPI strip + breakdown  (UI "STANDARD" / AUTO default)
+    DEEP / ULTRA / REASONING (RCA / forecast / verification / visible-chain) were
+    removed from the UI picker — no pharmacy-counter use. AUTO is now CAPPED at
+    `standard`: a complex question still gets a smart MODEL (complexity_router) but
+    the ANSWER never explodes into deep/ultra scaffolding. `/deep ` slash command
+    is the only remaining escape hatch into the deep layout (power user).
     """
     try:
-        # Explicit override from frontend mode picker / slash command wins
+        # Explicit override from slash command (`/deep`) still honored.
         r = (reasoning or "").lower().strip()
         if r in ("quick", "fast", "instant"):
             return "quick"
@@ -45,20 +44,13 @@ def _tier_label(complexity: str | None = None, reasoning: str | None = None) -> 
             return "standard"
         if r in ("deep", "high"):
             return "deep"
-        if r in ("ultra", "max", "exhaustive"):
-            return "ultra"
-        if r in ("reasoning", "chain", "step-by-step"):
-            return "reasoning"
-        # else fall through to router complexity
+        # ultra/reasoning unreachable from the UI now; fold to deep if ever forced.
+        if r in ("ultra", "max", "exhaustive", "reasoning", "chain", "step-by-step"):
+            return "deep"
+        # AUTO fallthrough — CAPPED at standard (deep/ultra/reasoning removed).
         c = (complexity or "").upper().strip()
         if c in ("TRIVIAL", "LOOKUP"):
             return "quick"
-        if c in ("AGENTIC", "REASONING"):
-            return "reasoning"
-        if c in ("ULTRA", "EXHAUSTIVE"):
-            return "ultra"
-        if c in ("DEEP", "ANALYTICAL"):
-            return "deep"
         return "standard"
     except Exception:
         return "standard"
@@ -591,10 +583,16 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
         _sd_log.getLogger(__name__).warning(
             f"scope_derive daemon not started: {_e}"
         )
+    # Pruned-vertical daemons (venture/ops/supply) query portco/suppliers tables
+    # that don't exist single-tenant → boot-time list errors. Gate the whole
+    # cluster off via VERTICAL_DAEMONS_DISABLED=1.
+    import os as _os_vd
+    _VERTICAL_OFF = _os_vd.environ.get("VERTICAL_DAEMONS_DISABLED", "").lower() in ("1", "true", "yes")
+
     # VentureDesk monthly rescore daemon — re-runs DCF/IRR on saved scenarios, flags verdict drift.
     # Disable via VENTURE_RESCORE_DAEMON_DISABLED=1.
     try:
-        if not _should_run_daemons():
+        if not _should_run_daemons() or _VERTICAL_OFF:
             raise RuntimeError("daemons disabled")
         import asyncio as _asyncio_vr
         from dash.cron.venture_rescore import (
@@ -610,7 +608,7 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
         )
     # Ops anomaly scan daemon
     try:
-        if not _should_run_daemons():
+        if not _should_run_daemons() or _VERTICAL_OFF:
             raise RuntimeError("daemons disabled")
         import asyncio as _aio_ops_a
         from dash.cron.ops_anomaly_scan import ops_anomaly_loop as _ops_anomaly_loop
@@ -625,7 +623,7 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
 
     # Supply score daemon (Sprint 3)
     try:
-        if not _should_run_daemons():
+        if not _should_run_daemons() or _VERTICAL_OFF:
             raise RuntimeError("daemons disabled")
         import asyncio as _aio_sup_s
         from dash.cron.supply_score_loop import supply_score_loop as _supply_score_loop
@@ -640,7 +638,7 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
 
     # Supply news scan daemon (Sprint 3)
     try:
-        if not _should_run_daemons():
+        if not _should_run_daemons() or _VERTICAL_OFF:
             raise RuntimeError("daemons disabled")
         import asyncio as _aio_sup_n
         from dash.cron.supply_news_scan_loop import supply_news_scan_loop as _supply_news_loop
@@ -655,7 +653,7 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
 
     # Ops initiative staleness daemon
     try:
-        if not _should_run_daemons():
+        if not _should_run_daemons() or _VERTICAL_OFF:
             raise RuntimeError("daemons disabled")
         import asyncio as _aio_ops_i
         from dash.cron.ops_initiative_staleness import ops_staleness_loop as _ops_staleness_loop
@@ -1077,10 +1075,8 @@ try:
 except Exception:
     mrr_router = None
 # automl chassis dropped — replaced by LLM-conductor auto_ml tool
-try:
-    from app.agents_api import router as agents_api_router
-except Exception:
-    agents_api_router = None
+# agents_api (My Agent / per-user digital twin) REMOVED 2026-06-06 — dead in single-agent CityPharma
+agents_api_router = None
 
 # auto_apply_api DELETED 2026-05-23 (orphan, 0 frontend refs)
 
@@ -1298,6 +1294,10 @@ def _global_flags():
         "single_agent": is_single_agent(),
         "locked_slug": locked_slug() if is_single_agent() else None,
         "product_name": product_name(),
+        # Canonical public origin for embed snippets/SDK/docs. Set PUBLIC_URL
+        # (or WEBUI_URL) to the AWS domain; blank → frontend falls back to
+        # window.location.origin.
+        "public_base_url": (_os_flags.getenv("PUBLIC_URL") or _os_flags.getenv("WEBUI_URL") or "").rstrip("/"),
     }
 
 
@@ -1555,6 +1555,14 @@ except Exception as _e:
     import logging as _logging
     _logging.warning(f"telemetry_admin_api not loaded: {_e}")
 
+# Usage API — super-admin unified usage/cost dashboard (v_usage_unified spine)
+try:
+    from app.usage_api import router as usage_router
+    app.include_router(usage_router)
+except Exception as _e:
+    import logging as _logging
+    _logging.warning(f"usage_api not loaded: {_e}")
+
 # Connector subsystem (admin CRUD + user-facing query) — connectors_contract §8
 try:
     from app.admin_connectors import router as admin_connectors_router
@@ -1620,7 +1628,7 @@ from starlette.responses import JSONResponse
 
 class AuthMiddleware(BaseHTTPMiddleware):
     SKIP_PATHS = {"/health", "/api/health", "/api/flags", "/", "/info", "/config", "/api/auth/login", "/api/auth/register", "/api/auth/methods", "/api/auth/ldap/login", "/api/sharepoint/callback", "/api/gdrive/callback", "/api/onedrive/callback", "/api/embed/session/create", "/api/embed/chat", "/api/embed/chat/stream", "/api/embed/widget.js", "/api/embed/docs"}
-    SKIP_PREFIXES = ("/ui", "/docs", "/openapi.json", "/redoc", "/api/branding", "/v1/ontology", "/brand", "/decks", "/api/health", "/health", "/api/embed/try", "/api/embed/config", "/api/s/", "/api/v1/docs", "/api/auth/oidc/")
+    SKIP_PREFIXES = ("/ui", "/docs", "/openapi.json", "/redoc", "/api/branding", "/v1/ontology", "/brand", "/decks", "/api/health", "/health", "/api/embed/try", "/api/embed/config", "/api/embed/sdk", "/api/embed/logo", "/api/s/", "/api/v1/docs", "/api/auth/oidc/")
 
     async def dispatch(self, request, call_next):  # type: ignore[no-untyped-def]
         path = request.url.path
@@ -1796,6 +1804,7 @@ def get_me(request: Request):
         "full_name": full_name,
         "email": email,
         "is_super": user.get("is_super", False),
+        "is_admin": user.get("is_admin", user.get("is_super", False)),
     }
 
 

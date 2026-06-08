@@ -26,6 +26,9 @@
     "@fontsource/jetbrains-mono": "^5.2.8",
     "cytoscape": "^3.33.4",
     "echarts": "^5.6.0",
-    "html-to-image": "^1.11.13"
+    "graphology": "^0.26.0",
+    "graphology-layout-forceatlas2": "^0.10.1",
+    "html-to-image": "^1.11.13",
+    "sigma": "^3.0.3"
   }
 }

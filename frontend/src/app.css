@@ -259,10 +259,12 @@ html, body {
 html { overflow-y: auto; }
 body { overflow-x: hidden; }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-track { background: var(--color-surface-dim); }
-::-webkit-scrollbar-thumb { background: var(--color-on-surface); }
+/* Scrollbar — thin + warm, matches theme (was chunky dark) */
+* { scrollbar-width: thin; scrollbar-color: var(--pw-border, #e5ddcf) transparent; }
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--pw-border, #e5ddcf); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--pw-muted, #877f74); }
 
 /* ============================================================
    Utility Classes
@@ -2064,7 +2066,7 @@ body { overflow-x: hidden; }
 /* Hero title block helpers */
 .pw-hero-title {
   font-family: var(--pw-font-headline);
-  font-size: 44px;
+  font-size: clamp(28px, 6vw, 44px);
   font-weight: 500;
   letter-spacing: -0.02em;
   color: var(--pw-ink);

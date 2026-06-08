@@ -7,6 +7,7 @@ Recalculates all formulas in an Excel file using LibreOffice
 import json
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import time
@@ -124,6 +125,9 @@ def recalc(filename, timeout=30):
     """
     if not Path(filename).exists():
         return {"error": f"File {filename} does not exist"}
+
+    if shutil.which("soffice") is None and shutil.which("libreoffice") is None:
+        return {"error": "Office rendering disabled in this build (LibreOffice removed)."}
 
     abs_path = str(Path(filename).absolute())
 

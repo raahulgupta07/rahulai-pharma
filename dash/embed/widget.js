@@ -134,6 +134,7 @@
 
   var style = document.createElement('style');
   style.textContent = `
+    :host, .panel, .bubble { text-align: left; }
     :host, * { box-sizing: border-box; font-family: ${SANS}; }
     code, pre, code *, pre * { font-family: ${MONO}; }
 
@@ -214,8 +215,11 @@
     }
     .msg p { margin: 0 0 8px 0; }
     .msg p:last-child { margin-bottom: 0; }
-    .msg ul { margin: 4px 0; padding-left: 20px; }
+    .msg ul, .msg ol { margin: 4px 0; padding-left: 20px; }
     .msg li { margin: 2px 0; }
+    .msg .md-h { margin: 8px 0 4px; font-size: 13.5px; font-weight: 700; line-height: 1.35; }
+    .msg b { font-weight: 700; }
+    .msg i { font-style: italic; }
     .msg a { color: inherit; text-decoration: underline; }
     .msg code { background: rgba(0,0,0,0.08); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
     .msg pre { background: rgba(0,0,0,0.06); padding: 8px 10px; border-radius: 8px; overflow-x: auto; font-size: 12px; margin: 6px 0; }
@@ -268,6 +272,40 @@
     @keyframes stream-blink {
       50% { opacity: 0; }
     }
+
+    /* live agent activity strip (what the agent is doing) */
+    .agent-steps {
+      display: flex; flex-direction: column; gap: 3px;
+      margin: 0 0 6px 34px; padding: 8px 10px;
+      background: ${t.surface}; border: 1px solid ${t.border};
+      border-radius: 10px; max-width: 80%;
+    }
+    .agent-steps.done {
+      gap: 0; padding: 5px 10px; cursor: pointer;
+      color: ${t.dim};
+    }
+    .agent-steps-head {
+      font-size: 11px; font-weight: 600; color: ${t.dim};
+      display: flex; align-items: center; gap: 6px;
+    }
+    .agent-steps-head .spin {
+      width: 9px; height: 9px; border-radius: 50%;
+      border: 1.5px solid ${t.accent}; border-top-color: transparent;
+      animation: agent-spin 0.7s linear infinite;
+    }
+    @keyframes agent-spin { to { transform: rotate(360deg); } }
+    .agent-step {
+      font-size: 12px; color: ${t.fg}; opacity: 0.85;
+      display: flex; align-items: center; gap: 7px;
+      animation: agent-step-in 0.25s ease;
+    }
+    @keyframes agent-step-in {
+      from { opacity: 0; transform: translateY(2px); }
+      to { opacity: 0.85; }
+    }
+    .agent-step .ic { flex-shrink: 0; }
+    .agent-steps.done .agent-step { display: none; }
+    .agent-steps.done .agent-steps-head { font-weight: 500; }
 
     .chips {
       display: flex; flex-wrap: wrap; gap: 6px;
@@ -395,8 +433,9 @@
     // Code spans first (so we don't mangle inside)
     esc = esc.replace(/`([^`]+)`/g, '<code>$1</code>');
 
-    // Bold
+    // Bold + italic
     esc = esc.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+    esc = esc.replace(/(^|[^*])\*([^*\n]+?)\*(?!\*)/g, '$1<i>$2</i>');
 
     // Links [label](url)
     esc = esc.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(_, label, url) {
@@ -411,17 +450,28 @@
       var lines = p.split(/\n/);
       var out = [];
       var listBuf = [];
+      var listTag = 'ul';
       var flushList = function() {
         if (listBuf.length) {
-          out.push('<ul>' + listBuf.map(function(it) { return '<li>' + it + '</li>'; }).join('') + '</ul>');
+          out.push('<' + listTag + '>' + listBuf.map(function(it) { return '<li>' + it + '</li>'; }).join('') + '</' + listTag + '>');
           listBuf = [];
         }
       };
       for (var i = 0; i < lines.length; i++) {
         var line = lines[i];
-        var m = line.match(/^\s*-\s+(.+)$/);
-        if (m) {
-          listBuf.push(m[1]);
+        var hm = line.match(/^\s*(#{1,3})\s+(.+)$/);
+        var bm = line.match(/^\s*[-*•]\s+(.+)$/);
+        var om = line.match(/^\s*\d+[.)]\s+(.+)$/);
+        if (hm) {
+          flushList();
+          var lvl = hm[1].length + 2; // ## -> h4
+          out.push('<h' + lvl + ' class="md-h">' + hm[2] + '</h' + lvl + '>');
+        } else if (bm) {
+          if (listTag !== 'ul') flushList();
+          listTag = 'ul'; listBuf.push(bm[1]);
+        } else if (om) {
+          if (listTag !== 'ol') flushList();
+          listTag = 'ol'; listBuf.push(om[1]);
         } else {
           flushList();
           if (line.trim()) out.push(line);
@@ -430,13 +480,104 @@
       flushList();
       // If output is just text lines, wrap as <p>
       var joined = out.join('<br>');
-      if (joined && joined.indexOf('<ul>') === -1 && joined.indexOf('<pre>') === -1) {
+      if (joined && joined.indexOf('<ul>') === -1 && joined.indexOf('<ol>') === -1 &&
+          joined.indexOf('<h4') === -1 && joined.indexOf('<h5') === -1 &&
+          joined.indexOf('<pre>') === -1) {
         return '<p>' + joined + '</p>';
       }
       return joined;
     }).join('');
 
     return html;
+  }
+
+  // ── Clinical monograph (parity with main-chat AnswerCard) ──
+  function _tag1(s, tag) {
+    var m = s.match(new RegExp('\\[' + tag + ':\\s*([^\\]]+)\\]'));
+    return m ? m[1].trim() : '';
+  }
+  function _tagMany(s, tag) {
+    var out = [], re = new RegExp('\\[' + tag + ':\\s*([^\\]]+)\\]', 'g'), m;
+    while ((m = re.exec(s)) !== null) { if (m[1].trim()) out.push(m[1].trim()); }
+    return out;
+  }
+  function _parts(raw, n) {
+    var p = String(raw).split('|').map(function(x){ return x.trim(); });
+    while (p.length < n) p.push('');
+    return p;
+  }
+  function renderMonograph(s) {
+    var dm = s.match(/\[DRUG:\s*([^\]]+)\]/);
+    if (!dm) return null;
+    var d = _parts(dm[1], 5); // salt|brand|status|class|article
+    var salt = d[0]; if (!salt) return null;
+    var brand = d[1], status = d[2], klass = d[3], article = d[4];
+    var e = escapeHtml;
+    var h = '<div style="border-left:3px solid #c96342;padding-left:12px;margin:2px 0;">';
+    // head
+    h += '<div style="display:flex;align-items:flex-start;gap:8px;">';
+    h += '<span style="font-size:18px;">🧪</span><div style="flex:1;min-width:0;">';
+    h += '<div style="font-size:16px;font-weight:700;text-transform:uppercase;color:#1f1a14;">' + e(salt) + '</div>';
+    if (brand || article) {
+      h += '<div style="font-size:11px;color:#7a6f60;">' + e(brand);
+      if (brand && article) h += ' · ';
+      if (article) h += '<span style="font-family:monospace;">' + e(article) + '</span>';
+      h += '</div>';
+    }
+    h += '</div>';
+    var st = [status, klass].filter(Boolean).join(' · ');
+    if (st) h += '<span style="font-size:9px;font-weight:700;text-transform:uppercase;color:#c96342;background:rgba(201,99,66,0.1);border-radius:999px;padding:3px 9px;white-space:nowrap;">' + e(st) + '</span>';
+    h += '</div>';
+    // fields
+    function row(k, v) { return v ? '<div style="display:grid;grid-template-columns:104px 1fr;gap:10px;padding:6px 0;border-bottom:1px solid #f1e6d2;font-size:13px;"><span style="font-size:9px;font-weight:700;letter-spacing:0.08em;color:#7a6f60;">' + k + '</span><span style="color:#1f1a14;">' + e(v) + '</span></div>' : ''; }
+    var f = row('COMPOSITION', _tag1(s, 'COMPOSITION')) + row('INDICATION', _tag1(s, 'INDICATION')) + row('DOSE', _tag1(s, 'DOSE'));
+    if (f) h += '<div style="margin-top:10px;">' + f + '</div>';
+    // safety
+    var caut = _tagMany(s, 'CAUTION'), inter = _tagMany(s, 'INTERACTS');
+    if (caut.length || inter.length) {
+      h += '<div style="margin-top:10px;background:rgba(192,57,43,0.07);border:1px solid rgba(192,57,43,0.25);border-left:3px solid #c0392b;border-radius:4px;padding:8px 10px;">';
+      caut.forEach(function(c){ h += '<div style="font-size:13px;margin:2px 0;"><span style="font-size:9px;font-weight:700;color:#c0392b;">⚠ CAUTION</span>&nbsp; ' + e(c) + '</div>'; });
+      inter.forEach(function(it){ h += '<div style="font-size:13px;margin:2px 0;"><span style="font-size:9px;font-weight:700;color:#c0392b;">⚠ INTERACTS</span>&nbsp; ' + e(it) + '</div>'; });
+      h += '</div>';
+    }
+    // stock
+    var sm = s.match(/\[STOCK:\s*([^\]]+)\]/);
+    if (sm) {
+      var sp = _parts(sm[1], 5); // qty|skus|branch|cost|status
+      h += '<div style="margin-top:10px;background:#f6ecda;border-radius:4px;padding:9px 12px;">';
+      h += '<div style="font-size:9px;font-weight:700;letter-spacing:0.08em;color:#7a6f60;">DISPENSING' + (sp[2] ? ' · branch ' + e(sp[2]) : '') + '</div>';
+      h += '<div style="display:flex;justify-content:space-between;gap:10px;margin-top:3px;flex-wrap:wrap;"><span style="font-size:15px;font-weight:600;">' + e(sp[4] || '✅') + ' ' + e(sp[0]) + (sp[1] ? ' · ' + e(sp[1]) + ' SKUs' : '') + '</span>';
+      if (sp[3]) h += '<span style="font-size:12px;color:#7a6f60;">COST ' + e(sp[3]) + '</span>';
+      h += '</div></div>';
+    }
+    // equivalents
+    var eq = _tagMany(s, 'EQUIV');
+    if (eq.length) {
+      h += '<div style="margin-top:10px;"><div style="font-size:9px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#7a6f60;margin-bottom:4px;">🔄 Therapeutic equivalents</div>';
+      eq.forEach(function(raw){
+        var ep = _parts(raw, 4); // name|qty|cost|article
+        var meta = [ep[1] ? ep[1] + ' u' : '', ep[2], ep[3]].filter(Boolean).join(' · ');
+        h += '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid #f1e6d2;font-size:13px;"><span style="font-weight:600;">' + e(ep[0]) + '</span><span style="color:#7a6f60;">' + e(meta) + '</span></div>';
+      });
+      h += '</div>';
+    }
+    // evidence
+    var ev = s.match(/\[EVIDENCE:\s*([^\]]+)\]/);
+    if (ev) {
+      var evp = _parts(ev[1], 2);
+      h += '<div style="margin-top:12px;font-size:11px;font-family:monospace;color:#7a6f60;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">🔗 evidence&nbsp; ' + e(evp[0]) + (evp[1] ? ' · ' + e(evp[1]) : '') + '<span style="margin-left:auto;color:#16a34a;font-weight:700;">✓ verified</span></div>';
+    }
+    h += '</div>';
+    // prose after tags
+    var prose = s.replace(/\[(DRUG|COMPOSITION|INDICATION|DOSE|CAUTION|INTERACTS|STOCK|EQUIV|EVIDENCE):\s*[^\]]+\]/g, '').trim();
+    if (prose.length > 30) h += '<div style="margin-top:10px;">' + renderMd(prose) + '</div>';
+    return h;
+  }
+  // Render assistant answer: monograph card if [DRUG:] present, else markdown.
+  function renderAnswer(s) {
+    if (!s) return '';
+    var mono = renderMonograph(String(s));
+    return mono != null ? mono : renderMd(s);
   }
 
   function pushMsg(role, content) {
@@ -458,7 +599,7 @@
 
       var div = document.createElement('div');
       div.className = 'msg ' + role;
-      div.innerHTML = renderMd(content);
+      div.innerHTML = renderAnswer(content);
       row.appendChild(div);
       msgList.appendChild(row);
     }
@@ -589,7 +730,7 @@
   // token, onDone with final payload, onError on any error. Returns
   // promise rejected with status code so caller can fall back to
   // non-streaming /chat on 4xx (e.g. consumer-mode 400).
-  function streamChat(token, msg, onDelta, onDone, onError) {
+  function streamChat(token, msg, onDelta, onDone, onError, onStep) {
     return fetch(apiOrigin + '/api/embed/chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -639,6 +780,7 @@
         var parsed;
         try { parsed = JSON.parse(data); } catch (_) { return; }
         if (type === 'token' && typeof parsed.delta === 'string') onDelta(parsed.delta);
+        else if (type === 'step') { if (onStep) onStep(parsed); }
         else if (type === 'done') onDone(parsed);
         else if (type === 'error') onError(parsed);
         // meta event ignored for UX (could be used for trace UI later)
@@ -705,7 +847,34 @@
       .then(function (tokenStr) {
         if (!streamingEnabled) return nonStreamPath(tokenStr);
 
-        // Streaming path: build an empty bot bubble + append deltas live.
+        // Streaming path: live activity strip + bot bubble w/ live deltas.
+        hideTyping();
+        var strip = document.createElement('div');
+        strip.className = 'agent-steps';
+        strip.innerHTML = '<div class="agent-steps-head"><span class="spin"></span>thinking…</div>';
+        msgList.appendChild(strip);
+
+        var stepStart = Date.now();
+        var stepCount = 0;
+        function addStep(p) {
+          stepCount++;
+          var line = document.createElement('div');
+          line.className = 'agent-step';
+          line.innerHTML = '<span class="ic">' + escapeHtml(p.icon || '🔧') + '</span>' +
+                           '<span>' + escapeHtml(p.label || '') + '</span>';
+          strip.appendChild(line);
+          msgList.scrollTop = msgList.scrollHeight;
+        }
+        function collapseStrip() {
+          if (strip.classList.contains('done')) return;
+          var secs = ((Date.now() - stepStart) / 1000).toFixed(1);
+          strip.classList.add('done');
+          if (stepCount === 0) { strip.remove(); return; }
+          strip.querySelector('.agent-steps-head').innerHTML =
+            '✓ done · ' + secs + 's · ' + stepCount + ' step' + (stepCount === 1 ? '' : 's');
+          strip.addEventListener('click', function () { strip.classList.toggle('done'); });
+        }
+
         var row = document.createElement('div');
         row.className = 'msg-row bot';
         var av = document.createElement('div');
@@ -718,19 +887,20 @@
         row.appendChild(div);
         msgList.appendChild(row);
         msgList.scrollTop = msgList.scrollHeight;
-        hideTyping();
 
         var assembled = '';
         var streamErrored = false;
         return streamChat(
           tokenStr, msg,
           function onDelta(delta) {
+            collapseStrip();
             assembled += delta;
             div.innerHTML = renderMd(assembled) + '<span class="stream-cursor">▍</span>';
             msgList.scrollTop = msgList.scrollHeight;
           },
           function onDone(_payload) {
-            div.innerHTML = renderMd(assembled || '(empty response)');
+            collapseStrip();
+            div.innerHTML = renderAnswer(assembled || '(empty response)');
             messages.push({ role: 'bot', content: assembled });
             if (!firstReplyReceived) {
               firstReplyReceived = true;
@@ -739,13 +909,16 @@
           },
           function onError(err) {
             streamErrored = true;
+            collapseStrip();
             div.innerHTML = renderMd('(stream error: ' + (err.detail || err.code || 'unknown') + ')');
-          }
+          },
+          addStep
         ).catch(function (e) {
           // 400 = consumer-mode; 404 = older Dash w/o /chat/stream. Fall back.
           if (e && (e.status === 400 || e.status === 404 || e.status === 405)) {
-            // Remove the empty streaming bubble + retry via non-stream.
+            // Remove the empty streaming bubble + strip; retry via non-stream.
             try { row.remove(); } catch (_) {}
+            try { strip.remove(); } catch (_) {}
             showTyping();
             return nonStreamPath(tokenStr);
           }

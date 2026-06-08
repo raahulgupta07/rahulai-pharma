@@ -15,6 +15,47 @@ from agno.knowledge import Knowledge
 from agno.tools.reasoning import ReasoningTools
 from agno.tools.sql import SQLTools
 
+# ── Durable per-tool tracing + context guards (both fail-open) ─────────────
+# Imported inside try/except so a missing module never breaks tool
+# registration. When unavailable, the names resolve to no-op shims.
+try:
+    from dash.obs.trace import trace_span as _trace_span, record_cost as _record_cost  # noqa: F401
+    _TRACE_OK = True
+except Exception:  # noqa: BLE001
+    _TRACE_OK = False
+
+    from contextlib import contextmanager as _ctxmgr
+
+    @_ctxmgr
+    def _trace_span(*_a, **_k):  # type: ignore
+        yield None
+
+    def _record_cost(*_a, **_k):  # type: ignore
+        return None
+
+try:
+    from dash.guards.context import cap_tool_result as _cap_tool_result, _enabled as _guards_enabled  # noqa: F401
+    _GUARDS_OK = True
+except Exception:  # noqa: BLE001
+    _GUARDS_OK = False
+
+    def _cap_tool_result(payload, max_tokens=None):  # type: ignore
+        return payload, False, 0
+
+    def _guards_enabled():  # type: ignore
+        return False
+
+
+def _preview_args(*args, **kwargs) -> str:
+    """Small (~300 char) preview of tool args for span meta. Never raises."""
+    try:
+        parts = [repr(a) for a in args]
+        parts += [f"{k}={v!r}" for k, v in kwargs.items()]
+        s = ", ".join(parts)
+        return s[:300]
+    except Exception:  # noqa: BLE001
+        return ""
+
 
 class RLSAwareSQLTools(SQLTools):
     """Wraps SQLTools.run_sql_query so RLS PermissionError surfaces to the agent
@@ -192,30 +233,44 @@ class RLSAwareSQLTools(SQLTools):
             except Exception as _le:
                 import logging as _llog
                 _llog.getLogger(__name__).debug(f"[lazy-profile] skipped: {_le}")
+        # Durable span around the actual SQL exec. meta carries a small SQL
+        # preview + (after exec) row_count / capped flag. Fail-open.
+        _slug = getattr(self, "_mdl_slug", None) or "global"
+        _span_meta = {"agent": "analyst", "tool": "run_sql_query",
+                      "args": _preview_args(query.strip())}
         try:
-            # Only forward the cleaned SQL string. Stray wrapper keys
-            # (args/kwargs/query/...) in **extra are intentionally dropped so
-            # the parent SQLTools never sees an unexpected keyword argument.
-            _result = super().run_sql_query(query)
-            # Guardrail: record success. Fail-soft.
-            try:
-                from dash.runtime.tool_guardrail import record as _g_rec
-                from dash.links_ctx import CUR_SESSION_ID
-                _g_rec("run_sql_query", {"sql": query.strip()},
-                       success=True, result=_result,
-                       session_id=CUR_SESSION_ID.get() or (self._mdl_slug or "global"))
-            except Exception:
-                pass
-            # Obsidian-style bidirectional links: chat → cites → table. Fail-soft.
-            try:
-                from dash.links_ctx import extract_table_refs, link_chat_cites_tables
-                _tbls = extract_table_refs(query)
-                if _tbls:
-                    link_chat_cites_tables(_tbls)
-            except Exception:
-                import logging as _l
-                _l.getLogger(__name__).debug("dash_links write skipped", exc_info=True)
-            return _result
+            with _trace_span(f"chat.analyst.run_sql_query", kind="chat",
+                             project_slug=getattr(self, "_mdl_slug", None),
+                             meta=_span_meta) as _sp:  # noqa: F841
+                # Only forward the cleaned SQL string. Stray wrapper keys
+                # (args/kwargs/query/...) in **extra are intentionally dropped so
+                # the parent SQLTools never sees an unexpected keyword argument.
+                _result = super().run_sql_query(query)
+                # Guardrail: record success. Fail-soft.
+                try:
+                    from dash.runtime.tool_guardrail import record as _g_rec
+                    from dash.links_ctx import CUR_SESSION_ID
+                    _g_rec("run_sql_query", {"sql": query.strip()},
+                           success=True, result=_result,
+                           session_id=CUR_SESSION_ID.get() or (self._mdl_slug or "global"))
+                except Exception:
+                    pass
+                # Context guard: cap big results so a huge row set can't blow
+                # the context window. Gated + fail-open.
+                try:
+                    if _GUARDS_OK and _guards_enabled():
+                        _capped, _was_capped, _dropped = _cap_tool_result(_result)
+                        if _was_capped:
+                            _result = _capped
+                            try:
+                                _record_cost()  # touch current span (no-op tokens)
+                            except Exception:
+                                pass
+                            _span_meta["capped"] = True
+                            _span_meta["dropped"] = _dropped
+                except Exception:
+                    pass
+                return _result
         except PermissionError as e:
             import logging as _log
             _log.getLogger(__name__).info(f"RLS blocked SQL: {e}")
@@ -503,7 +558,19 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
     _cfg = _fc(project_slug)
     _tcfg = _cfg.get("tools", {})
 
-    if not is_live_only and _tcfg.get("sql", True):
+    # Store-scope (API gateway): when a key is bound to one store ('store' mode),
+    # raw SQL is the real escape hatch — prompts are jailbreakable, the tool list
+    # is not. Drop run_sql_query + introspect_schema at BUILD TIME so a store-locked
+    # key physically cannot run arbitrary SQL against other branches. Scoped pharma
+    # tools (stock_check / find_substitutes / …) enforce Tier-2 masking instead.
+    # Global-mode / human-UI keys keep raw SQL (is_store_locked() → False).
+    try:
+        from dash.api_scope import is_store_locked as _is_locked
+        _store_locked = _is_locked()
+    except Exception:
+        _store_locked = False
+
+    if not is_live_only and _tcfg.get("sql", True) and not _store_locked:
         _attach_rls_rewrite(ro_engine, project_slug)
         _attach_embed_rls(ro_engine)
         # RLS Layer 3: Postgres SET LOCAL session vars per transaction.
@@ -528,45 +595,168 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
             tools.append(benchmark_tool)
             tools.append(correlation_tool)
 
-        # ── Pharma knowledge graph (Apache AGE) ────────────────────────────
-        # Drug-relationship traversal: substitutes (same generic), therapeutic
-        # alternatives by indication, neighbourhood. Stock joined relationally.
-        import os as _os
-        if project_slug and _os.getenv("PHARMA_GRAPH_DISABLED") != "1":
-            try:
-                from dash.tools.pharma_graph_tool import (
-                    find_substitutes as _pg_subs,
-                    alternatives_for_indication as _pg_alt,
-                    drug_relationships as _pg_rel,
-                )
-                from dash.tools.pharma_shop_tool import stock_check as _pg_stock
-                import json as _pgj
+    # ── Pharma knowledge graph (Apache AGE) ────────────────────────────────
+    # Drug-relationship traversal: substitutes (same generic), therapeutic
+    # alternatives by indication, neighbourhood. Stock joined relationally.
+    # Registered OUTSIDE the raw-SQL gate so store-locked API keys (which have
+    # run_sql_query stripped, see above) still get the scoped, Tier-2-masking
+    # pharma tools — these are the SAFE data path for a store-bound key.
+    import os as _os
+    if project_slug and _os.getenv("PHARMA_GRAPH_DISABLED") != "1":
+        try:
+            from dash.tools.pharma_graph_tool import (
+                find_substitutes as _pg_subs,
+                alternatives_for_indication as _pg_alt,
+                drug_relationships as _pg_rel,
+            )
+            from dash.tools.pharma_shop_tool import (
+                stock_check as _pg_stock,
+                store_stock_summary as _pg_summary,
+            )
+            import json as _pgj
 
-                @tool(name="stock_check", description="SHOP COUNTER: look up medicines by brand name OR salt (generic), scoped to the staff member's branch. Returns matches with your-branch stock, in-stock flag, cost, and other branches that have it. Args: query (str — brand or salt), site_code (str — the branch from SHOP CONTEXT), limit (int, optional). Use this for 'is X in stock', 'find <salt>', 'do we have <medicine>'.")
-                def _stock_tool(query: str = "", site_code: str = "", limit: int = 15) -> str:
-                    return _pgj.dumps(_pg_stock(query, site_code, limit))
+            @tool(name="stock_check", description="SHOP COUNTER: look up medicines by brand name OR salt (generic), scoped to the staff member's branch. Returns matches with your-branch stock QUANTITY, in-stock flag, cost, and other branches that have it. Args: query (str — brand or salt), site_code (str — the branch from SHOP CONTEXT), limit (int, optional). Use this for 'is X in stock', 'find <salt>', 'do we have <medicine>', AND quantity questions: 'how many units of X', 'how much X do we have', 'quantity/stock level of X'. This tool RETURNS the unit count — never write SQL to count a named drug. (Store-locked keys: run_sql_query is unavailable; this is the data path.)")
+            def _stock_tool(query: str = "", site_code: str = "", limit: int = 15) -> str:
+                _meta = {"agent": "analyst", "tool": "stock_check",
+                         "args": _preview_args(query, site_code, limit)}
+                with _trace_span("chat.analyst.stock_check", kind="chat",
+                                 project_slug=project_slug, meta=_meta):
+                    _res = _pg_stock(query, site_code, limit)
+                    try:
+                        _meta["row_count"] = len(_res) if isinstance(_res, list) else None
+                        if _GUARDS_OK and _guards_enabled():
+                            _capped, _was, _dropped = _cap_tool_result(_res)
+                            if _was:
+                                _res = _capped
+                                _meta["capped"] = True
+                                _meta["dropped"] = _dropped
+                    except Exception:
+                        pass
+                    return _pgj.dumps(_res)
 
-                @tool(name="find_substitutes", description="Find substitute drugs (same generic molecule) for an out-of-stock article, with current stock. Args: article_code (int, optional), brand_name (str, optional), site_code (str, optional), in_stock_only (bool, optional). Uses the pharma knowledge graph (Apache AGE).")
-                def _subs_tool(article_code: int = 0, brand_name: str = "", site_code: str = "", in_stock_only: bool = False) -> str:
-                    return _pgj.dumps(_pg_subs(article_code, brand_name, site_code, in_stock_only))
+            @tool(name="store_stock_summary", description="OWN-BRANCH AGGREGATE ANALYTICS for YOUR branch only (always scoped to the bound store). Use for 'what is our total stock', 'how many SKUs / articles do we carry', 'total inventory value', 'stock by category', 'which products are low / running out'. Args: group_by (str — '' for overall totals, 'category' for per-category breakdown), category (str — filter to one category), low_stock_threshold (int — >0 lists articles at or below this qty), limit (int, optional). NEVER reveals other branches.")
+            def _summary_tool(group_by: str = "", category: str = "", low_stock_threshold: int = 0, limit: int = 30) -> str:
+                return _pgj.dumps(_pg_summary(group_by, category, low_stock_threshold, limit))
 
-                @tool(name="alternatives_for_indication", description="Find all articles that treat a given indication/condition, with stock. Args: indication (str), site_code (str, optional), in_stock_only (bool, optional). Uses the pharma knowledge graph.")
-                def _alt_tool(indication: str = "", site_code: str = "", in_stock_only: bool = False) -> str:
-                    return _pgj.dumps(_pg_alt(indication, site_code, in_stock_only))
+            @tool(name="find_substitutes", description="Find substitute drugs (same generic molecule) for an out-of-stock article, with current stock. Args: article_code (int, optional), brand_name (str, optional), site_code (str, optional), in_stock_only (bool, optional). Drugs sharing the same generic molecule (relational).")
+            def _subs_tool(article_code: int = 0, brand_name: str = "", site_code: str = "", in_stock_only: bool = False) -> str:
+                _meta = {"agent": "analyst", "tool": "find_substitutes",
+                         "args": _preview_args(article_code, brand_name, site_code, in_stock_only)}
+                with _trace_span("chat.analyst.find_substitutes", kind="chat",
+                                 project_slug=project_slug, meta=_meta):
+                    _res = _pg_subs(article_code, brand_name, site_code, in_stock_only)
+                    try:
+                        _meta["row_count"] = len(_res) if isinstance(_res, list) else None
+                    except Exception:
+                        pass
+                    return _pgj.dumps(_res)
 
-                @tool(name="drug_relationships", description="Show the graph neighbourhood of one drug: generic, category, indications, compositions, substitutes. Args: article_code (int, optional), brand_name (str, optional).")
-                def _rel_tool(article_code: int = 0, brand_name: str = "") -> str:
+            @tool(name="alternatives_for_indication", description="Find all articles that treat a given indication/condition, with stock. Args: indication (str), site_code (str, optional), in_stock_only (bool, optional). Relational over the indication column.")
+            def _alt_tool(indication: str = "", site_code: str = "", in_stock_only: bool = False) -> str:
+                _meta = {"agent": "analyst", "tool": "alternatives_for_indication",
+                         "args": _preview_args(indication, site_code, in_stock_only)}
+                with _trace_span("chat.analyst.alternatives_for_indication", kind="chat",
+                                 project_slug=project_slug, meta=_meta):
+                    _res = _pg_alt(indication, site_code, in_stock_only)
+                    try:
+                        _meta["row_count"] = len(_res) if isinstance(_res, list) else None
+                        if _GUARDS_OK and _guards_enabled():
+                            _capped, _was, _dropped = _cap_tool_result(_res)
+                            if _was:
+                                _res, _meta["capped"], _meta["dropped"] = _capped, True, _dropped
+                    except Exception:
+                        pass
+                    return _pgj.dumps(_res)
+
+            @tool(name="drug_relationships", description="Show the graph neighbourhood of one drug: generic, category, indications, compositions, substitutes. Args: article_code (int, optional), brand_name (str, optional).")
+            def _rel_tool(article_code: int = 0, brand_name: str = "") -> str:
+                _meta = {"agent": "analyst", "tool": "drug_relationships",
+                         "args": _preview_args(article_code, brand_name)}
+                with _trace_span("chat.analyst.drug_relationships", kind="chat",
+                                 project_slug=project_slug, meta=_meta):
                     return _pgj.dumps(_pg_rel(article_code, brand_name))
 
-                tools.append(_stock_tool)
-                tools.append(_subs_tool)
-                tools.append(_alt_tool)
-                tools.append(_rel_tool)
-                import logging as _pgl
-                _pgl.getLogger(__name__).info("pharma graph+shop tools enabled: +4 (stock_check, find_substitutes, alternatives_for_indication, drug_relationships)")
-            except Exception as _pge:
-                import logging as _pgl
-                _pgl.getLogger(__name__).warning(f"pharma graph tools not loaded: {_pge}")
+            tools.append(_stock_tool)
+            tools.append(_summary_tool)
+            tools.append(_subs_tool)
+            tools.append(_alt_tool)
+            tools.append(_rel_tool)
+            import logging as _pgl
+            _pgl.getLogger(__name__).info("pharma graph+shop tools enabled: +5 (stock_check, store_stock_summary, find_substitutes, alternatives_for_indication, drug_relationships)")
+        except Exception as _pge:
+            import logging as _pgl
+            _pgl.getLogger(__name__).warning(f"pharma graph tools not loaded: {_pge}")
+
+    # Pharma CHEMIST tools — the clinical/pharmacist brain (NMR-chemist analog).
+    # Pure relational over catalog clinical columns (generic/composition/
+    # indication/dosage/side_effect) — no AGE dependency, survives cp-db recreate.
+    # Every answer returns source article_codes for pharmacist audit. Registered
+    # OUTSIDE the raw-SQL gate (scoped clinical lookups, no free-form SQL).
+    if project_slug and _os.getenv("PHARMA_GRAPH_DISABLED") != "1":
+        try:
+            from dash.tools.pharma_chemist_tool import (
+                drug_profile as _ch_profile,
+                substitutes as _ch_subs,
+                indication_search as _ch_ind,
+                interaction_check as _ch_inter,
+            )
+            import json as _chj
+
+            @tool(name="drug_profile", description="CLINICAL PROFILE of a medicine by brand OR generic name. Returns composition, what it treats (indication), dosage, side effects, category, and in-stock flag — with source article_code. Use for 'tell me about <drug>', 'what is <drug> used for', 'side effects of <drug>', 'composition of <drug>'. Args: name (str — brand or salt), limit (int, optional).")
+            def _profile_tool(name: str = "", limit: int = 5) -> str:
+                with _trace_span("chat.analyst.drug_profile", kind="chat",
+                                 project_slug=project_slug,
+                                 meta={"agent": "analyst", "tool": "drug_profile",
+                                       "args": _preview_args(name, limit)}):
+                    return _chj.dumps(_ch_profile(name, limit))
+
+            @tool(name="substitutes", description="Find SUBSTITUTES for a medicine — drugs sharing the same generic molecule, ranked by stock, each with WHY (matched generic) and source article_code. Relational (no AGE). Use for 'out of <drug>, what else', 'alternatives to <drug>', 'cheaper version of <drug>'. Args: name (str — brand or generic), in_stock_only (bool, optional), limit (int, optional).")
+            def _subs2_tool(name: str = "", in_stock_only: bool = False, limit: int = 20) -> str:
+                _meta = {"agent": "analyst", "tool": "substitutes",
+                         "args": _preview_args(name, in_stock_only, limit)}
+                with _trace_span("chat.analyst.substitutes", kind="chat",
+                                 project_slug=project_slug, meta=_meta):
+                    _res = _ch_subs(name, in_stock_only, limit)
+                    try:
+                        _meta["row_count"] = len(_res) if isinstance(_res, list) else None
+                    except Exception:
+                        pass
+                    return _chj.dumps(_res)
+
+            @tool(name="indication_search", description="INVERSE lookup: given a SYMPTOM or condition, find candidate medicines (brand + generic + dosage + stock + source article_code). Searches the indication column. Use for 'what drug for <symptom>', 'medicine for <condition>', 'something for fever/cough/pain'. Args: symptom (str), in_stock_only (bool, optional), limit (int, optional).")
+            def _ind_tool(symptom: str = "", in_stock_only: bool = False, limit: int = 20) -> str:
+                _meta = {"agent": "analyst", "tool": "indication_search",
+                         "args": _preview_args(symptom, in_stock_only, limit)}
+                with _trace_span("chat.analyst.indication_search", kind="chat",
+                                 project_slug=project_slug, meta=_meta):
+                    _res = _ch_ind(symptom, in_stock_only, limit)
+                    try:
+                        _meta["row_count"] = len(_res) if isinstance(_res, list) else None
+                        if _GUARDS_OK and _guards_enabled():
+                            _capped, _was, _dropped = _cap_tool_result(_res)
+                            if _was:
+                                _res, _meta["capped"], _meta["dropped"] = _capped, True, _dropped
+                    except Exception:
+                        pass
+                    return _chj.dumps(_res)
+
+            @tool(name="interaction_check", description="Flag possible concerns giving TWO medicines together. Returns each drug's composition + side effects + indication, flags DUPLICATE THERAPY (same generic) and shared side-effect terms. Heuristic only — confirm against a clinical reference. Args: drug_a (str), drug_b (str).")
+            def _inter_tool(drug_a: str = "", drug_b: str = "") -> str:
+                with _trace_span("chat.analyst.interaction_check", kind="chat",
+                                 project_slug=project_slug,
+                                 meta={"agent": "analyst", "tool": "interaction_check",
+                                       "args": _preview_args(drug_a, drug_b)}):
+                    return _chj.dumps(_ch_inter(drug_a, drug_b))
+
+            tools.append(_profile_tool)
+            tools.append(_subs2_tool)
+            tools.append(_ind_tool)
+            tools.append(_inter_tool)
+            import logging as _chl
+            _chl.getLogger(__name__).info("pharma chemist tools enabled: +4 (drug_profile, substitutes, indication_search, interaction_check)")
+        except Exception as _che:
+            import logging as _chl
+            _chl.getLogger(__name__).warning(f"pharma chemist tools not loaded: {_che}")
 
     tools.append(create_save_validated_query_tool(knowledge))
     tools.append(ReasoningTools())
@@ -574,7 +764,10 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
     # EDA drill-down tools — inspect_dimension / inspect_cross_dim / inspect_time.
     # Replaces raw SQL for "show me all values" / "cross-tab" / "monthly trend" Qs.
     # Fail-soft + gated by EDA_TOOLS_DISABLED=1.
-    if project_slug:
+    # Store-scope: these run arbitrary SELECT/COUNT/cross-tab against ANY table+
+    # column with no per-branch filter (e.g. distributions over balance_stock) →
+    # a cross-branch leak. Treated as raw-SQL and dropped for store-locked keys.
+    if project_slug and not _store_locked:
         try:
             from dash.tools.eda_tools import create_eda_tools
             _eda = create_eda_tools(project_slug)
@@ -588,28 +781,32 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
     # OpenAI's #1 lesson: overlapping tools confuse the agent; fewer, well-scoped
     # tools win. The 11 underlying analyzers still live in analysis_types.py and
     # are routed to internally by `analyze(analysis_type=...)`.
-    try:
-        from dash.tools.analysis_types import analyze
-        tools.append(analyze)
-    except ImportError:
-        # Fail-soft fallback: if the dispatcher can't import for any reason,
-        # fall back to registering the 11 individual analyzers so the Analyst
-        # still has analysis capability (reversible, no capability loss).
+    # Store-scope: `analyze` runs arbitrary aggregations (SUM/AVG/GROUP BY) over
+    # ANY table+column with no per-branch filter → cross-branch leak. Raw-SQL
+    # class; dropped for store-locked keys (scoped pharma tools cover their needs).
+    if not _store_locked:
         try:
-            from dash.tools.analysis_types import (
-                comparator_analysis, diagnostic_analysis, narrator_analysis,
-                validator_analysis, planner_analysis, trend_analysis,
-                pareto_analysis, anomaly_analysis, benchmark_analysis,
-                root_cause_analysis, prescriptive_analysis,
-            )
-            tools.extend([
-                comparator_analysis, diagnostic_analysis, narrator_analysis,
-                validator_analysis, planner_analysis, trend_analysis,
-                pareto_analysis, anomaly_analysis, benchmark_analysis,
-                root_cause_analysis, prescriptive_analysis,
-            ])
+            from dash.tools.analysis_types import analyze
+            tools.append(analyze)
         except ImportError:
-            pass
+            # Fail-soft fallback: if the dispatcher can't import for any reason,
+            # fall back to registering the 11 individual analyzers so the Analyst
+            # still has analysis capability (reversible, no capability loss).
+            try:
+                from dash.tools.analysis_types import (
+                    comparator_analysis, diagnostic_analysis, narrator_analysis,
+                    validator_analysis, planner_analysis, trend_analysis,
+                    pareto_analysis, anomaly_analysis, benchmark_analysis,
+                    root_cause_analysis, prescriptive_analysis,
+                )
+                tools.extend([
+                    comparator_analysis, diagnostic_analysis, narrator_analysis,
+                    validator_analysis, planner_analysis, trend_analysis,
+                    pareto_analysis, anomaly_analysis, benchmark_analysis,
+                    root_cause_analysis, prescriptive_analysis,
+                ])
+            except ImportError:
+                pass
 
     # Visualization agent tool
     if _tcfg.get("charts", True):
@@ -626,12 +823,15 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
     except ImportError:
         pass
 
-    # Apply Skill tool — execute proven SQL from skill library (Layer 15)
-    try:
-        from dash.tools.apply_skill import apply_skill
-        tools.append(apply_skill)
-    except ImportError:
-        pass
+    # Apply Skill tool — execute proven SQL from skill library (Layer 15).
+    # Store-scope: executes saved SQL (potentially cross-branch aggregates) →
+    # raw-SQL class, dropped for store-locked keys.
+    if not _store_locked:
+        try:
+            from dash.tools.apply_skill import apply_skill
+            tools.append(apply_skill)
+        except ImportError:
+            pass
 
     # Lifted Demo-OS tools: math + pii (non-HITL)
     try:
@@ -644,6 +844,22 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
     try:
         sa = create_search_all_tool(project_slug=project_slug)
         _patch_obj(sa, "search_all", project_slug)
+        # Durable span wrap: wrap the tool's entrypoint callable so each
+        # search_all call lands in dash_traces. Fail-open — any error leaves
+        # the tool untouched.
+        try:
+            _orig_sa = getattr(sa, "entrypoint", None)
+            if _orig_sa is not None and not getattr(sa, "_traced", False):
+                def _traced_search_all(*a, _o=_orig_sa, **k):
+                    with _trace_span("chat.analyst.search_all", kind="chat",
+                                     project_slug=project_slug,
+                                     meta={"agent": "analyst", "tool": "search_all",
+                                           "args": _preview_args(*a, **k)}):
+                        return _o(*a, **k)
+                sa.entrypoint = _traced_search_all
+                sa._traced = True
+        except Exception:
+            pass
         tools.append(sa)
     except ImportError:
         pass
@@ -651,27 +867,33 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
     # Hybrid lookup — routes exact metrics (count/sum/total) to deterministic
     # SQL and meaning questions to semantic search. Guards counts against the
     # similarity-search miscount class. Fail-soft: never break tool assembly.
-    try:
-        from dash.tools.hybrid_lookup import create_hybrid_lookup_tool
-        hl = create_hybrid_lookup_tool(project_slug=project_slug)
-        _patch_obj(hl, "hybrid_lookup", project_slug)
-        tools.append(hl)
-    except Exception as _e:
-        import logging as _lg
-        _lg.getLogger(__name__).debug(f"hybrid_lookup tool not loaded: {_e}")
+    # Store-scope: runs arbitrary count/sum/total SQL → cross-branch leak,
+    # dropped for store-locked keys (raw-SQL class).
+    if not _store_locked:
+        try:
+            from dash.tools.hybrid_lookup import create_hybrid_lookup_tool
+            hl = create_hybrid_lookup_tool(project_slug=project_slug)
+            _patch_obj(hl, "hybrid_lookup", project_slug)
+            tools.append(hl)
+        except Exception as _e:
+            import logging as _lg
+            _lg.getLogger(__name__).debug(f"hybrid_lookup tool not loaded: {_e}")
 
     # CRM metric registry — definition-locked deterministic metrics. Forces the
     # agent to use the ONE canonical SQL per business metric instead of
     # re-deriving (and dropping) filters. Fixes the drop-off/contribution drift
     # class (benchmark 2026-05). Fail-soft: never break tool assembly.
-    try:
-        from dash.tools.crm_metrics import create_crm_metric_tool
-        cm = create_crm_metric_tool(project_slug=project_slug)
-        _patch_obj(cm, "crm_metric", project_slug)
-        tools.append(cm)
-    except Exception as _e:
-        import logging as _lg
-        _lg.getLogger(__name__).debug(f"crm_metric tool not loaded: {_e}")
+    # Store-scope: canonical metric SQL can aggregate cross-branch → dropped for
+    # store-locked keys (raw-SQL class).
+    if not _store_locked:
+        try:
+            from dash.tools.crm_metrics import create_crm_metric_tool
+            cm = create_crm_metric_tool(project_slug=project_slug)
+            _patch_obj(cm, "crm_metric", project_slug)
+            tools.append(cm)
+        except Exception as _e:
+            import logging as _lg
+            _lg.getLogger(__name__).debug(f"crm_metric tool not loaded: {_e}")
 
     # User-configurable metric registry (DB-backed, per-project). Generalizes
     # crm_metrics into definitions any project owner edits from the UI. Fail-soft.
@@ -851,41 +1073,6 @@ def build_engineer_tools(knowledge: Knowledge, user_id: str | None = None, proje
         except Exception as _e:
             import logging as _lg
             _lg.getLogger(__name__).debug(f"query_connector tool not loaded (engineer): {_e}")
-
-    # Cowork office skills — opt-in per project via feature_config.tools.office_skills.
-    # 15 tools: xlsx_recalc + deck visual QA + 6 PPTX edit + 3 DOCX edit + 4 PDF form.
-    try:
-        from dash.feature_config import get_feature_config as _fc_eng2
-        _office_skills = bool(_fc_eng2(project_slug).get("tools", {}).get("office_skills", False))
-    except Exception:
-        _office_skills = False
-    if _office_skills:
-        try:
-            from dash.tools.xlsx_recalc import xlsx_recalc
-            from dash.tools.deck_visual_qa import generate_deck_thumbnail_grid
-            from dash.tools.deck_edit import (
-                pptx_extract_inventory, pptx_replace_text, pptx_rearrange_slides,
-                pptx_ooxml_unpack, pptx_ooxml_pack, pptx_ooxml_validate,
-            )
-            from dash.tools.docx_edit import docx_unpack, docx_pack, docx_add_comment
-            from dash.tools.pdf_form import (
-                pdf_extract_form_fields, pdf_check_has_fillable,
-                pdf_fill_fillable_fields, pdf_fill_with_annotations,
-            )
-            tools.extend([
-                xlsx_recalc,
-                generate_deck_thumbnail_grid,
-                pptx_extract_inventory, pptx_replace_text, pptx_rearrange_slides,
-                pptx_ooxml_unpack, pptx_ooxml_pack, pptx_ooxml_validate,
-                docx_unpack, docx_pack, docx_add_comment,
-                pdf_extract_form_fields, pdf_check_has_fillable,
-                pdf_fill_fillable_fields, pdf_fill_with_annotations,
-            ])
-            import logging as _lg
-            _lg.getLogger(__name__).info("office_skills enabled: +15 tools on Engineer")
-        except Exception as _oe:
-            import logging as _lg
-            _lg.getLogger(__name__).warning(f"office_skills tools not loaded: {_oe}")
 
     from dash.tools.skill_refinery import auto_track_list as _sr_track
     _sr_track(tools, agent="engineer", project_slug=project_slug)

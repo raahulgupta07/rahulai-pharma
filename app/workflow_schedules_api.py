@@ -43,7 +43,8 @@ def _get_user(request: Request) -> dict:
 
 
 def _is_super(user: dict) -> bool:
-    return bool(user.get("is_super_admin") or user.get("role") == "super_admin")
+    # admin tier OR super may manage schedules
+    return bool(user.get("is_admin"))
 
 
 def _validate_cron(expr: str) -> bool:

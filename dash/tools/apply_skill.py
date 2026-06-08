@@ -132,12 +132,6 @@ def apply_skill(skill_id: int, params: dict | str = None) -> str:
         })
 
     _track_usage(eng, skill_id, success=True)
-    # Obsidian-style bidirectional link: chat → uses → skill. Fail-soft.
-    try:
-        from dash.links_ctx import link_chat_uses_skill
-        link_chat_uses_skill(skill_id, skill_name=str(row["name"]))
-    except Exception:
-        logger.debug("apply_skill: link write skipped", exc_info=True)
     # Sanitize skill_name for tag (pipes would break pipe-separated tag format)
     _safe_skill_name = str(row["name"]).replace("|", "/")
     _skill_tag = f"[SKILL_USED:{_safe_skill_name}|{skill_id}]"

@@ -123,7 +123,7 @@ def delete_skill(sid: str, user=Depends(_get_user)):
     if eng is None:
         raise HTTPException(503, "db unavailable")
     from sqlalchemy import text
-    if user and not user.get("is_super_admin"):
+    if user and not user.get("is_admin"):
         with eng.connect() as conn:
             row = conn.execute(
                 text("SELECT is_builtin FROM dash.dash_skills WHERE id=:id"),

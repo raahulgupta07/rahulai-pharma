@@ -81,14 +81,14 @@ def _extract_tables_from_sql(sql: str) -> list[str]:
 
 
 def _cluster_qa_sklearn(qa_rows: list[dict]) -> Optional[list[list[int]]]:
-    """TF-IDF + KMeans clustering with silhouette score k=2..6. Returns list of index clusters."""
-    try:
-        from sklearn.feature_extraction.text import TfidfVectorizer
-        from sklearn.cluster import KMeans
-        from sklearn.metrics import silhouette_score
-    except Exception:
-        return None
-    try:
+    """TF-IDF + KMeans clustering with silhouette score k=2..6. Returns list of index clusters.
+
+    scikit-learn (ML) has been removed from this build to shrink the image.
+    This always returns None so the caller falls back to the table-bucket
+    clustering in ``_cluster_qa_fallback``.
+    """
+    return None
+    try:  # pragma: no cover - dead code, ML clustering disabled in this build
         texts = [(r.get("question") or "") + " " + (r.get("sql") or "") for r in qa_rows]
         if len(texts) < MIN_QUESTIONS_PER_CLUSTER * 2:
             return None

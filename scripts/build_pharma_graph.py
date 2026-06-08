@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build the CityPharma Apache AGE knowledge graph from articles + balance_stock.
 
-Graph: 'citypharma'
+Graph: 'citypharma_kg' (renamed from citypharma to avoid colliding with the citypharma data schema)
 Nodes : Article {code, brand, generic, category, indication, composition}
         Generic {name} · Category {name} · Indication {name} · Composition {name}
 Edges : (Article)-[:HAS_GENERIC]->(Generic)
@@ -21,11 +21,11 @@ import os
 import sys
 import psycopg
 
-SCHEMA = "proj_demo_citypharma"
+SCHEMA = "citypharma"
 # Catalog table is auto-detected at runtime (data was re-uploaded as
 # articles_list_07052026; the old citypharma_articles name is gone).
 ART = None  # resolved in main() via information_schema
-GRAPH = "citypharma"
+GRAPH = "citypharma_kg"
 
 
 def _clean(v) -> str:

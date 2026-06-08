@@ -29,6 +29,13 @@ import re
 import time
 from typing import Any, Optional
 
+# Regex: scientific notation as produced by Excel for large integer IDs
+# Matches e.g. "1E+12", "1.23456E+11", "9.87e+12"
+_SCI_NOTATION_RE = re.compile(r'^\d(\.\d+)?[eE]\+?\d+$')
+
+# Column names that are likely ID/code columns and must NOT be collapsed
+_ID_COL_NAME_RE = re.compile(r'code|_id$|^id$|article|sku|barcode', re.IGNORECASE)
+
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
@@ -67,6 +74,23 @@ def _has_non_ascii(s: str) -> bool:
         return True
 
 
+# Plain-words consequence per issue type — shown as the IMPACT line in the UI.
+_IMPACT_BY_TYPE = {
+    "sci_notation_id": "Catalog↔stock join returns 0 rows — every stock/quantity answer shows 'unavailable'.",
+    "type_mismatch": "Cross-table join on this column fails with a type error — dependent tools crash.",
+    "text_dates": "Date filters, sorting and time-range questions don't work (compared as text).",
+    "high_null_pct": "Aggregates and filters on this column are unreliable — most rows are blank.",
+    "duplicate_tables": "Agent may pick the wrong/stale copy — answers can disagree run to run.",
+    "missing_fk": "No referential integrity — orphan rows and broken joins go undetected.",
+    "unicode_non_latin": "English keyword search misses these values (stored in another script).",
+    "enum_no_value_map": "Coded values shown raw — agent can't explain what each code means.",
+    "opaque_columns": "Agent may misuse or ignore this column — its meaning is undocumented.",
+    "low_codex_confidence": "Weak semantic model — routing and SQL grounding are less accurate.",
+    "tiny_table": "Too few rows for reliable statistics — treat results as illustrative.",
+    "cast_artifact": "Leftover type-cast table clutters the schema and can be picked by mistake.",
+}
+
+
 def _make_issue(
     issue_type: str,
     severity: str,
@@ -75,6 +99,11 @@ def _make_issue(
     suggestion: str,
     column: Optional[str] = None,
     count: int = 1,
+    sample: Optional[list] = None,
+    total_rows: int = 0,
+    impact: str = "",
+    root_cause: str = "",
+    recoverable: Optional[bool] = None,
 ) -> dict:
     return {
         "type": issue_type,
@@ -84,6 +113,11 @@ def _make_issue(
         "message": message,
         "suggestion": suggestion,
         "count": count,
+        "sample": sample or [],
+        "total_rows": total_rows,
+        "impact": impact or _IMPACT_BY_TYPE.get(issue_type, ""),
+        "root_cause": root_cause,
+        "recoverable": recoverable,  # None = n/a, True = fixable in-place, False = re-source needed
     }
 
 
@@ -339,6 +373,51 @@ def scan_project(eng: Engine, slug: str, force: bool = False) -> dict:
                             count=hits,
                         ))
 
+                # sci_notation_id — detect Excel-collapsed ID columns (e.g. "1E+12")
+                # Only fires for columns whose name looks like an ID/code column.
+                # Two triggers: (a) >50% of sampled values match sci-notation regex, OR
+                # (b) the table has >1000 rows but the column has ≤2 distinct values
+                # (requires a separate distinct-count query — capped at 3 to keep it cheap).
+                if _ID_COL_NAME_RE.search(col):
+                    sci_hits = sum(1 for v in sample if _SCI_NOTATION_RE.match(v.strip()))
+                    sci_frac = sci_hits / len(sample) if sample else 0
+                    sci_distinct = None
+                    if sci_frac <= 0.5 and n_rows > 1000:
+                        # cheap check: cap at 3 distinct → if ≤2 returned, collapsed
+                        sci_distinct = _distinct_count(eng, slug, tbl, col, cap=3)
+                    sci_collapsed = sci_frac > 0.5 or (sci_distinct is not None and sci_distinct <= 2)
+                    if sci_collapsed:
+                        sample_val = sample[0] if sample else "?"
+                        n_distinct_display = sci_distinct if sci_distinct is not None else (
+                            _distinct_count(eng, slug, tbl, col, cap=3))
+                        # Effectively dead = the column is overwhelmingly collapsed:
+                        # ≤2 distinct (all rounded to one value) OR >90% of sampled
+                        # values are sci-notation. A few real rows don't make the
+                        # originals recoverable for the corrupted majority.
+                        _dead = n_distinct_display <= 2 or sci_frac >= 0.9
+                        issues.append(_make_issue(
+                            "sci_notation_id", "high", tbl,
+                            f"Column `{col}` contains Excel scientific-notation values "
+                            f"(e.g. '{sample_val}') — large IDs have been collapsed "
+                            f"(only {n_distinct_display} distinct value(s) over {n_rows:,} rows). "
+                            f"The catalog↔stock join on `{col}` WILL return 0 matches; "
+                            f"every stock answer will show 'unavailable'.",
+                            (f"The original codes are GONE — every value rounded to '{sample_val}', "
+                             f"so they cannot be recovered from this file. Re-export the data from the "
+                             f"SOURCE system (POS / ERP / database) with `{col}` as TEXT, and do NOT open "
+                             f"it in Excel before upload (Excel re-collapses large numbers). "
+                             f"Re-uploading this same file will NOT fix it.")
+                            if _dead else
+                            (f"Re-export from source with `{col}` as TEXT (not General/Number in Excel), "
+                             f"or export CSV directly from the source system without opening in Excel."),
+                            column=col,
+                            count=sci_hits if sci_frac > 0.5 else n_distinct_display,
+                            root_cause="Excel auto-converted large ID numbers to scientific notation "
+                                       "(e.g. 1000000131948 → 1E+12) before/during CSV export — the file "
+                                       "arrived already corrupted, not damaged by the loader.",
+                            recoverable=(not _dead),
+                        ))
+
                 # unicode_non_latin (cheap regex pass on the same sample)
                 nonascii_hits = sum(1 for v in sample if _has_non_ascii(v))
                 if nonascii_hits > 0:
@@ -405,6 +484,29 @@ def scan_project(eng: Engine, slug: str, force: bool = False) -> dict:
                     "or rename to clarify their distinct purpose.",
                     count=int(overlap * 100),
                 ))
+
+    # ------------------------------------------------------------------
+    # Enrich each issue with total_rows + a few real sample values so the UI
+    # can show "AFFECTED n / total" and "SAMPLE …" without extra round-trips.
+    # ------------------------------------------------------------------
+    _rows_cache: dict[str, int] = {}
+
+    def _rows_for(t: str) -> int:
+        if t not in _rows_cache:
+            _rows_cache[t] = _row_count(eng, slug, t)
+        return _rows_cache[t]
+
+    _SAMPLE_TYPES = {"sci_notation_id", "text_dates", "unicode_non_latin",
+                     "enum_no_value_map", "opaque_columns", "type_mismatch"}
+    for it in issues:
+        if not it.get("total_rows"):
+            it["total_rows"] = _rows_for(it["table"])
+        if not it.get("sample") and it.get("column") and it["type"] in _SAMPLE_TYPES:
+            try:
+                it["sample"] = _sample_text_values(
+                    eng, slug, it["table"], it["column"], limit=5)[:5]
+            except Exception:
+                it["sample"] = []
 
     # ------------------------------------------------------------------
     # Aggregates

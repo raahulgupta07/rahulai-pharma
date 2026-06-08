@@ -50,14 +50,17 @@ def list_memories(slug: str, request: Request):
     _check_access(user, slug)
     with _engine.connect() as conn:
         rows = conn.execute(text("""
-            SELECT id, scope, fact, source, created_at FROM public.dash_memories
-            WHERE ((project_slug = :s AND scope = 'project')
-               OR (scope = 'global')
-               OR (scope = 'personal' AND user_id = :uid AND project_slug = :s))
-               AND (archived IS NULL OR archived = FALSE)
-            ORDER BY created_at DESC LIMIT 50
+            SELECT en.id, en.scope, en.fact, en.source, en.created_at, my.fact AS fact_my
+            FROM public.dash_memories en
+            LEFT JOIN public.dash_memories my ON my.parent_id = en.id AND my.lang = 'my'
+            WHERE ((en.project_slug = :s AND en.scope = 'project')
+               OR (en.scope = 'global')
+               OR (en.scope = 'personal' AND en.user_id = :uid AND en.project_slug = :s))
+               AND (en.archived IS NULL OR en.archived = FALSE)
+               AND (en.lang IS NULL OR en.lang = 'en')
+            ORDER BY en.created_at DESC LIMIT 50
         """), {"s": slug, "uid": user["user_id"]}).fetchall()
-    return {"memories": [{"id": r[0], "scope": r[1], "fact": r[2], "source": r[3], "created_at": str(r[4]) if r[4] else None} for r in rows]}
+    return {"memories": [{"id": r[0], "scope": r[1], "fact": r[2], "source": r[3], "created_at": str(r[4]) if r[4] else None, "fact_my": r[5]} for r in rows]}
 
 
 @router.post("/{slug}/memories")
@@ -152,10 +155,15 @@ def list_query_patterns(slug: str, request: Request):
     _check_access(user, slug)
     with _engine.connect() as conn:
         rows = conn.execute(text(
-            "SELECT id, question, sql, uses, last_used, created_at FROM public.dash_query_patterns "
-            "WHERE project_slug = :s ORDER BY uses DESC LIMIT 20"
+            "SELECT en.id, en.question, en.sql, en.uses, en.last_used, en.created_at, my.question AS question_my "
+            "FROM public.dash_query_patterns en "
+            "LEFT JOIN public.dash_query_patterns my ON my.project_slug = en.project_slug "
+            "  AND my.source = 'bilingual_twin' "
+            "  AND regexp_replace(my.sql, E'\\n-- bilingual_twin$', '') = en.sql "
+            "WHERE en.project_slug = :s AND (en.source IS NULL OR en.source <> 'bilingual_twin') "
+            "ORDER BY en.uses DESC LIMIT 20"
         ), {"s": slug}).fetchall()
-    return {"patterns": [{"id": r[0], "question": r[1], "sql": r[2], "uses": r[3], "last_used": str(r[4]) if r[4] else None, "created_at": str(r[5]) if r[5] else None} for r in rows]}
+    return {"patterns": [{"id": r[0], "question": r[1], "sql": r[2], "uses": r[3], "last_used": str(r[4]) if r[4] else None, "created_at": str(r[5]) if r[5] else None, "question_my": r[6]} for r in rows]}
 
 
 # ---------------------------------------------------------------------------
@@ -556,6 +564,238 @@ def list_training_runs(slug: str, request: Request):
     return {"runs": [{"id": r[0], "tables": r[1], "status": r[2], "steps": r[3], "error": r[4],
                       "started_at": str(r[5]) if r[5] else None, "finished_at": str(r[6]) if r[6] else None,
                       "logs": r[7] if r[7] else []} for r in rows]}
+
+
+@router.get("/{slug}/auto-train/status")
+def get_auto_train_status(slug: str, request: Request):
+    """Return auto-train daemon status + recent training runs for this project."""
+    _get_user(request)
+    try:
+        from dash.cron.auto_train_daemon import get_daemon_status
+        daemon = get_daemon_status()
+    except Exception:
+        daemon = {"enabled": False, "error": "daemon not loaded"}
+
+    # Get recent training runs
+    try:
+        with _engine.connect() as conn:
+            runs = conn.execute(text(
+                "SELECT id, status, started_at, finished_at, "
+                "EXTRACT(EPOCH FROM (finished_at - started_at)) as duration_sec "
+                "FROM public.dash_training_runs WHERE project_slug = :s "
+                "ORDER BY started_at DESC LIMIT 5"
+            ), {"s": slug}).fetchall()
+        recent_runs = [{"id": r[0], "status": r[1],
+                        "started_at": str(r[2]) if r[2] else None,
+                        "finished_at": str(r[3]) if r[3] else None,
+                        "duration_sec": round(r[4]) if r[4] else None}
+                       for r in runs]
+    except Exception:
+        recent_runs = []
+
+    # Check if currently training
+    try:
+        with _engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT id, status, started_at FROM public.dash_training_runs "
+                "WHERE project_slug = :s AND status IN ('running','queued') "
+                "ORDER BY started_at DESC LIMIT 1"
+            ), {"s": slug}).fetchone()
+        active_run = {"id": row[0], "status": row[1], "started_at": str(row[2])} if row else None
+    except Exception:
+        active_run = None
+
+    return {
+        "daemon": daemon,
+        "active_run": active_run,
+        "recent_runs": recent_runs,
+        "is_training": active_run is not None,
+    }
+
+
+@router.get("/{slug}/auto-train/log")
+def get_auto_train_log(slug: str, request: Request, since: int = 0, limit: int = 400):
+    """Stream the live per-step training log into the robot panel.
+
+    Source = public.dash_training_runs.logs (JSONB array of
+    {ts, msg, table, table_index, total_tables}) appended by _master_log +
+    the LLM observer on every training step / model call. `since` is the
+    array index already seen by the client → we return only newer entries.
+    Falls back to the latest run when no active run, so a just-finished
+    run still shows its tail (incl. the ━━━ training done ━━━ line)."""
+    _get_user(request)
+    try:
+        with _engine.connect() as conn:
+            # Prefer the active (running/queued) run; else most-recent run.
+            row = conn.execute(text(
+                "SELECT id, status, current_step, "
+                "COALESCE(jsonb_array_length(logs), 0) AS n "
+                "FROM public.dash_training_runs WHERE project_slug = :s "
+                "ORDER BY (status IN ('running','queued')) DESC, started_at DESC "
+                "LIMIT 1"
+            ), {"s": slug}).fetchone()
+            if not row:
+                return {"run_id": None, "status": "idle", "current_step": "",
+                        "total": 0, "events": []}
+            run_id, status, current_step, n = row[0], row[1], row[2], int(row[3] or 0)
+            start = max(0, int(since))
+            events = []
+            if n > start:
+                # Slice the JSONB array tail in the DB (0-based, exclusive end).
+                slc = conn.execute(text(
+                    "SELECT idx - 1 AS i, e->>'ts' AS ts, e->>'msg' AS msg, "
+                    "e->>'table' AS tbl, e->>'tsabs' AS tsabs "
+                    "FROM public.dash_training_runs, "
+                    "jsonb_array_elements(logs) WITH ORDINALITY AS t(e, idx) "
+                    "WHERE id = :id AND idx > :start "
+                    "ORDER BY idx LIMIT :lim"
+                ), {"id": run_id, "start": start, "lim": max(1, int(limit))}).fetchall()
+                for r in slc:
+                    events.append({"i": int(r[0]), "ts": r[1] or "",
+                                   "msg": r[2] or "", "table": r[3] or "",
+                                   "tsabs": float(r[4]) if r[4] else 0})
+            return {"run_id": run_id, "status": status,
+                    "current_step": current_step or "", "total": n,
+                    "events": events}
+    except Exception:
+        return {"run_id": None, "status": "idle", "current_step": "",
+                "total": 0, "events": []}
+
+
+@router.get("/{slug}/auto-train/log-history")
+def get_auto_train_log_history(slug: str, request: Request, runs: int = 50):
+    """Full retained training-log history, newest run first. Logs are NEVER
+    deleted — every dash_training_runs row keeps its full JSONB `logs` array
+    forever. The frontend partitions these by local date (using each event's
+    absolute `tsabs` epoch) and renders timestamps in the machine timezone.
+
+    `runs` caps how many recent runs to return (payload guard), not how many
+    are retained. Default 50."""
+    _get_user(request)
+    try:
+        with _engine.connect() as conn:
+            rows = conn.execute(text(
+                "SELECT id, status, "
+                "EXTRACT(EPOCH FROM started_at)::double precision AS started_epoch, "
+                "COALESCE(jsonb_array_length(logs), 0) AS n "
+                "FROM public.dash_training_runs WHERE project_slug = :s "
+                "ORDER BY started_at DESC LIMIT :lim"
+            ), {"s": slug, "lim": max(1, min(int(runs), 500))}).fetchall()
+            out = []
+            for rr in rows:
+                run_id = rr[0]
+                ev = conn.execute(text(
+                    "SELECT idx - 1 AS i, e->>'ts' AS ts, e->>'msg' AS msg, "
+                    "e->>'table' AS tbl, e->>'tsabs' AS tsabs "
+                    "FROM public.dash_training_runs, "
+                    "jsonb_array_elements(logs) WITH ORDINALITY AS t(e, idx) "
+                    "WHERE id = :id ORDER BY idx"
+                ), {"id": run_id}).fetchall()
+                out.append({
+                    "run_id": run_id,
+                    "status": rr[1],
+                    "started_epoch": float(rr[2]) if rr[2] else 0,
+                    "total": int(rr[3] or 0),
+                    "events": [{"i": int(e[0]), "ts": e[1] or "", "msg": e[2] or "",
+                                "table": e[3] or "", "tsabs": float(e[4]) if e[4] else 0}
+                               for e in ev],
+                })
+            return {"runs": out}
+    except Exception:
+        return {"runs": []}
+
+
+@router.get("/{slug}/learning-feed")
+def get_learning_feed(slug: str, request: Request, since: float = 0.0, limit: int = 50):
+    """Return recent learning events for the robot panel log feed.
+    Aggregates: memories, quality scores, proactive insights, KG triples, auto-evolve."""
+    _get_user(request)
+    events = []
+    try:
+        eng = get_sql_engine()
+        since_ts = since if since > 0 else (__import__("time").time() - 3600)  # default last 1h
+
+        # Each source gets its OWN short connection. A single bad query (schema
+        # drift, missing table) must NOT abort the Postgres tx and silently nuke
+        # every later source — which is exactly what happened when this read a
+        # non-existent dash_memories.content column and the whole feed went blank.
+        def _q(sql: str, params: dict):
+            try:
+                with eng.connect() as c:
+                    return c.execute(text(sql), params).fetchall()
+            except Exception:
+                return []
+
+        def _pct(v) -> str:
+            try:
+                if v is None:
+                    return ""
+                f = float(v)
+                p = int(round(f * 100)) if f <= 1 else int(round(f))
+                return f" · {max(0, min(100, p))}%"
+            except Exception:
+                return ""
+
+        # Recent memories saved (from chat background agents). Column is `fact`.
+        for r in _q(
+            "SELECT EXTRACT(EPOCH FROM created_at)::bigint, source, fact, confidence_score "
+            "FROM public.dash_memories WHERE project_slug=:s "
+            "AND EXTRACT(EPOCH FROM created_at) > :since "
+            "ORDER BY created_at DESC LIMIT :lim",
+            {"s": slug, "since": since_ts, "lim": 20}):
+            src = r[1] or "agent"
+            label = {"auto_learned": "💡 Learned", "episodic": "📌 Episode",
+                     "agent": "🧠 Memory", "user": "👤 Saved"}.get(src, "🧠 Memory")
+            events.append({"ts": int(r[0]), "type": "memory",
+                           "text": f"{label}: {str(r[2] or '')[:120]}{_pct(r[3])}"})
+
+        # Quality scores
+        for r in _q(
+            "SELECT EXTRACT(EPOCH FROM created_at)::bigint, score, category "
+            "FROM public.dash_quality_scores WHERE project_slug=:s "
+            "AND EXTRACT(EPOCH FROM created_at) > :since "
+            "ORDER BY created_at DESC LIMIT 10",
+            {"s": slug, "since": since_ts}):
+            events.append({"ts": int(r[0]), "type": "quality",
+                           "text": f"✓ Quality score {r[1]}/5 — {r[2] or 'response'}"})
+
+        # Proactive insights
+        for r in _q(
+            "SELECT EXTRACT(EPOCH FROM created_at)::bigint, title, severity "
+            "FROM public.dash_proactive_insights WHERE project_slug=:s "
+            "AND EXTRACT(EPOCH FROM created_at) > :since "
+            "ORDER BY created_at DESC LIMIT 10",
+            {"s": slug, "since": since_ts}):
+            icon = "⚠️" if (r[2] or "info") == "alert" else "💡"
+            events.append({"ts": int(r[0]), "type": "insight",
+                           "text": f"{icon} Insight: {str(r[1] or '')[:100]}"})
+
+        # KG triples added from chat
+        for r in _q(
+            "SELECT EXTRACT(EPOCH FROM created_at)::bigint, subject, predicate, object "
+            "FROM public.dash_knowledge_triples WHERE project_slug=:s "
+            "AND EXTRACT(EPOCH FROM created_at) > :since "
+            "ORDER BY created_at DESC LIMIT 10",
+            {"s": slug, "since": since_ts}):
+            events.append({"ts": int(r[0]), "type": "triple",
+                           "text": f"⬡ KG: {r[1]} → {r[2]} → {r[3]}"})
+
+        # Evolved instructions
+        for r in _q(
+            "SELECT EXTRACT(EPOCH FROM updated_at)::bigint, version, trigger_count "
+            "FROM public.dash_evolved_instructions WHERE project_slug=:s "
+            "AND EXTRACT(EPOCH FROM updated_at) > :since "
+            "ORDER BY updated_at DESC LIMIT 3",
+            {"s": slug, "since": since_ts}):
+            events.append({"ts": int(r[0]), "type": "evolve",
+                           "text": f"🔄 Auto-evolved instructions v{r[1]} (after {r[2]} chats)"})
+
+    except Exception:
+        pass  # fail-soft — return whatever we got
+
+    # Sort by timestamp desc, cap at limit
+    events.sort(key=lambda x: x["ts"], reverse=True)
+    return {"events": events[:limit], "count": len(events)}
 
 
 @router.get("/{slug}/drift-alerts")
@@ -1247,8 +1487,8 @@ def os_hub_aggregate(request: Request):
                     out["header"]["agents_active"] = int(row["active"] or 0)
             except Exception:
                 try: c.rollback()
-                except Exception: logger.exception("learning: os_hub rollback failed")
-                logger.exception("os_hub: registry totals failed")
+                except Exception: logger.debug("learning: os_hub rollback failed")
+                logger.debug("os_hub: registry totals failed")
 
             # ── Header: extended sub-agents online (last 1h) ──────────────
             try:
@@ -1261,8 +1501,8 @@ def os_hub_aggregate(request: Request):
                     out["header"]["sub_agents_online"] = int(row["n"] or 0)
             except Exception:
                 try: c.rollback()
-                except Exception: logger.exception("learning: os_hub rollback failed")
-                logger.exception("os_hub: sub_agents_online failed")
+                except Exception: logger.debug("learning: os_hub rollback failed")
+                logger.debug("os_hub: sub_agents_online failed")
 
             # ── Header: minions running / queued ──────────────────────────
             try:
@@ -1277,8 +1517,8 @@ def os_hub_aggregate(request: Request):
                     out["header"]["minions_queued"] = int(row["queued"] or 0)
             except Exception:
                 try: c.rollback()
-                except Exception: logger.exception("learning: os_hub rollback failed")
-                logger.exception("os_hub: minions stats failed")
+                except Exception: logger.debug("learning: os_hub rollback failed")
+                logger.debug("os_hub: minions stats failed")
 
             # ── Header: estimated daily cost ──────────────────────────────
             try:
@@ -1300,8 +1540,8 @@ def os_hub_aggregate(request: Request):
                     out["header"]["estimated_daily_cost_usd"] = float(row["est"] or 0)
             except Exception:
                 try: c.rollback()
-                except Exception: logger.exception("learning: os_hub rollback failed")
-                logger.exception("os_hub: est cost failed")
+                except Exception: logger.debug("learning: os_hub rollback failed")
+                logger.debug("os_hub: est cost failed")
 
             # ── Categories breakdown ──────────────────────────────────────
             try:
@@ -1319,8 +1559,8 @@ def os_hub_aggregate(request: Request):
                     }
             except Exception:
                 try: c.rollback()
-                except Exception: logger.exception("learning: os_hub rollback failed")
-                logger.exception("os_hub: categories failed")
+                except Exception: logger.debug("learning: os_hub rollback failed")
+                logger.debug("os_hub: categories failed")
 
             # ── Investment: override active count + drill URL ─────────────
             # Active = invoked in last 24h (last_invoked_at OR last_seen_at,
@@ -1341,8 +1581,8 @@ def os_hub_aggregate(request: Request):
                     }
             except Exception:
                 try: c.rollback()
-                except Exception: logger.exception("learning: os_hub rollback failed")
-                logger.exception("os_hub: investment category failed")
+                except Exception: logger.debug("learning: os_hub rollback failed")
+                logger.debug("os_hub: investment category failed")
 
             # ── Header: investment runs today ─────────────────────────────
             try:
@@ -1354,8 +1594,8 @@ def os_hub_aggregate(request: Request):
                     out["header"]["investment_runs_count_today"] = int(row["n"] or 0)
             except Exception:
                 try: c.rollback()
-                except Exception: logger.exception("learning: os_hub rollback failed")
-                logger.exception("os_hub: investment runs today failed")
+                except Exception: logger.debug("learning: os_hub rollback failed")
+                logger.debug("os_hub: investment runs today failed")
 
             # ── Header: investment memos total ────────────────────────────
             try:
@@ -1366,8 +1606,8 @@ def os_hub_aggregate(request: Request):
                     out["header"]["investment_memos_total"] = int(row["n"] or 0)
             except Exception:
                 try: c.rollback()
-                except Exception: logger.exception("learning: os_hub rollback failed")
-                logger.exception("os_hub: investment memos total failed")
+                except Exception: logger.debug("learning: os_hub rollback failed")
+                logger.debug("os_hub: investment memos total failed")
 
             # ── Subview: workflows ────────────────────────────────────────
             try:
@@ -1383,8 +1623,8 @@ def os_hub_aggregate(request: Request):
                     out["subviews"]["workflows"]["count_pending"] = int(row["pending"] or 0)
             except Exception:
                 try: c.rollback()
-                except Exception: logger.exception("learning: os_hub rollback failed")
-                logger.exception("os_hub: workflows failed")
+                except Exception: logger.debug("learning: os_hub rollback failed")
+                logger.debug("os_hub: workflows failed")
 
             # ── Subview: skills ───────────────────────────────────────────
             try:
@@ -1396,8 +1636,8 @@ def os_hub_aggregate(request: Request):
                     out["subviews"]["skills"]["count_total"] = int(row["n"] or 0)
             except Exception:
                 try: c.rollback()
-                except Exception: logger.exception("learning: os_hub rollback failed")
-                logger.exception("os_hub: skills total failed")
+                except Exception: logger.debug("learning: os_hub rollback failed")
+                logger.debug("os_hub: skills total failed")
             try:
                 row = c.execute(text(
                     "SELECT COUNT(*) AS n FROM dash.dash_tool_patches "
@@ -1407,8 +1647,8 @@ def os_hub_aggregate(request: Request):
                     out["subviews"]["skills"]["count_patched"] = int(row["n"] or 0)
             except Exception:
                 try: c.rollback()
-                except Exception: logger.exception("learning: os_hub rollback failed")
-                logger.exception("os_hub: skills patched failed")
+                except Exception: logger.debug("learning: os_hub rollback failed")
+                logger.debug("os_hub: skills patched failed")
 
             # ── Subview: sub_agents (extended w/ recent activity) ─────────
             try:
@@ -1421,8 +1661,8 @@ def os_hub_aggregate(request: Request):
                     out["subviews"]["sub_agents"]["count_spawned"] = int(row["n"] or 0)
             except Exception:
                 try: c.rollback()
-                except Exception: logger.exception("learning: os_hub rollback failed")
-                logger.exception("os_hub: sub_agents spawned failed")
+                except Exception: logger.debug("learning: os_hub rollback failed")
+                logger.debug("os_hub: sub_agents spawned failed")
             try:
                 row = c.execute(text(
                     "SELECT COUNT(*) AS n FROM public.dash_agent_registry "
@@ -1432,8 +1672,8 @@ def os_hub_aggregate(request: Request):
                     out["subviews"]["sub_agents"]["count_available"] = int(row["n"] or 0)
             except Exception:
                 try: c.rollback()
-                except Exception: logger.exception("learning: os_hub rollback failed")
-                logger.exception("os_hub: sub_agents available failed")
+                except Exception: logger.debug("learning: os_hub rollback failed")
+                logger.debug("os_hub: sub_agents available failed")
 
             # ── Subview: sim_lab ──────────────────────────────────────────
             try:
@@ -1452,8 +1692,8 @@ def os_hub_aggregate(request: Request):
                     out["subviews"]["sim_lab"]["count_done_24h"] = int(row["done_24h"] or 0)
             except Exception:
                 try: c.rollback()
-                except Exception: logger.exception("learning: os_hub rollback failed")
-                logger.exception("os_hub: sim_lab failed")
+                except Exception: logger.debug("learning: os_hub rollback failed")
+                logger.debug("os_hub: sim_lab failed")
 
             # ── Subview: marketplace ──────────────────────────────────────
             try:
@@ -1467,8 +1707,8 @@ def os_hub_aggregate(request: Request):
                     out["subviews"]["marketplace"]["count_total"] = int(row["total"] or 0)
             except Exception:
                 try: c.rollback()
-                except Exception: logger.exception("learning: os_hub rollback failed")
-                logger.exception("os_hub: marketplace failed")
+                except Exception: logger.debug("learning: os_hub rollback failed")
+                logger.debug("os_hub: marketplace failed")
 
             # ── Cron schedules ────────────────────────────────────────────
             try:
@@ -1488,8 +1728,8 @@ def os_hub_aggregate(request: Request):
                     out["cron_schedules"].append(d)
             except Exception:
                 try: c.rollback()
-                except Exception: logger.exception("learning: os_hub rollback failed")
-                logger.exception("os_hub: cron_schedules failed")
+                except Exception: logger.debug("learning: os_hub rollback failed")
+                logger.debug("os_hub: cron_schedules failed")
 
             # ── Recent activity ───────────────────────────────────────────
             try:
@@ -1501,8 +1741,8 @@ def os_hub_aggregate(request: Request):
                     out["recent_activity"]["last_autosim_run_at"] = row["ts"].isoformat()
             except Exception:
                 try: c.rollback()
-                except Exception: logger.exception("learning: os_hub rollback failed")
-                logger.exception("os_hub: last_autosim_run_at failed")
+                except Exception: logger.debug("learning: os_hub rollback failed")
+                logger.debug("os_hub: last_autosim_run_at failed")
             try:
                 row = c.execute(text(
                     "SELECT MAX(updated_at) AS ts "
@@ -1512,8 +1752,8 @@ def os_hub_aggregate(request: Request):
                     out["recent_activity"]["last_sim_completed_at"] = row["ts"].isoformat()
             except Exception:
                 try: c.rollback()
-                except Exception: logger.exception("learning: os_hub rollback failed")
-                logger.exception("os_hub: last_sim_completed_at failed")
+                except Exception: logger.debug("learning: os_hub rollback failed")
+                logger.debug("os_hub: last_sim_completed_at failed")
             try:
                 row = c.execute(text(
                     "SELECT MAX(updated_at) AS ts FROM dash.dash_chat_sessions"
@@ -1522,8 +1762,8 @@ def os_hub_aggregate(request: Request):
                     out["recent_activity"]["last_chat_at"] = row["ts"].isoformat()
             except Exception:
                 try: c.rollback()
-                except Exception: logger.exception("learning: os_hub rollback failed")
-                logger.exception("os_hub: last_chat_at failed")
+                except Exception: logger.debug("learning: os_hub rollback failed")
+                logger.debug("os_hub: last_chat_at failed")
 
         return out
     except Exception as e:

@@ -72,9 +72,13 @@ def list_rules(slug: str, request: Request):
         engine = get_sql_engine()
         with engine.connect() as conn:
             rows = conn.execute(text(
-                "SELECT rule_id, name, type, category, definition, source, created_at "
-                "FROM public.dash_rules_db WHERE project_slug = :s "
-                "ORDER BY created_at DESC"
+                "SELECT en.rule_id, en.name, en.type, en.category, en.definition, en.source, en.created_at, "
+                "       my.definition AS definition_my "
+                "FROM public.dash_rules_db en "
+                "LEFT JOIN public.dash_rules_db my ON my.rule_id = en.rule_id || '_my' "
+                "  AND my.project_slug = en.project_slug AND my.lang = 'my' "
+                "WHERE en.project_slug = :s AND (en.lang IS NULL OR en.lang = 'en') "
+                "ORDER BY en.created_at DESC"
             ), {"s": slug}).fetchall()
         for r in rows:
             rid = str(r[0])
@@ -89,6 +93,7 @@ def list_rules(slug: str, request: Request):
                 "definition": r[4],
                 "source": r[5] or "training",
                 "created_at": str(r[6]) if r[6] else None,
+                "definition_my": r[7],
             })
     except Exception:
         # Fail soft — still return JSON-file rules even if DB read fails

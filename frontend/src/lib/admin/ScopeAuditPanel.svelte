@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dashFetch } from '$lib/api';
   import { onMount } from 'svelte';
 
   type SessionRow = {
@@ -99,7 +100,7 @@
     sessionsLoading = true;
     sessionsWarning = null;
     try {
-      const r = await fetch(`/api/scope-audit/sessions?project_slug=${encodeURIComponent(projectSlug)}&limit=50`);
+      const r = await dashFetch(`/api/scope-audit/sessions?project_slug=${encodeURIComponent(projectSlug)}&limit=50`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
       sessions = data.sessions || [];
@@ -122,7 +123,7 @@
     sessionDetail = null;
     detailLoading = true;
     try {
-      const r = await fetch(`/api/scope-audit/session/${encodeURIComponent(sid)}`);
+      const r = await dashFetch(`/api/scope-audit/session/${encodeURIComponent(sid)}`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       sessionDetail = await r.json();
     } catch (e: any) {
@@ -141,7 +142,7 @@
     if (!projectSlug) return;
     summaryLoading = true;
     try {
-      const r = await fetch(`/api/scope-audit/summary?project_slug=${encodeURIComponent(projectSlug)}&days=${days}`);
+      const r = await dashFetch(`/api/scope-audit/summary?project_slug=${encodeURIComponent(projectSlug)}&days=${days}`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       summary = await r.json();
     } catch (e: any) {
@@ -160,7 +161,7 @@
     if (!uid) return;
     userLoading = true;
     try {
-      const r = await fetch(`/api/scope-audit/user/${uid}?days=${30}`);
+      const r = await dashFetch(`/api/scope-audit/user/${uid}?days=${30}`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       userAudit = await r.json();
     } catch (e: any) {

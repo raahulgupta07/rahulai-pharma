@@ -21,7 +21,7 @@ def _get_user(request: Request) -> dict:
 
 
 def _require_super(user: dict):
-    if not user.get("is_super_admin"):
+    if not user.get("is_super"):
         raise HTTPException(403, "super-admin only")
 
 
@@ -260,6 +260,64 @@ def cron_health(request: Request):
     except Exception as e:
         logger.warning("cron-health query failed: %s", e)
         return {"crons": [], "error": str(e)}
+
+
+@router.get("/traces/context-health")
+def context_health(request: Request, days: int = 7):
+    """Prompt-token distribution + capped-result count for kind='chat'.
+
+    Returns p50/p95 of the `tokens` column over chat traces in the window,
+    the run count, and how many spans recorded `meta->>'capped' = 'true'`
+    (set by the tool-result cap guard). Fail-soft to zeros + error.
+    """
+    user = _get_user(request)
+    _require_super(user)
+
+    days_i = _clamp(days, 7, 1, 90)
+
+    zeros = {
+        "prompt_tokens_p50": 0,
+        "prompt_tokens_p95": 0,
+        "runs": 0,
+        "capped_count": 0,
+    }
+
+    from sqlalchemy import text
+    from db import get_sql_engine
+
+    eng = get_sql_engine()
+    try:
+        with eng.connect() as conn:
+            # PERCENTILE_CONT is an ordered-set aggregate and does not support
+            # FILTER; NULL tokens are ignored by PERCENTILE_CONT natively, so
+            # no FILTER is needed for the percentile columns.
+            row = conn.execute(
+                text(
+                    "SELECT "
+                    "COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY tokens), 0) AS p50, "
+                    "COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY tokens), 0) AS p95, "
+                    "COUNT(*) AS runs, "
+                    "COUNT(*) FILTER (WHERE meta->>'capped' = 'true') AS capped_count "
+                    "FROM public.dash_traces "
+                    "WHERE kind = 'chat' "
+                    "AND started_at >= now() - make_interval(days => :d)"
+                ),
+                {"d": days_i},
+            ).first()
+
+        if not row:
+            return dict(zeros)
+        return {
+            "prompt_tokens_p50": round(float(row[0] or 0), 1),
+            "prompt_tokens_p95": round(float(row[1] or 0), 1),
+            "runs": int(row[2] or 0),
+            "capped_count": int(row[3] or 0),
+        }
+    except Exception as e:  # missing table/cols → fail-soft zeros
+        logger.warning("context-health query failed: %s", e)
+        out = dict(zeros)
+        out["error"] = str(e)
+        return out
 
 
 @router.get("/traces/agents")

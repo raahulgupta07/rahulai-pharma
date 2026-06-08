@@ -161,25 +161,28 @@ def list_entries(request: Request, category: str = "", project_slug: str | None 
     user = _get_user(request)
     uid = user.get("user_id") or user.get("id")
 
-    q = "SELECT id, category, name, definition, metadata, created_by, created_at, updated_at, project_slug, user_id FROM public.dash_company_brain"
-    conditions = []
+    q = ("SELECT en.id, en.category, en.name, en.definition, en.metadata, en.created_by, "
+         "en.created_at, en.updated_at, en.project_slug, en.user_id, my.definition AS definition_my "
+         "FROM public.dash_company_brain en "
+         "LEFT JOIN public.dash_company_brain my ON my.source_id = en.id AND my.lang = 'my'")
+    conditions = ["(en.lang IS NULL OR en.lang = 'en')"]
     params = {}
 
     if category:
         if category not in VALID_CATEGORIES:
             raise HTTPException(400, f"Invalid category. Must be one of: {', '.join(sorted(VALID_CATEGORIES))}")
-        conditions.append("category = :cat")
+        conditions.append("en.category = :cat")
         params["cat"] = category
 
     # Scope filtering: global, personal, or project
     if scope == "global":
-        conditions.append("project_slug IS NULL AND user_id IS NULL")
+        conditions.append("en.project_slug IS NULL AND en.user_id IS NULL")
     elif scope == "personal":
-        conditions.append("user_id = :uid")
+        conditions.append("en.user_id = :uid")
         params["uid"] = uid
     elif project_slug:
         # Return project-scoped + global entries
-        conditions.append("(project_slug = :slug OR project_slug IS NULL)")
+        conditions.append("(en.project_slug = :slug OR en.project_slug IS NULL)")
         params["slug"] = project_slug
     else:
         # No scope filter — return all accessible
@@ -190,14 +193,14 @@ def list_entries(request: Request, category: str = "", project_slug: str | None 
                 placeholders = ", ".join(f":proj_{i}" for i in range(len(user_projects)))
                 for i, p in enumerate(user_projects):
                     params[f"proj_{i}"] = p
-                conditions.append(f"(user_id = :uid OR project_slug IN ({placeholders}) OR project_slug IS NULL)")
+                conditions.append(f"(en.user_id = :uid OR en.project_slug IN ({placeholders}) OR en.project_slug IS NULL)")
             else:
-                conditions.append("(user_id = :uid OR project_slug IS NULL)")
+                conditions.append("(en.user_id = :uid OR en.project_slug IS NULL)")
             params["uid"] = uid
 
     if conditions:
         q += " WHERE " + " AND ".join(conditions)
-    q += " ORDER BY category, name"
+    q += " ORDER BY en.category, en.name"
 
     with _engine.connect() as conn:
         rows = conn.execute(text(q), params).fetchall()
@@ -219,6 +222,7 @@ def list_entries(request: Request, category: str = "", project_slug: str | None 
             "created_at": str(r[6]) if r[6] else None,
             "updated_at": str(r[7]) if r[7] else None,
             "project_slug": ps, "user_id": uid, "scope": scope,
+            "definition_my": r[10],
         })
 
     return {"entries": entries, "total": len(entries)}
@@ -568,7 +572,7 @@ def create_personal_brain_entry(request: Request, req: BrainEntryCreate):
 # Context builder — called by instructions.py
 # ---------------------------------------------------------------------------
 
-def get_brain_context(for_agent: str = "analyst", project_slug: str = "", user_id: int | None = None) -> str:
+def get_brain_context(for_agent: str = "analyst", project_slug: str = "", user_id: int | None = None, language: str | None = None) -> str:
     """Build formatted brain context for injection into agent prompts.
     Also logs the access to dash_brain_access_log.
 
@@ -576,7 +580,12 @@ def get_brain_context(for_agent: str = "analyst", project_slug: str = "", user_i
     - If project_slug: return project-scoped + global entries (project wins on name conflict).
     - If user_id (Dash Agent): return personal + user's projects + global entries.
     - Otherwise: return all entries.
+
+    Bilingual: language='my' returns the Burmese twin where one exists (twins link
+    by source_id), else the EN original; any other value (or None) → EN-only.
+    Guarded so a NULL/absent lang col never excludes a row.
     """
+    _lang = (language or "en")
     # Phase 3: source-scoped merge order: source > project > global.
     try:
         from dash.providers import get_registry
@@ -614,6 +623,18 @@ def get_brain_context(for_agent: str = "analyst", project_slug: str = "", user_i
                 else:
                     q += " WHERE (user_id = :uid OR project_slug IS NULL)"
                 params["uid"] = user_id
+
+            # Bilingual lang filter: on a MY turn return the Burmese twin where it
+            # exists, else the EN original (twins link by source_id). Appended as
+            # WHERE or AND depending on whether a scope clause was already added.
+            _conj = "AND" if (project_slug or user_id) else "WHERE"
+            if _lang == "my":
+                q += (
+                    f" {_conj} (lang = 'my' OR (COALESCE(lang,'en') = 'en' AND id NOT IN "
+                    "(SELECT source_id FROM public.dash_company_brain WHERE source_id IS NOT NULL AND lang = 'my')))"
+                )
+            else:
+                q += f" {_conj} (lang IS NULL OR lang = 'en')"
 
             # Highest-priority rows first: source > project > global. Within a
             # tier, sort by category, name for stable output.

@@ -51,7 +51,18 @@ _QA_STOP = {"the","a","an","is","are","of","for","by","to","in","on","and","or",
 
 
 def _qa_tokens(s: str) -> set:
-    return {w for w in re.findall(r"[a-z0-9_]+", (s or "").lower()) if w not in _QA_STOP and len(w) > 2}
+    # Phase 2 bilingual: also capture Burmese (U+1000–U+109F) runs as tokens so a
+    # Burmese question matches its Burmese training twin. Latin tokens keep the
+    # >2-char + stopword filter; Burmese word-runs are kept at >=2 chars (no
+    # Burmese stopword list — the rare-term IDF weighting downweights particles).
+    out = set()
+    for w in re.findall(r"[a-z0-9_]+", (s or "").lower()):
+        if w not in _QA_STOP and len(w) > 2:
+            out.add(w)
+    for w in re.findall(r"[က-႟]+", s or ""):
+        if len(w) >= 2:
+            out.add(w)
+    return out
 
 
 def _rank_training_qa(project_slug: str, question: str, k: int = 3) -> str:
@@ -484,6 +495,36 @@ def _usage_from_stored_run(parent_run: dict, children: list[dict]) -> dict | Non
         return None
 
 
+@router.get("/{slug}/sessions")
+def project_sessions(slug: str, request: Request, limit: int = 40):
+    """List the user's recent chat sessions for this project (robot CHAT tab).
+    Lightweight: id + first message + timestamps; turns load lazily per session
+    via the /messages route. Fail-soft → {sessions: []} on any error."""
+    user = _get_user(request)
+    get_project(slug, request)
+    out: list[dict] = []
+    try:
+        with _engine.connect() as conn:
+            rows = conn.execute(text(
+                "SELECT session_id, first_message, "
+                "       EXTRACT(EPOCH FROM created_at)::bigint, "
+                "       EXTRACT(EPOCH FROM updated_at)::bigint "
+                "FROM public.dash_chat_sessions "
+                "WHERE user_id = :uid "
+                "ORDER BY updated_at DESC NULLS LAST LIMIT :lim"
+            ), {"uid": user["user_id"], "lim": max(1, min(limit, 100))}).fetchall()
+            for r in rows:
+                out.append({
+                    "session_id": r[0],
+                    "first_message": (r[1] or "(untitled chat)")[:160],
+                    "created": int(r[2]) if r[2] is not None else None,
+                    "updated": int(r[3]) if r[3] is not None else None,
+                })
+    except Exception:
+        pass
+    return {"sessions": out}
+
+
 @router.get("/{slug}/sessions/{session_id}/messages")
 def project_session_messages(slug: str, session_id: str, request: Request):
     """Load a stored chat session's messages WITH a reconstructed reasoning
@@ -652,6 +693,9 @@ def _get_user(request: Request) -> dict:
 
 def _make_slug(username: str, name: str) -> str:
     """Generate a project slug: proj_{user}_{name}. Capped at 35 chars total to avoid PG 63-char index limit."""
+    # Single-tenant lock: never mint a new tenant slug — always the locked one.
+    if is_single_agent():
+        return locked_slug()
     safe_user = re.sub(r"[^a-z0-9]", "_", username.lower().strip())[:10]
     safe_name = re.sub(r"[^a-z0-9]", "_", name.lower().strip())
     safe_name = re.sub(r"_+", "_", safe_name).strip("_")[:20]
@@ -889,6 +933,18 @@ async def project_chat(slug: str, request: Request):
 
     # Begin root trace for this chat message.
     start_trace("chat", project_slug=slug, name="chat")
+    # Tag the run for the Usage dashboard: who ran it (actor), how it came in
+    # (channel: api for service keys, web otherwise), and which store (api keys).
+    try:
+        from dash.obs.trace import set_root_meta as _srm
+        _via_api = bool((user or {}).get("via_api_key"))
+        _srm(
+            actor=(user or {}).get("username"),
+            channel=("api" if _via_api else "web"),
+            store_id=((user or {}).get("store_id") or (user or {}).get("site_code")) if _via_api else None,
+        )
+    except Exception:
+        pass
     # Prometheus counter — record arrival before any error gating.
     try:
         from dash.utils.metrics import inc_chat as _inc_chat
@@ -900,6 +956,17 @@ async def project_chat(slug: str, request: Request):
     try:
         from dash.instructions import expand_customer_mentions
         message = expand_customer_mentions(slug, message)
+    except Exception:
+        pass
+
+    # Phase 1 bilingual: set the reply-language contract from the user's script
+    # BEFORE the team is built/cached. Burmese unicode block (U+1000–U+109F) ⇒ 'my'.
+    # build_analyst_instructions appends the Burmese override and dash.team caches
+    # the MY team separately. Must run before create_project_team below.
+    try:
+        from dash.instructions import REPLY_LANG as _REPLY_LANG
+        _is_my = any('က' <= _c <= '႟' for _c in (message or ""))
+        _REPLY_LANG.set("my" if _is_my else "en")
     except Exception:
         pass
 
@@ -915,6 +982,15 @@ async def project_chat(slug: str, request: Request):
             user_attrs={"last_user_message": message[:8000]},
         ))
         _rc_cm.__enter__()  # held for endpoint duration; not strict but safe
+    except Exception:
+        pass
+
+    # Bind project + user to the LLM cost ledger so platform-chat spend
+    # attributes to a person in the Admin Usage dashboard (per-user rollups).
+    try:
+        from dash.settings import set_llm_project, set_llm_actor
+        set_llm_project(slug)
+        set_llm_actor(user.get("username") if user else None)
     except Exception:
         pass
 
@@ -995,7 +1071,16 @@ async def project_chat(slug: str, request: Request):
     if not _skip_scope_gate:
         try:
             from dash.scope_classifier import classify_question, log_refusal
-            decision = classify_question(slug, message)
+            # API-mode wrapper: the gateway prepends a big "[API MODE] … USER
+            # QUESTION:\n" style directive. The scope classifier must see ONLY the
+            # real user question — the directive's API/JSON/table jargon otherwise
+            # tips a LITE-model classifier into a false "off-topic" refusal.
+            _scope_msg = message
+            if isinstance(message, str) and message.startswith("[API MODE]"):
+                _qi = message.find("USER QUESTION:\n")
+                if _qi != -1:
+                    _scope_msg = message[_qi + len("USER QUESTION:\n"):].strip()
+            decision = classify_question(slug, _scope_msg)
             if decision.refused:
                 log_refusal(slug, message, decision, user_id=user.get("user_id"))
                 # Mark refusal for the memory promoter + other bg tasks (Issue #6)
@@ -1043,10 +1128,30 @@ async def project_chat(slug: str, request: Request):
             from db import get_sql_engine as _gse_shop
             with _gse_shop().connect() as _shc:
                 _srow = _shc.execute(
-                    _sqltext("SELECT site_code FROM public.dash_users WHERE id = :uid"),
+                    _sqltext("SELECT site_code, store_ids, scope_mode FROM public.dash_users WHERE id = :uid"),
                     {"uid": _uid_shop}).fetchone()
             _site = _srow[0] if _srow else None
-            if _site:
+            _ids_csv = (_srow[1] if _srow and len(_srow) > 1 else "") or ""
+            _scope_mode = (_srow[2] if _srow and len(_srow) > 2 else "") or "store"
+            _stores = [x.strip() for x in _ids_csv.split(",") if x.strip()]
+            # scope_mode='global' = platform owner / analyst → NO branch lock, sees ALL shops.
+            # Only real store logins (scope_mode='store') get the SHOP CONTEXT branch filter.
+            # (API-gateway / embed store keys are scoped via API_STORE_SCOPE, a separate path.)
+            if _scope_mode == "global":
+                pass
+            elif len(_stores) > 1:
+                # Multi-outlet key: the toolset scopes to the owned SET automatically —
+                # the agent must NOT pass a single site_code (would narrow the set).
+                _lst = ", ".join(_stores)
+                context_msg = (
+                    "## SHOP CONTEXT (multi-outlet)\n"
+                    f"You assist a group covering {len(_stores)} outlets: {_lst}. "
+                    "For stock / availability / 'do we have X' / 'find <salt>' / substitute questions, "
+                    "do NOT pass a single site_code — the tools already scope to ALL of these outlets and "
+                    "return per-outlet breakdowns ('your_stores'). Report the combined total AND name the "
+                    "outlets. Stores outside this set are availability-only.\n\n"
+                ) + context_msg
+            elif _site:
                 context_msg = (
                     "## SHOP CONTEXT (pharmacy counter)\n"
                     f"You assist counter staff at branch site_code = {_site}. For stock / availability / "
@@ -1398,7 +1503,21 @@ async def project_chat(slug: str, request: Request):
             _re = {"low": "low", "medium": "medium", "high": "high", "max": "high"}.get(effort)
             if _re is None and _floor_on:
                 _re = "low"
-            _mk = {"id": _enforce_id, "temperature": 0.1}
+            _mk = {"id": _enforce_id, "temperature": 0.1,
+                   # Opt into OpenRouter providers that may train on inputs — without
+                   # this the account data policy can 404 ("No endpoints matching your
+                   # data policy") when the only compliant provider is unavailable for
+                   # the full tool-using call. This per-tier model overrides MODEL, so
+                   # the same extra_body that settings.MODEL sets must be repeated here.
+                   "extra_body": {"provider": {"data_collection": "allow"}},
+                   # Fast-with-failover: OpenRouter models[] tries the primary first,
+                   # then gpt-5-mini if it errors/404s — single call, instant failover,
+                   # no 2x cost. agno merges this list into extra_body["models"] while
+                   # keeping the provider opt-in above. Primary listed first so it wins
+                   # when healthy (gemini = fast + honors the Burmese override).
+                   "models": ([_enforce_id, "openai/gpt-5-mini"]
+                              if _enforce_id != "openai/gpt-5-mini"
+                              else ["openai/gpt-5-mini", "google/gemini-3-flash-preview"])}
             if _re:
                 _mk["reasoning_effort"] = _re
             _tier_model = _OpenRouter(**_mk)
@@ -1580,6 +1699,24 @@ async def project_chat(slug: str, request: Request):
             _stream_cap = 480 if _tier_now in ("AGENTIC", "REASONING") else 300
             if _router_decision:
                 yield f"event: RouterDecision\ndata: {_json.dumps(_router_decision, default=str)}\n\n"
+            # ── Context-exhaustion guard: trim stale tool-result content from
+            # the agent's conversation history before the run. Behind env flag
+            # (CONTEXT_GUARDS_DISABLED) + fail-open: any error → history untouched.
+            try:
+                from dash.guards.context import trim_stale_tool_results as _trim
+                _msgs = None
+                _sess = getattr(team, "memory", None) or getattr(team, "session", None)
+                if _sess is not None and hasattr(_sess, "messages"):
+                    _msgs = getattr(_sess, "messages", None)
+                if isinstance(_msgs, list) and _msgs:
+                    _trimmed = _trim(_msgs)
+                    if _trimmed is not _msgs:
+                        try:
+                            _sess.messages = _trimmed
+                        except Exception:
+                            pass
+            except Exception:
+                pass
             try:
               with trace_span("chat.run", kind="chat", project_slug=slug):
                 from dash.utils.agno_sse_wrap import audited_team_stream_sync
@@ -1723,6 +1860,7 @@ async def project_chat(slug: str, request: Request):
                                 "completion_tokens": _usage_out_total,
                             }),
                             tokens=int(_usage_in_total) + int(_usage_out_total),
+                            model=(_usage_model or _cm2),
                         )
                     except Exception:  # noqa: BLE001
                         pass
@@ -2252,7 +2390,7 @@ def project_detail(slug: str, request: Request):
             rows = conn.execute(text(
                 "SELECT source_type, config, sync_state FROM public.dash_data_sources "
                 "WHERE project_slug = :slug AND status != 'deleted' "
-                "AND source_type IN ('postgresql', 'mysql', 'fabric', 'sharepoint', 'gdrive', 'onedrive')"
+                "AND source_type IN ('postgresql', 'mysql')"
             ), {"slug": slug}).fetchall()
         for stype, cfg_raw, ss_raw in rows:
             cfg = cfg_raw if isinstance(cfg_raw, dict) else (_json.loads(cfg_raw) if cfg_raw else {})

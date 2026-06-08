@@ -27,13 +27,17 @@ import ColumnCard from '$lib/components/ColumnCard.svelte';
  if (!h || h === 'cockpit') return 'datasets';
  // RLS + Visibility merged into Embed/Sharing — redirect legacy hashes
  if (h === 'rls' || h === 'visibility') return 'embed';
+ // Data Source sub-views share the upload page
+ if (h === 'eda' || h === 'quality') return 'upload';
  return h;
  })());
 
 // Persist active tab to URL hash so refresh keeps user on same page
 $effect(() => {
  if (typeof window !== 'undefined' && activeTab) {
- const newHash = '#' + activeTab;
+ // Data Source: hash reflects the active sub-view so refresh stays put
+ const tabHash = activeTab === 'upload' ? (dsView === 'overview' ? 'upload' : dsView) : activeTab;
+ const newHash = '#' + tabHash;
  if (window.location.hash !== newHash) {
  history.replaceState(null, '', window.location.pathname + window.location.search + newHash);
  }
@@ -1321,6 +1325,8 @@ $effect(() => {
  type: string; severity: 'high'|'medium'|'low'|'info';
  table: string; column?: string|null;
  message: string; suggestion: string; count?: number;
+ sample?: string[]; total_rows?: number; impact?: string;
+ root_cause?: string; recoverable?: boolean|null;
  };
  type DqPayload = {
  issues: DqIssue[];
@@ -1417,9 +1423,41 @@ $effect(() => {
  cast_artifact: 'CAST ARTIFACT',
  enum_no_value_map: 'NO ENUM MAP',
  low_codex_confidence: 'LOW METADATA',
+ sci_notation_id: 'CORRUPT ID',
+ type_mismatch: 'TYPE MISMATCH',
  };
  return map[t] || t.toUpperCase();
  }
+
+ // Mute (dismiss) issues — persisted per project in localStorage.
+ let dqMuted = $state<string[]>([]);
+ function _dqMuteKey() { return `dq-muted-${slug}`; }
+ function dqLoadMuted() {
+ try { dqMuted = JSON.parse(localStorage.getItem(_dqMuteKey()) || '[]'); } catch { dqMuted = []; }
+ }
+ function dqIssueKey(it: DqIssue): string { return `${it.type}|${it.table}|${it.column || ''}`; }
+ function dqToggleMute(it: DqIssue) {
+ const k = dqIssueKey(it);
+ dqMuted = dqMuted.includes(k) ? dqMuted.filter(x => x !== k) : [...dqMuted, k];
+ try { localStorage.setItem(_dqMuteKey(), JSON.stringify(dqMuted)); } catch {}
+ }
+ function dqIsMuted(it: DqIssue): boolean { return dqMuted.includes(dqIssueKey(it)); }
+
+ // Group filtered (non-muted) issues by severity, in severity order.
+ const DQ_SEV_ORDER = ['high', 'medium', 'low', 'info'] as const;
+ function dqGroups(): { sev: string; items: DqIssue[] }[] {
+ const all = dqFilteredIssues().filter(it => dqShowMuted || !dqIsMuted(it));
+ return DQ_SEV_ORDER
+ .map(sev => ({ sev, items: all.filter(it => it.severity === sev) }))
+ .filter(g => g.items.length);
+ }
+ let dqShowMuted = $state(false);
+ function dqActiveCount(): number { return dqFilteredIssues().filter(it => !dqIsMuted(it)).length; }
+
+ // Actions
+ function dqReupload() { activeTab = 'upload'; dsView = 'overview'; dsUploadOpen = true;
+ if (typeof document !== 'undefined') setTimeout(() => document.querySelector('.dsx-drop')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 100); }
+ function dqOpenEda(it: DqIssue) { dsGoView('eda'); loadEda(it.table); if (it.column) edaCol = it.column; }
 
  function openDataQualityForTable(tname: string) {
  activeTab = 'upload';
@@ -4846,10 +4884,6 @@ function signUserJWT($user) {
  { id: 'brain-rules', label: 'RULES' },
  { id: 'brain-graph', label: 'GRAPH' },
  { id: 'brain-schema', label: 'SCHEMA' },
- { id: 'brain-org', label: 'ORG' },
- { id: 'brain-promote', label: 'PROMOTE' },
- { id: 'brain-pull', label: 'PULL' },
- { id: 'brain-conflicts', label: 'CONFLICTS' },
  { id: 'knowledge', label: 'FILES' },
  { id: 'training', label: 'TRAINING' },
  { id: 'docs', label: 'DOCS' },
@@ -4966,8 +5000,10 @@ function signUserJWT($user) {
 
  onMount(async () => {
  // Top-nav Upload link changes the hash while already on this page — switch tab.
- const _onHash = () => { let h = window.location.hash.slice(1); if (!h || h === 'cockpit') h = 'datasets'; if (h !== activeTab) activeTab = h; };
+ const _onHash = () => { let h = window.location.hash.slice(1); if (!h || h === 'cockpit') h = 'datasets'; if (h === 'eda' || h === 'quality') { dsGoView(h as 'eda'|'quality'); h = 'upload'; } else if (h === 'upload') { dsView = 'overview'; } if (h !== activeTab) activeTab = h; };
  window.addEventListener('hashchange', _onHash);
+ // Restore Data Source sub-view data when landing directly on #eda / #quality.
+ if (activeTab === 'upload' && dsView !== 'overview') dsGoView(dsView);
  // Critical: wait only for project detail so shell + tabs render fast.
  await loadDetail();
  loading = false;
@@ -5031,6 +5067,8 @@ function signUserJWT($user) {
 
  async function loadDetail() {
  try {
+ loadChemStats(); // fire-and-forget: live substitute count for AgentFlow KG card
+ if (!dsData) loadDataSource(); // fire-and-forget: live site count for AgentFlow
  const [pRes, dRes] = await Promise.all([
  fetch(`/api/projects/${slug}`, { headers: _h() }),
  fetch(`/api/projects/${slug}/detail`, { headers: _h() }),
@@ -5457,8 +5495,61 @@ function signUserJWT($user) {
  // Data Source sub-tabs
  let dsTab = $state<'upload'|'quality'|'history'>('upload');
 
+ // Data Source inner LEFT sub-rail: overview | eda | quality (persisted in URL hash)
+ let dsView = $state<'overview'|'eda'|'quality'>((() => {
+   if (typeof window === 'undefined') return 'overview';
+   const h = window.location.hash.slice(1);
+   return h === 'eda' ? 'eda' : h === 'quality' ? 'quality' : 'overview';
+ })());
+ let edaTable = $state('');
+ let edaData = $state<any>(null);
+ let edaLoading = $state(false);
+ let edaCol = $state<string | null>(null);   // expanded column row
+ async function loadEda(tbl: string = '') {
+   edaLoading = true; edaCol = null;
+   try {
+     const qs = tbl ? `?table=${encodeURIComponent(tbl)}` : '';
+     const r = await fetch(`/api/projects/${slug}/eda${qs}`, { headers: _h() });
+     if (r.ok) {
+       edaData = await r.json();
+       edaTable = edaData?.table || tbl || '';
+     }
+   } catch {} finally { edaLoading = false; }
+ }
+ function dsGoView(v: 'overview'|'eda'|'quality') {
+   dsView = v;
+   if (v === 'eda' && !edaData) loadEda(edaTable);
+   if (v === 'quality') { dqLoadMuted(); if (!dqLoaded) loadDataQuality(false); }
+ }
+ // Quality roll-up across all tables (derived from dsData)
+ const qualityRollup = $derived.by(() => {
+   const tables = (dsData?.tables || []) as any[];
+   const issues: any[] = [];
+   for (const t of tables) {
+     const q = t.quality || {};
+     for (const n of (q.notes || [])) {
+       const lc = String(n).toLowerCase();
+       const sev = (lc.includes('corrupt') || lc.includes('1e+12') || lc.includes('mismatch')) ? 'CRIT'
+                 : (lc.includes('null') || lc.includes('missing') || lc.includes('duplicate')) ? 'WARN' : 'INFO';
+       issues.push({ table: t.name, note: n, sev, rows: t.rows || 0 });
+     }
+   }
+   const sevRank: any = { CRIT: 0, WARN: 1, INFO: 2 };
+   issues.sort((a, b) => sevRank[a.sev] - sevRank[b.sev]);
+   const scores = tables.map(t => t.quality?.score ?? 0).filter((s: number) => s > 0);
+   const overall = scores.length ? Math.round(scores.reduce((a: number, b: number) => a + b, 0) / scores.length) : 0;
+   return { issues, overall, tables };
+ });
+
  // ═══ NEW Data Source (mixed design: health rings + pipeline + expandable rows) ═══
  let dsData = $state<any>(null);
+ let chemSubs = $state(0); // drugs-with-substitutes count for AgentFlow KG card (live, replaces hardcoded 41,042)
+ async function loadChemStats() {
+   try {
+     const r = await fetch(`/api/projects/${slug}/chemist`, { headers: _h() });
+     if (r.ok) { const d = await r.json(); chemSubs = Number(d?.drugs_with_substitutes || 0); }
+   } catch {}
+ }
  let dsLoading = $state(false);
  let dsExpanded = $state<string | null>(null);
  let dsSort = $state<'health'|'rows'|'name'|'trained'>('health');
@@ -5520,9 +5611,17 @@ function signUserJWT($user) {
    } catch {}
  }
 
- function dsTrainAll() {
-   const names = (dsData?.tables || []).map((t: any) => t.name);
+ async function dsTrainAll() {
+   let names = (dsData?.tables || []).map((t: any) => t.name);
+   if (!names.length) {
+     // training tab may open before the data-source view loaded dsData — fetch table list now
+     try {
+       const r = await fetch(`/api/projects/${slug}/datasource`, { headers: _h() });
+       if (r.ok) { const d = await r.json(); names = (d?.tables || []).map((t: any) => t.name); }
+     } catch {}
+   }
    if (names.length) dsTrainTables(names);
+   else alert('No data tables found to train.');
  }
 
  async function dsDeleteTable(name: string) {
@@ -6460,8 +6559,29 @@ function signUserJWT($user) {
  });
 </script>
 
-<div class="set-shell" class:set-shell-norail={activeTab === 'upload'}>
-  {#if activeTab !== 'upload'}
+<div class="set-shell">
+  {#if activeTab === 'upload'}
+  <!-- Data Source dedicated rail (Overview / EDA / Quality) — same .set-rail style as all screens -->
+  <aside class="set-rail">
+    <div class="set-rail-group">
+      <div class="set-rail-grouplabel">DATA SOURCE</div>
+      <button data-tab="ds-overview" class:active={dsView==='overview'} onclick={() => dsGoView('overview')}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span>Overview</span>
+        {#if dsData?.summary?.tables}<span class="set-rail-count">{dsData.summary.tables}</span>{/if}
+      </button>
+      <button data-tab="ds-eda" class:active={dsView==='eda'} onclick={() => dsGoView('eda')}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6"/><rect x="12" y="7" width="3" height="10"/><rect x="17" y="13" width="3" height="4"/></svg>
+        <span>EDA</span>
+      </button>
+      <button data-tab="ds-quality" class:active={dsView==='quality'} onclick={() => dsGoView('quality')}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        <span>Quality</span>
+        {#if qualityRollup.issues.length}<span class="set-rail-count">{qualityRollup.issues.length}</span>{/if}
+      </button>
+    </div>
+  </aside>
+  {:else}
   <aside class="set-rail">
     {#if !loading}
     {@const railTabs = tabs}
@@ -6482,10 +6602,6 @@ function signUserJWT($user) {
         { id: 'brain-rules', label: 'Rules' },
         { id: 'brain-graph', label: 'Graph' },
         { id: 'brain-schema', label: 'Schema' },
-        { id: 'brain-org', label: 'Org' },
-        { id: 'brain-promote', label: 'Promote ⤴' },
-        { id: 'brain-pull', label: 'Pull ⤓' },
-        { id: 'brain-conflicts', label: 'Conflicts ⚠' },
       ]},
       { label: 'Agents', icon: 'agents', items: [
         { id: 'agents', label: 'Agents' },
@@ -6493,12 +6609,8 @@ function signUserJWT($user) {
         { id: 'evals', label: 'Evals' },
       ]},
       { label: 'Sharing', icon: 'sharing', items: [
-        { id: 'users', label: 'Users' },
-        { id: 'config', label: 'Config' },
-        { id: 'embed', label: 'Embed' },
         { id: 'rls', label: 'RLS' },
         { id: 'visibility', label: 'Visibility' },
-        { id: 'sources', label: 'Sources' },
       ]},
       { label: 'Intelligence', icon: 'intel', items: [
         { id: 'self-learn', label: 'Learn' },
@@ -6518,6 +6630,15 @@ function signUserJWT($user) {
             <button data-tab={it.id} class:active={activeTab === it.id} onclick={(e) => { activeTab = it.id; logTabSwitch(it.id); if (it.id === 'lineage' && detail?.tables) { for (const t of detail.tables) loadTableDetail(t.name); } if (it.id === 'fed-health') loadFedHealth(); if (it.id === 'rls' && !rlsConfig) { loadRlsConfig(); loadRlsSchemaHints(); } /* agent-template API removed (single-agent): loadAgentTpl() dropped — its panel is gated on agentTplStatus?.applied (stays null), so skipping avoids 3 dead /agent-template 404s on Cockpit open */ if (it.id === 'upload') { loadDataSource(); if (!dqLoaded) loadDataQuality(false); } if (it.id === 'pipeline') { loadTrainingSteps(); loadTrainingRuns(); } if (it.id === 'datasets') { try { inspectsBatchLoaded = false; } catch {} if (!detail) { loadDetail()?.catch?.(()=>{}); } if (!extractionPlansLoaded) loadExtractionPlans(); } try { (e.currentTarget as HTMLElement)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch {} }}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 {#if it.id === 'cockpit'}<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2" fill="currentColor"/>
+                {:else if it.id === 'brain-definitions'}<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+                {:else if it.id === 'brain-glossary'}<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3.2" y1="6" x2="3.3" y2="6"/><line x1="3.2" y1="12" x2="3.3" y2="12"/><line x1="3.2" y1="18" x2="3.3" y2="18"/>
+                {:else if it.id === 'brain-patterns'}<circle cx="5" cy="5" r="1.3"/><circle cx="12" cy="5" r="1.3"/><circle cx="19" cy="5" r="1.3"/><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/><circle cx="5" cy="19" r="1.3"/><circle cx="12" cy="19" r="1.3"/><circle cx="19" cy="19" r="1.3"/>
+                {:else if it.id === 'brain-rules'}<path d="M12 3v18"/><path d="M5 7h14"/><path d="M5 7l-3 6a3 3 0 0 0 6 0z"/><path d="M19 7l-3 6a3 3 0 0 0 6 0z"/><path d="M8 21h8"/>
+                {:else if it.id === 'brain-schema'}<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="21"/><line x1="15" y1="9" x2="15" y2="21"/>
+                {:else if it.id === 'brain-org'}<rect x="9" y="2" width="6" height="5" rx="1"/><rect x="3" y="17" width="6" height="5" rx="1"/><rect x="15" y="17" width="6" height="5" rx="1"/><path d="M12 7v4M6 17v-3h12v3"/>
+                {:else if it.id === 'brain-promote'}<path d="M12 19V5"/><path d="M5 12l7-7 7 7"/>
+                {:else if it.id === 'brain-pull'}<path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/>
+                {:else if it.id === 'brain-conflicts'}<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
                 {:else if it.id.startsWith('brain-')}<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><line x1="7.5" y1="7.5" x2="10.5" y2="16"/><line x1="16.5" y1="7.5" x2="13.5" y2="16"/><line x1="8.5" y1="6" x2="15.5" y2="6"/>
                 {:else if it.id === 'datasets'}<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
                 {:else if it.id === 'data-quality'}<path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="9"/>
@@ -6573,13 +6694,15 @@ function signUserJWT($user) {
       </p>
     </div>
     <div class="set-head-actions">
-      <a class="set-ghost" href="{base}/projects" style="text-decoration: none;">← Projects</a>
       {#if canEdit && activeTab === 'cockpit'}
         {#if isTraining}
           <button class="set-cta" style="background: var(--pw-error); border-color: var(--pw-error);" onclick={stopTraining}>■ Stop training</button>
         {:else}
           <button class="set-cta" onclick={() => { openQualityReview(); }}><Icon name="zap" size={14} /> Train all</button>
         {/if}
+      {/if}
+      {#if canEdit}
+        <button class="set-cta" disabled={isTraining} onclick={() => { if (!isTraining && confirm('Force-train ALL tables now? Re-runs the full pipeline (slow) and refreshes bilingual (EN+မြန်မာ) twins at the end.')) dsTrainAll(); }}><Icon name="zap" size={14} /> {isTraining ? 'Training…' : 'Force Train All'}</button>
       {/if}
       <button class="set-ghost" onclick={() => { loadResourceRegistry(); loadRecentActivity(); }}>↻ Refresh</button>
       <a class="set-ghost" href="{base}/project/{slug}" style="text-decoration: none;"><Icon name="message-circle" size={14} /> Chat</a>
@@ -7208,6 +7331,10 @@ function signUserJWT($user) {
       wiki={docs.length}
       memory={brainMemories.length}
       datasets={detail?.tables?.length || 0}
+      catalog={(detail?.tables || []).find((t: any) => /articl|catalog|drug|product/i.test(t.name))?.rows || 0}
+      stock={(detail?.tables || []).find((t: any) => /stock|balance|inventory/i.test(t.name))?.rows || 0}
+      sites={dsData?.summary?.sites || 0}
+      substitutes={chemSubs}
     />
 
     <!-- ═══ ONE COMPACT COCKPIT HEADER ═══ -->
@@ -7388,6 +7515,8 @@ function signUserJWT($user) {
 
     {#if activeTab === 'upload'}
     <input type="file" accept=".csv,.xlsx,.xls,.json,.sql,.md,.txt,.py,.pptx,.docx,.pdf,.jpg,.jpeg,.png,.tiff,.bmp,.gif,.webp,.parquet,.ods,.xml,.html,.htm,.zip,.eml" multiple onchange={(e) => { const files = (e.target as HTMLInputElement).files; if (files && files.length > 0) routeUpload(files); }} bind:this={fileInputEl} style="display: none;" />
+
+    {#if dsView === 'overview'}
     <!-- ═══ HEALTH RINGS ═══ -->
     {#if true}
     {@const _ds = dsData?.summary || {}}
@@ -7490,6 +7619,179 @@ function signUserJWT($user) {
       {/each}
       {#if dsData && !dsSortedTables().length}<div class="dsx-empty">no tables{dsFilter ? ' match filter' : ' — upload data to begin'}</div>{/if}
     </div>
+
+    {:else if dsView === 'eda'}
+    <!-- ═══ EDA — per-column profiling (live SQL scan) ═══ -->
+    <div class="dsx-eda-head">
+      <span class="dsx-eda-title">Exploratory analysis</span>
+      <select class="dsx-sortsel" value={edaTable} onchange={(e) => loadEda((e.target as HTMLSelectElement).value)}>
+        {#each (edaData?.tables || (dsData?.tables || []).map((t:any)=>t.name)) as tn}
+          <option value={tn}>{tn}</option>
+        {/each}
+      </select>
+      <button class="dsx-btn" onclick={() => loadEda(edaTable)}>↻ rescan</button>
+      <div class="dsx-tb-sp"></div>
+      {#if edaData}<span class="dsx-eda-meta">{(edaData.rows||0).toLocaleString()} rows · {(edaData.columns||[]).length} cols{#if edaData.dup_rows} · {edaData.dup_rows.toLocaleString()} dup rows{/if}{#if edaData.rows > 50000} · <i title="profiled over a 20k-row sample">sampled 20k</i>{/if}</span>{/if}
+    </div>
+
+    {#if edaLoading}<div class="dsx-empty">scanning columns…</div>
+    {:else if !edaData || !(edaData.columns||[]).length}<div class="dsx-empty">no column data</div>
+    {:else}
+      <div class="dsx-rows">
+        <div class="dsx-row dsx-edahead">
+          <span>COLUMN</span><span>TYPE</span><span>NULL%</span><span>DISTINCT</span><span>PROFILE</span>
+        </div>
+        {#each edaData.columns as c}
+          {@const isUnique = c.distinct >= (edaData.rows > 50000 ? 20000 : edaData.rows) && edaData.rows > 0}
+          <div class="dsx-row dsx-edarow dsx-rowclk" onclick={() => edaCol = edaCol === c.name ? null : c.name}>
+            <span class="dsx-tname">{edaCol === c.name ? '▾' : '▸'} {c.name}</span>
+            <span class="dsx-edatype">{c.type}</span>
+            <span><span class="dsx-nullbadge" class:hi={(c.null_pct||0) >= 10}>{(c.null_pct ?? 0)}%</span></span>
+            <span>{(c.distinct ?? 0).toLocaleString()}</span>
+            <span class="dsx-edaprofile">
+              {#if isUnique}<i class="dsx-uniq">▕ unique</i>
+              {:else if c.mean !== null && c.mean !== undefined}μ {Number(c.mean).toLocaleString()} · {c.min ?? '—'} … {c.max ?? '—'}
+              {:else if c.top && c.top.length}top: {c.top[0].val} ({c.top[0].pct}%)
+              {:else if c.avg_len}avg len {c.avg_len}{/if}
+            </span>
+          </div>
+          {#if edaCol === c.name}
+            <div class="dsx-detail">
+              <div class="dsx-dsec"><b>STATS</b>
+                type {c.type} · {(c.distinct ?? 0).toLocaleString()} distinct · {(c.null_pct ?? 0)}% null
+                {#if c.mean !== null && c.mean !== undefined} · mean {Number(c.mean).toLocaleString()} · min {c.min ?? '—'} · max {c.max ?? '—'}{/if}
+                {#if c.avg_len} · avg length {c.avg_len} chars{/if}
+              </div>
+              {#if c.top && c.top.length}
+                <div class="dsx-dsec"><b>TOP VALUES</b>
+                  <div class="dsx-qbars">
+                    {#each c.top as tv}
+                      <div class="dsx-qbar"><span title={tv.val}>{tv.val}</span><div class="dsx-qtrk"><div class="dsx-qfill" style="width:{Math.min(100, tv.pct)}%"></div></div><i>{tv.pct}%</i></div>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
+            </div>
+          {/if}
+        {/each}
+      </div>
+    {/if}
+
+    {:else if dsView === 'quality'}
+    <!-- ═══ QUALITY — detailed error scanner (rich dqData) ═══ -->
+    <div id="dq-section" class="dsx-eda-head">
+      <span class="dsx-eda-title">Data quality</span>
+      <div class="dsx-tb-sp"></div>
+      {#if dqData?.last_scanned}<span class="dsx-eda-meta">last scan {new Date(dqData.last_scanned).toLocaleTimeString()}</span>{/if}
+      <button class="dsx-btn" disabled={dqRescanning} onclick={rescanDataQuality}>{dqRescanning ? '◐ scanning…' : '⟳ rescan'}</button>
+    </div>
+
+    {#if dqLoading && !dqData}
+      <div class="dsx-empty">scanning tables for issues…</div>
+    {:else if dqData}
+      {@const _bs = dqData.by_severity || {high:0,medium:0,low:0,info:0}}
+      {@const _active = dqActiveCount()}
+      {@const _blockers = (dqData.issues || []).filter(it => it.recoverable === false && !dqIsMuted(it))}
+      <!-- blocking banner: unrecoverable data that breaks the product -->
+      {#if _blockers.length}
+        <div class="dq-blocker">
+          <div class="dq-blocker-h">⛔ {_blockers.length} blocking data issue{_blockers.length>1?'s':''} — answers will be wrong until fixed at source</div>
+          {#each _blockers as b}
+            <div class="dq-blocker-row"><code>{b.table}{#if b.column}.{b.column}{/if}</code> — {dqTypeLabel(b.type).toLowerCase()}: must re-export from the source system (cannot be fixed in-place).</div>
+          {/each}
+        </div>
+      {/if}
+      <!-- score + severity chips -->
+      <div class="dq-top">
+        <div class="dq-score" style="--c:{dqScoreColor(dqData.score)}">
+          <div class="dq-score-n">{dqData.score}</div><div class="dq-score-l">/100</div>
+        </div>
+        <div class="dq-topright">
+          <div class="dsx-qtrk dsx-qtrk-lg"><div class="dsx-qfill" style="width:{dqData.score}%; background:{dqScoreColor(dqData.score)}"></div></div>
+          <div class="dq-chips">
+            <button class="dq-chip" class:on={dqSeverityFilter==='all'} onclick={() => dqSeverityFilter='all'}>all <b>{_active}</b></button>
+            <button class="dq-chip dq-chip-high" class:on={dqSeverityFilter==='high'} onclick={() => dqSeverityFilter='high'}>● high <b>{_bs.high}</b></button>
+            <button class="dq-chip dq-chip-med" class:on={dqSeverityFilter==='medium'} onclick={() => dqSeverityFilter='medium'}>◐ medium <b>{_bs.medium}</b></button>
+            <button class="dq-chip dq-chip-low" class:on={dqSeverityFilter==='low'} onclick={() => dqSeverityFilter='low'}>○ low <b>{_bs.low}</b></button>
+            <button class="dq-chip dq-chip-info" class:on={dqSeverityFilter==='info'} onclick={() => dqSeverityFilter='info'}>ⓘ info <b>{_bs.info}</b></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- filters -->
+      <div class="dq-filters">
+        <select class="dsx-sortsel" bind:value={dqTableFilter}>
+          <option value="">all tables</option>
+          {#each Object.keys(dqData.by_table || {}) as tn}<option value={tn}>{tn} ({dqData.by_table[tn]})</option>{/each}
+        </select>
+        <div class="dsx-tb-sp"></div>
+        <label class="dq-mutetoggle"><input type="checkbox" bind:checked={dqShowMuted} /> show muted</label>
+      </div>
+
+      <!-- grouped issue cards -->
+      {#if dqGroups().length}
+        {#each dqGroups() as grp}
+          <div class="dq-grp dq-grp-{grp.sev}">
+            <div class="dq-grphead"><span class="dq-grpdot">{dqSeverityIcon(grp.sev)}</span> {grp.sev.toUpperCase()} <span class="dq-grpn">{grp.items.length}</span></div>
+            {#each grp.items as it (dqIssueKey(it))}
+              {@const _k = dqIssueKey(it)}
+              {@const _open = !!dqExpanded[_k]}
+              {@const _muted = dqIsMuted(it)}
+              <div class="dq-card dq-card-{it.severity}" class:muted={_muted}>
+                <button class="dq-cardhead" onclick={() => dqExpanded = {...dqExpanded, [_k]: !_open}}>
+                  <span class="dq-caret">{_open ? '▾' : '▸'}</span>
+                  <span class="dq-dot" style="color:{dqSeverityColor(it.severity)}">{dqSeverityIcon(it.severity)}</span>
+                  <span class="dq-type">{dqTypeLabel(it.type)}</span>
+                  <span class="dq-loc">{it.table}{#if it.column} · <b>{it.column}</b>{/if}</span>
+                  <span class="dq-spacer"></span>
+                  {#if it.recoverable === false}<span class="dq-deadtag">⛔ unrecoverable</span>{/if}
+                  {#if it.count}<span class="dq-count">{it.count > 100 ? it.count.toLocaleString() : it.count}{it.type==='high_null_pct'?'% null':(it.total_rows?` / ${it.total_rows.toLocaleString()}`:'')}</span>{/if}
+                  {#if _muted}<span class="dq-mutedtag">muted</span>{/if}
+                </button>
+                {#if _open}
+                  <div class="dq-cardbody">
+                    <div class="dq-msg">{it.message}</div>
+                    {#if it.root_cause}
+                      <div class="dq-row"><span class="dq-rk">ROOT CAUSE</span><span class="dq-rootcause">{it.root_cause}</span></div>
+                    {/if}
+                    {#if it.recoverable === false}
+                      <div class="dq-deadbanner">⛔ Data is unrecoverable from this file — must re-export from the source system.</div>
+                    {/if}
+                    {#if it.total_rows}
+                      <div class="dq-row"><span class="dq-rk">AFFECTED</span><span>{(it.count||0).toLocaleString()} / {it.total_rows.toLocaleString()} rows{#if it.total_rows && it.type!=='high_null_pct'} ({Math.min(100,Math.round(100*(it.count||0)/it.total_rows))}%){/if}</span></div>
+                    {/if}
+                    {#if it.sample && it.sample.length}
+                      <div class="dq-row"><span class="dq-rk">SAMPLE</span><span class="dq-samples">{#each it.sample as sv}<code class="dq-sample">{sv}</code>{/each}</span></div>
+                    {/if}
+                    {#if it.impact}
+                      <div class="dq-row"><span class="dq-rk">IMPACT</span><span class="dq-impact">{it.impact}</span></div>
+                    {/if}
+                    {#if it.suggestion}
+                      <div class="dq-row dq-fix"><span class="dq-rk">⮑ FIX</span><span>{it.suggestion}</span></div>
+                    {/if}
+                    <div class="dq-acts">
+                      <button class="dsx-btn" onclick={dqReupload}>{it.recoverable === false ? '↑ upload re-exported file' : '↑ re-upload'}</button>
+                      {#if it.column}<button class="dsx-btn" onclick={() => dqOpenEda(it)}>open in EDA</button>{/if}
+                      <button class="dsx-btn" onclick={() => dqToggleMute(it)}>{_muted ? 'unmute' : 'mute'}</button>
+                    </div>
+                  </div>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        {/each}
+      {:else}
+        <div class="dsx-empty">{_active === 0 && dqData.issue_count ? 'all issues muted — toggle “show muted”' : 'no issues — all tables pass quality checks ✓'}</div>
+      {/if}
+
+      <!-- by-type footer -->
+      {#if dqData.by_type && Object.keys(dqData.by_type).length}
+        <div class="dq-bytype">BY TYPE&nbsp; {#each Object.entries(dqData.by_type) as [ty, n], i}{#if i}· {/if}{dqTypeLabel(ty).toLowerCase()} {n} {/each}</div>
+      {/if}
+    {:else}
+      <div class="dsx-empty">no scan yet — press ⟳ rescan</div>
+    {/if}
+    {/if}<!-- end dsView -->
 
     {/if}<!-- end upload tab -->
   <!-- ═══ BRAIN (unified hub, shared with /ui/brain) — rail item drives the category ═══ -->
@@ -7833,7 +8135,7 @@ function signUserJWT($user) {
     <div class="flex items-center justify-between mb-4">
       <div style="font-size: 16px; font-weight: 900; text-transform: uppercase;">Agent Brain</div>
       <div class="flex gap-2">
-        <button class="send-btn" style="font-size: 10px; padding: 6px 14px;" onclick={() => { window.dispatchEvent(new CustomEvent('dash-train-all')); }}>RETRAIN AGENT</button>
+        <button class="send-btn" style="font-size: 10px; padding: 6px 14px;" disabled={isTraining} onclick={() => { if ((dsData?.tables||[]).length && confirm('Force-train ALL tables now? Re-runs the full pipeline (slow) and refreshes bilingual twins.')) dsTrainAll(); }}>{isTraining ? 'TRAINING…' : 'RETRAIN AGENT (FORCE ALL)'}</button>
         <button class="feedback-btn" style="font-size: 10px; padding: 6px 14px; font-weight: 700;" onclick={async () => {
           try { const r = await fetch(`/api/projects/${slug}/quality-check`, { method: 'POST', headers: _h() }); if (r.ok) { const d = await r.json(); alert(`Checked ${d.tables_checked} tables. Found ${d.issues.length} issues.`); } } catch {}
         }}>QUALITY CHECK</button>
@@ -7931,11 +8233,14 @@ function signUserJWT($user) {
     <div style="font-size: 12px; font-weight: 900; text-transform: uppercase; margin-bottom: 8px; margin-top: 16px;">AGENT MEMORIES</div>
     <div class="flex gap-2 items-end mb-3">
       <input type="text" bind:value={newMemoryFact} placeholder="Add a fact the agent should remember..." style="flex: 1; border: 2px solid var(--pw-ink); padding: 5px 10px; font-family: var(--pw-font-body); font-size: 11px; background: var(--pw-surface);" />
+<!-- single-tenant: scope picker hidden, all memories land in the one shared brain (newMemoryScope pinned to 'project'). Un-hide to restore tiers. -->
+{#if false}
       <select bind:value={newMemoryScope} style="border: 2px solid var(--pw-ink); padding: 5px 8px; font-family: var(--pw-font-body); font-size: 10px; background: var(--pw-surface);">
         <option value="project">PROJECT</option>
         <option value="personal">PERSONAL</option>
         <option value="global">GLOBAL</option>
       </select>
+{/if}
       <button class="feedback-btn" style="font-size: 11px; font-weight: 700; padding: 5px 10px;" onclick={async () => {
         if (!newMemoryFact) return;
         await fetch(`/api/projects/${slug}/memories`, { method: 'POST', headers: { ..._h(), 'Content-Type': 'application/json' }, body: JSON.stringify({ fact: newMemoryFact, scope: newMemoryScope }) });
@@ -7944,10 +8249,17 @@ function signUserJWT($user) {
     </div>
     {#if brainMemories.length > 0}
       <div class="cli-terminal" style="padding: 10px 14px; margin-bottom: 16px;">
-        {#each brainMemories as m}
+        {#each brainMemories.filter((m) => m.lang !== 'my' && m.source !== 'bilingual_twin') as m}
           <div class="cli-line">
             <span style="color: #cc7a00;">&#9679;</span>
-            <span class="cli-output">{m.fact}</span>
+            {#if m.fact_my}
+              <span class="cli-output" style="display: flex; flex-direction: column; gap: 3px;">
+                <span style="display: flex; align-items: baseline; gap: 6px;"><span class="bi-badge">1</span><span>{m.fact}</span></span>
+                <span style="display: flex; align-items: baseline; gap: 6px;"><span class="bi-badge">2</span><span lang="my" style="color: var(--pw-muted);">{m.fact_my}</span></span>
+              </span>
+            {:else}
+              <span class="cli-output">{m.fact}</span>
+            {/if}
             <span class="cli-dim" style="margin-left: auto; font-size: 11px;">{m.scope}</span>
             {#if canEdit}<button onclick={async () => { await fetch(`/api/projects/${slug}/memories/${m.id}`, { method: 'DELETE', headers: _h() }); await loadBrainData(); }} style="background: none; border: none; color: var(--pw-muted); cursor: pointer; font-size: 10px; margin-left: 4px;">&#10005;</button>{/if}
           </div>
@@ -7961,10 +8273,17 @@ function signUserJWT($user) {
     {#if brainPatterns.length > 0}
       <div style="font-size: 12px; font-weight: 900; text-transform: uppercase; margin-bottom: 8px;">PROVEN QUERIES ({brainPatterns.length})</div>
       <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px;">
-        {#each brainPatterns.slice(0, 8) as p}
+        {#each brainPatterns.filter((p) => p.lang !== 'my' && p.source !== 'bilingual_twin').slice(0, 8) as p}
           <div class="ink-border" style="background: var(--pw-surface); padding: 10px 14px;">
             <div class="flex items-center justify-between">
-              <div style="font-size: 11px; font-weight: 900; color: var(--pw-accent);">Q: {p.question}</div>
+              {#if p.question_my}
+                <div style="font-size: 11px; font-weight: 900; color: var(--pw-accent); display: flex; flex-direction: column; gap: 3px;">
+                  <span style="display: flex; align-items: baseline; gap: 6px;"><span class="bi-badge">1</span><span>Q: {p.question}</span></span>
+                  <span style="display: flex; align-items: baseline; gap: 6px;"><span class="bi-badge">2</span><span lang="my" style="color: var(--pw-muted); font-weight: 700;">{p.question_my}</span></span>
+                </div>
+              {:else}
+                <div style="font-size: 11px; font-weight: 900; color: var(--pw-accent);">Q: {p.question}</div>
+              {/if}
               <span style="font-size: 11px; color: var(--pw-muted);">used {p.uses}x</span>
             </div>
             <pre style="margin-top: 6px; padding: 10px 12px; font-family: var(--pw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 12px; line-height: 1.5; color: var(--pw-ink); background: var(--pw-bg-alt); border: 1px solid var(--pw-border); border-radius: var(--pw-radius-sm, 6px); white-space: pre-wrap; word-break: break-word; overflow-x: auto;">{p.sql}</pre>
@@ -8545,7 +8864,7 @@ function signUserJWT($user) {
     {@const _stateOf = (a:any) => a.state || (a.status === 'active' ? 'active' : 'ready')}
     {@const _activeN = _agents.filter((a:any) => _stateOf(a) === 'active').length}
     {@const _readyN = _agents.filter((a:any) => _stateOf(a) === 'ready').length}
-    {@const _needN = _agents.filter((a:any) => _stateOf(a) === 'needs_setup').length}
+    {@const _needN = _agents.filter((a:any) => _stateOf(a) === 'needs_setup' || _stateOf(a) === 'idle').length}
     {@const _errN = _agents.filter((a:any) => _stateOf(a) === 'error').length}
 
     <!-- Slim CLI banner -->
@@ -8579,39 +8898,46 @@ function signUserJWT($user) {
 <span style="color: #888;">                                  </span><span style="color: #e8e3d6;">│   LEADER    │</span>  <span style="color: #10b981;">● ACTIVE</span>  <span style="color: #666;">TeamMode.coordinate</span>
 <span style="color: #888;">                                  </span><span style="color: #e8e3d6;">│ Coordinator │</span>  <span style="color: #666;">FAST/DEEP auto-select</span>
 <span style="color: #888;">                                  </span><span style="color: #e8e3d6;">└──┬──────────┘</span>
-<span style="color: #555;">      ┌──────────┬────────────┬────────────┬──────────┬──────────┬──────────┐</span>
-<span style="color: #555;">      ▼          ▼            ▼            ▼          ▼          ▼          ▼</span>
-<span style="color: #f9a374;">  Analyst    Engineer   Researcher    Customer    Verticals  Extended    Visual</span>
-<span style="color: #666;">  SQL/RO     WRITE      docs RAG      Strategist  (4 agents) (7 agents)  charts</span>
-<span style="color: #3a8dff;">  ◐ READY    ◐ READY    ○ IDLE        ◐ READY     ○ IDLE     ◐ READY    ◐ READY</span>
-<span style="color: #666;">  23 tools   5 tools                  9 tools     opt-in                 ECharts</span>
-<span style="color: #888;">      │                                                       │</span>
-<span style="color: #888;">      │ auto-fire by keyword                                  │ chat-routed</span>
-<span style="color: #555;">      ▼                                                       ▼</span>
-<span style="color: #e8e3d6;">  ┌─────────────────────────────────┐    ┌─────────────────────────────────┐</span>
-<span style="color: #e8e3d6;">  │</span> <span style="color: #c96342;">SPECIALISTS (10)</span> — Analyst tls <span style="color: #e8e3d6;">│    │</span> <span style="color: #c96342;">EXTENDED TEAM (7)</span>              <span style="color: #e8e3d6;">│</span>
-<span style="color: #e8e3d6;">  │                                 │    │                                 │</span>
-<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Comparator</span>     <span style="color: #666;">"compare/vs"</span>   <span style="color: #e8e3d6;">│    │</span> <span style="color: #f9a374;">Docs</span>      LLMs.txt + web doc  <span style="color: #e8e3d6;">│</span>
-<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Diagnostician</span>  <span style="color: #666;">"why/caused"</span>   <span style="color: #e8e3d6;">│    │</span> <span style="color: #f9a374;">Helpdesk</span>  IT-ops + HITL guard <span style="color: #e8e3d6;">│</span>
-<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Narrator</span>       <span style="color: #666;">summary</span>        <span style="color: #e8e3d6;">│    │</span> <span style="color: #f9a374;">Feedback</span>  planning concierge  <span style="color: #e8e3d6;">│</span>
-<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Validator</span>      <span style="color: #666;">quality check</span>  <span style="color: #e8e3d6;">│    │</span> <span style="color: #f9a374;">Approvals</span> N-of-M sign-off     <span style="color: #e8e3d6;">│</span>
-<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Planner</span>        <span style="color: #666;">what-if</span>        <span style="color: #e8e3d6;">│    │</span> <span style="color: #f9a374;">Reasoner</span>  DEEP step-by-step    <span style="color: #e8e3d6;">│</span>
-<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Trend Analyst</span>  <span style="color: #666;">time series</span>    <span style="color: #e8e3d6;">│    │</span> <span style="color: #f9a374;">Reporter</span>  PDF/PPTX/Excel gen   <span style="color: #e8e3d6;">│</span>
-<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Pareto</span>         <span style="color: #666;">80/20</span>          <span style="color: #e8e3d6;">│    │</span> <span style="color: #f9a374;">Scheduler</span> cron CRUD via chat  <span style="color: #e8e3d6;">│</span>
-<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Anomaly</span>        <span style="color: #666;">z-score outlier</span><span style="color: #e8e3d6;">│    └─────────────────────────────────┘</span>
-<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Benchmarker</span>    <span style="color: #666;">vs avg</span>         <span style="color: #e8e3d6;">│</span>
-<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Prescriptor</span>    <span style="color: #666;">recommend</span>      <span style="color: #e8e3d6;">│</span>
-<span style="color: #e8e3d6;">  └─────────────────────────────────┘</span>
+<span style="color: #555;">      ┌──────────┬────────────┬────────────┬──────────┐</span>
+<span style="color: #555;">      ▼          ▼            ▼            ▼          ▼</span>
+<span style="color: #f9a374;">  Analyst    Engineer   Researcher    Customer    Visualizer</span>
+<span style="color: #666;">  SQL/RO     WRITE      docs RAG      Strategist  charts</span>
+<span style="color: #3a8dff;">  ● ACTIVE   ● ACTIVE   ◐ READY       </span><span style="color: #666;">○ OFF</span><span style="color: #3a8dff;">         ◐ READY</span>
+<span style="color: #666;">  23 + </span><span style="color: #10b981;">7 pharma</span><span style="color: #666;">  14 tools   7 tools       no cust dat ECharts</span>
+<span style="color: #888;">      │</span>
+<span style="color: #888;">      │ auto-fire by keyword</span>
+<span style="color: #555;">      ▼</span>
+<span style="color: #e8e3d6;">  ┌─────────────────────────────────────┐</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #10b981;">PHARMA TOOLS (7)</span> — on Analyst, core  <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │                                     │</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">stock_check</span>          <span style="color: #666;">branch stock</span>    <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">find_substitutes</span>     <span style="color: #666;">same generic</span>    <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">alternatives_for_indication</span>          <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">drug_relationships</span>   <span style="color: #666;">relations</span>       <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">drug_profile</span>         <span style="color: #666;">comp/ind/dose</span>   <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">substitutes</span>          <span style="color: #666;">by generic</span>      <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">indication_search</span>    <span style="color: #666;">symptom→drug</span>    <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  └─────────────────────────────────────┘</span>
+
+<span style="color: #e8e3d6;">  ┌─────────────────────────────────────┐</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #c96342;">SPECIALISTS (10)</span> — Analyst @tools   <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │                                     │</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Comparator</span>     <span style="color: #666;">"compare/vs"</span>       <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Diagnostician</span>  <span style="color: #666;">"why/caused"</span>       <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Narrator</span>       <span style="color: #666;">summary</span>            <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Validator</span>      <span style="color: #666;">quality check</span>      <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Planner</span>        <span style="color: #666;">what-if</span>            <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Trend Analyst</span>  <span style="color: #666;">time series</span>        <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Pareto</span>         <span style="color: #666;">80/20</span>              <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Anomaly</span>        <span style="color: #666;">z-score outlier</span>    <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Benchmarker</span>    <span style="color: #666;">vs avg</span>             <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Prescriptor</span>    <span style="color: #666;">recommend</span>          <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  └─────────────────────────────────────┘</span>
 
 <span style="color: #e8e3d6;">  ┌─────────────────────────────────────────────────────────────────────┐</span>
-<span style="color: #e8e3d6;">  │</span> <span style="color: #c96342;">VERTICAL AGENTS (4)</span> — opt-in per project · default OFF · cascade-safe <span style="color: #e8e3d6;">│</span>
-<span style="color: #e8e3d6;">  │                                                                     │</span>
-<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Deal Analyst</span>     DCF / IRR / MOIC / sensitivity (VentureDesk)       <span style="color: #e8e3d6;">│</span>
-<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Market Sentinel</span>  competitor news · sector trends · brand sentiment  <span style="color: #e8e3d6;">│</span>
-<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Ops Optimizer</span>    KPI tracking · board reports · 100-day plans       <span style="color: #e8e3d6;">│</span>
-<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">Supply Sentry</span>    single-source · lead time · geopolitical risk      <span style="color: #e8e3d6;">│</span>
-<span style="color: #e8e3d6;">  │                                                                     │</span>
-<span style="color: #e8e3d6;">  │</span> <span style="color: #666;">enable via Settings → CONFIG → toggle vertical capability cards</span>      <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #666;">VERTICAL AGENTS (4)</span> — <span style="color: #ff4040;">OFF</span> for this pharmacy (multi-tenant only)   <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #666;">Deal Analyst · Market Sentinel · Ops Optimizer · Supply Sentry</span>       <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #666;">registered but disabled (feature_config=false) — not in the team</span>     <span style="color: #e8e3d6;">│</span>
 <span style="color: #e8e3d6;">  └─────────────────────────────────────────────────────────────────────┘</span>
 
 <span style="color: #888;">─────── </span><span style="color: #c96342;">ASYNC PIPELINES</span><span style="color: #888;"> (fire after events, non-blocking) ───────</span>
@@ -8656,23 +8982,24 @@ function signUserJWT($user) {
 
 <span style="color: #888;">─────── </span><span style="color: #c96342;">WORKFLOWS</span><span style="color: #888;"> (orchestrated multi-agent, on cron or on-demand) ───────</span>
 
-  <span style="color: #f9a374;">ai_research</span>      <span style="color: #666;">cron 7am</span>   4× Researcher <span style="color: #555;">│parallel│</span> → Reasoner synth
-  <span style="color: #f9a374;">content_pipeline</span> <span style="color: #666;">on-demand</span>  Researcher → Reporter <span style="color: #555;">↻</span> loop max 3× critique
-  <span style="color: #f9a374;">support_triage</span>   <span style="color: #666;">on-demand</span>  Smart Router → specialist → <span style="color: #ff4040;">Helpdesk</span> escalate
+  <span style="color: #666;">Auto-workflows from training (3) — pharma analysis sequences run on demand.</span>
+  <span style="color: #666;">Manage in Settings → Schedules. (Generic ai_research / content_pipeline /</span>
+  <span style="color: #666;">support_triage templates are inactive here — they need removed extended agents.)</span>
 
 <span style="color: #888;">─────── </span><span style="color: #c96342;">TOOLS REGISTRY</span><span style="color: #888;"> (per agent) ───────</span>
 
   <span style="color: #c96342;">CORE</span>
   <span style="color: #f9a374;">Leader</span>            <span style="color: #666;">delegate_to_analyst, delegate_to_engineer, delegate_to_researcher, delegate_to_*</span>
   <span style="color: #f9a374;">Analyst</span>           <span style="color: #666;">run_sql_query, introspect_schema, save_query, search_knowledge, search_all,</span>
-                    <span style="color: #666;">auto_visualize, load_context, discover_tables, calculator, scan_for_pii, think, analyze + 11 specialist tls</span>
+                    <span style="color: #666;">auto_visualize, load_context, discover_tables, calculator, scan_for_pii, think, analyze + 10 specialist tls</span>
+                    <span style="color: #10b981;">+ 7 PHARMA: stock_check, find_substitutes, alternatives_for_indication, drug_relationships,</span>
+                    <span style="color: #10b981;">drug_profile, substitutes, indication_search</span>
   <span style="color: #f9a374;">Engineer</span>          <span style="color: #666;">run_sql_query, introspect_schema, update_knowledge, search_knowledge,</span>
                     <span style="color: #666;">create_dashboard, generate_pdf, generate_pptx, generate_csv, create_schedule,</span>
                     <span style="color: #666;">list_schedules, delete_schedule, enable_schedule, think, analyze</span>
   <span style="color: #f9a374;">Researcher</span>        <span style="color: #666;">search_documents, fetch_doc_chunk, langextract_lookup, kg_lookup,</span>
                     <span style="color: #666;">fetch_llms_txt, web_search, parse_doc_url</span>
-  <span style="color: #f9a374;">Customer Strategist</span> <span style="color: #666;">rfm_score, cohort_curve, next_best_offer, item_affinity, popular_products,</span>
-                    <span style="color: #666;">clv_score, churn_risk_score, propose_campaign, discover_tables</span>
+  <span style="color: #f9a374;">Customer Strategist</span> <span style="color: #ff4040;">[OFF — no customer-transaction data in pharma]</span> <span style="color: #666;">rfm/clv/churn/campaign tools, idle</span>
 
   <span style="color: #c96342;">SPECIALISTS</span> <span style="color: #666;">(each is 1 @tool on Analyst, auto-fires on keyword match)</span>
   <span style="color: #f9a374;">Comparator</span>        <span style="color: #666;">comparator_analysis</span>            <span style="color: #555;">·</span>  <span style="color: #f9a374;">Trend Analyst</span>     <span style="color: #666;">trend_analysis</span>
@@ -9632,12 +9959,12 @@ function signUserJWT($user) {
     {#if currentEmbed}
     <div style="margin-bottom:18px; padding:16px; background:var(--pw-surface); border:1px solid var(--pw-ink-soft);">
       <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;">
-        <div style="font-size:13px; font-weight:900; letter-spacing:0.05em; color:var(--pw-ink); text-transform:uppercase;">⚡ Quick Start — Industry Templates</div>
+        <div style="font-size:13px; font-weight:900; letter-spacing:0.05em; color:var(--pw-ink); text-transform:uppercase;">⚡ Pharmacy Setup — 1-Click RLS</div>
         <div style="font-size:11px; color:var(--pw-muted);">click apply · sets RLS + HMAC + identity in one shot</div>
       </div>
-      <div style="font-size:11px; color:var(--pw-muted); margin-bottom:12px;">PHP/external dev gets: signed user payload required · per-row scoping by claim · cost columns hidden · all enforced server-side.</div>
+      <div style="font-size:11px; color:var(--pw-muted); margin-bottom:12px;">PHP/external dev gets: signed user payload required · per-site stock scoping by claim · cost columns hidden · all enforced server-side.</div>
       <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:10px;">
-        {#each INDUSTRY_TEMPLATES as tpl (tpl.slug)}
+        {#each INDUSTRY_TEMPLATES.filter((t) => t.slug === 'pharmacy' || (t.best_for || '').toLowerCase().includes('pharm')) as tpl (tpl.slug)}
           {@const isApplying = applyingTemplate === tpl.slug}
           {@const justApplied = templateAppliedFlash === tpl.slug}
           <button type="button" disabled={isApplying || !currentEmbed}
@@ -15544,6 +15871,23 @@ function signUserJWT($user) {
 {/if}
 
 <style>
+ /* ─── Bilingual 1/2 badge (memories, etc.) ─── */
+ .bi-badge {
+   flex-shrink: 0;
+   display: inline-flex;
+   align-items: center;
+   justify-content: center;
+   width: 14px;
+   height: 14px;
+   font-size: 9px;
+   font-weight: 700;
+   line-height: 1;
+   color: var(--pw-ink);
+   background: var(--pw-bg-alt);
+   border: 1px solid var(--pw-border);
+   border-radius: 50%;
+ }
+
  /* ─── Auto-train robot wrapper ─── */
  .auto-robot-wrap {
   margin: 12px 0 0;
@@ -17941,6 +18285,104 @@ function signUserJWT($user) {
  }
 
 /* ═══════════ NEW Data Source (dsx-*) ═══════════ */
+/* inner left sub-rail (Overview / EDA / Quality) */
+.dsx-shell { display:flex; gap:18px; align-items:flex-start; }
+.dsx-subrail { flex:none; width:152px; display:flex; flex-direction:column; gap:3px; position:sticky; top:14px; }
+.dsx-subtab { display:flex; align-items:center; gap:9px; width:100%; text-align:left; background:transparent; border:1px solid transparent; border-radius:8px; padding:8px 11px; font-size:13px; font-weight:500; color:var(--pw-muted,#6b6052); cursor:pointer; }
+.dsx-subtab svg { width:16px; height:16px; flex:none; opacity:0.8; }
+.dsx-subtab:hover { background:var(--pw-surface,#faf6f0); color:var(--pw-ink,#2c2620); }
+.dsx-subtab.active { background:var(--pw-accent-soft,#f3ece1); border-color:var(--pw-border,#ece2d4); color:var(--pw-accent,#9a4a2f); font-weight:650; }
+.dsx-subtab.active svg { opacity:1; }
+.dsx-subcount { margin-left:auto; font-size:11px; font-weight:700; background:#c0392b; color:#fff; border-radius:20px; padding:1px 7px; }
+.dsx-vbody { flex:1; min-width:0; }
+/* EDA + Quality */
+.dsx-eda-head { display:flex; align-items:center; gap:10px; margin:0 0 12px; }
+.dsx-eda-title { font-size:14px; font-weight:700; color:var(--pw-ink,#2c2620); }
+.dsx-eda-meta { font-size:12px; color:var(--pw-muted,#6b6052); }
+.dsx-eda-meta i { font-style:italic; color:#a06000; }
+.dsx-edahead { grid-template-columns:1fr 110px 70px 100px 2fr !important; font-size:10.5px !important; letter-spacing:0.06em; color:var(--pw-muted,#6b6052); font-weight:700; }
+.dsx-edarow { grid-template-columns:1fr 110px 70px 100px 2fr !important; }
+.dsx-edatype { font-family:ui-monospace,monospace; font-size:11.5px; color:#7c6f9a; }
+.dsx-nullbadge { font-family:ui-monospace,monospace; font-size:11.5px; color:#3a8a4a; }
+.dsx-nullbadge.hi { color:#a06000; font-weight:700; }
+.dsx-edaprofile { font-size:11.5px; color:var(--pw-muted,#6b6052); font-family:ui-monospace,monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dsx-uniq { color:#5fb0d6; font-style:normal; }
+/* quality */
+.dsx-qoverall { display:flex; align-items:center; gap:12px; margin:0 0 16px; }
+.dsx-qtrk-lg { height:12px !important; flex:1; }
+.dsx-qoverall b { font-size:18px; font-weight:700; color:var(--pw-ink,#2c2620); }
+.dsx-qfill-lo { background:#c0392b !important; }
+.dsx-issues { display:flex; flex-direction:column; gap:8px; margin-bottom:6px; }
+.dsx-issue { display:flex; gap:11px; align-items:flex-start; border:1px solid var(--pw-border,#ece2d4); border-radius:9px; padding:11px 13px; background:var(--pw-surface,#faf6f0); }
+.dsx-issue-crit { border-left:3px solid #c0392b; }
+.dsx-issue-warn { border-left:3px solid #e0a458; }
+.dsx-issue-info { border-left:3px solid #5fb0d6; }
+.dsx-issev { flex:none; font-size:10px; font-weight:800; letter-spacing:0.05em; padding:2px 8px; border-radius:5px; color:#fff; }
+.dsx-issue-crit .dsx-issev { background:#c0392b; }
+.dsx-issue-warn .dsx-issev { background:#d6912e; }
+.dsx-issue-info .dsx-issev { background:#5fb0d6; }
+.dsx-isstable { font-family:ui-monospace,monospace; font-size:12px; font-weight:600; color:var(--pw-ink,#2c2620); }
+.dsx-issnote { font-size:12.5px; color:var(--pw-muted,#6b6052); margin-top:2px; }
+.dsx-qtrow { grid-template-columns:1fr 120px 120px 120px 80px !important; }
+.dsx-qminibar { display:flex; align-items:center; gap:6px; font-size:11px; }
+.dsx-qminibar i { font-style:normal; font-weight:700; color:var(--pw-muted,#6b6052); width:12px; }
+.dsx-qminibar .dsx-qtrk { flex:1; }
+@media (max-width:760px) { .dsx-shell { flex-direction:column; } .dsx-subrail { flex-direction:row; width:100%; position:static; overflow-x:auto; } }
+
+/* ─── detailed Data Quality scanner (dq-*) ─── */
+.dq-top { display:flex; align-items:center; gap:16px; margin:2px 0 14px; }
+.dq-score { flex:none; display:flex; align-items:baseline; gap:2px; width:96px; height:64px; justify-content:center; border:2px solid var(--c,#888); border-radius:12px; color:var(--c,#888); }
+.dq-score-n { font-size:30px; font-weight:800; line-height:1; }
+.dq-score-l { font-size:12px; font-weight:600; opacity:0.7; }
+.dq-topright { flex:1; min-width:0; display:flex; flex-direction:column; gap:9px; }
+.dq-chips { display:flex; gap:6px; flex-wrap:wrap; }
+.dq-chip { background:var(--pw-surface,#faf6f0); border:1px solid var(--pw-border,#ece2d4); border-radius:20px; padding:3px 11px; font-size:12px; font-weight:500; color:var(--pw-muted,#6b6052); cursor:pointer; font-family:inherit; }
+.dq-chip b { font-weight:800; margin-left:3px; color:var(--pw-ink,#2c2620); }
+.dq-chip.on { border-color:var(--pw-accent,#9a4a2f); background:var(--pw-accent-soft,#f3ece1); color:var(--pw-accent,#9a4a2f); }
+.dq-chip-high.on { border-color:#c0392b; background:rgba(192,57,43,0.08); color:#c0392b; }
+.dq-chip-med.on  { border-color:#cc7a00; background:rgba(204,122,0,0.08); color:#cc7a00; }
+.dq-filters { display:flex; align-items:center; gap:10px; margin:0 0 12px; }
+.dq-mutetoggle { font-size:12px; color:var(--pw-muted,#6b6052); display:flex; align-items:center; gap:5px; cursor:pointer; }
+.dq-grp { margin:0 0 14px; }
+.dq-grphead { font-size:11px; font-weight:800; letter-spacing:0.07em; color:var(--pw-muted,#6b6052); margin:0 0 6px; display:flex; align-items:center; gap:7px; }
+.dq-grpdot { font-size:13px; }
+.dq-grp-high .dq-grpdot { color:#c0392b; } .dq-grp-medium .dq-grpdot { color:#cc7a00; }
+.dq-grp-low .dq-grpdot { color:#888; } .dq-grp-info .dq-grpdot { color:#5fb0d6; }
+.dq-grpn { background:var(--pw-border,#ece2d4); color:var(--pw-ink,#2c2620); border-radius:20px; padding:0 7px; font-size:10.5px; }
+.dq-card { border:1px solid var(--pw-border,#ece2d4); border-left:3px solid #888; border-radius:9px; background:var(--pw-surface,#faf6f0); margin-bottom:7px; overflow:hidden; }
+.dq-card-high { border-left-color:#c0392b; } .dq-card-medium { border-left-color:#e0a458; }
+.dq-card-low { border-left-color:#aaa; } .dq-card-info { border-left-color:#5fb0d6; }
+.dq-card.muted { opacity:0.5; }
+.dq-cardhead { display:flex; align-items:center; gap:9px; width:100%; text-align:left; background:transparent; border:none; padding:10px 13px; cursor:pointer; font-family:inherit; font-size:12.5px; color:var(--pw-ink,#2c2620); }
+.dq-caret { color:var(--pw-muted,#6b6052); font-size:11px; }
+.dq-dot { font-size:12px; }
+.dq-type { font-weight:800; font-size:10.5px; letter-spacing:0.04em; }
+.dq-loc { font-family:ui-monospace,monospace; font-size:11.5px; color:var(--pw-muted,#6b6052); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dq-loc b { color:var(--pw-ink,#2c2620); }
+.dq-spacer { flex:1; }
+.dq-count { font-family:ui-monospace,monospace; font-size:11px; font-weight:700; color:#c0392b; flex:none; }
+.dq-mutedtag { font-size:9.5px; font-weight:700; text-transform:uppercase; color:var(--pw-muted,#6b6052); border:1px solid var(--pw-border,#ece2d4); border-radius:4px; padding:1px 5px; }
+.dq-cardbody { padding:2px 14px 13px 33px; font-size:12.5px; color:var(--pw-ink,#2c2620); }
+.dq-msg { margin:0 0 9px; line-height:1.5; }
+.dq-row { display:flex; gap:10px; margin:5px 0; line-height:1.5; }
+.dq-rk { flex:none; width:78px; font-size:9.5px; font-weight:800; letter-spacing:0.05em; color:var(--pw-muted,#6b6052); padding-top:2px; }
+.dq-samples { display:flex; gap:5px; flex-wrap:wrap; }
+.dq-sample { background:#f3ece1; color:#9a4a2f; border-radius:4px; padding:1px 6px; font-family:ui-monospace,monospace; font-size:11px; }
+.dq-impact { color:#a04000; }
+.dq-fix .dq-rk { color:#2d8a4a; }
+.dq-fix span:last-child { font-family:ui-monospace,monospace; font-size:11.5px; background:var(--pw-bg-alt,#f7f1e8); border-radius:5px; padding:6px 9px; line-height:1.55; }
+.dq-acts { display:flex; gap:7px; margin-top:11px; }
+.dq-bytype { margin-top:16px; padding-top:11px; border-top:1px solid var(--pw-border,#ece2d4); font-size:11px; color:var(--pw-muted,#6b6052); font-family:ui-monospace,monospace; }
+.dq-bytype { font-weight:600; }
+/* unrecoverable / blocking */
+.dq-deadtag { flex:none; font-size:9.5px; font-weight:800; text-transform:uppercase; color:#fff; background:#c0392b; border-radius:4px; padding:1px 6px; }
+.dq-deadbanner { margin:4px 0 9px; background:rgba(192,57,43,0.08); border:1px solid #c0392b; border-radius:6px; padding:7px 10px; font-size:11.5px; font-weight:600; color:#a02a1d; }
+.dq-rootcause { color:var(--pw-ink,#2c2620); }
+.dq-blocker { border:2px solid #c0392b; border-radius:10px; background:rgba(192,57,43,0.05); padding:11px 14px; margin:2px 0 16px; }
+.dq-blocker-h { font-size:13px; font-weight:800; color:#a02a1d; margin-bottom:6px; }
+.dq-blocker-row { font-size:12px; color:var(--pw-ink,#2c2620); line-height:1.55; }
+.dq-blocker-row code { background:#f3ece1; color:#9a4a2f; border-radius:4px; padding:1px 5px; font-size:11px; }
+
 .dsx-rings { display:flex; align-items:stretch; gap:10px; margin:4px 0 14px; flex-wrap:wrap; }
 .dsx-ring { background:var(--pw-surface); border:1px solid var(--pw-border); border-radius:10px; padding:10px 16px; min-width:84px; text-align:center; }
 .dsx-ring-warn { border-color:#c0392b; background:rgba(192,57,43,0.06); }

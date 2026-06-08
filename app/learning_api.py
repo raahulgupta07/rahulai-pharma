@@ -48,8 +48,9 @@ def _get_user(request: Request) -> dict:
 
 
 def _require_super(user: dict):
-    if not user.get("is_super"):
-        raise HTTPException(403, "Super admin required")
+    # admin tier OR super (day-to-day brain/training ops)
+    if not user.get("is_admin"):
+        raise HTTPException(403, "Admin required")
 
 
 def _check_project(user: dict, slug: str, role: str = "viewer") -> dict:

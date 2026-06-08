@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dashFetch } from '$lib/api';
   import { onMount } from 'svelte';
 
   type SeriesRow = { date: string | null; pass_rate: number; tier: string; n: number };
@@ -18,7 +19,7 @@
     loading = true;
     error = null;
     try {
-      const r = await fetch(`/api/accuracy/trend?days=${days}`, {
+      const r = await dashFetch(`/api/accuracy/trend?days=${days}`, {
         headers: { 'Accept': 'application/json' }
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -67,6 +68,15 @@
       .map(([date, v]) => ({ date, rate: v.n > 0 ? v.p / v.n : 0 }))
       .sort((a, b) => a.date.localeCompare(b.date));
   });
+
+  // Deploy gate — mirrors the CI golden gate (python -m evals.run --golden --min-pass 90)
+  const GATE_THRESHOLD = 90;
+  const gatePct = $derived<number | null>(
+    data && data.overall != null ? Math.round(data.overall * 1000) / 10 : null
+  );
+  const gateStatus = $derived(
+    gatePct == null ? 'unknown' : gatePct >= GATE_THRESHOLD ? 'pass' : 'fail'
+  );
 
   // SVG chart math
   const W = 800;
@@ -125,6 +135,24 @@
         <div class="tile-value">{totalEvals.toLocaleString()}</div>
         <div class="tile-sub">cases scored in window</div>
       </div>
+    </section>
+
+    <section class="gate-card">
+      <div class="gate-info">
+        <div class="gate-label">Deploy gate</div>
+        <div class="gate-row">
+          <span class="gate-pill gate-{gateStatus}">
+            {gateStatus === 'pass' ? '✓ PASS' : gateStatus === 'fail' ? '✗ FAIL' : '— unknown'}
+          </span>
+          <span class="gate-detail">
+            last pass-rate {gatePct == null ? '—' : `${gatePct}%`} · threshold {GATE_THRESHOLD}%
+          </span>
+        </div>
+        <div class="gate-sub">CI blocks deploys when golden pass-rate &lt; {GATE_THRESHOLD}%</div>
+      </div>
+      <button class="gate-run" onclick={load} disabled={loading}>
+        {loading ? 'Running…' : 'Run gate now'}
+      </button>
     </section>
 
     <section class="chart-card">
@@ -248,6 +276,46 @@
     padding: 16px;
     margin-bottom: 20px;
   }
+
+  .gate-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    background: #fff;
+    border: 1px solid #e8e3d6;
+    border-left: 3px solid #c96342;
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 20px;
+  }
+  .gate-label { font-size: 11px; color: #777; text-transform: uppercase; letter-spacing: 0.04em; }
+  .gate-row { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px 0; }
+  .gate-pill {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid #e8e3d6;
+  }
+  .gate-pass { color: #c96342; background: #fdf2ee; border-color: #f0d4ca; }
+  .gate-fail { color: #b3261e; background: #fbeceb; border-color: #f0cdca; }
+  .gate-unknown { color: #999; background: #f7f3e9; }
+  .gate-detail { font-size: 14px; color: #1f1c17; font-weight: 600; }
+  .gate-sub { font-size: 11px; color: #999; }
+  .gate-run {
+    flex-shrink: 0;
+    padding: 8px 14px;
+    border: 1px solid #c96342;
+    background: #c96342;
+    color: #fff;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .gate-run:hover:not(:disabled) { background: #b5573a; }
+  .gate-run:disabled { opacity: 0.5; cursor: default; }
   .chart-card h2, .tier-card h2 {
     font-size: 14px;
     margin: 0 0 12px 0;

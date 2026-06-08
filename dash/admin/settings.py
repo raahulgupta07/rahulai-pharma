@@ -51,7 +51,6 @@ REGISTRY: dict[str, dict] = {
     "enable_world_bank":              {"type": "bool", "default": True,  "env": None, "scope": "global", "desc": "World Bank indicators"},
     "enable_alpha_vantage":           {"type": "bool", "default": True,  "env": "ALPHA_VANTAGE_API_KEY", "scope": "global", "desc": "Alpha Vantage market data"},
     "enable_wikidata":                {"type": "bool", "default": True,  "env": None, "scope": "global", "desc": "Wikidata SPARQL"},
-    "enable_xmla_pull":               {"type": "bool", "default": False, "env": None, "scope": "both",   "desc": "Auto-pull Power BI semantic model on Fabric source"},
     "enable_web_fetch":               {"type": "bool", "default": True,  "env": None, "scope": "both",   "desc": "Researcher web fetch tool"},
 
     # Column classifier

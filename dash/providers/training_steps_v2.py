@@ -102,7 +102,7 @@ class EnhancedProviderTrainer(ProviderTrainer):
     # (step_name, fn, default_on, opt_out_flag)
     OPTIONAL_STEPS = [
         ("classify_columns", classify_columns_step, True, "disable_classify"),
-    ]  # xmla_pull appended below after its definition
+    ]
 
     async def run(self) -> AsyncIterator[TrainEvent]:
         async for ev in super().run():
@@ -133,18 +133,6 @@ class EnhancedProviderTrainer(ProviderTrainer):
         except Exception:
             pass
 
-        # Admin gate — enable_xmla_pull (force-disable opt-in xmla step
-        # unless explicitly enabled in admin settings)
-        try:
-            from dash.admin.settings import get_setting
-            if not get_setting(
-                "enable_xmla_pull",
-                project_slug=getattr(self.provider, "project_slug", None),
-            ):
-                cfg["disable_xmla"] = True
-        except Exception:
-            pass
-
         for name, fn, default_on, opt_out_flag in self.OPTIONAL_STEPS:
             if cfg.get(opt_out_flag, False):
                 logger.info(
@@ -169,80 +157,3 @@ class EnhancedProviderTrainer(ProviderTrainer):
                 )
 
 
-async def xmla_pull_step(provider, source_id: int, knowledge_dir: Path = KNOWLEDGE_DIR):
-    """Pull XMLA semantic model if Fabric provider has workspace+dataset configured.
-
-    No-op (yields a single 'done/skipped' event) when the provider config
-    does not expose ``workspace`` and ``dataset``/``lakehouse``.
-    """
-    from dash.providers.xmla_pull import pull_semantic_model, import_to_dash
-
-    cfg = getattr(provider, "config", {}) or {}
-    workspace = cfg.get("workspace")
-    dataset = cfg.get("dataset") or cfg.get("lakehouse")
-    if not workspace or not dataset:
-        yield TrainEvent(
-            step="xmla_pull",
-            index=16,
-            total=16,
-            status="done",
-            message="skipped: no workspace/dataset",
-        )
-        return
-
-    yield TrainEvent(
-        step="xmla_pull",
-        index=16,
-        total=16,
-        status="start",
-        message=f"{workspace}/{dataset}",
-    )
-
-    t0 = time.time()
-    try:
-        result = await asyncio.to_thread(pull_semantic_model, workspace, dataset)
-    except Exception as e:
-        logger.exception("xmla_pull_step pull failed")
-        yield TrainEvent(
-            step="xmla_pull",
-            index=16,
-            total=16,
-            status="error",
-            message=str(e)[:300],
-            duration_ms=int((time.time() - t0) * 1000),
-        )
-        return
-
-    if getattr(result, "error", None):
-        yield TrainEvent(
-            step="xmla_pull",
-            index=16,
-            total=16,
-            status="error",
-            message=str(result.error)[:300],
-            duration_ms=int((time.time() - t0) * 1000),
-        )
-        return
-
-    project_slug = getattr(provider, "project_slug", "") or ""
-    counts = await asyncio.to_thread(
-        import_to_dash, result, project_slug, source_id,
-    )
-    yield TrainEvent(
-        step="xmla_pull",
-        index=16,
-        total=16,
-        status="done",
-        message=(
-            f"measures={counts.get('measures_inserted', 0)} "
-            f"brain={counts.get('brain_entries_inserted', 0)}"
-        ),
-        duration_ms=int((time.time() - t0) * 1000),
-    )
-
-
-# Append xmla_pull as an opt-in optional step. Default-off so existing
-# trainings (and the test suite's classifier-only baseline) are untouched.
-EnhancedProviderTrainer.OPTIONAL_STEPS = list(EnhancedProviderTrainer.OPTIONAL_STEPS) + [
-    ("xmla_pull", xmla_pull_step, False, "disable_xmla"),
-]

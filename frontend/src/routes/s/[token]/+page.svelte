@@ -139,7 +139,7 @@
     {/if}
 
     <div class="ftr">
-      shared snapshot · {fmtDate(snap.created_at)} · CityAgent Insights
+      shared snapshot · {fmtDate(snap.created_at)} · CityAgent Pharma
     </div>
   {/if}
 </div>

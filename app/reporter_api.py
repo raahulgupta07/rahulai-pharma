@@ -41,7 +41,7 @@ _get_user = _user_dep()
 def _can_access(file_row, user) -> bool:
     if not user:
         return False
-    if user.get("is_super_admin"):
+    if user.get("is_admin"):
         return True
     if file_row.get("user_id") == user.get("id"):
         return True
@@ -99,7 +99,7 @@ def list_files(
             {
                 "ps": project_slug,
                 "uid": user.get("id") if user else None,
-                "is_admin": bool(user and user.get("is_super_admin")),
+                "is_admin": bool(user and user.get("is_admin")),
                 "lim": limit,
             },
         ).mappings().all()
@@ -119,7 +119,7 @@ def soft_delete(file_id: str, user=Depends(_get_user)):
         ).first()
         if not row:
             raise HTTPException(404, "file_not_found")
-        if not user or (user.get("id") != row[0] and not user.get("is_super_admin")):
+        if not user or (user.get("id") != row[0] and not user.get("is_admin")):
             raise HTTPException(403, "forbidden")
         conn.execute(
             text("UPDATE dash.dash_generated_files SET expires_at = now() WHERE id=:id"),

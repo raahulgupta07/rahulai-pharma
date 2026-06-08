@@ -356,6 +356,18 @@ _project_ro_engines: dict[str, Engine] = {}
 
 def create_project_schema(slug: str) -> str:
     """Create a project PostgreSQL schema. Returns the schema name."""
+    # Single-tenant guard: refuse to spawn any schema other than the locked one.
+    # This is the only place a new tenant schema can be born, so blocking it here
+    # makes a second tenant structurally impossible even from internal callers.
+    try:
+        from dash.single_agent import is_single_agent, locked_slug
+        if is_single_agent() and slug != locked_slug():
+            raise RuntimeError(
+                f"single-tenant lock: refusing to create schema for '{slug}' "
+                f"(only '{locked_slug()}' is allowed)"
+            )
+    except ImportError:
+        pass
     safe = re.sub(r"[^a-z0-9_]", "_", slug.lower())[:63]
     bootstrap = create_engine(db_url, poolclass=NullPool)
     with bootstrap.connect() as conn:

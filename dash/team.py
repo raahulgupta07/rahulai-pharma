@@ -29,6 +29,7 @@ from dash.agents.researcher import create_researcher
 from dash.agents.supply_sentry import build_supply_sentry_agent
 from dash.instructions import build_leader_instructions
 from dash.settings import MODEL, SLACK_TOKEN, agent_db, dash_learning
+from dash.single_agent import locked_slug
 
 
 # _has_financial_tables + investment vertical auto-load DELETED 2026-05-23
@@ -68,7 +69,7 @@ def create_team(
         model=MODEL,
         members=[analyst, engineer],
         db=agent_db,
-        instructions=build_leader_instructions(user_id=user_id),
+        instructions=build_leader_instructions(user_id=user_id, project_slug=locked_slug()),
         tools=leader_tools,
         learning=l,
         add_learnings_to_context=True,
@@ -109,7 +110,16 @@ def create_project_team(
     user_id: int | None = None,
 ) -> Team:
     """Create a team scoped to a specific project."""
-    cache_key = f"{project_slug}_{user_id}"
+    # Phase 1 bilingual: instructions are baked at agent creation, so the MY-override
+    # team and the EN team must be cached separately. Key the cache on the reply
+    # language contract too — the MY team is built once (with the Burmese override)
+    # and reused, the EN team likewise, no per-request rebuild.
+    try:
+        from dash.instructions import REPLY_LANG as _RL
+        _lang = (_RL.get() or "en")
+    except Exception:
+        _lang = "en"
+    cache_key = f"{project_slug}_{user_id}_{_lang}"
     now = time.time()
     with _cache_lock:
         # Evict expired entries to prevent memory leak

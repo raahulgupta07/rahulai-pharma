@@ -105,12 +105,29 @@ services:
       - REDIS_URL=${REDIS_URL:-redis://dash-redis:6379}
       # Required
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      # Multi-key pool (round-robin + per-key 429 cooldown) for 1000-store scale
+      - OPENROUTER_API_KEYS=${OPENROUTER_API_KEYS:-}
+      # Gunicorn worker count (concurrent-chat ceiling)
+      - WORKERS=${WORKERS:-4}
+      # Canonical public origin for embed snippets/SDK/docs (set to AWS domain,
+      # e.g. https://pharma.yourdomain.com). Blank → frontend uses the browser origin.
+      - PUBLIC_URL=${PUBLIC_URL:-}
+      # Dead-daemon gates — no external connectors / pruned verticals single-tenant
+      - CONNECTOR_SCHEDULER_DISABLED=${CONNECTOR_SCHEDULER_DISABLED:-1}
+      - VERTICAL_DAEMONS_DISABLED=${VERTICAL_DAEMONS_DISABLED:-1}
+      # Gateway chat-body logging → dash_apigw_messages (powers per-key Questions
+      # drill-down + auto-learn harvest). PII: keep on only with consent.
+      - APIGW_LOG_BODIES=${APIGW_LOG_BODIES:-1}
+      # DEV: caching OFF for real fresh test/eval behaviour. PROD: APIGW_CACHE_TTL=90,
+      # drop METRIC_SHORTCUT_DISABLED (cache hides the 70-220s repeat-question latency).
+      - APIGW_CACHE_TTL=${APIGW_CACHE_TTL:-90}
+      - METRIC_SHORTCUT_DISABLED=${METRIC_SHORTCUT_DISABLED:-0}
       # Models (3-tier with auto-fallback via OpenRouter models[])
       - CHAT_MODEL=${CHAT_MODEL:-google/gemini-3-flash-preview}
       - DEEP_MODEL=${DEEP_MODEL:-google/gemini-3-flash-preview}
       - LITE_MODEL=${LITE_MODEL:-google/gemini-3.1-flash-lite-preview}
       - MID_MODEL=${MID_MODEL:-openai/gpt-5.4-nano}
-      - REASONING_MODEL=${REASONING_MODEL:-qwen/qwen3-max-thinking}
+      - REASONING_MODEL=${REASONING_MODEL:-google/gemini-3-flash-preview}
       - ULTRA_MODEL=${ULTRA_MODEL:-openai/gpt-5.4-mini}
       - TRAINING_MODEL=${TRAINING_MODEL:-}
       - CHAT_FALLBACKS=${CHAT_FALLBACKS:-}
@@ -162,7 +179,7 @@ services:
     image: redis:7-alpine
     container_name: cp-redis
     restart: unless-stopped
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --maxmemory 1gb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
     healthcheck:
@@ -220,7 +237,7 @@ services:
       - DEEP_MODEL=${DEEP_MODEL:-google/gemini-3-flash-preview}
       - LITE_MODEL=${LITE_MODEL:-google/gemini-3.1-flash-lite-preview}
       - MID_MODEL=${MID_MODEL:-openai/gpt-5.4-nano}
-      - REASONING_MODEL=${REASONING_MODEL:-qwen/qwen3-max-thinking}
+      - REASONING_MODEL=${REASONING_MODEL:-google/gemini-3-flash-preview}
       - ULTRA_MODEL=${ULTRA_MODEL:-openai/gpt-5.4-mini}
       - TRAINING_MODEL=${TRAINING_MODEL:-}
       - CHAT_FALLBACKS=${CHAT_FALLBACKS:-}
@@ -257,7 +274,7 @@ services:
       - DEEP_MODEL=${DEEP_MODEL:-google/gemini-3-flash-preview}
       - LITE_MODEL=${LITE_MODEL:-google/gemini-3.1-flash-lite-preview}
       - MID_MODEL=${MID_MODEL:-openai/gpt-5.4-nano}
-      - REASONING_MODEL=${REASONING_MODEL:-qwen/qwen3-max-thinking}
+      - REASONING_MODEL=${REASONING_MODEL:-google/gemini-3-flash-preview}
       - ULTRA_MODEL=${ULTRA_MODEL:-openai/gpt-5.4-mini}
       - SUPER_ADMIN=${SUPER_ADMIN:?SUPER_ADMIN required}
       - DASH_MCP_LOG_LEVEL=${DASH_MCP_LOG_LEVEL:-INFO}

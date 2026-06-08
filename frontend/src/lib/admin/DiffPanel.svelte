@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dashFetch } from '$lib/api';
   import { onMount } from 'svelte';
   import DiffPanel from '$lib/chat/DiffPanel.svelte';
 
@@ -68,7 +69,7 @@
       const qs = new URLSearchParams();
       if (projectSlug) qs.set('project_slug', projectSlug);
       qs.set('limit', '50');
-      const r = await fetch(`/api/diff/recent?${qs.toString()}`, {
+      const r = await dashFetch(`/api/diff/recent?${qs.toString()}`, {
         headers: { Accept: 'application/json' },
       });
       if (!r.ok) {
@@ -98,7 +99,7 @@
     entitySource = '';
     try {
       const qs = new URLSearchParams({ type: entityType, id: String(entityId) });
-      const r = await fetch(`/api/diff/entity?${qs.toString()}`, {
+      const r = await dashFetch(`/api/diff/entity?${qs.toString()}`, {
         headers: { Accept: 'application/json' },
       });
       if (!r.ok) {

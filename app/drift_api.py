@@ -99,7 +99,7 @@ async def retrain_from_event(event_id: int, request: Request):
 def admin_all_open(request: Request, limit: int = 100):
     """Super-admin cross-project view."""
     user = _get_user(request)
-    if not user.get("is_super_admin"):
+    if not user.get("is_admin"):
         raise HTTPException(403)
     from dash.learning.drift_detector import list_all_open
     return {"events": list_all_open(limit=limit)}

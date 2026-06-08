@@ -60,7 +60,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       curl ca-certificates gnupg build-essential \
       libffi-dev libssl-dev libxml2-dev libxslt-dev \
       libjpeg-dev libpng-dev zlib1g-dev libfreetype6-dev \
-      unixodbc-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -79,21 +78,12 @@ FROM ghcr.io/astral-sh/uv:python3.12-trixie-slim AS runtime
 ARG TARGETARCH
 ARG DOCKERIZE_VERSION=v0.11.0
 
-# Runtime apt deps + Microsoft ODBC Driver 18 (Fabric + MSSQL connectors via pyodbc).
-# Microsoft pkgs ship on bookworm; trixie can install bookworm pkgs cleanly.
+# Runtime apt deps (OCR / PDF rendering — pdftoppm + tesseract for upload/vision).
 RUN apt-get update && apt-get install -y --no-install-recommends \
       curl ca-certificates gnupg \
-      libreoffice-impress libreoffice-core libreoffice-calc default-jre-headless \
-      poppler-utils tesseract-ocr pandoc qpdf xvfb xauth \
+      poppler-utils tesseract-ocr \
       libjpeg62-turbo libpng16-16 zlib1g libfreetype6 \
       libxml2 libxslt1.1 libffi8 \
-      unixodbc \
-    && curl -sSL https://packages.microsoft.com/keys/microsoft.asc \
-       | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \
-    && echo "deb [signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" \
-       > /etc/apt/sources.list.d/mssql-release.list \
-    && apt-get update \
-    && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 \
     && curl -sSfL "https://github.com/jwilder/dockerize/releases/download/${DOCKERIZE_VERSION}/dockerize-linux-${TARGETARCH}-${DOCKERIZE_VERSION}.tar.gz" \
        | tar -xz -C /usr/local/bin \
     && rm -rf /var/lib/apt/lists/*

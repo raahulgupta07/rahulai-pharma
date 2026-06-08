@@ -182,9 +182,10 @@ def _get_user(request: Request) -> dict:
 
 
 def _is_super_admin(user: dict) -> bool:
+    # admin tier OR super (brain rollback also allowed for original author below)
     try:
         from app.auth import SUPER_ADMIN
-        return user.get("username") == SUPER_ADMIN
+        return bool(user.get("is_admin")) or user.get("username") == SUPER_ADMIN
     except Exception:
         return False
 

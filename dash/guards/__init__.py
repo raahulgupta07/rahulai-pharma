@@ -11,5 +11,11 @@ whether to surface (trace panel) or block (refusal path).
 
 from dash.guards.number_cite import audit_numbers
 from dash.guards.bounds import check_bounds
+from dash.guards.context import cap_tool_result, trim_stale_tool_results
 
-__all__ = ["audit_numbers", "check_bounds"]
+__all__ = [
+    "audit_numbers",
+    "check_bounds",
+    "cap_tool_result",
+    "trim_stale_tool_results",
+]

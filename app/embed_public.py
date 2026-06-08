@@ -255,6 +255,201 @@ def serve_widget_js():
     )
 
 
+# ── Developer SDK download ────────────────────────────────────────────────────
+# Ready-to-paste client code shown in the admin "Snippet & Docs" tab. Each file
+# is served raw (copy/download) and as a bundle (.zip). Placeholders are
+# templated with the caller's real embed_id / public_key / base_url so the
+# downloaded code runs as-is.
+_SDK_DIR = "/app/examples"
+_SDK_FILES = [
+    ("widget-embed.php",     "php",  "PHP page — drop-in chat bubble, user-scoped (HMAC). Fastest path."),
+    ("CityAgentClient.php",  "php",  "PHP SDK class — your own UI / server-to-server. No Composer."),
+    ("rest_client.py",       "python", "Python SDK — stdlib only, no pip."),
+    ("rest_client.js",       "javascript", "Node 18+ SDK — zero deps."),
+    ("quickstart.sh",        "bash", "Bash + curl — 10-second end-to-end smoke test."),
+    ("README.md",            "markdown", "Integration guide — 3 paths, auth modes, error table."),
+]
+# placeholder values inside the example files, replaced at download time
+_SDK_PLACEHOLDERS = {
+    "base":    "http://localhost:8011",
+    "embed":   "emb_rGd8VWW8DloS6WNNssvenA",
+    "pubkey":  "pub_FWWyXah2Sv0iuN5f8TwQQH1v2LaoeIUT",
+}
+
+
+def _public_base(req: "Request | None" = None) -> str | None:
+    """Canonical public origin for snippet/SDK URLs.
+
+    Priority: PUBLIC_URL / WEBUI_URL env (set this to the AWS domain) →
+    request Origin/Referer → request base_url. Returns None if nothing usable,
+    in which case the localhost placeholder is left untouched.
+    """
+    import os
+    env = (os.getenv("PUBLIC_URL") or os.getenv("WEBUI_URL") or "").rstrip("/")
+    if env:
+        return env
+    if req is not None:
+        o = _extract_origin(req)
+        if o:
+            return o.rstrip("/")
+        try:
+            return str(req.base_url).rstrip("/")
+        except Exception:
+            return None
+    return None
+
+
+def _sdk_read(name: str, *, base: str | None = None, embed: str | None = None,
+              pubkey: str | None = None) -> str:
+    import os
+    if name not in {f[0] for f in _SDK_FILES}:
+        raise HTTPException(status_code=404, detail="unknown sdk file")
+    path = os.path.join(_SDK_DIR, name)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="sdk file not deployed")
+    if base:
+        content = content.replace(_SDK_PLACEHOLDERS["base"], base.rstrip("/"))
+    if embed:
+        content = content.replace(_SDK_PLACEHOLDERS["embed"], embed)
+    if pubkey:
+        content = content.replace(_SDK_PLACEHOLDERS["pubkey"], pubkey)
+    return content
+
+
+@router.get("/sdk")
+def list_sdk_files():
+    """Manifest of downloadable client SDK files for the admin Snippet & Docs UI."""
+    import os
+    out = []
+    for name, lang, desc in _SDK_FILES:
+        try:
+            size = os.path.getsize(os.path.join(_SDK_DIR, name))
+        except OSError:
+            size = 0
+        out.append({"name": name, "lang": lang, "desc": desc, "size": size})
+    return {"files": out}
+
+
+@router.get("/sdk/file/{name}")
+def get_sdk_file(name: str, request: Request):
+    """Raw SDK file, placeholders templated with caller's embed values.
+
+    Query params (all optional): base, embed, pubkey. ?download=1 forces a
+    file-download disposition; otherwise served inline for in-UI preview.
+    """
+    from fastapi.responses import Response
+    q = request.query_params
+    content = _sdk_read(name, base=q.get("base") or _public_base(request),
+                        embed=q.get("embed"), pubkey=q.get("pubkey"))
+    headers = {"Cache-Control": "no-store"}
+    if q.get("download"):
+        headers["Content-Disposition"] = f'attachment; filename="{name}"'
+    return Response(content=content, media_type="text/plain; charset=utf-8", headers=headers)
+
+
+@router.get("/sdk.zip")
+def download_sdk_zip(request: Request):
+    """All SDK files as a single .zip, placeholders templated for the caller."""
+    import io
+    import zipfile
+    from fastapi.responses import Response
+
+    q = request.query_params
+    base = q.get("base") or _public_base(request)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, _lang, _desc in _SDK_FILES:
+            try:
+                content = _sdk_read(name, base=base, embed=q.get("embed"), pubkey=q.get("pubkey"))
+            except HTTPException:
+                continue  # skip files not deployed
+            zf.writestr(f"cityagent-sdk/{name}", content)
+    buf.seek(0)
+    return Response(
+        content=buf.read(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": 'attachment; filename="cityagent-sdk.zip"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+# Gateway multi-shop bundle: ONE key-agnostic client that serves every outlet.
+# Code only — no live keys (the admin downloads those via "Copy .env"). Lives
+# under /api/embed/sdk so it shares that path's public SKIP_PREFIXES skip.
+_MULTISHOP_DIR = "/app/examples/multishop"
+_MULTISHOP_FILES = ["client.php", "client.py", ".env.example", "README.md"]
+
+
+@router.get("/sdk/gateway-bundle.zip")
+def download_gateway_bundle(request: Request):
+    """Multi-shop gateway client (php + py + .env.example + README) as one .zip,
+    base URL templated for the caller. No keys — caller supplies their own .env."""
+    import io
+    import os
+    import zipfile
+    from fastapi.responses import Response
+
+    q = request.query_params
+    base = (q.get("base") or _public_base(request) or _SDK_PLACEHOLDERS["base"]).rstrip("/")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name in _MULTISHOP_FILES:
+            try:
+                with open(os.path.join(_MULTISHOP_DIR, name), "r", encoding="utf-8") as f:
+                    content = f.read()
+            except FileNotFoundError:
+                continue  # skip files not deployed
+            content = content.replace(_SDK_PLACEHOLDERS["base"], base)
+            content = content.replace("__CITYPHARMA_BASE__", base)
+            zf.writestr(f"citypharma-shops/{name}", content)
+    buf.seek(0)
+    return Response(
+        content=buf.read(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": 'attachment; filename="citypharma-shops.zip"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+# ── Embed logo (uploaded via admin, served publicly to the widget) ────────────
+_EMBED_LOGO_DIR = "/app/knowledge/embed_logos"
+_LOGO_MIME = {
+    "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+    "webp": "image/webp", "svg": "image/svg+xml", "gif": "image/gif",
+}
+
+
+@router.get("/logo/{name}")
+def serve_embed_logo(name: str):
+    """Serve an uploaded embed logo with permissive CORS so the widget can load
+    it from any origin. Path-traversal-safe (whitelist filename chars)."""
+    import os
+    import re
+    from fastapi.responses import FileResponse
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", name) or ".." in name:
+        raise HTTPException(status_code=404, detail="not found")
+    path = os.path.join(_EMBED_LOGO_DIR, name)
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="logo not found")
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    return FileResponse(
+        path,
+        media_type=_LOGO_MIME.get(ext, "application/octet-stream"),
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "public, max-age=300",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 def _extract_origin(req: Request) -> str | None:
     """Prefer Origin header; fall back to scheme://host of Referer."""
     origin = req.headers.get("Origin") or req.headers.get("origin")
@@ -321,7 +516,15 @@ def _verify_test_token(embed_id: str, token: str, secret_key_hash: str) -> bool:
             return False
         nonce = str(payload.get("nonce") or "")
         sig = str(payload.get("sig") or "")
-        msg = f"{embed_id}|{nonce}|{exp}".encode("utf-8")
+        # Must match the minter (app/embed.py gen_test_token): it signs
+        # "{embed_id}|{nonce}|{exp}|{claims_canon}" where claims_canon is the
+        # sort-keys/compact JSON of the optional claims (empty string when none).
+        claims_payload = payload.get("claims")
+        claims_canon = (
+            _json.dumps(claims_payload, sort_keys=True, separators=(",", ":"))
+            if isinstance(claims_payload, dict) and claims_payload else ""
+        )
+        msg = f"{embed_id}|{nonce}|{exp}|{claims_canon}".encode("utf-8")
         expected = _hmac.new(secret_key_hash.encode("utf-8"), msg, hashlib.sha256).hexdigest()
         return _hmac.compare_digest(sig, expected)
     except Exception:
@@ -769,6 +972,22 @@ async def embed_chat(req: Request):
     except Exception:
         pass
 
+    # Wire 3-tier store scope — same enforcement as API Gateway
+    _embed_scope_tok = None
+    try:
+        from app.auth import resolve_api_scope as _resolve_scope
+        from dash.api_scope import API_STORE_SCOPE as _EMBED_SCOPE_VAR
+        if sess_user_attrs and sess_user_attrs.get("store_id"):
+            _embed_user = {
+                "store_id": sess_user_attrs.get("store_id", ""),
+                "store_ids": sess_user_attrs.get("store_ids", ""),
+                "scope_mode": sess_user_attrs.get("scope_mode", "store"),
+            }
+            _embed_scope = _resolve_scope(_embed_user)
+            _embed_scope_tok = _EMBED_SCOPE_VAR.set(_embed_scope)
+    except Exception:
+        pass
+
     # Audit log: 1 row per chat turn.
     try:
         with eng.begin() as conn:
@@ -893,6 +1112,13 @@ async def embed_chat(req: Request):
                         pass
             except Exception:
                 pass
+        # Reset 3-tier store scope ContextVar.
+        if _embed_scope_tok is not None:
+            try:
+                from dash.api_scope import API_STORE_SCOPE as _EMBED_SCOPE_VAR
+                _EMBED_SCOPE_VAR.reset(_embed_scope_tok)
+            except Exception:
+                pass
         latency_ms = int((_time.monotonic() - t0) * 1000)
         # Log per-call audit row (best-effort — never block the response).
         try:
@@ -973,6 +1199,42 @@ def _sse_format(event: str, data_obj) -> str:
     return f"event: {event}\ndata: {payload}\n\n"
 
 
+# Tool name → friendly compact label + icon for the live activity strip.
+_STEP_TOOL_MAP = {
+    "run_sql_query": ("Querying inventory", "📊"),
+    "stock_check": ("Checking branch stock", "📦"),
+    "store_stock_summary": ("Summarising your shelf", "📦"),
+    "find_substitutes": ("Finding substitutes", "🔄"),
+    "substitutes": ("Finding substitutes", "🔄"),
+    "alternatives_for_indication": ("Finding alternatives", "💊"),
+    "indication_search": ("Searching by symptom", "🔍"),
+    "drug_relationships": ("Looking up drug info", "💊"),
+    "drug_profile": ("Looking up drug info", "💊"),
+    "interaction_check": ("Checking interactions", "⚠️"),
+    "search_all": ("Searching knowledge", "🔍"),
+    "discover_tables": ("Mapping the catalog", "🗂️"),
+}
+
+
+def _step_label(event_name: str, data: dict) -> tuple[str, str]:
+    """Map an Agno tool/reasoning event to a short (label, icon) for the strip."""
+    if "Reasoning" in event_name:
+        title = (data.get("title") or data.get("reasoning_content") or "Thinking").strip()
+        title = " ".join(title.split())[:48]
+        return (title or "Thinking", "🧠")
+    # tool call
+    tool = data.get("tool") or {}
+    name = ""
+    if isinstance(tool, dict):
+        name = tool.get("tool_name") or tool.get("name") or ""
+    name = name or data.get("tool_name") or data.get("tool") or ""
+    if isinstance(name, str) and name in _STEP_TOOL_MAP:
+        lab, ic = _STEP_TOOL_MAP[name]
+        return (lab, ic)
+    pretty = str(name).replace("_", " ").strip().title() if name else "Working"
+    return (pretty[:40] or "Working", "⚙️")
+
+
 @router.post("/chat/stream")
 async def embed_chat_stream(req: Request):
     """SSE-streaming variant of /chat.
@@ -1029,14 +1291,13 @@ async def embed_chat_stream(req: Request):
     bound_intent = bound_intent or "public"
     response_style = (response_style or "consumer").lower()
 
-    # Consumer-mode rejects streaming: per-token sanitization would corrupt
-    # currency banding + quantity masking applied by sanitize_consumer_response.
-    # Callers must use POST /chat (full-response sanitize then return JSON).
-    if response_style == "consumer":
-        raise HTTPException(
-            status_code=400,
-            detail="streaming is not available for consumer-mode embeds; use POST /chat",
-        )
+    # Consumer-mode: stream the live ACTIVITY STRIP (step events) so users
+    # see what the agent is doing, but DON'T leak per-token deltas — currency
+    # banding + qty masking are applied to the FULL answer at the end, then
+    # the sanitized text is emitted as a single token + done. Non-consumer
+    # (analyst) embeds stream token-by-token as before.
+    consumer_mode = (response_style == "consumer")
+    max_reply_chars = int(_max_reply_chars or 600)
 
     # Same per-embed sliding-window rate limit as /chat.
     if not _rate_limit_check(embed_id, int(rate_limit or 30)):
@@ -1076,6 +1337,22 @@ async def embed_chat_stream(req: Request):
             viewer_scope_id=bound_scope_id,
             embed_response_style=response_style,
         )
+    except Exception:
+        pass
+
+    # Wire 3-tier store scope — same enforcement as API Gateway
+    _embed_scope_tok = None
+    try:
+        from app.auth import resolve_api_scope as _resolve_scope
+        from dash.api_scope import API_STORE_SCOPE as _EMBED_SCOPE_VAR
+        if sess_user_attrs and sess_user_attrs.get("store_id"):
+            _embed_user = {
+                "store_id": sess_user_attrs.get("store_id", ""),
+                "store_ids": sess_user_attrs.get("store_ids", ""),
+                "scope_mode": sess_user_attrs.get("scope_mode", "store"),
+            }
+            _embed_scope = _resolve_scope(_embed_user)
+            _embed_scope_tok = _EMBED_SCOPE_VAR.set(_embed_scope)
     except Exception:
         pass
 
@@ -1131,6 +1408,7 @@ async def embed_chat_stream(req: Request):
         full_buffer: list[str] = []
         buffer_bytes = 0
         capped = False
+        last_step_label = ""
 
         # meta event first.
         yield _sse_format("meta", {
@@ -1229,6 +1507,20 @@ async def embed_chat_stream(req: Request):
                     data = {}
 
                 event_name = data.get("event") or type(event).__name__
+
+                # Forward a COMPACT activity step for tool / reasoning events
+                # so the widget can show "what the agent is doing". Final
+                # answer still streams via token events below.
+                if event_name in (
+                    "ToolCallStarted", "TeamToolCallStarted",
+                    "ReasoningStep", "TeamReasoningStep", "ReasoningStarted",
+                ):
+                    label, icon = _step_label(event_name, data)
+                    if label and label != last_step_label:
+                        last_step_label = label
+                        yield _sse_format("step", {"label": label, "icon": icon})
+                    continue
+
                 delta = ""
                 if event_name in ("TeamRunContent", "RunContent"):
                     delta = data.get("content") or ""
@@ -1253,7 +1545,9 @@ async def embed_chat_stream(req: Request):
                 full_buffer.append(delta)
                 buffer_bytes += len(delta.encode("utf-8"))
 
-                yield _sse_format("token", {"delta": delta})
+                # Consumer-mode buffers silently (sanitized once at the end).
+                if not consumer_mode:
+                    yield _sse_format("token", {"delta": delta})
 
                 now = _time_mod.monotonic()
                 if now - last_heartbeat >= _STREAM_HEARTBEAT_S:
@@ -1271,6 +1565,23 @@ async def embed_chat_stream(req: Request):
                     "code": "agent_error",
                 })
                 return
+
+            # Consumer-mode: sanitize the full buffer, then emit it as ONE
+            # token so masking/banding is never bypassed mid-stream.
+            if consumer_mode:
+                final = "".join(full_buffer)
+                try:
+                    if bound_intent and bound_intent != "private":
+                        from dash.dashboards.agents.text_guard import sanitize_narrative
+                        final = sanitize_narrative(final, project_slug, bound_intent)
+                except Exception:
+                    pass
+                try:
+                    final = sanitize_consumer_response(final, max_chars=max_reply_chars)
+                except Exception:
+                    logger.exception("sanitize_consumer_response (stream) failed")
+                if final:
+                    yield _sse_format("token", {"delta": final})
 
             latency_ms = int((_time_mod.monotonic() - t0) * 1000)
             done_payload = {
@@ -1310,6 +1621,13 @@ async def embed_chat_stream(req: Request):
                             var.reset(tok)
                         except Exception:
                             pass
+                except Exception:
+                    pass
+            # Reset 3-tier store scope ContextVar.
+            if _embed_scope_tok is not None:
+                try:
+                    from dash.api_scope import API_STORE_SCOPE as _EMBED_SCOPE_VAR
+                    _EMBED_SCOPE_VAR.reset(_embed_scope_tok)
                 except Exception:
                     pass
 

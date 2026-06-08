@@ -2,10 +2,10 @@
 Database Connectors
 ===================
 
-Unified connector for PostgreSQL, MySQL, and Microsoft Fabric (SQL Server TDS).
+Unified connector for PostgreSQL and MySQL.
 Allows Dash projects to sync tables from remote databases and run live queries.
 
-Reuses dash_data_sources table (source_type = 'postgresql' | 'mysql' | 'fabric').
+Reuses dash_data_sources table (source_type = 'postgresql' | 'mysql').
 Credentials stored base64-encoded in config JSONB column.
 """
 
@@ -34,7 +34,7 @@ router = APIRouter(prefix="/api/connectors", tags=["Connectors"])
 
 _engine = create_engine(db_url, poolclass=NullPool)
 
-SUPPORTED_DB_TYPES = {"postgresql", "mysql", "fabric"}
+SUPPORTED_DB_TYPES = {"postgresql", "mysql"}
 MAX_ROWS = 10_000
 QUERY_TIMEOUT_S = 30
 
@@ -49,7 +49,7 @@ class TestConnectionRequest(BaseModel):
     username: str
     password: str
     database: str
-    db_type: str  # postgresql | mysql | fabric
+    db_type: str  # postgresql | mysql
 
 
 class ConnectRequest(BaseModel):
@@ -114,10 +114,6 @@ def _build_connection_url(config: dict) -> str:
         return f"postgresql+psycopg://{user}:{password}@{host}:{port}/{database}"
     elif db_type == "mysql":
         return f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
-    elif db_type == "fabric":
-        # pure-Python python-tds (pytds) via sqlalchemy-pytds; encryption +
-        # no host-cert validation handled in connect_args (_get_remote_engine).
-        return f"mssql+pytds://{user}:{password}@{host}:{port}/{database}"
     else:
         raise HTTPException(400, f"Unsupported db_type: {db_type}")
 
@@ -125,16 +121,7 @@ def _build_connection_url(config: dict) -> str:
 def _get_remote_engine(config: dict):
     """Create a disposable remote engine (NullPool, no caching)."""
     url = _build_connection_url(config)
-    if config.get("db_type") == "fabric":
-        # pytds (python-tds) takes login_timeout/timeout, not connect_timeout;
-        # skip host-cert validation for Fabric SQL endpoints (cert won't match).
-        connect_args = {
-            "login_timeout": QUERY_TIMEOUT_S,
-            "timeout": QUERY_TIMEOUT_S,
-            "validate_host": False,
-        }
-    else:
-        connect_args = {"connect_timeout": QUERY_TIMEOUT_S}
+    connect_args = {"connect_timeout": QUERY_TIMEOUT_S}
     return create_engine(url, poolclass=NullPool, connect_args=connect_args)
 
 
@@ -154,8 +141,6 @@ def _list_tables_sql(db_type: str) -> str:
         return "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name"
     elif db_type == "mysql":
         return "SHOW TABLES"
-    elif db_type == "fabric":
-        return "SELECT table_name FROM information_schema.tables WHERE table_schema = 'dbo' ORDER BY table_name"
     return ""
 
 
@@ -315,12 +300,6 @@ def get_table_schema(request: Request, source_id: int = 0, table: str = ""):
             "FROM information_schema.columns "
             "WHERE table_name = :t AND table_schema = DATABASE() ORDER BY ordinal_position"
         )
-    elif db_type == "fabric":
-        sql = (
-            "SELECT column_name, data_type, is_nullable "
-            "FROM information_schema.columns "
-            "WHERE table_schema = 'dbo' AND table_name = :t ORDER BY ordinal_position"
-        )
     else:
         raise HTTPException(400, f"Unsupported db_type: {db_type}")
 
@@ -393,16 +372,11 @@ def sync_tables(req: SyncRequest, request: Request):
                     db_type = config.get("db_type", "")
                     if db_type == "mysql":
                         quoted = f"`{tbl_name}`"
-                    elif db_type == "fabric":
-                        quoted = f"[{tbl_name}]"
                     else:
                         quoted = f'"{tbl_name}"'
 
                     # Read from remote — limit to MAX_ROWS for safety (dialect-aware)
-                    if db_type == "fabric":
-                        sql_text = text(f"SELECT TOP {MAX_ROWS} * FROM {quoted}")
-                    else:
-                        sql_text = text(f"SELECT * FROM {quoted} LIMIT {MAX_ROWS}")
+                    sql_text = text(f"SELECT * FROM {quoted} LIMIT {MAX_ROWS}")
                     with remote_eng.connect() as rconn:
                         if db_type == "postgresql":
                             rconn.execute(text("SET TRANSACTION READ ONLY"))
@@ -508,7 +482,7 @@ def list_sources(request: Request, project: str = ""):
             "SELECT id, source_type, site_name, config, sync_state, last_sync_at, status, created_at "
             "FROM public.dash_data_sources "
             "WHERE project_slug = :slug AND user_id = :uid "
-            "AND source_type IN ('postgresql', 'mysql', 'fabric') "
+            "AND source_type IN ('postgresql', 'mysql') "
             "AND status != 'deleted' ORDER BY created_at DESC"
         ), {"slug": project, "uid": user["user_id"]}).fetchall()
 
@@ -591,7 +565,7 @@ def delete_source(source_id: int, request: Request):
     with _engine.connect() as conn:
         conn.execute(text(
             "UPDATE public.dash_data_sources SET status = 'deleted', updated_at = NOW() "
-            "WHERE id = :id AND user_id = :uid AND source_type IN ('postgresql', 'mysql', 'fabric')"
+            "WHERE id = :id AND user_id = :uid AND source_type IN ('postgresql', 'mysql')"
         ), {"id": source_id, "uid": user["user_id"]})
         conn.commit()
 
@@ -639,7 +613,7 @@ def run_query(req: QueryRequest, request: Request):
         row = conn.execute(text(
             "SELECT config, project_slug FROM public.dash_data_sources "
             "WHERE id = :id AND user_id = :uid AND status = 'active' "
-            "AND source_type IN ('postgresql', 'mysql', 'fabric')"
+            "AND source_type IN ('postgresql', 'mysql')"
         ), {"id": req.source_id, "uid": user["user_id"]}).fetchone()
 
     if not row:
@@ -738,15 +712,10 @@ def sync_worker(source_id: int, tables: list[str] | None = None, force: bool = F
             try:
                 if db_type == "mysql":
                     quoted = f"`{tbl_name}`"
-                elif db_type == "fabric":
-                    quoted = f"[{tbl_name}]"
                 else:
                     quoted = f'"{tbl_name}"'
 
-                if db_type == "fabric":
-                    _sql = text(f"SELECT TOP {MAX_ROWS} * FROM {quoted}")
-                else:
-                    _sql = text(f"SELECT * FROM {quoted} LIMIT {MAX_ROWS}")
+                _sql = text(f"SELECT * FROM {quoted} LIMIT {MAX_ROWS}")
                 with remote_eng.connect() as rconn:
                     if db_type == "postgresql":
                         rconn.execute(text("SET TRANSACTION READ ONLY"))
@@ -845,7 +814,7 @@ def admin_list_sources(request: Request):
             rows = conn.execute(text(
                 "SELECT id, project_slug, source_type, config, sync_state, last_sync_at, status "
                 "FROM public.dash_data_sources "
-                "WHERE source_type IN ('postgresql', 'mysql', 'fabric') AND status != 'deleted' "
+                "WHERE source_type IN ('postgresql', 'mysql') AND status != 'deleted' "
                 "ORDER BY created_at DESC"
             )).fetchall()
 
@@ -909,7 +878,7 @@ async def train_source(source_id: int, request: Request):
         row = conn.execute(text(
             "SELECT id, project_slug FROM public.dash_data_sources "
             "WHERE id = :id AND user_id = :uid AND status = 'active' "
-            "AND source_type IN ('postgresql', 'mysql', 'fabric')"
+            "AND source_type IN ('postgresql', 'mysql')"
         ), {"id": source_id, "uid": user["user_id"]}).fetchone()
 
     if not row:

@@ -290,3 +290,89 @@ export function parseSkillUsed(content: string): SkillUsedItem | null {
   if (!name) return null;
   return { name, id };
 }
+
+// ── Clinical Monograph (chemist → chemist drug card) ──────────────────
+// Agent emits these for drug / salt / substitute / stock-by-name questions:
+//   [DRUG: salt|brand|status|class|article]   (required to trigger monograph)
+//   [COMPOSITION: text]
+//   [INDICATION: text]
+//   [DOSE: text]
+//   [CAUTION: text]        (repeatable — safety, red strip)
+//   [INTERACTS: text]      (repeatable — safety, red strip)
+//   [STOCK: qty|skus|branch|cost|status]
+//   [EQUIV: name|qty|cost|article]   (repeatable — therapeutic equivalents)
+//   [EVIDENCE: article|table]
+export interface EquivItem { name: string; qty: string; cost: string; article: string; }
+export interface Monograph {
+  salt: string;
+  brand: string;
+  status: string;       // Rx | OTC | Controlled | ...
+  klass: string;        // drug class
+  article: string;      // primary article_code
+  composition: string;
+  indication: string;
+  dose: string;
+  caution: string[];
+  interacts: string[];
+  stock: { qty: string; skus: string; branch: string; cost: string; status: string } | null;
+  equiv: EquivItem[];
+  evidence: { article: string; table: string } | null;
+}
+
+export function parseMonograph(content: string): { mono: Monograph | null; stripped: string } {
+  const reDrug = /\[DRUG:\s*([^\]]+)\]/;
+  const dm = content.match(reDrug);
+  if (!dm) return { mono: null, stripped: content };
+
+  const [salt, brand, status, klass, article] = _parts((dm[1] || '').trim(), 5);
+  if (!salt) return { mono: null, stripped: content };
+
+  const one = (tag: string): string => {
+    const m = content.match(new RegExp(`\\[${tag}:\\s*([^\\]]+)\\]`));
+    return m ? (m[1] || '').trim() : '';
+  };
+  const many = (tag: string): string[] =>
+    _matches(content, new RegExp(`\\[${tag}:\\s*([^\\]]+)\\]`, 'g'));
+
+  let stock: Monograph['stock'] = null;
+  const sm = content.match(/\[STOCK:\s*([^\]]+)\]/);
+  if (sm) {
+    const [qty, skus, branch, cost, st] = _parts((sm[1] || '').trim(), 5);
+    stock = { qty, skus, branch, cost, status: st };
+  }
+
+  const equiv: EquivItem[] = [];
+  {
+    const re = /\[EQUIV:\s*([^\]]+)\]/g;
+    let m: RegExpExecArray | null;
+    re.lastIndex = 0;
+    while ((m = re.exec(content)) !== null) {
+      const [name, qty, cost, art] = _parts((m[1] || '').trim(), 4);
+      if (name) equiv.push({ name, qty, cost, article: art });
+    }
+  }
+
+  let evidence: Monograph['evidence'] = null;
+  const em = content.match(/\[EVIDENCE:\s*([^\]]+)\]/);
+  if (em) {
+    const [art, table] = _parts((em[1] || '').trim(), 2);
+    evidence = { article: art, table };
+  }
+
+  const mono: Monograph = {
+    salt, brand, status, klass, article,
+    composition: one('COMPOSITION'),
+    indication: one('INDICATION'),
+    dose: one('DOSE'),
+    caution: many('CAUTION'),
+    interacts: many('INTERACTS'),
+    stock, equiv, evidence,
+  };
+
+  // strip every monograph tag so prose/markdown below stays clean
+  const stripped = content.replace(
+    /\[(DRUG|COMPOSITION|INDICATION|DOSE|CAUTION|INTERACTS|STOCK|EQUIV|EVIDENCE):\s*[^\]]+\]/g,
+    '',
+  );
+  return { mono, stripped };
+}

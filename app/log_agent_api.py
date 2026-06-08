@@ -41,7 +41,7 @@ def _get_user(request: Request) -> dict:
 
 
 def _require_super(user: dict):
-    if not user.get("is_super_admin"):
+    if not user.get("is_admin"):
         raise HTTPException(403, "super-admin only")
 
 

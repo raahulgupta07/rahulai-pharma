@@ -141,11 +141,28 @@ def _load_db_rules(project_slug: str) -> list[dict]:
     try:
         from sqlalchemy import text
         from db import db_url
+        # Bilingual: on a MY turn return the Burmese twin where it exists, else
+        # the EN original (twins link by parent_id). Guarded so a NULL/absent
+        # lang col never excludes a row.
+        try:
+            from dash.instructions import REPLY_LANG
+            _lang = (REPLY_LANG.get() or "en")
+        except Exception:
+            _lang = "en"
+        if _lang == "my":
+            _lang_clause = (
+                " AND (lang = 'my' OR (COALESCE(lang,'en') = 'en' AND id NOT IN "
+                "(SELECT parent_id FROM public.dash_rules_db WHERE parent_id IS NOT NULL AND lang = 'my')))"
+            )
+        else:
+            _lang_clause = " AND (lang IS NULL OR lang = 'en')"
         engine = _get_shared_engine(db_url)
         with engine.connect() as conn:
             rows = conn.execute(text(
                 "SELECT name, type, definition, source FROM public.dash_rules_db "
-                "WHERE project_slug = :s ORDER BY type, name LIMIT 50"
+                "WHERE project_slug = :s"
+                + _lang_clause +
+                " ORDER BY type, name LIMIT 50"
             ), {"s": project_slug}).fetchall()
             return [{"name": r[0], "type": r[1], "definition": r[2], "source": r[3]} for r in rows]
     except Exception:

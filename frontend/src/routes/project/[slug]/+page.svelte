@@ -901,9 +901,11 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
    msgText = msgText.slice(7).trim();
  } else if (reasoningMode === 'fast') {
    forcedReasoning = 'quick';
- } else if (reasoningMode === 'deep') {
-   forcedReasoning = 'deep';
+ } else if (reasoningMode === 'standard') {
+   forcedReasoning = 'standard';
  }  // else 'auto' → empty → router decides
+ // (DEEP/REASONING/ULTRA tiers removed — pharmacy counter needs none. `/deep `
+ //  slash command above still works as a power-user escape hatch.)
  const msg = msgText;
  if (!msg) return;
  inputText = '';
@@ -2228,16 +2230,21 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  // Reasoning mode / analysis type / effort: removed from UI (use /deep or /quick slash
  // commands instead). Kept as empty constants because trace badges + sendMessage still
  // read them.
- let reasoningMode = $state<string>(typeof window !== 'undefined' ? (localStorage.getItem('reasoning_mode') || 'auto') : 'auto');
+ // CityPharma = pharmacy counter tool: only 3 tiers needed (AUTO/FAST/STANDARD).
+ // DEEP/REASONING/ULTRA (RCA/forecast/visible-chain/counter-hypothesis) are
+ // BI-research tiers with no counter use — removed 2026-06-08.
+ const _ALLOWED_MODES = ['auto', 'fast', 'standard'];
+ let reasoningMode = $state<string>((() => {
+   if (typeof window === 'undefined') return 'auto';
+   const v = localStorage.getItem('reasoning_mode') || 'auto';
+   return _ALLOWED_MODES.includes(v) ? v : 'auto';   // clamp stale deep/reasoning/ultra
+ })());
  $effect(() => { try { localStorage.setItem('reasoning_mode', reasoningMode); } catch {} });
  let modeMenuOpen = $state(false);
  const MODE_OPTIONS = [
    { id: 'auto',      label: 'AUTO',      desc: 'Router auto-picks tier from question' },
-   { id: 'fast',      label: 'FAST',      desc: 'Quick tier — 1 KPI + 1 line · <500ms · $0.0001' },
-   { id: 'standard',  label: 'STANDARD',  desc: 'Analytical card — KPI strip + 2 recs · ~2s · $0.005' },
-   { id: 'deep',      label: 'DEEP',      desc: 'RCA + segments + benchmarks + scenarios + forecast · ~8-15s · $0.05' },
-   { id: 'reasoning', label: 'REASONING', desc: 'Visible thinking chain · multi-step · ~10-20s · $0.08' },
-   { id: 'ultra',     label: 'ULTRA',     desc: 'Deep + verification + counter-hypothesis · ~30-60s · $0.15' },
+   { id: 'fast',      label: 'FAST',      desc: 'Quick answer — stock / lookup · <500ms' },
+   { id: 'standard',  label: 'STANDARD',  desc: 'Analytical card — KPI strip + breakdown · ~2s' },
  ];
  const analysisType = '';
  const effort = '';
@@ -2388,7 +2395,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
   </div>
   {/if}
 
-  <div class="flex-1 overflow-y-auto" bind:this={messagesEl} style="padding: 20px 20px 16px 20px; background: #ffffff;">
+  <div class="flex-1 overflow-y-auto" bind:this={messagesEl} style="padding: 20px clamp(12px, 4vw, 48px) 16px; background: #ffffff;">
     <!-- Hybrid Claude-style: 880px reading column on white bg -->
     <div style="max-width: 880px; margin: 0 auto;">
 
@@ -2637,31 +2644,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
                   {/each}
                 </div>
               {/if}
-              {#if msg.status === "done" && msg.role === "assistant"}
-                {#if true}
-                  {@const _mfSqls = Array.isArray((msg as any).sqlQueries) ? (msg as any).sqlQueries : []}
-                  {@const _mfSql = _mfSqls[0] || ''}
-                  <div style="margin-top: 6px;">
-                    <button
-                      onclick={() => {
-                        let lastUserQ = '';
-                        for (let k = i - 1; k >= 0; k--) {
-                          if (messages[k]?.role === 'user') { lastUserQ = messages[k].content || ''; break; }
-                        }
-                        metricFixQuestion = lastUserQ;
-                        metricFixSql = _mfSql;
-                        metricFixOpen = true;
-                      }}
-                      style="
-                        padding: 3px 10px; border: 1px solid var(--pw-border, #ccc);
-                        background: none; cursor: pointer; font-family: monospace;
-                        font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
-                        color: var(--pw-ink, #1a1614);
-                      "
-                    >📌 Define/Fix metric</button>
-                  </div>
-                {/if}
-              {/if}
+              <!-- Define/Fix metric button REMOVED 2026-06-06 — unused (0 metrics defined), clutter on every answer, nonsensical on drug cards. Metric defs managed via Workspace → Definitions. -->
             {/snippet}
           </ChatMessageList>
         </div>
@@ -2677,45 +2660,9 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
         <div class="composer-row">
           <!-- Segment 1: Filter pills -->
           <div class="composer-seg composer-filters">
-        <!-- Workflow picker -->
-        <div class="mode-selector" style="position: relative;">
-          <button class="cmp-chip" onclick={() => { if (workflows.length === 0) loadWorkflows(); modelMenuOpen = false; workflowPickerOpen = !workflowPickerOpen; }} disabled={isStreaming} title="Workflow">
-            <span>⊞</span>
-            <span>Flow</span>
-            <span class="caret">▾</span>
-          </button>
-          {#if workflowPickerOpen}
-            <div class="mode-dropdown" style="min-width: 280px;">
-              <!-- Save current chat as workflow -->
-              {#if canEdit && messages.filter(m => m.role === 'user').length >= 1}
-                <button class="mode-dropdown-item" onclick={() => { workflowPickerOpen = false; openWorkflowSave(); }} style="border-bottom: 2px solid var(--pw-muted);">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-                  <div>
-                    <div style="font-weight: 900; color: #7c3aed;">SAVE CURRENT AS WORKFLOW</div>
-                    <span class="mode-dropdown-label">{messages.filter(m => m.role === 'user').length} steps from this chat</span>
-                  </div>
-                </button>
-              {/if}
-              {#if workflows.length === 0}
-                <div style="padding: 14px; font-size: 11px; color: var(--pw-muted); text-align: center;">No workflows yet. Train your project to auto-generate workflows.</div>
-              {:else}
-                {#each workflows as wf}
-                  <button class="mode-dropdown-item" onclick={() => runWorkflow(wf)}>
-                    <div>
-                      <div style="font-weight: 900;">{wf.name}</div>
-                      {#if wf.description}
-                        <span class="mode-dropdown-label">{wf.description}</span>
-                      {/if}
-                      <span class="mode-dropdown-label">{wf.steps?.length || 0} steps</span>
-                    </div>
-                  </button>
-                {/each}
-              {/if}
-            </div>
-          {/if}
-        </div>
+        <!-- Workflow picker REMOVED 2026-06-06 — dead multi-agent Dash inheritance, single-agent CityPharma has no canned macros -->
 
-        <!-- Mode picker (AUTO / FAST / DEEP) -->
+        <!-- Mode picker (AUTO / FAST / STANDARD) -->
         <div class="mode-selector" style="position: relative; margin-left: 4px;">
           <button class="cmp-chip" onclick={() => { workflowPickerOpen = false; modeMenuOpen = !modeMenuOpen; }} disabled={isStreaming} title="Reasoning mode">
             <span style="opacity: 0.7;">◐</span>

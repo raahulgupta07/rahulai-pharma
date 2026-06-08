@@ -126,7 +126,7 @@
       {:else}
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">
           {#each dashboards as d}
-            <button class="ink-border" style="background: var(--color-surface-bright); text-align: left; cursor: pointer; border: 2px solid var(--color-on-surface); border-bottom-width: 4px; border-right-width: 4px; transition: transform 0.1s, box-shadow 0.1s; padding: 0; font-family: var(--font-family-display);" onclick={() => loadDashboard(d.id)}>
+            <button class="ink-border" style="background: var(--color-surface-bright); text-align: left; cursor: pointer; border: 2px solid var(--pw-border, #e5ddcf); border-bottom-width: 4px; border-right-width: 4px; transition: transform 0.1s, box-shadow 0.1s; padding: 0; font-family: var(--font-family-display);" onclick={() => loadDashboard(d.id)}>
               <!-- Card header -->
               <div style="background: var(--color-on-surface); color: var(--color-surface); padding: 10px 16px; display: flex; align-items: center; justify-content: space-between;">
                 <span style="font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em;">{d.name}</span>
@@ -201,7 +201,7 @@
           {#each activeDashboard.widgets as widget, wi}
             <div class="ink-border" class:widget-full={widget.full || widget.type === 'text'} style="background: var(--color-surface-bright); overflow: hidden;">
               <!-- Widget header -->
-              <div class="flex items-center justify-between" style="padding: 8px 14px; border-bottom: 2px solid var(--color-on-surface); background: var(--color-on-surface); color: var(--color-surface);">
+              <div class="flex items-center justify-between" style="padding: 8px 14px; border-bottom: 2px solid var(--pw-border, #e5ddcf); background: var(--color-on-surface); color: var(--color-surface);">
                 <span style="font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.06em;">{widget.title}</span>
                 <div class="flex items-center gap-2">
                   <span style="font-size: 11px; padding: 1px 6px; background: var(--color-primary); color: white; font-weight: 900;">{widget.type?.toUpperCase()}</span>
@@ -278,7 +278,7 @@
       <div class="dark-title-bar" style="padding: 8px 14px; font-size: 11px;">CREATE DASHBOARD</div>
       <div style="padding: 16px;">
         <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 3px;">DASHBOARD NAME</div>
-        <input type="text" bind:value={newDashName} placeholder="e.g. Sales Overview, Weekly Report..." style="width: 100%; border: 2px solid var(--color-on-surface); padding: 8px 12px; font-family: var(--font-family-display); font-size: 12px; background: var(--color-surface); margin-bottom: 14px;" />
+        <input type="text" bind:value={newDashName} placeholder="e.g. Sales Overview, Weekly Report..." style="width: 100%; border: 2px solid var(--pw-border, #e5ddcf); padding: 8px 12px; font-family: var(--font-family-display); font-size: 12px; background: var(--color-surface); margin-bottom: 14px;" />
         <div class="flex gap-2">
           <button class="send-btn" onclick={createDashboard} style="flex: 1; padding: 8px; font-size: 11px; justify-content: center; display: flex;">CREATE</button>
           <button class="feedback-btn" onclick={() => showCreate = false} style="flex: 1; padding: 8px; font-size: 11px; justify-content: center; display: flex; font-weight: 700;">CANCEL</button>

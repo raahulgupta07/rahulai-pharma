@@ -1,26 +1,31 @@
-"""Apache AGE pharma graph tools for the CityPharma Analyst.
+"""Pharma drug-relationship tools for the CityPharma Analyst — RELATIONAL.
 
-Graph 'citypharma' holds drug-relationship structure (substitutes, generics,
-categories, indications, compositions). Stock (106k rows) stays relational in
-proj_demo_citypharma.citypharma_balance_stock and is joined by article_code.
+Originally backed by an Apache AGE graph 'citypharma'. AGE is GONE (cp-db was
+recreated without the baked-AGE image — durability landmine), so these are now
+pure relational over the catalog (drugs sharing generic_name = substitutes;
+indication ILIKE = therapeutic alternatives). Survives any cp-db recreate, no
+AGE dependency. Table names auto-detected (data lands as *_07052026).
 
-These tools open their OWN read-only direct connection to Postgres (cp-db / service
-'dash-db'), so AGE's required `search_path = ag_catalog` is set cleanly per call
-without fighting the analyst's pooled engine. shared_preload_libraries='age' means
-no LOAD is needed.
+Store-scope masking preserved: when a key is store-locked, stock is forced to
+the bound store (Tier-1 own-branch only) + mask_row belt-and-suspenders.
 
-Disable with PHARMA_GRAPH_DISABLED=1.
+Own read-only direct connection to cp-db (service 'dash-db'). Disable with
+PHARMA_GRAPH_DISABLED=1.
 """
 from __future__ import annotations
 
 import os
 import logging
 
+from dash.api_scope import is_store_locked, bound_store, mask_row
+
 log = logging.getLogger("dash.pharma_graph")
 
-GRAPH = "citypharma"
-SCHEMA = "proj_demo_citypharma"
-STOCK = f"{SCHEMA}.citypharma_balance_stock"
+SCHEMA = "citypharma"
+
+# resolved lazily by _resolve_tables() on first connection
+ART: str | None = None
+STOCK: str | None = None
 
 
 def _conn():
@@ -35,73 +40,93 @@ def _conn():
         autocommit=True,
     )
     cur = c.cursor()
-    cur.execute('SET search_path = ag_catalog, "$user", public;')
     cur.execute("SET statement_timeout = '20s';")
+    cur.execute(f'SET search_path = "{SCHEMA}", public;')
+    _resolve_tables(cur)
     return c, cur
 
 
-def _q(s: str) -> str:
-    return str(s or "").replace("'", "’")
+def _resolve_tables(cur):
+    """Point ART/STOCK at the CURRENT uploaded tables (latest upload wins).
+
+    Shared resolver (TTL-cached, ordered by dash_table_metadata.updated_at) so a
+    new upload is picked up within seconds without a process restart.
+    """
+    global ART, STOCK
+    from dash.tools.table_sync import latest_table, STOCK_COLS, CATALOG_COLS
+    art = latest_table(cur, SCHEMA, CATALOG_COLS)
+    stock = latest_table(cur, SCHEMA, STOCK_COLS)
+    ART = f'"{SCHEMA}"."{art}"' if art else f'"{SCHEMA}"."articles_list_07052026"'
+    STOCK = f'"{SCHEMA}"."{stock}"' if stock else f'"{SCHEMA}"."balance_stock_07052026"'
 
 
-def _cypher(cur, query: str, cols: int):
-    coldef = ", ".join(f"c{i} agtype" for i in range(cols))
-    cur.execute(f"SELECT * FROM cypher('{GRAPH}', $$ {query} $$) AS ({coldef});")
-    return cur.fetchall()
-
-
-def _agt(v):
-    # agtype values come back as JSON-ish strings; strip quotes for scalars
-    s = str(v)
-    if s.startswith('"') and s.endswith('"'):
-        return s[1:-1]
-    return s
-
-
-def _stock_for(cur, codes: list[int], site_code: str = ""):
+def _stock_for(cur, codes: list, site_code: str = "") -> dict:
     if not codes:
         return {}
-    codes = [int(c) for c in codes][:200]
-    ph = ",".join(str(c) for c in codes)
+    codes = [c for c in codes if c is not None][:200]
+    if not codes:
+        return {}
+    ph = ",".join("%s" for _ in codes)
+    # STOCK.article_code is TEXT; pass codes as text so IN matches (ART side is bigint).
+    scodes = [str(c) for c in codes]
     if site_code:
         cur.execute(
-            f"SELECT article_code, SUM(stock_qty) FROM {STOCK} "
-            f"WHERE article_code IN ({ph}) AND site_code = %s GROUP BY 1", (site_code,))
+            f"SELECT article_code, COALESCE(SUM(stock_qty),0) FROM {STOCK} "
+            f"WHERE article_code IN ({ph}) AND site_code = %s GROUP BY 1",
+            (*scodes, site_code))
     else:
         cur.execute(
-            f"SELECT article_code, SUM(stock_qty) FROM {STOCK} "
-            f"WHERE article_code IN ({ph}) GROUP BY 1")
-    return {int(r[0]): int(r[1] or 0) for r in cur.fetchall()}
+            f"SELECT article_code, COALESCE(SUM(stock_qty),0) FROM {STOCK} "
+            f"WHERE article_code IN ({ph}) GROUP BY 1", tuple(scodes))
+    # keys may come back as text — normalise to int so callers keying by int match
+    out = {}
+    for r in cur.fetchall():
+        try: out[int(r[0])] = int(r[1] or 0)
+        except (TypeError, ValueError): out[r[0]] = int(r[1] or 0)
+    return out
 
 
 def find_substitutes(article_code: int = 0, brand_name: str = "", site_code: str = "", in_stock_only: bool = False) -> dict:
     """Find substitute drugs (same generic molecule) for an article, with current stock.
 
-    Use when a brand is out of stock and the user needs alternatives. Provide
-    article_code OR brand_name. site_code optional (filter stock to one site).
+    Provide article_code OR brand_name. site_code optional (filter stock to one site).
+    Relational: drugs sharing the same generic_name. Returns source article_codes.
     """
     if os.getenv("PHARMA_GRAPH_DISABLED") == "1":
-        return {"ok": False, "error": "graph disabled"}
+        return {"ok": False, "error": "pharma tools disabled"}
     try:
         c, cur = _conn()
         try:
             if article_code:
-                match = f"(a:Article {{code: {int(article_code)}}})"
+                cur.execute(f"SELECT generic_name, brand_name FROM {ART} WHERE article_code = %s LIMIT 1", (int(article_code),))
             elif brand_name:
-                match = f"(a:Article) WHERE a.brand =~ '(?i).*{_q(brand_name)}.*'"
+                cur.execute(f"SELECT generic_name, brand_name FROM {ART} WHERE brand_name ILIKE %s "
+                            f"AND generic_name IS NOT NULL AND generic_name <> '' "
+                            f"ORDER BY (brand_name ILIKE %s) DESC LIMIT 1",
+                            (f"%{brand_name.strip()}%", f"{brand_name.strip()}%"))
             else:
                 return {"ok": False, "error": "provide article_code or brand_name"}
-            rows = _cypher(cur,
-                f"MATCH {match}-[:SUBSTITUTE_OF]->(b:Article) "
-                f"RETURN b.code, b.brand, b.generic LIMIT 100", 3)
-            subs = [{"code": int(_agt(r[0])), "brand": _agt(r[1]), "generic": _agt(r[2])} for r in rows]
+            row = cur.fetchone()
+            if not row or not row[0]:
+                return {"ok": True, "count": 0, "substitutes": []}
+            generic, self_brand = row[0], (row[1] or "")
+            if is_store_locked():
+                site_code = bound_store() or site_code
+            cur.execute(
+                f"SELECT article_code, brand_name, generic_name FROM {ART} "
+                f"WHERE generic_name = %s AND brand_name <> %s LIMIT 100",
+                (generic, self_brand))
+            subs = [{"code": r[0], "brand": (r[1] or "").strip(), "generic": (r[2] or "").strip(),
+                     "_source": f"article_code={r[0]}"} for r in cur.fetchall()]
             stock = _stock_for(cur, [s["code"] for s in subs], site_code)
             for s in subs:
                 s["stock_qty"] = stock.get(s["code"], 0)
+                mask_row(s, site_code)
             if in_stock_only:
-                subs = [s for s in subs if s["stock_qty"] > 0]
-            subs.sort(key=lambda x: -x["stock_qty"])
-            return {"ok": True, "count": len(subs), "site": site_code or "all", "substitutes": subs[:50]}
+                subs = [s for s in subs if (s.get("stock_qty") or 0) > 0]
+            subs.sort(key=lambda x: -(x.get("stock_qty") or 0))
+            return {"ok": True, "count": len(subs), "generic": generic,
+                    "site": site_code or "all", "substitutes": subs[:50]}
         finally:
             c.close()
     except Exception as e:
@@ -112,27 +137,39 @@ def find_substitutes(article_code: int = 0, brand_name: str = "", site_code: str
 def alternatives_for_indication(indication: str = "", site_code: str = "", in_stock_only: bool = False) -> dict:
     """Find all articles that treat a given indication (condition), with stock.
 
-    Use for 'what do we have for <condition>' or therapeutic-alternative questions.
+    Relational: indication column ILIKE. Returns source article_codes.
     """
     if os.getenv("PHARMA_GRAPH_DISABLED") == "1":
-        return {"ok": False, "error": "graph disabled"}
+        return {"ok": False, "error": "pharma tools disabled"}
     if not indication:
         return {"ok": False, "error": "provide indication"}
     try:
         c, cur = _conn()
         try:
-            rows = _cypher(cur,
-                f"MATCH (a:Article)-[:TREATS]->(i:Indication) "
-                f"WHERE i.name =~ '(?i).*{_q(indication)}.*' "
-                f"RETURN a.code, a.brand, a.generic LIMIT 200", 3)
-            arts = [{"code": int(_agt(r[0])), "brand": _agt(r[1]), "generic": _agt(r[2])} for r in rows]
+            if is_store_locked():
+                site_code = bound_store() or site_code
+            # indication column is Burmese — expand English symptom terms to
+            # Burmese synonyms and OR-match (shared map with chemist tool).
+            try:
+                from dash.tools.pharma_chemist_tool import _expand_symptom_terms
+                _terms = _expand_symptom_terms(indication.strip())
+            except Exception:
+                _terms = [indication.strip()]
+            _where = " OR ".join(["indication ILIKE %s"] * len(_terms))
+            cur.execute(
+                f"SELECT article_code, brand_name, generic_name FROM {ART} "
+                f"WHERE {_where} LIMIT 200", tuple(f"%{t}%" for t in _terms))
+            arts = [{"code": r[0], "brand": (r[1] or "").strip(), "generic": (r[2] or "").strip(),
+                     "_source": f"article_code={r[0]}"} for r in cur.fetchall()]
             stock = _stock_for(cur, [a["code"] for a in arts], site_code)
             for a in arts:
                 a["stock_qty"] = stock.get(a["code"], 0)
+                mask_row(a, site_code)
             if in_stock_only:
-                arts = [a for a in arts if a["stock_qty"] > 0]
-            arts.sort(key=lambda x: -x["stock_qty"])
-            return {"ok": True, "count": len(arts), "indication": indication, "site": site_code or "all", "articles": arts[:50]}
+                arts = [a for a in arts if (a.get("stock_qty") or 0) > 0]
+            arts.sort(key=lambda x: -(x.get("stock_qty") or 0))
+            return {"ok": True, "count": len(arts), "indication": indication,
+                    "site": site_code or "all", "articles": arts[:50]}
         finally:
             c.close()
     except Exception as e:
@@ -141,33 +178,39 @@ def alternatives_for_indication(indication: str = "", site_code: str = "", in_st
 
 
 def drug_relationships(article_code: int = 0, brand_name: str = "") -> dict:
-    """Show the graph neighbourhood of one article: generic, category, indications,
-    compositions, and substitute drugs. Use for 'tell me about <drug> and related'.
+    """Show the neighbourhood of one article: generic, category, indication,
+    composition, side effects, and substitute drugs (same generic). Relational.
     """
     if os.getenv("PHARMA_GRAPH_DISABLED") == "1":
-        return {"ok": False, "error": "graph disabled"}
+        return {"ok": False, "error": "pharma tools disabled"}
     try:
         c, cur = _conn()
         try:
             if article_code:
-                match = f"(a:Article {{code: {int(article_code)}}})"
+                cur.execute(f"SELECT article_code, brand_name, generic_name, category, "
+                            f"indication, composition, side_effect FROM {ART} "
+                            f"WHERE article_code = %s LIMIT 1", (int(article_code),))
             elif brand_name:
-                match = f"(a:Article) WHERE a.brand =~ '(?i).*{_q(brand_name)}.*'"
+                cur.execute(f"SELECT article_code, brand_name, generic_name, category, "
+                            f"indication, composition, side_effect FROM {ART} "
+                            f"WHERE brand_name ILIKE %s ORDER BY (brand_name ILIKE %s) DESC LIMIT 1",
+                            (f"%{brand_name.strip()}%", f"{brand_name.strip()}%"))
             else:
                 return {"ok": False, "error": "provide article_code or brand_name"}
-            base = _cypher(cur, f"MATCH {match} RETURN a.code, a.brand, a.generic, a.category LIMIT 1", 4)
-            if not base:
+            b = cur.fetchone()
+            if not b:
                 return {"ok": True, "found": False}
-            b = base[0]
-            code = int(_agt(b[0]))
-            ind = _cypher(cur, f"MATCH (a:Article {{code:{code}}})-[:TREATS]->(i:Indication) RETURN i.name LIMIT 20", 1)
-            comp = _cypher(cur, f"MATCH (a:Article {{code:{code}}})-[:HAS_COMPOSITION]->(c:Composition) RETURN c.name LIMIT 20", 1)
-            subs = _cypher(cur, f"MATCH (a:Article {{code:{code}}})-[:SUBSTITUTE_OF]->(s:Article) RETURN s.brand LIMIT 30", 1)
+            code, brand, generic, cat, ind, comp, se = b
+            subs = []
+            if generic:
+                cur.execute(f"SELECT brand_name FROM {ART} WHERE generic_name = %s "
+                            f"AND brand_name <> %s LIMIT 30", (generic, brand or ""))
+                subs = [(r[0] or "").strip() for r in cur.fetchall()]
             return {"ok": True, "found": True, "article": {
-                "code": code, "brand": _agt(b[1]), "generic": _agt(b[2]), "category": _agt(b[3]),
-                "indications": [_agt(r[0]) for r in ind],
-                "compositions": [_agt(r[0]) for r in comp],
-                "substitutes": [_agt(r[0]) for r in subs],
+                "code": code, "brand": (brand or "").strip(), "generic": (generic or "").strip(),
+                "category": (cat or "").strip(), "indication": (ind or "").strip(),
+                "composition": (comp or "").strip(), "side_effect": (se or "").strip(),
+                "substitutes": subs, "_source": f"article_code={code}",
             }}
         finally:
             c.close()
