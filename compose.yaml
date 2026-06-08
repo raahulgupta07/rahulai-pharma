@@ -70,6 +70,47 @@ services:
         limits:
           memory: 512M
 
+  # One-shot DB seeder. Loads the complete baseline schema (db/baseline/schema.sql
+  # + migrations_seed.sql) into a FRESH database so a brand-new cloud install comes
+  # up clean on the FIRST boot — no manual `scripts/init_fresh_db.sh` step needed.
+  # Uses the AGE/pgvector postgres image because it ships `psql` (the app image does
+  # not). IDEMPOTENT + guarded: if public.dash_projects already exists it exits 0
+  # immediately and touches nothing — so existing/populated installs are unaffected.
+  # dash-api waits for this to complete successfully before booting.
+  dash-init:
+    image: cp-db-age:pg18
+    container_name: cp-init
+    restart: "no"
+    environment:
+      PGHOST: dash-db
+      PGPORT: "5432"
+      PGUSER: ${DB_USER:?DB_USER required}
+      PGPASSWORD: ${DB_PASS:?DB_PASS required}
+      PGDATABASE: ${DB_DATABASE:?DB_DATABASE required}
+    volumes:
+      - ./db/baseline:/baseline:ro
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        echo "[init] checking if database already has schema..."
+        exists="$$(psql -tAc "SELECT to_regclass('public.dash_projects') IS NOT NULL")"
+        if [ "$$exists" = "t" ]; then
+          echo "[init] public.dash_projects exists - DB already initialized, skipping baseline load."
+          exit 0
+        fi
+        echo "[init] fresh database detected - loading baseline schema..."
+        psql -v ON_ERROR_STOP=1 -q -f /baseline/schema.sql
+        echo "[init] seeding migration tracking rows..."
+        psql -v ON_ERROR_STOP=1 -q -f /baseline/migrations_seed.sql
+        tbls="$$(psql -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema IN ('public','dash','citypharma')")"
+        echo "[init] baseline loaded: $$tbls tables. Done."
+    depends_on:
+      dash-db:
+        condition: service_healthy
+    networks:
+      - dash
+
   dash-api:
     build:
       context: .
@@ -167,6 +208,8 @@ services:
     depends_on:
       dash-db:
         condition: service_healthy
+      dash-init:
+        condition: service_completed_successfully
       dash-pgbouncer:
         condition: service_healthy
       dash-redis:
