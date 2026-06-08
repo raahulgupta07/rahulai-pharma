@@ -8,11 +8,12 @@ Single-agent pharmaceutical analytics product. One hardcoded **CityPharma Analys
 
 ## What it is
 
-- **One agent** — "CityPharma Analyst" (Inventory Management · Pharma Regulatory Compliance · Data Integrity). Locked to project `proj_demo_citypharma`.
+- **One agent** — "CityPharma Analyst" (Inventory Management · Pharma Regulatory Compliance · Data Integrity). Locked to project `citypharma`.
 - **Chat** — ask pharma questions in natural language → grounded SQL answers over your stock/sales/article data, clean Compass-style answer card (SQL hidden in a collapsed trace).
+- **Bilingual (English + Burmese)** — the agent mirrors your language: ask in Burmese (မြန်မာ) → answer in Burmese, ask in English → English (brand names + numbers stay as-is). Works in the UI chat and the API gateway, including analytical answers (table headers/labels come back in Burmese too). Driven by a `REPLY_LANG` contract (`dash/instructions.py`) + per-language team cache (`dash/team.py`) + **bilingual training data across every surface** — Burmese twins of training Q&A, agent memories, query patterns, rules, company-brain definitions, and inline Burmese in the schema/column descriptions, with lang-filtered loaders that serve the Burmese row on a Burmese turn (falling back to English where no twin exists). Twins are regenerated automatically on every force-retrain (`scripts/regen_bilingual.py`, hooked into training-complete in `app/upload.py`), so they survive a full retrain. Model routing matters: `REASONING_MODEL=google/gemini-3-flash-preview` (honors Burmese) with `openai/gpt-5-mini` as an OpenRouter `models[]` fallback; every model carries `provider.data_collection="allow"` (`dash.settings.OR_DATA_POLICY`) or the account data policy 404s. Details: `docs/DEVLOG.md` latest+27 & latest+28.
 - **Workspace** — ONE settings page, ONE left rail, everything in groups: **WORKSPACE** (Cockpit · Training · Docs · Queries · Lineage · Files) · **BRAIN** · **AGENTS** (Agents · Schedules · Evals) · **SHARING** (Users · Config · Embed · Sources) · **INTELLIGENCE** (Learn · Pipeline).
 - **Brain** — a group inside the Workspace rail (not a separate page or second menu). Items render as normal rail entries: Definitions · Glossary · Patterns · Rules · Graph · Schema · Org · Promote ⤴ · Pull ⤓ · Conflicts ⚠. A **SCOPE switch** [THIS AGENT · COMPANY · PERSONAL · ALL] sits as a horizontal filter atop the content. Each knowledge category renders as ONE deduplicated merged list — agent-side ∪ company-side keyed by `category::lower(name)` — with per-row status: ✓ synced · ⚠ conflict · ⤴ agent-only · ⤓ company-only. Conflicts expand to a side-by-side diff; **Promote** (agent→company) / **Pull** (company→agent) / **Resolve** act on definitions/patterns/rules (glossary/graph/schema/org are read-only). Backed by `GET /api/brain/unified` + `POST /api/brain/{promote,pull,resolve}` (version-audited). Same `BrainHub.svelte` component also serves the standalone `/ui/brain` route — single source, no drift.
-- **Data Source** — redesigned single page (its own full-width no-rail view): **health rings** (tables · rows · %trained · Q&A · vectors · issues) + **live pipeline strip** + **expandable table rows**. Each row folds its own quality scorecard / columns / FK-links / 5-row preview / **Train now** inline. Backed by one call `GET /api/projects/{slug}/datasource`. Untrained tables auto-train 24/7 (daemon) or via per-row Train-now.
+- **Data Source** — redesigned single page (its own full-width no-rail view): **health rings** (tables · rows · %trained · Q&A · vectors · issues) + **live pipeline strip** + **expandable table rows**. Each row folds its own quality scorecard / columns / FK-links / 5-row preview / **Train now** inline. Backed by one call `GET /api/projects/{slug}/datasource`. Untrained tables auto-train 24/7 (daemon) or via per-row Train-now. A **⚡ Force Train All** button (Workspace header + Data Source `↻ retrain all` + Training tab) POSTs `/api/projects/{slug}/retrain?force=1` to re-run the full pipeline on every table (bypasses the fingerprint "unchanged" skip) and re-refreshes the bilingual twins at the end.
 - **Admin** — Command Center (super-admin only), multi-project grids hidden in single-agent mode.
 
 Top nav: **Dashboard · Chat · Data Source · Workspace · API Gateway · Embed · Admin** (Brain lives in the Workspace rail — no separate top-nav button). **Dashboard** is the default landing.
@@ -70,11 +71,20 @@ A pharmacist/clinical layer over the catalog's clinical columns (`composition` /
 
 External apps (e.g. a PHP storefront) call the CityPharma agent through a standard OpenAI client — swap base URL + key, no SDK changes.
 
+> **Public base URL (AWS):** every URL shown to developers (gateway `base_url`, embed snippets, downloadable SDK files, logo URLs) is driven by one env — set `PUBLIC_URL=https://pharma.yourdomain.com` on deploy and they all follow. Blank locally → the dashboard uses the browser origin. Exposed via `GET /api/flags` (`public_base_url`).
+
 - **Endpoints:** `GET /api/v1/models`, `POST /api/v1/chat/completions` (blocking + `stream:true` SSE).
 - **Auth:** `Authorization: Bearer dash-key-…` service keys, minted super-admin only.
-- **Admin console:** `/ui/gateway` (super-admin) — tabbed: **Overview · Chat sandbox · Keys · Outlets · Usage · Developer · Access · Rate Limit**. Mint/revoke keys, outlet picker, live rate cap, usage analytics, full developer docs inline.
-- **Chat sandbox** (`TEST → Chat sandbox` tab): live-test the real `POST /api/v1/chat/completions` from the browser — paste a `dash-key-…` (auto-fills from a freshly-minted key), type a message, optional stream toggle, see the answer + latency/tokens. Preset chips exercise the 3-tier masking (own stock · other branch · catalog).
+- **Admin console:** `/ui/gateway` (super-admin) — rail: **Console · Overview · Analytics · Developer (Quickstart…Errors) · Access · Rate Limit**. **Console** is the default landing — an **all-in-one workspace** that fuses the three interactive tools on one page (no separate Chat/Keys/Outlets tabs): **Service Keys top-left · live Chatbot top-right · Store/Outlets full-width bottom**. Built with Svelte snippets so the same components also back any standalone view. **Overview** opens with a **HOW IT WORKS** flow diagram (`RequestFlow.svelte`): question → gate (auth·rate·scope) → agent → tier-mask → OpenAI response.
+- **Service Keys** (Console top-left): **cards** (not a table) — status dot + name + scope pill + **plain-words tier** ("tier-1 own (N outlets) · tier-2 cross" / "reference only" / "global · full"), the store binding, and a **usage join** ("N req · last …" from the analytics window). Inline **+ MINT** drawer; secret shown **once** at mint (never retrievable after).
+- **Chatbot** (Console top-right): a **multi-turn chatbot** hitting the real `POST /api/v1/chat/completions` — paste a `dash-key-…` (auto-fills from a freshly-minted key), optional stream toggle, scope chips (own / other branch / catalog) prefill the composer. Each reply shows **tokens · latency** + a **🛡 masked** badge (client heuristic; masking enforced server-side) + a **▸ inspect** expander that folds the per-turn **request line + copy-as-cURL + raw JSON** into the reply (no side panel).
+  - **Live "agent working" strip** (opt-in): when the Console streams it sends `X-Agent-Steps: 1`, and the gateway interleaves tool/reasoning activity as chunk frames carrying a non-standard `delta.x_agent_step` field (🧠 Reasoning · 📦 checking stock · 🔧 …). Official OpenAI SDKs ignore unknown delta keys, so **external clients still get an answer-only v1 stream** — only the internal Console renders the strip. **ChatGPT-style trace (2026-06-08):** steps are Title-Cased phase titles ("Querying inventory", "Checking branch stock", "Planning the stock lookup"); the active phase **shimmers** (gradient light-band sweep, not flat dots); done steps stack in a `✓` rail; once the answer lands the rail collapses to a clickable **"▸ Worked for 4.2s · 3 steps"** fold (ChatGPT-like). Same `x_agent_step` pipe — restyle only, no transport change. *Frontend is vite-baked into the image — changes need `docker compose build dash-api`, and a browser hard-refresh to drop the cached bundle.*
+  - **Clean single-shape answers:** the gateway prepends an `[API MODE]` style directive (answer + at most one compact markdown table, never the dashboard SOURCES/WHY/KPI scaffolding) and the drain **de-duplicates** the team echo — in coordinate mode the analyst member streams the real answer and the leader re-synthesizes it; the gateway streams the member answer and drops the leader echo, so the reply is never printed twice. The Console renders markdown tables natively (`renderMd` GFM tables).
+  - **Warm chemist voice (store keys):** store-key stock answers are reshaped into a counter-pharmacist reply by a deterministic post-processor (`_humanize_api_answer`) — a natural opening ("Yes — we're stocked on Paracetamol at your branch, 5 lines on the shelf right now."), a clean **Medicine · Salt · Stock · Price (MMK)** table (raw `article_code`/`composition` columns dropped, friendly headers), no model-computed (and often wrong) Total/Summary block, and one **correct** "💊 Tip: X is your deepest stock" computed from the rows. Catalog matches that are all out of stock get an honest "we carry it but every line's out — worth a transfer or substitute" lead instead. Runs on both the blocking and streaming paths, so the Console shows the same clean reply (no raw `##`/`###` scaffolding); the analyst system prompt overrides any prompt-level directive, so the cleanup is done in code, not by asking the model. Global/BI keys keep the analyst format.
+- **Store / Outlets** (Console bottom, full-width): a **freshness card** proving currency — `source_table · row_count · outlet_count · uploaded (rel-time)` from `GET /api/auth/apigw-outlets` (enriched via `dash_table_metadata.updated_at`) + ⟳ refresh — over a `site_code` grid with **▣ bound / ○ unbound** badges (client join vs active keys). Resolved from the **current uploaded** stock table (`dash/tools/table_sync.py`), so it never drifts from what the agent queries.
+- **Deployable copy snippets + all-shops bundle (2026-06-08):** each outlet's **copy** code (PHP · curl · Python · .env) is a **complete runnable streaming + live-thinking client** — it sets `stream:true` + header `X-Agent-Steps:1` and parses both `delta.content` (answer) and `delta.x_agent_step` (the live trace), so a dev gets the full Console experience, not a flat blocking answer (warm format is server-side, automatic). **⬇ Bundle .zip** (next to Copy .env / CSV) → `GET /api/embed/sdk/gateway-bundle.zip` → `citypharma-shops.zip` = one **key-agnostic** client (`examples/multishop/client.php` + `client.py` + README) that loads the **Copy .env** download, loops every `CITYPHARMA_KEY_<outlet>` and serves **all shops from one file** (new shop = one `.env` line, zero code change). Bundle ships **code only — no live keys**; `ask_shop(...)` is a reusable fn so the dev wires the live strip into their own UI. *Caveat (in README + comments): the thinking trace needs raw SSE parse — official OpenAI SDKs drop `x_agent_step` → answer-only.*
 - **Standalone docs page:** `GET /api/v1/docs` — full HTML developer guide (quickstart, auth, schemas, streaming, code examples). No auth required, suitable for sharing with external dev teams.
+- **PHP gateway tester** (`examples/php-tester/`): a runnable external-app demo — single-file `index.php` (browser chat UI → PHP backend holds the key → gateway) + `docker-compose.yml`. One command: `docker compose -f examples/php-tester/docker-compose.yml up -d` → **http://127.0.0.1:8092** (joins the stack network, hits the API as `cp-api:8000`; no PHP install needed). Quick-question chips, stream toggle, per-reply HTTP/latency/tokens + copy-cURL + raw JSON, and **key presets** (Global·analytics / Store·stock) so you can see the tier behavior live. Native run: `php -S 127.0.0.1:8090 -t examples/php-tester`.
 - **Live rate limit:** Redis fixed-window, per store key, editable in UI (`API_GW_RATE_PER_MIN` fallback). 429 + `Retry-After` on exceed.
 
 ### 3-tier store-scoped access (the security boundary)
@@ -88,6 +98,8 @@ Each key is bound to a SET of outlets. The **toolset is the boundary** — store
 | 3 — reference | rows with no site_code (catalog, substitutes, indications) | unrestricted |
 
 `scope_mode=store` = tiered masking · `scope_mode=global` = no mask (internal/admin only).
+
+> **Pick the tier for the app, not just security.** Because store keys lose `run_sql_query`, they answer **pharma tools only** (stock / drug / substitute / indication). **Analytical** questions — catalog totals, category breakdowns, top-N, counts — need raw SQL, so they only work on a **global** key. A store key asked an analytical question replies *"I couldn't query the database… No data returned"* (`ERROR Function run_sql_query not found` in logs) — that's the SQL-strip boundary working as designed, not a data fault. Shop-counter app → store key; BI/reporting app → global key.
 
 Masking is enforced two ways: store keys lose `run_sql_query`/`introspect`/raw-SQL specialists at tool-build time (`is_store_locked()` gate), and `mask_row()` nulls the sensitive field set on any non-owned row as belt-and-suspenders. `_SENSITIVE_KEYS` (`dash/api_scope.py`) covers per-row **and** aggregate quantity/value fields — `stock_qty`, `your_stock`, `qty`, `total_stock_qty`, `cost`, `weighted_cost_price`, `price`/`unit_price`/`mrp`/`retail_price`, `sales_value`/`value`/`amount`/`revenue`/`total_inventory_value`.
 
@@ -115,8 +127,13 @@ Outlet picker for the mint form: `GET /api/auth/apigw-outlets` (distinct site_co
 
 Browser-facing access to the same agent. Drop a `<script>` tag on any web page — the widget opens a chat bubble backed by the CityPharma Analyst with **the same 3-tier store-scoped access** as the API Gateway.
 
-- **Admin console:** `/ui/embed` (super-admin) — **Overview · Widgets · Config · Usage · Developer**.
-- **Test chat:** each widget row in the **Widgets** tab has a **▶ Test chat** button → opens `GET /api/embed/try/{embed_id}`, a live sandbox running the real widget (public embeds open directly; supports `?claim_store_id=&claim_role=` impersonation to test masking).
+- **Admin console:** `/ui/embed` (super-admin) — **Overview · Widgets · Playground · Usage · Snippet & Docs**. (Config + Sandbox merged into **Playground** as of 2026-06-07.)
+- **Overview** (`#overview`) opens with a **HOW IT WORKS** flow diagram (`RequestFlow.svelte`, cockpit-style lanes): a worked example question → handshake (origin+HMAC) → agent → 3-tier mask → masked answer bubble, so a dev sees the whole request path at a glance.
+- **Playground** (`#playground`) = one page: appearance form (color/position/theme/welcome/**logo**) on the left drives a **real in-page chat-bubble test** on the right (avatar, bubbles, typing dots, markdown rendered, auto-scroll — runs `session/create → chat` with the real widget). The **logo** field takes a **file upload** (⤓ — png/jpg/webp/svg/gif ≤1MB → `POST /api/projects/{slug}/embeds/{id}/logo`, saved to the persisted `knowledge_data` volume, served public+CORS at `GET /api/embed/logo/{file}`) **or** a pasted URL. Below it, a **shareable signed test-link** generator: pick expiry + **store (required)** + role → `POST /embeds/{id}/test-token` mints a signed, expiring `/api/embed/try/{id}?token=…` URL to hand a dev (no login; token HMAC-signed with the widget secret, secret stays server-side). **Store is required** (real-outlet dropdown; Generate is disabled until picked) so the link previews a real store-scoped session; tick **☐ test global / catalog view (no store — tier 3)** to deliberately test the catalog tier.
+- **Widget UX** (`dash/embed/widget.js`, shadow-DOM isolated): bot replies left-aligned (resets `text-align` which inherits across the shadow boundary from a centered host page), markdown renders headings / ordered+bullet lists / bold+italic / code, numbers shown as **digits** (`1,272,014 units`, not spelled out). A **live agent-activity strip** streams what the agent is doing (`📦 checking stock`, `📊 running query`, `🧠 thinking…`) above the bubble and collapses to `✓ done · 1.2s · N steps` once the answer arrives. **Consumer/store-scoped embeds stream the activity strip but NOT raw tokens** — the answer is buffered, masked (currency band + qty), then emitted in one chunk so 3-tier masking is never bypassed mid-stream; analyst-style embeds stream token-by-token.
+- **Snippet & Docs** (`#developer`) = status banner (live/draft + origins) + 3-path snippet toggle (Drop-in / HMAC-PHP / REST) with **real keys pre-filled** + errors cheat-sheet + a **DOWNLOAD SDK** section: drop-in client files (`examples/CityAgentClient.php`, `widget-embed.php`, `rest_client.py`, `rest_client.js`, `quickstart.sh`) — preview / copy / download per file or **Download all (.zip)**, each served **pre-templated with this embed's real keys + host** (`GET /api/embed/sdk*`, no Composer/pip). The SDK clients handle canonical-JSON HMAC signing, session token caching, and SSE parsing for you. Mirrored by the no-login public page `GET /api/embed/docs`. Full dev handoff in `EMBED_DEV_HANDOFF.md` (repo root).
+- **Test chat:** also reachable from the **Widgets** tab **▶ Test chat** button → `GET /api/embed/try/{embed_id}` (public embeds open directly; `?claim_store_id=&claim_role=` impersonation to test masking). For `access_mode='signed'` embeds a valid `?token=` is required — the minter (`gen_test_token`) and verifier (`_verify_test_token`) sign the identical `embed_id|nonce|exp|claims_canon` string.
+- Tabs persist in the URL hash (`#playground`, `#widgets`, …) — refresh stays on the same tab.
 - **Mint widgets:** bind each embed to a store (or leave unbound for catalog-only Tier 3 access).
 - **Store-scoped auth:** pass `data-user='{"store_id":"20063"}'` signed with HMAC → session enforces Tier 1/2/3 masking via the same `StoreScope` ContextVar as API Gateway.
 - **Public mode:** no `store_id` → Tier 3 only (drug catalog, substitutes, indications). Staff cannot see any stock quantities without a signed store claim.
@@ -132,6 +149,36 @@ Browser-facing access to the same agent. Drop a `<script>` tag on any web page �
 ```
 
 Access enforcement: `app/embed_public.py` calls `resolve_api_scope()` from session `user_attrs` and sets `API_STORE_SCOPE` ContextVar before every chat call.
+
+## Embedding API + vector search (`app/embeddings_api.py`)
+
+OpenAI-compatible embeddings + per-project semantic vector store.
+
+- `POST /v1/embeddings` — OpenAI-compat. Body `{input: str|str[], model?}`. Returns 1536-dim L2-normalized vectors (`openai/text-embedding-3-small` via OpenRouter, deterministic pseudo-vector fallback only when no key). The `model` field is a display label — `"default"`/empty resolves to the real embedder.
+- `POST /api/projects/{slug}/vectors/ingest` — bulk upsert `{rows:[{namespace, source_id, text, scope_attrs?, metadata?}]}`, sha256 dedup, RLS-scoped (`dash.dash_vectors`).
+- `POST /api/projects/{slug}/vectors/search` — `{query, namespaces?, top_k, hybrid?}` → cosine (pgvector) or hybrid BM25+vector.
+- `GET /api/projects/{slug}/vectors/list` · `DELETE /api/projects/{slug}/vectors/{source_id}`.
+
+Gotchas baked in: writes go through **`get_write_engine()`** (the read engine has a read-only guard that silently rolls back); the best-effort audit row writes in its **own transaction** (a failed audit INSERT would otherwise abort the txn and roll back the real inserts); RLS session vars set via `set_config(...)` (can't bind-param `SET LOCAL`). Verify ingest/search via the API or in-container engines — a direct `docker exec cp-db psql` may hit a different DB than PgBouncer routes the app to.
+
+## Usage & Cost dashboard (`/ui/usage`)
+
+Standalone super-admin page (Admin ▾ → People → **Usage & Cost**) unifying **all** usage across sources — platform chat · API keys · embeddings · embed widget · training — into one cross-source view with date filters. 8 tabs:
+
+- **Overview** — stacked-by-model Spend/Requests/Tokens cards (period-over-period ▲▼), cost-per-request & per-1k-tokens, DAU/WAU/active-users, day×hour activity heatmap, by-source & by-model tables, who-logged-in, full activity log (CSV export).
+- **Performance** — p50/p95/p99 latency overall + by source/model + slowest calls.
+- **Errors** — error rate, by-source, top error codes, recent failures.
+- **Tools** — what the agent actually ran (per-tool calls / error% / p50 / p95).
+- **Security** — guardrail events: cross-store leak attempts, rate-limited (429s), auth failures.
+- **Entities** — top users/keys & stores → click any row for a slide-over drilldown drawer.
+- **Billing** — daily/monthly budget targets (alerts when over) + invoice rollup per store/key (CSV).
+- **Live** — active sessions, tokens/min, 5s auto-refresh.
+
+Backend `app/usage_api.py` (`/api/admin/usage/*`, super-admin, fail-soft). Cost spine = `public.v_usage_unified` (mig 174/175): chat/training cost+tokens+latency from `dash_traces` ROOT spans (the real ledger — `dash_llm_costs` is unused here), embeddings from `dash_apigw_usage`, embed from `dash_embed_calls`. Each chat run is attributed via trace `meta` (actor/channel/store/model) stamped by `app/projects.py`; gateway calls self-tag `channel='api'`. Optional gateway chat-body logging behind env `APIGW_LOG_BODIES=1` (off by default). Full design + gotchas: `docs/DEVLOG.md` latest+22.
+
+## Brain (Workspace) — single-tenant merged view
+
+Brain is one unified view (single-tenant). The multi-tenant scope tiers (THIS AGENT / COMPANY / PERSONAL) and the Promote / Pull / Conflicts sharing layer are hidden — the backend `/api/brain/unified?scope=all` already unions everything, so the merge is display-only and reversible. Rows show a type-colour dot + inline value preview; each list has a filter box. The **Graph** view has a **MAP / LIST** toggle: MAP is a force-directed ECharts node-link (tables = circles, metrics = diamonds; value-spam predicates like `found_in_column` collapse to a single node).
 
 ---
 
@@ -150,19 +197,50 @@ Single font family (Inter) across the whole UI — `--pw-serif` aliases the sans
 
 ---
 
-## Single-agent lock
+## Single-agent lock (permanent — single-tenant)
 
-Controlled by `.env`:
+CityPharma is a **single-tenant** product built on the multi-tenant Dash codebase. A second tenant is now **structurally impossible** — four independent, fail-closed guards:
+
+1. **`is_single_agent()` is hardcoded `True`** (`dash/single_agent.py`) — NOT env-controlled. No stray env var can flip the product back to multi-tenant. To restore full Dash you must deliberately edit that function.
+2. **`create_project_schema()` refuses any slug but the locked one** (`db/session.py`) — the only place a new tenant schema can be born raises `RuntimeError` for non-locked slugs, even from internal callers.
+3. **`_make_slug()` always returns the locked slug** (`app/projects.py`) — the slug minter can't produce a new tenant id.
+4. **`guard_no_project_management()` 403s** the create/delete/duplicate HTTP endpoints; `list_projects` is scoped to the locked slug only.
+
+Env (still read for `locked_slug` / `product_name`, but `SINGLE_AGENT_MODE` no longer gates the lock):
 
 ```
-SINGLE_AGENT_MODE=1
-LOCKED_PROJECT_SLUG=proj_demo_citypharma
+SINGLE_AGENT_MODE=1                       # informational; lock is hardcoded
+LOCKED_PROJECT_SLUG=citypharma
 PRODUCT_NAME=CityPharma
 ```
 
 - `GET /api/flags` (public, no auth) exposes `single_agent`, `locked_slug`, `product_name`.
 - Frontend `+layout.svelte` fetches flags on mount → renders the 4-item nav, redirects `root/home/projects/chat` → the locked chat.
-- `dash/single_agent.py` holds the lock primitives; `app/projects.py` guards create/delete/duplicate and scopes `list_projects` to the locked slug.
+
+**Tenancy model.** The DB design stays multi-tenant-shaped (schema-per-project + `project_slug` columns) but runs locked at N=1: one fixed data schema `citypharma`, one agent. The slug was renamed `proj_demo_citypharma` → `citypharma` for production (2026-06-07; atomic schema+table+row migration — see `docs/DEVLOG.md` latest+20). `project_slug` columns + `dash_*` table names stay as harmless plumbing labels (dropping `project_slug` = weeks, buys nothing). Functionally matches upstream `agno-agi/dash` single-tenant behavior.
+
+### Single-tenant daemon gates (quiet boot)
+
+The fork inherits multi-tenant Dash daemons that, single-tenant, just hammer pruned/un-migrated tables and spam errors (training + chat are unaffected). Gate them off:
+
+```
+CONNECTOR_SCHEDULER_DISABLED=1   # no external DB connectors single-tenant
+VERTICAL_DAEMONS_DISABLED=1      # venture/ops/supply verticals are off here
+```
+
+Both default to `1` for CityPharma and **must be set in BOTH `.env` AND the `dash-api` `environment:` block in `compose.yaml`** — compose lists individual env vars (no `env_file`), so `.env` alone won't reach the container. With these set, boot is clean (0 ERROR / 0 failed-migration); the only remaining lines are `WARNING X not loaded/not started` for intentionally-pruned routers + gated daemons (expected confirmations, not errors).
+
+**Migration tracking note:** if `public.dash_migrations` count < the number of files in `db/migrations/`, the runner retries the pending ones every boot and the pruned-feature ones fail loudly. On an already-established schema, mark them applied: `INSERT INTO public.dash_migrations(filename) SELECT … ON CONFLICT DO NOTHING` (the runner skips on filename presence). Reversible.
+
+### Data-ingest hardening (ID/code columns)
+
+Large ID/code values exported as scientific notation (`1E+12`) or read as float silently lose precision and **destroy join keys** (e.g. `article_code` → all rows collapse to one value → catalog↔stock join returns 0). Guards:
+
+- **Ingest** (`app/upload.py`): columns matching `*_code / *_id / barcode / sku / ean / upc / gtin / ...` are read as **string** (exact), exempt from numeric coercion, and whole-valued floats are repaired to `Int64`. So a clean export keeps codes intact; a corrupt one lands as text (flagged below) instead of silent float.
+- **Data Quality** (`/datasource`): flags an ID column with **≤1 distinct value across many rows**, and a shared key with **0 cross-table value overlap** → `summary.join_warnings`. Surfaces a broken join before you trust an answer.
+- **Tools** (`stock_check`): if a matched drug's `article_code` links to **zero** stock rows, returns `stock_linkable:false` + a `linkage_warning` and the agent says *stock unavailable (data issue)* — never a false "out of stock".
+
+If drug↔stock questions return "can't link", the fix is a **clean re-export of the stock file** (article codes as text, not `1E+12`).
 
 ---
 
@@ -229,7 +307,7 @@ A frontend-only change still busts the two fat cached layers (apt + `uv pip sync
    ```bash
    # form-encoded, through Caddy with correct SNI (cert CN = localhost). 308 on :8090 = HTTP→HTTPS redirect.
    curl -sk -N -F "message=is paracetamol in stock at my branch?" \
-     https://localhost:8453/api/projects/proj_demo_citypharma/chat \
+     https://localhost:8453/api/projects/citypharma/chat \
      -H "Authorization: Bearer $TOKEN"
    ```
 7. **Off-topic questions get an instant scope-guardrail refusal** (~1s) — e.g. asking the pharma agent "what's our MRR?" returns a polite "I'm your CityPharma Analyst…" redirect. That's correct behavior, not a bug.
@@ -243,21 +321,21 @@ A frontend-only change still busts the two fat cached layers (apt + `uv pip sync
 ```bash
 # Force-train (bypass fingerprint "unchanged" skip) — trains untrained-but-unchanged tables.
 # Powers the Data Source per-row "Train now" + "retrain all".
-curl -X POST "http://127.0.0.1:8011/api/projects/proj_demo_citypharma/retrain?force=1" \
+curl -X POST "http://127.0.0.1:8011/api/projects/citypharma/retrain?force=1" \
   -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' \
   -d '{"table_names":["citypharma_articles"],"force":true}'   # omit table_names = all
 
 # Clear all project data (keeps project/agent/auth/brain). BACK UP FIRST:
 docker exec cp-db pg_dump -U ai -d ai -Fc -f /tmp/backup.dump
 docker exec cp-db psql -U ai -d ai -c "
-  DROP TABLE IF EXISTS proj_demo_citypharma.<table> CASCADE;
-  DELETE FROM public.dash_table_metadata    WHERE project_slug='proj_demo_citypharma';
-  DELETE FROM public.dash_training_qa       WHERE project_slug='proj_demo_citypharma';
-  DELETE FROM public.dash_training_runs     WHERE project_slug='proj_demo_citypharma';
-  DELETE FROM public.dash_training_steps    WHERE project_slug='proj_demo_citypharma';
-  DELETE FROM public.dash_knowledge_triples WHERE project_slug='proj_demo_citypharma';
-  DELETE FROM public.dash_memories          WHERE project_slug='proj_demo_citypharma';"
-docker exec cp-api sh -c 'rm -rf /app/knowledge/proj_demo_citypharma'   # disk cache
+  DROP TABLE IF EXISTS citypharma.<table> CASCADE;
+  DELETE FROM public.dash_table_metadata    WHERE project_slug='citypharma';
+  DELETE FROM public.dash_training_qa       WHERE project_slug='citypharma';
+  DELETE FROM public.dash_training_runs     WHERE project_slug='citypharma';
+  DELETE FROM public.dash_training_steps    WHERE project_slug='citypharma';
+  DELETE FROM public.dash_knowledge_triples WHERE project_slug='citypharma';
+  DELETE FROM public.dash_memories          WHERE project_slug='citypharma';"
+docker exec cp-api sh -c 'rm -rf /app/knowledge/citypharma'   # disk cache
 ```
 
 > **Ghost-table note:** a raw-SQL wipe like the one above drops the DB table but leaves orphaned `knowledge/{slug}/**.json`. Eval/relationship/synthesis code now filters by live DB tables (`_live_tables`) + `_purge_orphan_knowledge` runs at every retrain, so a stale JSON can't seed ghost relationships or eval cases against a dropped table. The `rm -rf` above is still the cleanest manual reset.
@@ -270,8 +348,8 @@ docker exec cp-api sh -c 'rm -rf /app/knowledge/proj_demo_citypharma'   # disk c
 
 ```bash
 # cursor-paged training log (since = array index already seen)
-curl "http://127.0.0.1:8011/api/projects/proj_demo_citypharma/auto-train/log?since=0" \
-  -H "Authorization: Bearer $TOK" -H "X-Scope-Id: proj_demo_citypharma"
+curl "http://127.0.0.1:8011/api/projects/citypharma/auto-train/log?since=0" \
+  -H "Authorization: Bearer $TOK" -H "X-Scope-Id: citypharma"
 # → {run_id, status, current_step, total, events:[{i, ts, msg, table}]}
 ```
 
@@ -317,6 +395,51 @@ Top nav: **Upload → Data Source** (single-agent), reflecting the file-upload +
 
 ---
 
+## Enterprise readiness + hardcoded config (2026-06-07)
+
+Benchmarked against Anthropic's "Building Effective AI Agents" guide and closed the three named gaps, then deduplicated the admin surfaces and hardcoded the single-agent config.
+
+**Observability — durable per-chat reasoning trace.** Every agent tool call (`run_sql_query`, `stock_check`, `find_substitutes`, `search_all`, …) records a span in `public.dash_traces` with args + row-count + token cost (`dash/obs/trace.py`). Admin → **Observability** tab (`/ui/command-center`): kind/days filters · runs/failed/$ rollup · context-health strip · expandable trace tree (root → tool spans) · per-agent table. Kill switch `TRACING_DISABLED=1`.
+
+**Context-exhaustion guards** (`dash/guards/context.py`, fail-open). Tool results capped at ~25k tokens with a pagination sentinel (`TOOL_RESULT_MAX_TOKENS`); stale tool-result content older than N turns is elided from history before `team.run` (`CONTEXT_EDIT_KEEP_TURNS`). Disable with `CONTEXT_GUARDS_DISABLED=1`. Health: `GET /api/admin/traces/context-health` (p50/p95 prompt tokens + caps fired).
+
+**Golden-eval CI gate.** `python -m evals.run --golden --min-pass 90` exits non-zero below threshold; `.github/workflows/golden-gate.yml` blocks PRs to `main` (skips cleanly when no `OPENROUTER_API_KEY` secret). Surfaced as a DEPLOY GATE card in the Admin → Accuracy panel.
+
+**Workspace ⇄ Admin dedup.** Brain lives only in **Workspace** (the agent); Embed lives only at **Integrations → Embed** (`/ui/embed` standalone manager — removed from both Workspace and Admin); Users only in **Admin** (platform accounts); connectors only via the **Data Source** page. Admin Platform group = `gateway · auth`; Workspace Sharing group = `rls · visibility`.
+
+**Hardcoded chemist config.** This is one fixed pharma agent, so the multi-tenant config chrome was removed: the Config FEATURES-TOGGLE / APPLY-VERTICAL / RECOMMENDED tab is gone from the Workspace rail, and the Embed industry-template picker is hardcoded to **Pharmacy**. Capabilities are fixed in `dash/feature_config.py` `DEFAULT_CONFIG` (core only: SQL + charts/dashboards + document research + pharma tools; forecasting / anomaly / venture agents OFF). Pharma tools (stock_check / substitutes / indications) are always on, gated by `PHARMA_GRAPH_DISABLED` not feature_config.
+
+> Note: `DEFAULT_CONFIG` is merged *under* any saved per-project config. To force a new default onto an already-configured project, strip the overridden keys from the saved jsonb (`UPDATE public.dash_projects SET feature_config = feature_config - 'tools' - 'agents' WHERE slug=…`) — never wipe the whole column (it holds the trained `scope` guardrail). `dash_projects` is in the **`public`** schema, not `dash`.
+
+**Theme consistency.** The standalone **Gateway** + **Embed** pages (`/ui/gateway`, `/ui/embed`) were restyled from an old terminal-CLI look (monospace rail, `$ dash …` headers) to the app's clean **sans rail** matching Workspace + Admin (group labels, coral-wash active, muted icons; monospace kept only for code/endpoint/curl chips). The **Dashboard/Overview** page and several others were built on the legacy material `--color-*` tokens — its dark `--color-on-surface` was misused as a **border** color, producing black box outlines. Fixed app-wide: card borders → warm `--pw-border`, dark card headers → coral-on-cream, and the global scrollbar from chunky-dark `8px` to **thin `7px` warm**. Audit any off-theme surface with `grep "solid var(--color-on-surface"` — that token is dark text, never a border.
+
+---
+
+## Scale & capacity (100 admins + 1000 stores)
+
+Audited and load-tested for 100 concurrent platform admins + 1000 stores hitting the API gateway / embed widget.
+
+**What's ready (verified live):**
+- **Web tier** — 100 concurrent requests → 100/100, p50 **41ms**. The chat SSE generator is synchronous → Starlette runs it in the anyio threadpool, so it never blocks the worker event loop (concurrency is not capped at worker count).
+- **DB** — PgBouncer transaction mode (3000 clients → 80-conn pool, DB `max_connections=300`), NullPool everywhere.
+- **API gateway** — Redis **global** fixed-window rate limit (shared across workers) + usage metering + 3-tier store-scoping. Built for 1000 keys.
+- **Embed** — per-embed 60s rate window + CORS allowlist + HMAC.
+- **Reliability under concurrency = 100%** — a 15-concurrent real-chat test returned 15/15 successful answers even though the LLM key threw 10 × HTTP 429; the OpenRouter pool's per-key cooldown + retry recovered every one.
+
+**Tuning applied:** `WORKERS=4` (concurrent-chat ceiling ~80→~160), Redis `maxmemory 1gb`, and the multi-key pool activated via `OPENROUTER_API_KEYS`.
+
+**The one go-live requirement — add OpenRouter keys.** On a single key, latency balloons under load (the 15-chat test ran p50 ~38s / tail 77s vs a ~20s single-chat baseline) purely from 429 throttling. Add 3–5 keys to flatten it:
+```bash
+# .env
+OPENROUTER_API_KEYS=sk-or-...key1;sk-or-...key2;sk-or-...key3
+docker compose up -d --force-recreate dash-api
+```
+The pool round-robins and cooldowns automatically. At true scale, prefer horizontal pods (HPA) over more workers per box.
+
+> Compose gotcha: `dash-api` lists individual env vars (no `env_file`), so a new `.env` var only reaches the container if it's also added to the service `environment:` block (e.g. `- OPENROUTER_API_KEYS=${OPENROUTER_API_KEYS:-}`).
+
+---
+
 ## Repo map (CityPharma-relevant)
 
 ```
@@ -342,3 +465,4 @@ frontend/src/app.css        design tokens (single Inter font family)
 ```
 
 For the full inherited platform internals (training pipeline, 13 context layers, self-learning, security model, all gotchas), see **`CLAUDE.md`**.
+# rahulai-city-pharma
