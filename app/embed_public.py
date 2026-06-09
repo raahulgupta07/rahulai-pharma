@@ -777,9 +777,10 @@ async def create_embed_session(req: Request):
     claims_summary: dict | None = None
     try:
         from dash.embed.rls import load_rls_for_embed, extract_claims  # type: ignore
-        rls_cfg = load_rls_for_embed(ctx["embed_id"])
-        if rls_cfg and rls_cfg.get("rls_enabled"):
-            source = (rls_cfg.get("rls_claim_source") or "token").lower()
+        # 4-tuple (enabled, claims_def, policies, claim_source) — NOT a dict.
+        _rls_enabled, _rls_claims_def, _rls_policies, _rls_source = load_rls_for_embed(ctx["embed_id"])
+        if _rls_enabled:
+            source = (_rls_source or "token").lower()
             # Build per-source raw input.
             raw: dict = {}
             if source == "token":
@@ -801,7 +802,13 @@ async def create_embed_session(req: Request):
                     if hk.lower().startswith(prefix):
                         raw[hk[len(prefix):].lower()] = hv
 
-            extracted = extract_claims(raw, rls_cfg.get("rls_claims") or [])
+            # extract_claims(claims_def, source, *, <source>_payload=...). `raw`
+            # is the already-resolved per-source bag; pass it to every payload
+            # slot (only the one matching `source` is read).
+            extracted = extract_claims(
+                _rls_claims_def or [], source,
+                token_payload=raw, hmac_payload=raw, url_params=raw, headers=raw,
+            )
             if extracted:
                 claims_summary = extracted
                 # Persist on the session row (idempotent column ensured at
@@ -1030,10 +1037,14 @@ async def embed_chat(req: Request):
             EMBED_CLAIMS, EMBED_RLS_POLICIES, EMBED_RLS_AUDIT_CTX,
             load_rls_for_embed,
         )
-        _rls_cfg = load_rls_for_embed(embed_id) or {}
-        if _rls_cfg.get("rls_enabled"):
+        # load_rls_for_embed returns a 4-TUPLE (enabled, claims_def, policies,
+        # claim_source) — NOT a dict. Unpack it; treating it as a dict threw
+        # AttributeError on every embed chat (caught fail-open, but RLS never
+        # applied + log noise).
+        _rls_enabled, _rls_claims_def, _rls_policies, _rls_source = load_rls_for_embed(embed_id)
+        if _rls_enabled:
             _rls_tokens.append(EMBED_CLAIMS.set(sess_claims or {}))
-            _rls_tokens.append(EMBED_RLS_POLICIES.set(_rls_cfg.get("rls_policies") or []))
+            _rls_tokens.append(EMBED_RLS_POLICIES.set(_rls_policies or []))
             _rls_tokens.append(EMBED_RLS_AUDIT_CTX.set({
                 "embed_id": embed_id,
                 "session_token": token,
@@ -1420,10 +1431,14 @@ async def embed_chat_stream(req: Request):
                     sess_claims = _crow[0] if isinstance(_crow[0], dict) else None
         except Exception:
             pass
-        _rls_cfg = load_rls_for_embed(embed_id) or {}
-        if _rls_cfg.get("rls_enabled"):
+        # load_rls_for_embed returns a 4-TUPLE (enabled, claims_def, policies,
+        # claim_source) — NOT a dict. Unpack it; treating it as a dict threw
+        # AttributeError on every embed chat (caught fail-open, but RLS never
+        # applied + log noise).
+        _rls_enabled, _rls_claims_def, _rls_policies, _rls_source = load_rls_for_embed(embed_id)
+        if _rls_enabled:
             _rls_tokens.append(EMBED_CLAIMS.set(sess_claims or {}))
-            _rls_tokens.append(EMBED_RLS_POLICIES.set(_rls_cfg.get("rls_policies") or []))
+            _rls_tokens.append(EMBED_RLS_POLICIES.set(_rls_policies or []))
             _rls_tokens.append(EMBED_RLS_AUDIT_CTX.set({
                 "embed_id": embed_id,
                 "session_token": token,

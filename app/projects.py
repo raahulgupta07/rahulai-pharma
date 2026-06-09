@@ -81,7 +81,8 @@ def _rank_training_qa(project_slug: str, question: str, k: int = 3) -> str:
     pairs = []
     for f in tdir.glob("*.json"):
         try:
-            data = _json.load(open(f))
+            with open(f) as _fp:
+                data = _json.load(_fp)
         except Exception:
             continue
         if isinstance(data, list):
@@ -2302,10 +2303,36 @@ def export_project(slug: str, request: Request):
         # Table data as CSVs
         insp = inspect(_engine)
         try:
+            # Cap rows per table — a full SELECT * on balance_stock (100k+ rows)
+            # loaded into a pandas DataFrame then a CSV string in memory can OOM
+            # the worker, especially with concurrent exports. Stream in chunks and
+            # cap total rows; flag truncation in the filename.
+            import os as _os_exp
+            _EXPORT_ROW_CAP = int(_os_exp.getenv("EXPORT_ROW_CAP", "200000"))
+            _CHUNK = 50000
             for tbl in insp.get_table_names(schema=schema):
                 try:
-                    df = pd.read_sql(f'SELECT * FROM "{schema}"."{tbl}"', _engine)
-                    zf.writestr(f"data/{tbl}.csv", df.to_csv(index=False))
+                    parts: list[str] = []
+                    rows_done = 0
+                    truncated = False
+                    header = True
+                    for chunk in pd.read_sql(
+                        f'SELECT * FROM "{schema}"."{tbl}" LIMIT {_EXPORT_ROW_CAP + 1}',
+                        _engine, chunksize=_CHUNK,
+                    ):
+                        if rows_done >= _EXPORT_ROW_CAP:
+                            truncated = True
+                            break
+                        if rows_done + len(chunk) > _EXPORT_ROW_CAP:
+                            chunk = chunk.iloc[: _EXPORT_ROW_CAP - rows_done]
+                            truncated = True
+                        parts.append(chunk.to_csv(index=False, header=header))
+                        header = False
+                        rows_done += len(chunk)
+                        if truncated:
+                            break
+                    fname = f"data/{tbl}{'_TRUNCATED' if truncated else ''}.csv"
+                    zf.writestr(fname, "".join(parts))
                 except Exception:
                     pass
         except Exception:

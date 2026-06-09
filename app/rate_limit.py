@@ -266,10 +266,59 @@ def _gc_org_buckets(now: float) -> None:
                 _ORG_LAST_USED.pop(k, None)
 
 
+_redis_rl = None
+_redis_rl_init = False
+
+
+def _get_redis_rl():
+    """Lazy Redis client for GLOBAL (cross-worker) org rate limiting. Returns
+    None if Redis is unavailable — caller falls back to the in-memory bucket."""
+    global _redis_rl, _redis_rl_init
+    if _redis_rl_init:
+        return _redis_rl
+    _redis_rl_init = True
+    try:
+        import redis as _redis  # type: ignore
+        url = os.getenv("REDIS_URL", "redis://dash-redis:6379")
+        c = _redis.Redis.from_url(url, socket_connect_timeout=0.3, socket_timeout=0.3)
+        c.ping()
+        _redis_rl = c
+    except Exception:
+        _redis_rl = None  # Redis down/absent → in-memory fallback
+    return _redis_rl
+
+
+def _redis_fixed_window(key: str, limit: int, window_s: int) -> tuple[bool, int, float] | None:
+    """Global fixed-window counter via Redis INCR+EXPIRE. Returns the standard
+    (allowed, remaining, retry_after) tuple, or None if Redis is unavailable."""
+    c = _get_redis_rl()
+    if c is None:
+        return None
+    try:
+        bucket = int(time.time()) // window_s
+        rkey = f"rl:{key}:{bucket}"
+        n = c.incr(rkey)
+        if n == 1:
+            c.expire(rkey, window_s + 1)
+        if n > limit:
+            retry = float(window_s - (int(time.time()) % window_s))
+            return False, 0, retry
+        return True, max(0, limit - int(n)), 0.0
+    except Exception:
+        return None  # transient Redis error → fall back
+
+
 def _check_org_limit(project_slug: str) -> tuple[bool, int, float]:
-    """Sliding-window check on org bucket. Returns (allowed, remaining, retry_after)."""
+    """Org rate-limit check. Prefers a GLOBAL Redis fixed-window counter (shared
+    across all gunicorn workers); falls back to the per-worker in-memory sliding
+    window if Redis is unavailable. Returns (allowed, remaining, retry_after)."""
     limit, window_s = _org_limit_per_window()
     key = f"org:{project_slug}:embed_chat"
+    # Global path (correct across 16 workers).
+    g = _redis_fixed_window(key, limit, int(window_s))
+    if g is not None:
+        return g
+    # Fallback: per-worker approximate sliding window.
     now = time.time()
     cutoff = now - window_s
     with _ORG_LOCK:

@@ -52,6 +52,17 @@ def _user_id(request: Request) -> str | None:
 
 logger = logging.getLogger(__name__)
 
+import os as _os_dbg
+
+
+def _dbg_trace() -> str | None:
+    """Return a full traceback ONLY when DEBUG is enabled — never leak internal
+    file paths / code structure to API clients in production. Always logged."""
+    if _os_dbg.getenv("DEBUG", "").strip().lower() in ("1", "true", "yes", "on"):
+        return traceback.format_exc()
+    return None
+
+
 router = APIRouter(prefix="/api/dashboards", tags=["DashboardsV2"])
 
 
@@ -111,7 +122,7 @@ def generate_dashboard(req: GenerateRequest, request: Request):
         return _attach_data(res, req.project_slug)
     except Exception as e:
         logger.exception("generate failed")
-        return {"ok": False, "error": str(e), "trace": traceback.format_exc()}
+        return {"ok": False, "error": str(e), "trace": _dbg_trace()}
 
 
 class FromChatRequest(BaseModel):
@@ -147,7 +158,7 @@ def generate_from_chat(req: FromChatRequest, request: Request):
         return _attach_data(res, req.project_slug)
     except Exception as e:
         logger.exception("from-chat failed")
-        return {"ok": False, "error": str(e), "trace": traceback.format_exc()}
+        return {"ok": False, "error": str(e), "trace": _dbg_trace()}
 
 
 class DeepenRequest(BaseModel):
@@ -166,7 +177,7 @@ def deepen_dashboard(req: DeepenRequest):
         return _attach_data(result, req.project_slug)
     except Exception as e:
         logger.exception("deepen failed")
-        return {"ok": False, "error": str(e), "trace": traceback.format_exc(),
+        return {"ok": False, "error": str(e), "trace": _dbg_trace(),
                 "spec": req.spec, "insights": [], "rounds": 0, "tokens_used": 0}
 
 
@@ -655,7 +666,7 @@ async def drill_cell(req: DrillCellRequest):
             cells_out.append(cell)
         return {"ok": True, "cells": cells_out}
     except Exception as e:
-        return {"ok": False, "error": str(e), "trace": traceback.format_exc()[:500]}
+        return {"ok": False, "error": str(e), "trace": _dbg_trace()}
 
 
 @router.post("/multi-agent")

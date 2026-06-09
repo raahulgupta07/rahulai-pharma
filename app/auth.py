@@ -40,6 +40,12 @@ _engine = _sa_create_engine(db_url, poolclass=NullPool)
 _token_cache: dict[str, dict] = {}
 _token_cache_lock = threading.Lock()
 _TOKEN_CACHE_MAX = 5000  # Cap to prevent unbounded growth
+# Per-worker cache is NOT shared across gunicorn workers, so a logout (which
+# deletes the DB row on whatever worker handled it) would not take effect on the
+# other workers until the 7-day token expiry. Re-validate against the DB after
+# this many seconds so revocation/logout propagates everywhere within the window.
+_TOKEN_CACHE_FRESH_TTL = 60  # seconds
+import re as _re_auth
 
 TOKEN_EXPIRY = 86400 * 7  # 7 days
 
@@ -713,13 +719,16 @@ def validate_token(token: str) -> Optional[dict]:
     with _token_cache_lock:
         if token in _token_cache:
             info = _token_cache[token]
-            if info["expiry"] > time.time():
+            _fresh = (time.time() - info.get("cached_at", 0)) < _TOKEN_CACHE_FRESH_TTL
+            if info["expiry"] > time.time() and _fresh:
                 if "aad_groups" not in info:
                     info["aad_groups"] = _extract_aad_groups(token)
                 if "is_admin" not in info:
                     info["is_admin"] = info.get("is_super", False)
                 return info
             else:
+                # Expired OR stale → drop and re-check DB (so a logout/revoke on
+                # another worker is honored within _TOKEN_CACHE_FRESH_TTL).
                 del _token_cache[token]
 
     # Check DB
@@ -733,7 +742,7 @@ def validate_token(token: str) -> Optional[dict]:
             if row and row[2] > time.time():
                 _is_super = row[1] == SUPER_ADMIN
                 _is_admin = _is_super or (row[3] in ("admin", "super"))
-                info = {"user_id": row[0], "username": row[1], "expiry": row[2], "is_super": _is_super, "is_admin": _is_admin, "aad_groups": _extract_aad_groups(token)}
+                info = {"user_id": row[0], "username": row[1], "expiry": row[2], "is_super": _is_super, "is_admin": _is_admin, "aad_groups": _extract_aad_groups(token), "cached_at": time.time()}
                 with _token_cache_lock:
                     # Enforce size limit BEFORE inserting
                     now = time.time()
@@ -1001,7 +1010,7 @@ def login(req: LoginRequest):
 
             is_super = row[1] == SUPER_ADMIN
             is_admin = is_super or (row[3] in ("admin", "super"))
-            _token_cache[token] = {"user_id": row[0], "username": row[1], "expiry": expiry, "is_super": is_super, "is_admin": is_admin}
+            _token_cache[token] = {"user_id": row[0], "username": row[1], "expiry": expiry, "is_super": is_super, "is_admin": is_admin, "cached_at": time.time()}
 
             return {"status": "ok", "token": token, "username": row[1], "user_id": row[0], "is_super": is_super, "is_admin": is_admin}
     except HTTPException:
@@ -1413,8 +1422,12 @@ def delete_user(username: str, request: Request):
 
     try:
         with _engine.connect() as conn:
-            # Drop user schema
-            schema_name = f"user_{username.lower()}"
+            # Drop user schema. SANITIZE the username before interpolating it into
+            # DDL — it is a request path param and the app DB role is superuser, so
+            # an unescaped `"` could break out and DROP an arbitrary schema (e.g.
+            # citypharma → total data loss). Whitelist [a-z0-9_] only.
+            _safe_user = _re_auth.sub(r"[^a-z0-9_]", "_", username.lower())[:63]
+            schema_name = f"user_{_safe_user}"
             conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE'))
             # Delete tokens
             conn.execute(text("DELETE FROM public.dash_tokens WHERE username = :u"), {"u": username})

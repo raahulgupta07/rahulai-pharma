@@ -20,7 +20,10 @@ import multiprocessing
 import os
 
 bind = f"0.0.0.0:{os.getenv('PORT', '8000')}"
-workers = int(os.getenv("WORKERS", max(2, multiprocessing.cpu_count())))
+# Default caps at 8 — each worker loads the full agent stack (heavy RAM), so
+# defaulting to cpu_count on a 16-core box OOMs small-RAM hosts. Override with
+# WORKERS in .env, sized to RAM (~1-2 workers/GB), not CPU.
+workers = int(os.getenv("WORKERS", min(8, max(2, multiprocessing.cpu_count()))))
 worker_class = "uvicorn.workers.UvicornWorker"
 # tmpfs heartbeat avoids slow-disk worker timeouts on container hosts
 worker_tmp_dir = "/dev/shm"

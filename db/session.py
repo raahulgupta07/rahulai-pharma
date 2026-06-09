@@ -125,8 +125,8 @@ def get_sql_engine() -> Engine:
     bootstrap.dispose()
     _dash_engine = create_engine(
         db_url,
-        pool_size=2,
-        max_overflow=3,
+        pool_size=5,
+        max_overflow=10,
         pool_recycle=1800,
         pool_pre_ping=True,
     )
@@ -153,8 +153,8 @@ def get_write_engine() -> Engine:
         return _write_engine
     _write_engine = create_engine(
         db_url,
-        pool_size=2,
-        max_overflow=3,
+        pool_size=5,
+        max_overflow=10,
         pool_recycle=1800,
         pool_pre_ping=True,
     )
@@ -173,8 +173,8 @@ def get_readonly_engine() -> Engine:
         return _readonly_engine
     _readonly_engine = create_engine(
         db_url,
-        pool_size=2,
-        max_overflow=3,
+        pool_size=5,
+        max_overflow=10,
         pool_recycle=1800,
         pool_pre_ping=True,
     )
@@ -302,8 +302,8 @@ def get_user_engine(user_id: str) -> Engine:
     create_user_schema(user_id)
     eng = create_engine(
         db_url,
-        pool_size=2,
-        max_overflow=3,
+        pool_size=5,
+        max_overflow=10,
         pool_recycle=3600,
         pool_pre_ping=True,
     )
@@ -324,8 +324,8 @@ def get_user_readonly_engine(user_id: str) -> Engine:
     create_user_schema(user_id)
     eng = create_engine(
         db_url,
-        pool_size=2,
-        max_overflow=3,
+        pool_size=5,
+        max_overflow=10,
         pool_recycle=3600,
         pool_pre_ping=True,
     )

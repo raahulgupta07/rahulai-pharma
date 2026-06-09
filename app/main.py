@@ -1613,15 +1613,27 @@ except Exception as _e:
 from fastapi.middleware.cors import CORSMiddleware
 
 _cors_origins = [o.strip() for o in getenv("CORS_ORIGINS", "").split(",") if o.strip()]
-if not _cors_origins:
+# Fall back to PUBLIC_URL before the wildcard so a normal AWS deploy (which sets
+# PUBLIC_URL) gets a correct, credentialed allow-list without extra config.
+if (not _cors_origins or _cors_origins == ["*"]):
+    _pub = (getenv("PUBLIC_URL") or getenv("WEBUI_URL") or "").strip().rstrip("/")
+    if _pub:
+        _cors_origins = [_pub]
+# allow_credentials + "*" is unsafe (and the browser rejects it). If we still
+# have no explicit origin, allow all BUT without credentials so it can't be
+# abused for credentialed cross-site reads.
+_cors_allow_credentials = True
+if not _cors_origins or _cors_origins == ["*"]:
     import logging
-    logging.warning("CORS_ORIGINS not set — allowing all origins. Set CORS_ORIGINS in .env for production!")
+    logging.warning("CORS_ORIGINS/PUBLIC_URL not set — allowing all origins WITHOUT credentials. "
+                    "Set CORS_ORIGINS (or PUBLIC_URL) in .env for production.")
     _cors_origins = ["*"]
+    _cors_allow_credentials = False
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_credentials=True,
+    allow_credentials=_cors_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
