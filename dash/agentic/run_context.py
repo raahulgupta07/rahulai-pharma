@@ -98,7 +98,16 @@ def set_context(rc: RunContext) -> Iterator[RunContext]:
                 cvar.reset(tk)
             except Exception:
                 pass
-        _current.reset(token)
+        # reset can raise "Token was created in a different Context" when the
+        # context manager is entered + exited across async/threadpool boundaries
+        # (Agno runs member agents in a separate context). Swallow it like the
+        # legacy resets above — a leaked token in a dying context is harmless,
+        # and letting it propagate kills the tool call ("No response from member
+        # agent"). The next set_context in this context overwrites cleanly.
+        try:
+            _current.reset(token)
+        except Exception:
+            pass
 
 
 def audit(rc: Optional[RunContext] = None) -> None:
