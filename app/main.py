@@ -2016,6 +2016,41 @@ def _detect_routing_hint(message: str) -> str:
     return "data"  # default: most questions need data
 
 
+_CHITCHAT_RE = _re.compile(
+    r'^\s*(who\s+(are|r)\s+(you|u)|what\s+(can|are)\s+(you|u)|what\s+(do|can)\s+(you|u)\s+(do|can)|'
+    r'what\s+u\s+can\s+do|what\s+can\s+u\s+do|introduce|tell\s+me\s+about\s+yourself|'
+    r'help|hello|hi|hey|thanks|thank\s+you|bye|good\s+(morning|evening|afternoon)|'
+    r'how\s+(are|r)\s+(you|u)|what\s+information\s+(do\s+you|u)\s+have|'
+    r'what\s+can\s+you\s+help)\b',
+    _re.IGNORECASE,
+)
+
+
+def _is_chitchat(message: str) -> bool:
+    """Conversational/meta/capability question — answer like a pharmacist, plain prose, no dashboard tags."""
+    m = (message or "").strip()
+    if not m:
+        return False
+    if len(m) <= 60 and _CHITCHAT_RE.search(m):
+        return True
+    return False
+
+
+def _chitchat_instructions() -> str:
+    """Plain-prose directive for conversational/capability questions. No cards, no tags, no charts."""
+    return (
+        "CONVERSATIONAL MODE — the user asked a casual, greeting, or capability question, NOT a data question. "
+        "Answer like a friendly, knowledgeable pharmacist talking to a colleague. "
+        "Plain conversational prose only. 2-5 short sentences or a tight bulleted list. "
+        "ABSOLUTELY DO NOT output ANY of these structured tags: [MODE:...], [HEADLINE:...], [CONFIDENCE:...], "
+        "[CONFIDENCE_BREAKDOWN:...], [SO_WHAT:...], [FINDING:...], [SEGMENT:...], [ANCHOR:...], [KPI:...], "
+        "[RELATED:...], [BECAUSE:...], [KILL:...], [ASSUMPTION:...]. No card title, no confidence breakdown, "
+        "no tables, no charts, no SOURCES section. Just talk normally. "
+        "If asked what you can do, briefly describe in plain words that you analyse pharmacy stock data — "
+        "stock levels, product/medicine info, substitutes, prices, categories across stores — and invite a question."
+    )
+
+
 def _apply_reasoning_mode(message: str, mode: str, analysis_type: str = "auto") -> str:
     """Apply FAST/DEEP reasoning + analysis type. Called server-side."""
     parts = []
@@ -2576,11 +2611,16 @@ async def super_chat(request: Request):
         from fastapi import HTTPException
         raise HTTPException(413, "Message too long (max 50000 chars)")
 
-    # Apply reasoning mode — build as SYSTEM instruction, not user message
-    reasoning_instructions = _apply_reasoning_mode("", reasoning, analysis_type)
+    # Apply reasoning mode — build as SYSTEM instruction, not user message.
+    # Chitchat/capability/greeting → plain pharmacist prose, NO dashboard tags/cards/charts.
+    _chit = _is_chitchat(message)
+    if _chit:
+        reasoning_instructions = _chitchat_instructions()
+    else:
+        reasoning_instructions = _apply_reasoning_mode("", reasoning, analysis_type)
 
-    # Smart routing hint
-    routing_hint = _detect_routing_hint(message)
+    # Smart routing hint (skip for chitchat — no data/context routing needed)
+    routing_hint = "data" if _chit else _detect_routing_hint(message)
     if routing_hint == "both":
         reasoning_instructions = (
             "[ROUTING: This question needs BOTH data AND context. "
