@@ -98,9 +98,9 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  // mcp (agent-builder). Content blocks left dead-but-unreachable (no rail entry point).
  const _railGroupsBase: { label: string; items: string[] }[] = [
  { label: 'Overview', items: ['cockpit','stats','health','observability'] },
- { label: 'People', items: ['users','projects','chatLogs'] },
+ { label: 'People', items: ['projects'] },
  { label: 'Data', items: ['schemas','integrations'] },
- { label: 'Platform', items: ['gateway','auth'] },
+ { label: 'Platform', items: ['auth'] },
  { label: 'System', items: ['traces','logs','admin-settings','llm'] },
  { label: 'Trust & Governance', items: ['accuracy','golden','mdl','diff','scope-audit','actions','metricflow'] },
  ];
@@ -1474,6 +1474,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
 <div class="cc-shell">
   <aside class="cc-rail">
     {#each railGroups as g}
+      {#if g.items.filter((i) => tabMeta[i]).length}
       <div class="cc-rail-group">
         <div class="rail-group-label">{g.label}</div>
         {#each g.items as id}
@@ -1522,6 +1523,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
           {/if}
         {/each}
       </div>
+      {/if}
     {/each}
   </aside>
 
@@ -3152,8 +3154,6 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
   <section class="ccc-panel">
     <div class="ccc-h">JUMP TO</div>
     <div class="ccc-jump">
-      <button onclick={() => switchTab('users')}>👥 Users</button>
-      <button onclick={() => switchTab('gateway')}>🔑 API Gateway</button>
       <button onclick={() => switchTab('brain')}>🧠 Brain</button>
       <button onclick={() => switchTab('llm')}>🤖 Models</button>
       <button onclick={() => switchTab('integrations')}>🔌 Integrations</button>

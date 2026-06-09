@@ -438,6 +438,209 @@ def download_gateway_bundle(request: Request):
     )
 
 
+# ── One-click WIDGET DEPLOY zip ───────────────────────────────────────────────
+# Non-technical handoff: a store gets a .zip that already contains a working
+# page (keys baked in) + the paste snippet + a plain-language README. No edits,
+# no copy-by-copy. Two routes: per-store (deploy/{embed_id}.zip) + all stores
+# (deploy/all.zip). Public — shares the /api/embed/sdk SKIP_PREFIXES family;
+# /api/embed/deploy is added to SKIP_PREFIXES in main.py.
+
+def _deploy_embed_rows(embed_id: str | None = None):
+    """Fetch embed row(s) for the deploy zip. embed_id=None → all enabled
+    embeds for the locked project. Returns list of plain dicts."""
+    from sqlalchemy import text
+    from dash.embed import _get_engine
+    eng = _get_engine()
+    cols = ("embed_id, project_slug, name, public_key, bound_scope_id, "
+            "primary_color, welcome_msg, position, theme, enabled, status")
+    with eng.connect() as conn:
+        if embed_id:
+            rows = conn.execute(text(
+                f"SELECT {cols} FROM public.dash_agent_embeds WHERE embed_id = :e"
+            ), {"e": embed_id}).fetchall()
+        else:
+            rows = conn.execute(text(
+                f"SELECT {cols} FROM public.dash_agent_embeds "
+                "WHERE COALESCE(enabled, true) = true AND COALESCE(status,'') <> 'disabled' "
+                "ORDER BY bound_scope_id NULLS LAST, embed_id"
+            )).fetchall()
+    return [dict(r._mapping) for r in rows]
+
+
+def _deploy_files(row: dict, base: str) -> dict[str, str]:
+    """Render the 3 drop-in files for one embed, keys baked in. Returns
+    {filename: content}. No placeholders left — runs as-is."""
+    import html as _html
+    eid = row["embed_id"]
+    pubkey = row.get("public_key") or ""
+    store = row.get("bound_scope_id") or ""
+    name = row.get("name") or row.get("project_slug") or "CityPharma"
+    title = f"{name}" + (f" — {store}" if store else "")
+    accent = row.get("primary_color") or "#1a2b4a"
+    welcome = (row.get("welcome_msg") or "Hi! Ask me about stock, drug info, or substitutes.")
+    position = row.get("position") or "bottom-right"
+    theme = row.get("theme") or "light"
+    et = _html.escape(title)
+    ew = _html.escape(welcome, quote=True)
+    base = base.rstrip("/")
+
+    # the one snippet — same shape as the live sandbox (data-key = public key)
+    snippet = (
+        f'<script src="{base}/api/embed/widget.js"\n'
+        f'        data-embed-id="{eid}"\n'
+        f'        data-key="{pubkey}"\n'
+        f'        data-position="{position}"\n'
+        f'        data-theme="{theme}"\n'
+        f'        data-accent="{accent}"\n'
+        f'        data-greeting="{ew}"\n'
+        f'        data-title="{et}"\n'
+        f'        async></script>'
+    )
+
+    index_html = (
+        "<!doctype html>\n<html lang=\"en\"><head>\n"
+        "<meta charset=\"utf-8\"/>\n"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/>\n"
+        f"<title>{et}</title>\n"
+        "<style>\n"
+        "  body{margin:0;padding:48px 20px;background:#f5f1ea;"
+        "font-family:system-ui,-apple-system,'Segoe UI',sans-serif;text-align:center;min-height:100vh;}\n"
+        f"  h1{{color:{accent};font-size:26px;margin:32px auto 10px;}}\n"
+        "  p{color:#555;font-size:15px;max-width:520px;margin:0 auto 8px;line-height:1.6;}\n"
+        "  .pill{display:inline-block;margin-top:18px;padding:4px 12px;background:rgba(0,0,0,.06);"
+        "color:#444;border-radius:999px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;}\n"
+        "</style>\n</head><body>\n"
+        f"  <h1>{et}</h1>\n"
+        f"  <p>Tap the chat bubble at the {position.replace('-', ' ')} to ask about stock, "
+        "drug info, substitutes and prices.</p>\n"
+        + (f"  <span class=\"pill\">store: {_html.escape(store)}</span>\n" if store else "")
+        + "  " + snippet + "\n"
+        "</body></html>\n"
+    )
+
+    readme = (
+        f"{title}\n"
+        f"{'=' * len(title)}\n\n"
+        "Your CityPharma chat assistant — ready to deploy. Pick ONE option.\n\n"
+        "OPTION 1 — Host the ready page (easiest)\n"
+        "  1. Upload the file 'index.html' to your website / hosting.\n"
+        "  2. Open it in a browser. The chat bubble appears bottom corner.\n"
+        "  Done. Nothing to edit — your keys are already inside.\n\n"
+        "OPTION 2 — Add to an existing website\n"
+        "  1. Open 'snippet.html'.\n"
+        "  2. Copy everything in it.\n"
+        "  3. Paste it just before the </body> tag of your site's pages.\n"
+        "  Save + publish. The chat bubble appears on those pages.\n\n"
+        "TEST WITHOUT A WEBSITE\n"
+        "  Double-click 'index.html' to open it in your browser right now.\n\n"
+        "GOOD TO KNOW\n"
+        f"  - Store / branch : {store or 'all (global)'}\n"
+        f"  - Widget ID      : {eid}\n"
+        "  - The assistant only answers about your pharmacy data.\n"
+        "  - Need it on a live site? Add your website address to the widget's\n"
+        "    allowed origins in the admin Widgets tab (else it shows a 403).\n"
+    )
+    return {"index.html": index_html, "snippet.html": snippet + "\n", "README.txt": readme}
+
+
+def _safe_slug(s: str) -> str:
+    import re as _re2
+    return _re2.sub(r"[^A-Za-z0-9_.-]+", "-", str(s or "")).strip("-") or "store"
+
+
+@router.get("/deploy/{embed_id}.zip")
+def download_deploy_zip(embed_id: str, request: Request):
+    """One store's drop-in widget kit (index.html + snippet.html + README),
+    keys pre-baked. Non-technical: download → host index.html → live."""
+    import io
+    import zipfile
+    from fastapi.responses import Response
+    if embed_id == "all":  # static route would otherwise be shadowed by this param route
+        return download_deploy_all_zip(request)
+    rows = _deploy_embed_rows(embed_id)
+    if not rows:
+        raise HTTPException(status_code=404, detail="embed not found")
+    row = rows[0]
+    base = _public_base(request) or _SDK_PLACEHOLDERS["base"]
+    folder = _safe_slug(row.get("bound_scope_id") or row.get("name") or row["embed_id"])
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fname, content in _deploy_files(row, base).items():
+            zf.writestr(f"{folder}/{fname}", content)
+    buf.seek(0)
+    return Response(
+        content=buf.read(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="widget-{folder}.zip"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get("/deploy/all.zip")
+def download_deploy_all_zip(request: Request):
+    """Every store's widget kit in one zip — a folder per store + a top-level
+    INDEX.html linking them all + HOW-TO-DEPLOY.txt. Admin hands each branch
+    its folder."""
+    import io
+    import zipfile
+    import html as _html
+    from fastapi.responses import Response
+    rows = _deploy_embed_rows(None)
+    if not rows:
+        raise HTTPException(status_code=404, detail="no embeds to deploy")
+    base = _public_base(request) or _SDK_PLACEHOLDERS["base"]
+    buf = io.BytesIO()
+    index_links = []
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        seen: dict[str, int] = {}
+        for row in rows:
+            folder = _safe_slug(row.get("bound_scope_id") or row.get("name") or row["embed_id"])
+            if folder in seen:  # disambiguate collisions
+                seen[folder] += 1
+                folder = f"{folder}-{seen[folder]}"
+            else:
+                seen[folder] = 0
+            for fname, content in _deploy_files(row, base).items():
+                zf.writestr(f"{folder}/{fname}", content)
+            label = row.get("bound_scope_id") or row.get("name") or row["embed_id"]
+            index_links.append(
+                f'    <li><a href="{folder}/index.html">{_html.escape(str(label))}</a></li>'
+            )
+        index_html = (
+            "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"/>\n"
+            "<title>CityPharma — store widgets</title>\n"
+            "<style>body{font-family:system-ui,sans-serif;max-width:720px;margin:40px auto;"
+            "padding:0 20px;color:#222;}h1{color:#1a2b4a;}li{margin:6px 0;}a{color:#9a4a2f;}</style>\n"
+            "</head><body>\n<h1>CityPharma — store widgets</h1>\n"
+            f"<p>{len(rows)} store widgets. Open a store's page, or hand each branch its folder.</p>\n"
+            "<ul>\n" + "\n".join(index_links) + "\n</ul>\n</body></html>\n"
+        )
+        zf.writestr("INDEX.html", index_html)
+        zf.writestr("HOW-TO-DEPLOY.txt", (
+            "CityPharma — store widgets (all branches)\n"
+            "=========================================\n\n"
+            "This zip has one folder per store. Each folder holds a ready-to-use\n"
+            "chat widget with that store's keys already inside.\n\n"
+            "TO SEE EVERYTHING : open INDEX.html — it links every store's page.\n\n"
+            "TO DEPLOY ONE STORE:\n"
+            "  - Send that store its folder.\n"
+            "  - They upload 'index.html' to their site (or paste 'snippet.html'\n"
+            "    before </body> on an existing site). Read the folder's README.txt.\n\n"
+            f"Stores included: {len(rows)}\n"
+        ))
+    buf.seek(0)
+    return Response(
+        content=buf.read(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": 'attachment; filename="citypharma-widgets-all.zip"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 # ── Embed logo (uploaded via admin, served publicly to the widget) ────────────
 _EMBED_LOGO_DIR = "/app/knowledge/embed_logos"
 _LOGO_MIME = {
@@ -682,14 +885,27 @@ def get_embed_public_config(embed_id: str, request: Request):
             "Access-Control-Allow-Origin": origin or "*",
             "Vary": "Origin",
         }
+    # Single-point brand: resolve each appearance field as
+    #   per-widget override (non-empty)  ►  brand default  ►  hard fallback.
+    try:
+        from app.embed import get_brand_defaults
+        brand = get_brand_defaults()
+    except Exception:
+        brand = {}
+    def _resolve(col: str, hard: str) -> str:
+        v = d.get(col)
+        if v is not None and v != "":
+            return v
+        bv = brand.get(col)
+        return bv if (bv is not None and bv != "") else hard
     payload = {
         "embed_id": d["embed_id"],
         "name": d.get("name"),
-        "primary_color": d.get("primary_color") or "#1a2b4a",
-        "logo_url": d.get("logo_url"),
-        "welcome_msg": d.get("welcome_msg") or "Hi! How can I help?",
-        "position": d.get("position") or "bottom-right",
-        "theme": d.get("theme") or "auto",
+        "primary_color": _resolve("primary_color", "#1a2b4a"),
+        "logo_url": _resolve("logo_url", "") or None,
+        "welcome_msg": _resolve("welcome_msg", "Hi! How can I help?"),
+        "position": _resolve("position", "bottom-right"),
+        "theme": _resolve("theme", "auto"),
         "auth_mode": d.get("auth_mode") or "public",
     }
     from fastapi.responses import JSONResponse

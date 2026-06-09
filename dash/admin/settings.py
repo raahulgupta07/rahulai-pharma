@@ -101,6 +101,10 @@ REGISTRY: dict[str, dict] = {
     # from the top-nav Integrations dropdown AND its API routes return 403.
     "gateway_enabled":                {"type": "bool", "default": True,  "env": None, "scope": "global", "desc": "Enable the API Gateway (/api/v1). Off → routes 403 + nav item hidden"},
     "embed_enabled":                  {"type": "bool", "default": True,  "env": None, "scope": "global", "desc": "Enable Embed widgets (/api/embed). Off → routes 403 + nav item hidden"},
+
+    # Single-point brand theme — default widget appearance (JSON string). Widgets
+    # with no per-store override inherit this at render time (embed ?? brand ?? hard).
+    "embed_brand":                    {"type": "string", "default": "", "env": None, "scope": "global", "desc": "Default embed widget appearance JSON (single-point brand theme)"},
 }
 
 

@@ -982,8 +982,12 @@ def login(req: LoginRequest):
     """Login and get a token."""
     try:
         with _engine.connect() as conn:
+            # Accept either the username OR the email as the login identifier —
+            # the form labels it "email", so users naturally type the email.
             row = conn.execute(text(
-                "SELECT id, username, password_hash, COALESCE(role, 'user') FROM public.dash_users WHERE username = :u"
+                "SELECT id, username, password_hash, COALESCE(role, 'user') FROM public.dash_users "
+                "WHERE username = :u OR LOWER(email) = LOWER(:u) "
+                "ORDER BY (username = :u) DESC LIMIT 1"
             ), {"u": req.username}).fetchone()
 
             if not row or not _verify_password(req.password, row[2]):

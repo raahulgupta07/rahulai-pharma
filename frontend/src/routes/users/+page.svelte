@@ -270,7 +270,7 @@
                     <dt>External ID</dt><dd class="ua-mono" title={u.external_id || ''}>{u.external_id || '—'}{#if u.external_id} <button class="ua-cp" onclick={() => copy(u.external_id, 'ex'+u.id)}>{copied === 'ex'+u.id ? '✓' : '⧉'}</button>{/if}</dd>
                     <dt>Mapped email</dt><dd>{u.email || '—'}</dd>
                     <dt>Site / branch</dt><dd>{u.site_code || '—'}</dd>
-                    <dt>Group→role</dt><dd><a href="{base}/ui/auth-admin">map in Authentication →</a></dd>
+                    <dt>Group→role</dt><dd><a href="{base}/ui/command-center?tab=auth">map in Authentication →</a></dd>
                   </dl>
                 </section>
                 <section>

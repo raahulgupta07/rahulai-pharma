@@ -1678,7 +1678,7 @@ def _integrations_state() -> dict:
 
 class AuthMiddleware(BaseHTTPMiddleware):
     SKIP_PATHS = {"/health", "/api/health", "/api/flags", "/", "/info", "/config", "/api/auth/login", "/api/auth/register", "/api/auth/methods", "/api/auth/ldap/login", "/api/sharepoint/callback", "/api/gdrive/callback", "/api/onedrive/callback", "/api/embed/session/create", "/api/embed/chat", "/api/embed/chat/stream", "/api/embed/widget.js", "/api/embed/docs"}
-    SKIP_PREFIXES = ("/ui", "/docs", "/openapi.json", "/redoc", "/api/branding", "/v1/ontology", "/brand", "/decks", "/api/health", "/health", "/api/embed/try", "/api/embed/config", "/api/embed/sdk", "/api/embed/logo", "/api/s/", "/api/v1/docs", "/api/auth/oidc/")
+    SKIP_PREFIXES = ("/ui", "/docs", "/openapi.json", "/redoc", "/api/branding", "/v1/ontology", "/brand", "/decks", "/api/health", "/health", "/api/embed/try", "/api/embed/config", "/api/embed/sdk", "/api/embed/deploy", "/api/embed/logo", "/api/s/", "/api/v1/docs", "/api/auth/oidc/")
 
     async def dispatch(self, request, call_next):  # type: ignore[no-untyped-def]
         path = request.url.path

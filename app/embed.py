@@ -408,6 +408,38 @@ def get_embed_endpoint(slug: str, embed_id: str, request: Request):
     return {"status": "ok", "embed": emb}
 
 
+@router.get("/{slug}/embeds/{embed_id}/secret")
+def reveal_embed_secret(slug: str, embed_id: str, request: Request):
+    """Return the HMAC secret key (plaintext) for the inline KEYS panel.
+    Super-admin only (page is already super-gated). Needed to set the
+    server-side CITYAGENT_EMBED_SECRET env for user-scoped (HMAC) mode."""
+    from sqlalchemy import text
+    from dash.embed import _get_engine
+    user = _get_user(request)
+    _check_access(user, slug)
+    _load_embed_or_404(embed_id, slug)
+    secret = None
+    try:
+        eng = _get_engine()
+        with eng.connect() as conn:
+            row = conn.execute(text(
+                "SELECT secret_key, secret_key_encrypted FROM public.dash_agent_embeds "
+                "WHERE embed_id = :e AND project_slug = :s"
+            ), {"e": embed_id, "s": slug}).first()
+        if row:
+            secret = row[0]
+            if not secret and row[1]:
+                try:
+                    from dash.embed.secret_storage import decrypt_secret
+                    secret = decrypt_secret(row[1])
+                except Exception:
+                    secret = None
+    except Exception:
+        logger.exception("reveal secret failed")
+        raise HTTPException(500, "Failed to read secret")
+    return {"status": "ok", "secret_key": secret or "", "has_secret": bool(secret)}
+
+
 @router.patch("/{slug}/embeds/{embed_id}")
 async def update_embed_endpoint(slug: str, embed_id: str, request: Request):
     user = _get_user(request)
@@ -472,6 +504,117 @@ async def update_embed_endpoint(slug: str, embed_id: str, request: Request):
         raise HTTPException(500, "Failed to update embed")
 
     return {"status": "ok", "embed": emb}
+
+
+# ── Single-point BRAND theme ──────────────────────────────────────────────────
+# One default appearance for every widget. Widgets with no per-store override
+# inherit it at render time (resolution lives in app/embed_public.py /config).
+# Stored as a JSON string in the global `embed_brand` setting.
+_BRAND_HARD = {
+    "primary_color": "#1a2b4a",
+    "position": "bottom-right",
+    "theme": "default",
+    "welcome_msg": "Hi! How can I help?",
+    "logo_url": "",
+}
+_BRAND_KEYS = tuple(_BRAND_HARD.keys())
+
+
+def get_brand_defaults() -> dict:
+    """Resolved brand defaults = stored brand merged over hard fallbacks."""
+    import json
+    from dash.admin.settings import get_setting
+    out = dict(_BRAND_HARD)
+    try:
+        raw = get_setting("embed_brand")
+        if raw:
+            saved = json.loads(raw) if isinstance(raw, str) else (raw or {})
+            for k in _BRAND_KEYS:
+                v = saved.get(k)
+                if v is not None and v != "":
+                    out[k] = v
+    except Exception:
+        pass
+    return out
+
+
+def _brand_inheritance(slug: str) -> dict:
+    """Count widgets inheriting the brand vs overriding it. Override = a non-null
+    primary_color (the appearance signal set when a store is customized)."""
+    from sqlalchemy import text
+    from dash.embed import _get_engine
+    try:
+        eng = _get_engine()
+        with eng.connect() as conn:
+            rows = conn.execute(text(
+                "SELECT embed_id, name, bound_scope_id, "
+                "       (primary_color IS NOT NULL AND primary_color <> '') AS overridden "
+                "FROM public.dash_agent_embeds "
+                "WHERE project_slug = :s AND COALESCE(enabled, true) = true "
+                "  AND COALESCE(status,'') <> 'revoked'"
+            ), {"s": slug}).mappings().all()
+    except Exception:
+        return {"total": 0, "inherit": 0, "override": 0, "overrides": []}
+    overrides = [
+        {"embed_id": r["embed_id"], "name": r["name"], "store": r["bound_scope_id"]}
+        for r in rows if r["overridden"]
+    ]
+    return {
+        "total": len(rows),
+        "inherit": len(rows) - len(overrides),
+        "override": len(overrides),
+        "overrides": overrides,
+    }
+
+
+@router.get("/{slug}/embed-brand")
+def get_embed_brand(slug: str, request: Request):
+    """Brand defaults + inheritance counts for the Brand page."""
+    user = _get_user(request)
+    _check_access(user, slug)
+    return {"status": "ok", "brand": get_brand_defaults(), "inheritance": _brand_inheritance(slug)}
+
+
+@router.put("/{slug}/embed-brand")
+async def put_embed_brand(slug: str, request: Request):
+    """Save the single-point brand theme. Only the 5 appearance keys are kept."""
+    import json
+    user = _get_user(request)
+    _check_access(user, slug)
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(400, "body must be an object")
+    clean = {k: body[k] for k in _BRAND_KEYS if k in body and body[k] is not None}
+    try:
+        from dash.admin.settings import set_setting
+        set_setting("embed_brand", json.dumps(clean), scope="global")
+    except Exception:
+        logger.exception("save embed_brand failed")
+        raise HTTPException(500, "Failed to save brand")
+    return {"status": "ok", "brand": get_brand_defaults(), "inheritance": _brand_inheritance(slug)}
+
+
+@router.post("/{slug}/embed-brand/reset-widgets")
+def reset_widgets_to_brand(slug: str, request: Request):
+    """Clear every per-store appearance override → all widgets inherit the brand."""
+    from sqlalchemy import text
+    from dash.embed import _get_engine
+    user = _get_user(request)
+    _check_access(user, slug)
+    try:
+        eng = _get_engine()
+        with eng.begin() as conn:
+            res = conn.execute(text(
+                "UPDATE public.dash_agent_embeds "
+                "SET primary_color = NULL, position = NULL, theme = NULL, "
+                "    welcome_msg = NULL, logo_url = NULL "
+                "WHERE project_slug = :s"
+            ), {"s": slug})
+            n = res.rowcount or 0
+    except Exception:
+        logger.exception("reset widgets to brand failed")
+        raise HTTPException(500, "Failed to reset widgets")
+    return {"status": "ok", "reset": n, "inheritance": _brand_inheritance(slug)}
 
 
 # Embed logo storage — persisted volume (knowledge_data), served publicly by

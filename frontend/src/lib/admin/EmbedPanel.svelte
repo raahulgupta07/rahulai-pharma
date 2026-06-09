@@ -26,7 +26,7 @@
   }
 
   // ---- left-rail view (persisted in URL hash so refresh stays put) ----
-  const _validViews = ['overview', 'widgets', 'playground', 'usage', 'monitoring', 'developer'];
+  const _validViews = ['overview', 'brand', 'widgets', 'widget', 'usage', 'monitoring', 'developer'];
   function _viewFromHash(): string {
     if (typeof window === 'undefined') return 'overview';
     const h = (window.location.hash || '').replace(/^#/, '');
@@ -43,8 +43,8 @@
   const RAIL = [
     { group: 'EMBED', items: [{ id: 'overview', label: 'Overview', icon: 'gauge' }] },
     { group: 'MANAGE', items: [
+      { id: 'brand', label: 'Brand', icon: 'sliders' },
       { id: 'widgets', label: 'Widgets', icon: 'grid' },
-      { id: 'playground', label: 'Playground', icon: 'rocket' },
     ] },
     { group: 'ANALYTICS', items: [
       { id: 'monitoring', label: 'Monitoring', icon: 'activity' },
@@ -75,8 +75,9 @@
 
   const PAGE: Record<string, { title: string; sub: string }> = {
     overview: { title: 'Overview', sub: 'Embed status, endpoints + quick test' },
-    widgets: { title: 'Widgets', sub: 'List, create + revoke embed widgets' },
-    playground: { title: 'Playground', sub: 'Appearance · live chat test · shareable test link' },
+    brand: { title: 'Brand', sub: 'One theme for every widget — set it once, all stores inherit' },
+    widgets: { title: 'Widgets', sub: 'List, create + revoke — click a row to expand: keys, snippet, full PHP code + deploy' },
+    widget: { title: 'Widget', sub: '' },
     monitoring: { title: 'Monitoring', sub: 'Live widget traffic, latency, errors + per-store breakdown' },
     usage: { title: 'Usage Analytics', sub: 'Calls, tokens + sessions over time' },
     developer: { title: 'Developer Docs', sub: 'Snippet, code examples + 3-tier access reference' },
@@ -194,16 +195,137 @@
   let configBusy = $state(false);
   let configErr = $state('');
 
+  function _applyConfig(e: any) {
+    if (!e) return;
+    configColor = e.primary_color || '#c96342';
+    configPosition = e.position || 'bottom-right';
+    configTheme = e.theme || 'default';
+    configWelcome = e.welcome_msg || '';
+    configLogo = e.logo_url || '';
+  }
   function loadConfig() {
     configEmbed = embeds[0] || null;
-    if (configEmbed) {
-      configColor = configEmbed.primary_color || '#c96342';
-      configPosition = configEmbed.position || 'bottom-right';
-      configTheme = configEmbed.theme || 'default';
-      configWelcome = configEmbed.welcome_msg || '';
-      configLogo = configEmbed.logo_url || '';
-    }
+    _applyConfig(configEmbed);
   }
+
+  // ---- per-widget cockpit (merged Playground: appearance + test + deploy + share) ----
+  let wTab = $state<'appearance' | 'deploy' | 'share' | 'activity'>('appearance');
+  let apprMode = $state<'inherit' | 'override'>('inherit');  // widget appearance: inherit brand vs override
+  function openWidgetCockpit(e: any) {
+    configEmbed = e;
+    _applyConfig(e);
+    apprMode = (e?.primary_color ? 'override' : 'inherit');
+    configSaved = false; configErr = ''; logoErr = '';
+    sbReset();
+    // prefill share-link controls to this widget's binding
+    const scope = e?.bound_scope_id || e?.store_id || '';
+    sbGlobal = !scope;
+    sbStore = scope || '';
+    sbLink = ''; sbLinkErr = '';
+    wTab = 'appearance';
+    nav('widget');
+  }
+  // clear this widget's per-store override → it inherits the brand again.
+  // Empty strings (not nulls) — the resolver + inheritance count both treat '' as inherit.
+  async function revertToBrand() {
+    if (!configEmbed) return;
+    configBusy = true; configErr = '';
+    try {
+      const r = await apiFetch(`/api/projects/${slug}/embeds/${configEmbed.embed_id || configEmbed.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ primary_color: '', position: '', theme: '', welcome_msg: '', logo_url: '' }),
+      });
+      if (r.ok) { apprMode = 'inherit'; configSaved = true; setTimeout(() => configSaved = false, 1800); await loadEmbeds(); _applyConfig(brand); }
+      else { let d = ''; try { const e = await r.json(); d = e.detail || ''; } catch {} configErr = d || `revert ${r.status}`; }
+    } catch { configErr = 'unreachable'; }
+    configBusy = false;
+  }
+
+  // ---- single-point BRAND theme ----
+  let brand = $state<any>({ primary_color: '#1a2b4a', position: 'bottom-right', theme: 'default', welcome_msg: 'Hi! How can I help?', logo_url: '' });
+  let brandInherit = $state<any>({ total: 0, inherit: 0, override: 0, overrides: [] });
+  let brandColor = $state('#1a2b4a');
+  let brandPosition = $state('bottom-right');
+  let brandTheme = $state('default');
+  let brandWelcome = $state('Hi! How can I help?');
+  let brandLogo = $state('');
+  let brandBusy = $state(false);
+  let brandSaved = $state(false);
+  let brandErr = $state('');
+  let brandLoaded = $state(false);
+  let brandResetting = $state(false);
+  function _applyBrand(b: any) {
+    brand = b || brand;
+    brandColor = brand.primary_color || '#1a2b4a';
+    brandPosition = brand.position || 'bottom-right';
+    brandTheme = brand.theme || 'default';
+    brandWelcome = brand.welcome_msg || '';
+    brandLogo = brand.logo_url || '';
+  }
+  async function loadBrand() {
+    try {
+      const r = await apiFetch(`/api/projects/${slug}/embed-brand`);
+      if (r.ok) { const d = await r.json(); _applyBrand(d.brand); brandInherit = d.inheritance || brandInherit; }
+    } catch { /* ignore */ }
+    brandLoaded = true;
+  }
+  async function saveBrand() {
+    brandBusy = true; brandErr = '';
+    try {
+      const r = await apiFetch(`/api/projects/${slug}/embed-brand`, {
+        method: 'PUT',
+        body: JSON.stringify({ primary_color: brandColor, position: brandPosition, theme: brandTheme, welcome_msg: brandWelcome, logo_url: brandLogo }),
+      });
+      if (r.ok) { const d = await r.json(); _applyBrand(d.brand); brandInherit = d.inheritance || brandInherit; brandSaved = true; setTimeout(() => brandSaved = false, 1800); }
+      else { let d = ''; try { const e = await r.json(); d = e.detail || ''; } catch {} brandErr = d || `save ${r.status}`; }
+    } catch { brandErr = 'unreachable'; }
+    brandBusy = false;
+  }
+  async function resetWidgetsToBrand() {
+    if (typeof window !== 'undefined' && !window.confirm(`Clear appearance overrides on all widgets so every store inherits the brand?`)) return;
+    brandResetting = true; brandErr = '';
+    try {
+      const r = await apiFetch(`/api/projects/${slug}/embed-brand/reset-widgets`, { method: 'POST' });
+      if (r.ok) { const d = await r.json(); brandInherit = d.inheritance || brandInherit; await loadEmbeds(); }
+      else { let d = ''; try { const e = await r.json(); d = e.detail || ''; } catch {} brandErr = d || `reset ${r.status}`; }
+    } catch { brandErr = 'unreachable'; }
+    brandResetting = false;
+  }
+
+  // ---- inline expand: full PHP code + secret reveal (per widget) ----
+  let phpTabByRow = $state<Record<string, string>>({});   // eid -> active php file
+  let phpCode = $state<Record<string, string>>({});        // `${eid}:${file}` -> templated source
+  let phpBusy = $state('');                                 // `${eid}:${file}` loading
+  const PHP_FILES = ['widget-embed.php', 'CityAgentClient.php'];
+  function phpTabOf(eid: string): string { return phpTabByRow[eid] || 'widget-embed.php'; }
+  async function loadPhp(e: any, name: string) {
+    const eid = e.embed_id || e.id;
+    phpTabByRow = { ...phpTabByRow, [eid]: name };
+    const key = `${eid}:${name}`;
+    if (phpCode[key]) return;
+    phpBusy = key;
+    const q = new URLSearchParams({ base: baseUrl, embed: eid, pubkey: e.public_key || '' }).toString();
+    try {
+      const r = await fetch(`${baseUrl}/api/embed/sdk/file/${encodeURIComponent(name)}?${q}`);
+      phpCode = { ...phpCode, [key]: r.ok ? await r.text() : `// failed to load ${name} (${r.status})` };
+    } catch { phpCode = { ...phpCode, [key]: `// failed to load ${name}` }; }
+    phpBusy = '';
+  }
+  let secretShown = $state<Record<string, string>>({});    // eid -> revealed secret ('' = none)
+  let secretBusy = $state('');
+  async function revealSecret(eid: string) {
+    if (secretShown[eid] !== undefined) { // toggle hide
+      const { [eid]: _drop, ...rest } = secretShown; secretShown = rest; return;
+    }
+    secretBusy = eid;
+    try {
+      const r = await apiFetch(`/api/projects/${slug}/embeds/${eid}/secret`);
+      if (r.ok) { const d = await r.json(); secretShown = { ...secretShown, [eid]: d.secret_key || '' }; }
+      else { secretShown = { ...secretShown, [eid]: '' }; }
+    } catch { secretShown = { ...secretShown, [eid]: '' }; }
+    secretBusy = '';
+  }
+  function toggleRow(eid: string) { expandedEmbed = expandedEmbed === eid ? null : eid; }
 
   // ---- logo upload ----
   let logoUploading = $state(false);
@@ -446,6 +568,19 @@
     a.href = `${baseUrl}/api/embed/sdk.zip?${sdkQuery()}`;
     a.download = 'cityagent-sdk.zip'; document.body.appendChild(a); a.click(); a.remove();
   }
+  // ---- one-click WIDGET DEPLOY zips (keys pre-baked, no edits) ----
+  function downloadDeployZip(eid: string, scope?: string) {
+    const a = document.createElement('a');
+    a.href = `${baseUrl}/api/embed/deploy/${encodeURIComponent(eid)}.zip`;
+    a.download = `widget-${(scope || eid)}.zip`;
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+  function downloadDeployAll() {
+    const a = document.createElement('a');
+    a.href = `${baseUrl}/api/embed/deploy/all.zip`;
+    a.download = 'citypharma-widgets-all.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
 
   // ---- expandable widget rows (mirror Gateway Outlet Keys) ----
   let expandedEmbed = $state<string | null>(null);
@@ -681,6 +816,9 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
   $effect(() => {
     if (view === 'monitoring' && monData === null && !monBusy) loadMonitoring();
   });
+  $effect(() => {
+    if ((view === 'brand' || view === 'overview') && !brandLoaded) loadBrand();
+  });
 </script>
 
 {#if checking}
@@ -715,10 +853,12 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
 
     <!-- ===== RIGHT CONTENT ===== -->
     <main class="emp-main">
-      <header class="emp-pagehead">
-        <h1 class="emp-pagetitle">{PAGE[view]?.title ?? ''}</h1>
-        <p class="emp-pagesub">{PAGE[view]?.sub ?? ''}</p>
-      </header>
+      {#if view !== 'widget'}
+        <header class="emp-pagehead">
+          <h1 class="emp-pagetitle">{PAGE[view]?.title ?? ''}</h1>
+          <p class="emp-pagesub">{PAGE[view]?.sub ?? ''}</p>
+        </header>
+      {/if}
 
       <!-- ==================== OVERVIEW ==================== -->
       {#if view === 'overview'}
@@ -787,6 +927,111 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
           </div>
           <p class="emp-muted emp-fineprint">Expect: HTTP 200 + Content-Type: application/javascript</p>
         </section>
+
+        <section class="emp-panel">
+          <div class="emp-h">BRAND</div>
+          <div class="emp-statusbar">
+            <span class="emp-swatch" style="background:{brand.primary_color || '#1a2b4a'};"></span>
+            <strong>{brand.primary_color || '#1a2b4a'}</strong>
+            <span class="emp-muted">· {brand.position || 'bottom-right'} · "{brand.welcome_msg || 'Hi! How can I help?'}"</span>
+            <span class="emp-muted emp-ml-auto emp-fineprint">{brandInherit.inherit} inherit · {brandInherit.override} overridden</span>
+            <button class="emp-btn emp-btn-sm" onclick={() => nav('brand')}>Edit Brand →</button>
+          </div>
+          <div class="emp-muted emp-fineprint">One theme for every widget. Stores with no override follow this automatically.</div>
+        </section>
+      {/if}
+
+      <!-- ==================== BRAND (single-point theme) ==================== -->
+      {#if view === 'brand'}
+        <div class="emp-pg-grid">
+          <section class="emp-panel emp-pg-col">
+            <div class="emp-h">DEFAULT APPEARANCE</div>
+            <p class="emp-doc-p">Applies to every widget unless a store has its own override.</p>
+            <div class="emp-config-grid">
+              <label class="emp-field">
+                <span class="emp-flabel">primary color</span>
+                <div class="emp-color-row">
+                  <input class="emp-input emp-input-color" type="color" bind:value={brandColor} />
+                  <input class="emp-input emp-input-hex" bind:value={brandColor} placeholder="#1a2b4a" />
+                </div>
+              </label>
+              <label class="emp-field">
+                <span class="emp-flabel">position</span>
+                <select class="emp-input emp-select" bind:value={brandPosition}>
+                  <option value="bottom-right">bottom-right</option>
+                  <option value="bottom-left">bottom-left</option>
+                </select>
+              </label>
+              <label class="emp-field">
+                <span class="emp-flabel">theme</span>
+                <select class="emp-input emp-select" bind:value={brandTheme}>
+                  <option value="default">default</option>
+                  <option value="dark">dark</option>
+                </select>
+              </label>
+              <label class="emp-field">
+                <span class="emp-flabel">welcome message</span>
+                <input class="emp-input" placeholder="Hi! How can I help you today?" bind:value={brandWelcome} />
+              </label>
+              <label class="emp-field emp-field-full">
+                <span class="emp-flabel">logo <span class="emp-muted">(paste a URL)</span></span>
+                <div class="emp-logo-row">
+                  {#if brandLogo}
+                    <img class="emp-logo-preview" src={brandLogo} alt="logo" />
+                  {:else}
+                    <span class="emp-logo-empty">no logo</span>
+                  {/if}
+                  <input class="emp-input emp-logo-url" placeholder="https://example.com/logo.png" bind:value={brandLogo} />
+                  {#if brandLogo}<button type="button" class="emp-btn emp-btn-sm" onclick={() => brandLogo = ''}>clear</button>{/if}
+                </div>
+                <span class="emp-muted emp-fineprint">Per-store logos can be uploaded from each widget's Appearance tab.</span>
+              </label>
+            </div>
+            <div class="emp-btnrow emp-mt">
+              <button class="emp-btn emp-btn-accent" disabled={brandBusy} onclick={saveBrand}>{brandBusy ? '◐…' : 'SAVE BRAND DEFAULT'}</button>
+              {#if brandSaved}<span class="emp-saved">✓ saved</span>{/if}
+              {#if brandErr}<span class="emp-err">✗ {brandErr}</span>{/if}
+            </div>
+          </section>
+
+          <!-- live preview -->
+          <section class="emp-panel emp-pg-col emp-pg-chatcol">
+            <div class="emp-chat-card">
+              <div class="emp-chat-head" style="background:{brandColor};">
+                <span class="emp-chat-av">{(brandLogo ? '' : 'C')}{#if brandLogo}<img class="emp-preview-logo" src={brandLogo} alt="" />{/if}</span>
+                <div class="emp-chat-htext">
+                  <strong>CityAgent Pharma</strong>
+                  <span class="emp-chat-status">● online · we reply instantly</span>
+                </div>
+              </div>
+              <div class="emp-chat-body">
+                <div class="emp-msg emp-msg-bot">
+                  <span class="emp-msg-av" style="background:{brandColor};">C</span>
+                  <div class="emp-bubble emp-bubble-bot">{brandWelcome || 'Hi! How can I help?'}</div>
+                </div>
+              </div>
+              <div class="emp-chat-foot">
+                <input class="emp-chat-input" placeholder="ask something…" disabled />
+                <button class="emp-chat-send" style="background:{brandColor};" disabled aria-label="Send">→</button>
+              </div>
+            </div>
+            <div class="emp-fineprint emp-muted">preview only · position {brandPosition}</div>
+          </section>
+        </div>
+
+        <section class="emp-panel">
+          <div class="emp-h">INHERITANCE</div>
+          <div class="emp-statusbar">
+            <span class="emp-dot emp-on">◉</span> <strong>{brandInherit.inherit}</strong> <span class="emp-muted">widgets inherit this brand</span>
+            <span class="emp-muted">·</span>
+            <span class="emp-dot emp-amber">◐</span> <strong>{brandInherit.override}</strong> <span class="emp-muted">have a custom override</span>
+            <button class="emp-btn emp-btn-sm emp-ml-auto" disabled={brandResetting || brandInherit.override === 0} onclick={resetWidgetsToBrand}>{brandResetting ? '◐…' : 'Reset ALL widgets to brand'}</button>
+          </div>
+          {#if brandInherit.overrides && brandInherit.overrides.length}
+            <div class="emp-muted emp-fineprint">overrides: {brandInherit.overrides.map((o: any) => o.store || o.name || o.embed_id).slice(0, 12).join(' · ')}{brandInherit.overrides.length > 12 ? ' …' : ''}</div>
+          {/if}
+          <div class="emp-muted emp-fineprint">Change the brand above and all {brandInherit.inherit} inheriting widgets update live — no re-save. Override a single store from its Widget → Appearance tab.</div>
+        </section>
       {/if}
 
       <!-- ==================== WIDGETS ==================== -->
@@ -794,7 +1039,12 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
         <section class="emp-panel">
           <div class="emp-h-row">
             <div class="emp-h">WIDGETS ({embeds.length})</div>
-            <button class="emp-btn emp-btn-accent" onclick={() => { newEmbedOpen = !newEmbedOpen; newEmbedKey = ''; newEmbedErr = ''; }}>+ NEW EMBED</button>
+            <div class="emp-h-actions">
+              {#if embeds.length > 0}
+                <button class="emp-btn" onclick={downloadDeployAll} title="One zip with every store's ready-to-deploy widget folder (keys baked in) + an INDEX page">⤓ Download ALL stores (.zip)</button>
+              {/if}
+              <button class="emp-btn emp-btn-accent" onclick={() => { newEmbedOpen = !newEmbedOpen; newEmbedKey = ''; newEmbedErr = ''; }}>+ NEW EMBED</button>
+            </div>
           </div>
 
           {#if newEmbedOpen}
@@ -872,8 +1122,9 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
                   {@const isLive = e.enabled !== false && e.status !== 'revoked' && e.status !== 'disabled'}
                   {@const eid = e.embed_id || e.id}
                   {@const isOpen = expandedEmbed === eid}
-                  <tr class="emp-row-click" class:emp-row-open={isOpen} onclick={() => toggleEmbedRow(eid)}>
-                    <td><button class="emp-expand" onclick={(ev) => { ev.stopPropagation(); toggleEmbedRow(eid); }}>{isOpen ? '▾' : '▸'}</button> <code class="emp-code">{e.name || eid}</code></td>
+                  {@const scope = e.bound_scope_id || e.store_id || ''}
+                  <tr class="emp-row-click" class:emp-row-open={isOpen} onclick={() => toggleRow(eid)} title="Expand — keys, snippet, full PHP code + deploy">
+                    <td><span class="emp-row-go">{isOpen ? '▾' : '›'}</span> <code class="emp-code">{e.name || eid}</code></td>
                     <td>{e.auth_mode ?? 'public'}</td>
                     <td>
                       {#if Array.isArray(e.allowed_origins) && e.allowed_origins.length}
@@ -892,7 +1143,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
                     <td>
                       <button class="emp-btn emp-btn-sm" onclick={(ev) => {
                         ev.stopPropagation();
-                        const snip = buildSnippet(eid, e.public_key || '', e.bound_scope_id || e.store_id || '');
+                        const snip = buildSnippet(eid, e.public_key || '', scope);
                         copyText(snip, `snip-${eid}`);
                       }}>{copied === `snip-${eid}` ? '✓ copied' : 'snippet'}</button>
                     </td>
@@ -910,47 +1161,92 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
 
                   {#if isOpen}
                     <tr class="emp-detail-row">
-                      <td colspan="7">
+                      <td colspan="7" onclick={(ev) => ev.stopPropagation()}>
                         <div class="emp-detail">
+                          <!-- KEYS -->
+                          <div class="emp-dl-k emp-dl-grouphead">KEYS</div>
                           <div class="emp-detail-line">
                             <span class="emp-dl-k">EMBED ID</span>
                             <code class="emp-code emp-code-key">{eid}</code>
-                            <button class="emp-btn emp-btn-sm" onclick={(ev) => { ev.stopPropagation(); copyText(eid, `eid-${eid}`); }}>{copied === `eid-${eid}` ? '✓' : 'copy'}</button>
+                            <button class="emp-btn emp-btn-sm" onclick={() => copyText(eid, `eid-${eid}`)}>{copied === `eid-${eid}` ? '✓' : 'copy'}</button>
                           </div>
                           <div class="emp-detail-line">
                             <span class="emp-dl-k">PUBLIC KEY</span>
                             <code class="emp-code emp-code-key">{e.public_key || '—'}</code>
-                            {#if e.public_key}<button class="emp-btn emp-btn-sm" onclick={(ev) => { ev.stopPropagation(); copyText(e.public_key, `pk-${eid}`); }}>{copied === `pk-${eid}` ? '✓' : 'copy'}</button>{/if}
-                            <button class="emp-btn emp-btn-sm" disabled={rotatingKey === eid} onclick={(ev) => { ev.stopPropagation(); rotateEmbedKey(eid); }} title="Generate a new public key — the old one stops working">{rotatingKey === eid ? '◐…' : '↻ rotate'}</button>
-                            {#if isLive}<button class="emp-btn emp-btn-sm emp-btn-danger" onclick={(ev) => { ev.stopPropagation(); revokeEmbed(eid); }} title="Disable this widget entirely">Revoke</button>{/if}
+                            {#if e.public_key}<button class="emp-btn emp-btn-sm" onclick={() => copyText(e.public_key, `pk-${eid}`)}>{copied === `pk-${eid}` ? '✓' : 'copy'}</button>{/if}
+                            <button class="emp-btn emp-btn-sm" disabled={rotatingKey === eid} onclick={() => rotateEmbedKey(eid)} title="Generate a new public key — the old one stops working">{rotatingKey === eid ? '◐…' : '↻ rotate'}</button>
+                          </div>
+                          <div class="emp-detail-line">
+                            <span class="emp-dl-k">SECRET</span>
+                            {#if secretShown[eid] !== undefined}
+                              <code class="emp-code emp-code-key">{secretShown[eid] || '— (public auth · no secret)'}</code>
+                              {#if secretShown[eid]}<button class="emp-btn emp-btn-sm" onclick={() => copyText(secretShown[eid], `sk-${eid}`)}>{copied === `sk-${eid}` ? '✓' : 'copy'}</button>{/if}
+                              <button class="emp-btn emp-btn-sm" onclick={() => revealSecret(eid)}>hide</button>
+                            {:else}
+                              <code class="emp-code emp-code-key">••••••••••••••••</code>
+                              <button class="emp-btn emp-btn-sm" disabled={secretBusy === eid} onclick={() => revealSecret(eid)}>{secretBusy === eid ? '◐…' : 'reveal'}</button>
+                            {/if}
+                            <span class="emp-muted emp-fineprint">server-side only → set <code class="emp-code">CITYAGENT_EMBED_SECRET</code> (HMAC mode)</span>
                           </div>
                           <div class="emp-detail-line">
                             <span class="emp-dl-k">ENDPOINT</span>
                             <code class="emp-code">{baseUrl}/api/embed/chat</code>
                           </div>
-                          <div class="emp-detail-line">
-                            <span class="emp-dl-k">SCOPE</span>
-                            <span class="emp-muted">{embedScopeLabel(e)}</span>
-                          </div>
-                          <div class="emp-detail-line">
-                            <span class="emp-dl-k">RATE</span>
-                            <span class="emp-muted">{e.rate_limit_per_min ?? 30}/min · auth {e.auth_mode ?? 'public'}</span>
+
+                          <!-- CONFIG -->
+                          <div class="emp-dl-k emp-dl-grouphead">CONFIG</div>
+                          <div class="emp-detail-line emp-dl-config">
+                            <span><span class="emp-k">scope</span>{embedScopeLabel(e)}</span>
+                            {#if e.bound_role}<span><span class="emp-k">role</span>{e.bound_role}</span>{/if}
+                            <span><span class="emp-k">rate</span>{e.rate_limit_per_min ?? 30}/min</span>
+                            <span><span class="emp-k">auth</span>{e.auth_mode ?? 'public'}</span>
+                            <span><span class="emp-k">status</span>{isLive ? 'live' : (e.status || 'draft')}</span>
+                            {#if e.response_style}<span><span class="emp-k">style</span>{e.response_style}</span>{/if}
                           </div>
 
+                          <!-- SNIPPET -->
                           <div class="emp-dl-snip">
                             <div class="emp-dl-snip-head">
-                              <span class="emp-dl-k">SNIPPET</span>
-                              <button class="emp-btn emp-btn-sm" onclick={(ev) => { ev.stopPropagation(); copyText(buildSnippet(eid, e.public_key || '', e.bound_scope_id || e.store_id || ''), `dsnip-${eid}`); }}>{copied === `dsnip-${eid}` ? '✓ copied' : 'copy'}</button>
+                              <span class="emp-dl-k">DROP-IN SNIPPET</span>
+                              <button class="emp-btn emp-btn-sm" onclick={() => copyText(buildSnippet(eid, e.public_key || '', scope), `dsnip-${eid}`)}>{copied === `dsnip-${eid}` ? '✓ copied' : 'copy'}</button>
                             </div>
-                            <pre class="emp-codeblock">{buildSnippet(eid, e.public_key || '', e.bound_scope_id || e.store_id || '')}</pre>
+                            <pre class="emp-codeblock">{buildSnippet(eid, e.public_key || '', scope)}</pre>
                           </div>
 
-                          {#if isLive}
-                            <div class="emp-detail-actions">
-                              <button class="emp-btn emp-btn-sm emp-btn-accent" onclick={(ev) => { ev.stopPropagation(); window.open(`${baseUrl}/api/embed/try/${eid}`, '_blank'); }}>▶ Open chat test</button>
-                              <button class="emp-btn emp-btn-sm" onclick={(ev) => { ev.stopPropagation(); configEmbed = e; view = 'playground'; }}>⚙ Playground</button>
+                          <!-- FULL PHP -->
+                          <div class="emp-dl-snip">
+                            <div class="emp-dl-snip-head">
+                              <span class="emp-dl-k">FULL PHP CODE</span>
+                              <div class="emp-pathtabs emp-php-tabs">
+                                {#each PHP_FILES as f}
+                                  <button class="emp-pathtab" class:emp-pt-on={phpTabOf(eid) === f} onclick={() => loadPhp(e, f)}>{f}</button>
+                                {/each}
+                              </div>
+                              {#if phpCode[`${eid}:${phpTabOf(eid)}`]}
+                                <button class="emp-btn emp-btn-sm" onclick={() => copyText(phpCode[`${eid}:${phpTabOf(eid)}`], `php-${eid}`)}>{copied === `php-${eid}` ? '✓ copied' : 'copy'}</button>
+                              {/if}
                             </div>
-                          {/if}
+                            {#if phpBusy === `${eid}:${phpTabOf(eid)}`}
+                              <div class="emp-row emp-muted">◐ loading {phpTabOf(eid)}…</div>
+                            {:else if phpCode[`${eid}:${phpTabOf(eid)}`]}
+                              <pre class="emp-codeblock emp-php-block">{phpCode[`${eid}:${phpTabOf(eid)}`]}</pre>
+                            {:else}
+                              <button class="emp-btn emp-btn-sm" onclick={() => loadPhp(e, phpTabOf(eid))}>show {phpTabOf(eid)}</button>
+                              <span class="emp-muted emp-fineprint">templated with this widget's keys · secret read from your env</span>
+                            {/if}
+                          </div>
+
+                          <!-- ACTIONS -->
+                          <div class="emp-detail-actions">
+                            <button class="emp-btn emp-btn-sm emp-btn-accent" onclick={() => downloadDeployZip(eid, scope)} title="Ready-to-host folder (index.html + snippet + README), keys baked in">⤓ Deploy .zip</button>
+                            {#if isLive}
+                              <button class="emp-btn emp-btn-sm" onclick={() => window.open(`${baseUrl}/api/embed/try/${eid}`, '_blank')}>▶ Test chat ↗</button>
+                            {/if}
+                            <button class="emp-btn emp-btn-sm" onclick={() => openWidgetCockpit(e)}>⚙ Configure appearance →</button>
+                            {#if isLive}
+                              <button class="emp-btn emp-btn-sm emp-btn-danger" onclick={() => revokeEmbed(eid)}>Revoke</button>
+                            {/if}
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -962,16 +1258,74 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
         </section>
       {/if}
 
-      <!-- ==================== CONFIG ==================== -->
-      {#if view === 'playground'}
-        {#if embeds.length === 0}
+      <!-- ==================== WIDGET COCKPIT (merged Playground) ==================== -->
+      {#if view === 'widget'}
+        {#if !configEmbed}
           <section class="emp-panel">
-            <div class="emp-row emp-muted">no embeds yet — create one in Widgets first</div>
+            <div class="emp-row emp-muted">no widget selected — <button class="emp-btn emp-btn-sm" onclick={() => nav('widgets')}>← back to Widgets</button></div>
           </section>
         {:else}
+          {@const ceId = configEmbed.embed_id || configEmbed.id}
+          {@const ceLive = configEmbed.enabled !== false && configEmbed.status !== 'revoked' && configEmbed.status !== 'disabled'}
+          {@const ceScope = configEmbed.bound_scope_id || configEmbed.store_id || ''}
+          {@const cePk = configEmbed.public_key || ''}
+          {@const ceOrigins = Array.isArray(configEmbed.allowed_origins) ? configEmbed.allowed_origins : []}
+
+          <!-- breadcrumb header -->
+          <section class="emp-panel emp-wc-head">
+            <div class="emp-wc-crumb">
+              <button class="emp-crumb-link" onclick={() => nav('widgets')}>‹ Widgets</button>
+              <span class="emp-crumb-sep">/</span>
+              <strong class="emp-wc-name">{configEmbed.name || ceId}</strong>
+              {#if ceLive}<span class="emp-badge emp-badge-on">● live</span>{:else}<span class="emp-badge emp-badge-off">✗ not live</span>{/if}
+              <span class="emp-muted emp-fineprint">{embedScopeLabel(configEmbed)}</span>
+            </div>
+            <div class="emp-wc-head-actions">
+              {#if ceLive}<button class="emp-btn emp-btn-sm" onclick={() => window.open(`${baseUrl}/api/embed/try/${ceId}`, '_blank')}>▶ Test chat</button>{/if}
+              <button class="emp-btn emp-btn-sm emp-btn-accent" onclick={() => downloadDeployZip(ceId, ceScope)}>⤓ Deploy .zip</button>
+              {#if ceLive}<button class="emp-btn emp-btn-sm emp-btn-danger" onclick={() => revokeEmbed(ceId)}>Revoke</button>{/if}
+            </div>
+          </section>
+
+          <!-- sub-tabs -->
+          <div class="emp-wc-tabs">
+            <button class="emp-wc-tab" class:emp-wc-on={wTab === 'appearance'} onclick={() => wTab = 'appearance'}>Appearance</button>
+            <button class="emp-wc-tab" class:emp-wc-on={wTab === 'deploy'} onclick={() => wTab = 'deploy'}>Snippet &amp; Deploy</button>
+            <button class="emp-wc-tab" class:emp-wc-on={wTab === 'share'} onclick={() => wTab = 'share'}>Share link</button>
+            <button class="emp-wc-tab" class:emp-wc-on={wTab === 'activity'} onclick={() => wTab = 'activity'}>Activity</button>
+          </div>
+
           <div class="emp-pg-grid">
           <section class="emp-panel emp-pg-col">
-            <div class="emp-h">APPEARANCE — {configEmbed?.name || configEmbed?.embed_id || 'first embed'}</div>
+
+          {#if wTab === 'appearance'}
+            <div class="emp-h">APPEARANCE</div>
+            <div class="emp-appr-toggle">
+              <label><input type="radio" name="apprmode" value="inherit" bind:group={apprMode} /> Inherit brand</label>
+              <label><input type="radio" name="apprmode" value="override" bind:group={apprMode} /> Override for this store</label>
+            </div>
+
+            {#if apprMode === 'inherit'}
+              <div class="emp-inherit-card">
+                <div class="emp-statusbar">
+                  <span class="emp-swatch" style="background:{brand.primary_color || '#1a2b4a'};"></span>
+                  <span class="emp-muted">Using brand defaults —</span>
+                  <strong>{brand.primary_color || '#1a2b4a'}</strong>
+                  <span class="emp-muted">· {brand.position || 'bottom-right'} · "{brand.welcome_msg || 'Hi! How can I help?'}"</span>
+                </div>
+                <div class="emp-btnrow emp-mt">
+                  <button class="emp-btn emp-btn-sm" onclick={() => nav('brand')}>Edit Brand defaults →</button>
+                  {#if configEmbed.primary_color}
+                    <button class="emp-btn emp-btn-sm emp-btn-accent" disabled={configBusy} onclick={revertToBrand}>{configBusy ? '◐…' : 'Apply — drop this store\'s override'}</button>
+                    {#if configSaved}<span class="emp-saved">✓ now inheriting</span>{/if}
+                  {/if}
+                  {#if configErr}<span class="emp-err">✗ {configErr}</span>{/if}
+                </div>
+                <div class="emp-muted emp-fineprint">This widget follows the brand. Change it here only if this store must differ.</div>
+              </div>
+            {/if}
+
+            {#if apprMode === 'override'}
             <div class="emp-config-grid">
               <label class="emp-field">
                 <span class="emp-flabel">primary color</span>
@@ -1016,13 +1370,110 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
               </label>
             </div>
             <div class="emp-btnrow emp-mt">
-              <button class="emp-btn emp-btn-accent" disabled={configBusy} onclick={saveConfig}>{configBusy ? '◐…' : 'SAVE'}</button>
+              <button class="emp-btn emp-btn-accent" disabled={configBusy} onclick={saveConfig}>{configBusy ? '◐…' : 'SAVE OVERRIDE'}</button>
+              {#if configEmbed.primary_color}<button class="emp-btn" disabled={configBusy} onclick={revertToBrand}>Revert to brand</button>{/if}
               {#if configSaved}<span class="emp-saved">✓ saved</span>{/if}
               {#if configErr}<span class="emp-err">✗ {configErr}</span>{/if}
             </div>
+            {/if}
+          {/if}
+
+          {#if wTab === 'deploy'}
+            <div class="emp-h">KEYS</div>
+            <div class="emp-detail">
+              <div class="emp-detail-line">
+                <span class="emp-dl-k">EMBED ID</span>
+                <code class="emp-code emp-code-key">{ceId}</code>
+                <button class="emp-btn emp-btn-sm" onclick={() => copyText(ceId, `eid-${ceId}`)}>{copied === `eid-${ceId}` ? '✓' : 'copy'}</button>
+              </div>
+              <div class="emp-detail-line">
+                <span class="emp-dl-k">PUBLIC KEY</span>
+                <code class="emp-code emp-code-key">{cePk || '—'}</code>
+                {#if cePk}<button class="emp-btn emp-btn-sm" onclick={() => copyText(cePk, `pk-${ceId}`)}>{copied === `pk-${ceId}` ? '✓' : 'copy'}</button>{/if}
+                <button class="emp-btn emp-btn-sm" disabled={rotatingKey === ceId} onclick={() => rotateEmbedKey(ceId)} title="Generate a new public key — the old one stops working">{rotatingKey === ceId ? '◐…' : '↻ rotate'}</button>
+              </div>
+              <div class="emp-detail-line">
+                <span class="emp-dl-k">ENDPOINT</span>
+                <code class="emp-code">{baseUrl}/api/embed/chat</code>
+              </div>
+              <div class="emp-detail-line">
+                <span class="emp-dl-k">RATE</span>
+                <span class="emp-muted">{configEmbed.rate_limit_per_min ?? 30}/min · auth {configEmbed.auth_mode ?? 'public'}</span>
+              </div>
+            </div>
+
+            <div class="emp-h emp-mt">PASTE SNIPPET</div>
+            <div class="emp-dl-snip-head">
+              <span class="emp-muted emp-fineprint">paste before <code class="emp-code">&lt;/body&gt;</code> on your site</span>
+              <button class="emp-btn emp-btn-sm" onclick={() => copyText(buildSnippet(ceId, cePk, ceScope), `dsnip-${ceId}`)}>{copied === `dsnip-${ceId}` ? '✓ copied' : 'copy'}</button>
+            </div>
+            <pre class="emp-codeblock">{buildSnippet(ceId, cePk, ceScope)}</pre>
+
+            <div class="emp-h emp-mt">ONE-CLICK DEPLOY</div>
+            <p class="emp-doc-p">Ready-to-host folder — <code class="emp-code">index.html</code> + <code class="emp-code">snippet.html</code> + <code class="emp-code">README</code>, keys pre-baked. No editing.</p>
+            <div class="emp-detail-actions">
+              <button class="emp-btn emp-btn-accent" onclick={() => downloadDeployZip(ceId, ceScope)}>⤓ Deploy .zip</button>
+              {#if ceLive}<button class="emp-btn emp-btn-sm" onclick={() => window.open(`${baseUrl}/api/embed/try/${ceId}`, '_blank')}>▶ Open chat test ↗</button>{/if}
+            </div>
+          {/if}
+
+          {#if wTab === 'share'}
+            <div class="emp-h">SHARE TEST LINK</div>
+            <p class="emp-doc-p">Signed, expiring URL — share with your dev, no login. Impersonate a store/role to preview 3-tier masking. Secret never leaves the server.</p>
+            <div class="emp-sb-controls">
+              <label class="emp-field">expiry
+                <select class="emp-input emp-sel" bind:value={sbLinkTtl}>
+                  <option value={900}>15 min</option>
+                  <option value={3600}>1 hour</option>
+                  <option value={86400}>24 hours</option>
+                </select>
+              </label>
+              <label class="emp-field">store <span class="emp-req">*</span>
+                {#if outlets.length}
+                  <select class="emp-input emp-sel" bind:value={sbStore} disabled={sbGlobal}>
+                    <option value="">— pick a store —</option>
+                    {#each outlets as o}<option value={o}>{o}</option>{/each}
+                  </select>
+                {:else}
+                  <input class="emp-input" placeholder="20063-CCBRBKMY" bind:value={sbStore} disabled={sbGlobal} />
+                {/if}
+              </label>
+              <label class="emp-field">role
+                <select class="emp-input emp-sel" bind:value={sbRole}>
+                  <option value="staff">staff</option>
+                  <option value="customer">customer</option>
+                </select>
+              </label>
+              <button class="emp-btn" onclick={sbGenLink} disabled={sbLinkBusy || (!sbGlobal && !sbStore)}>{sbLinkBusy ? '…' : 'Generate'}</button>
+            </div>
+            <label class="emp-fineprint emp-sb-global">
+              <input type="checkbox" bind:checked={sbGlobal} />
+              test global / catalog view (no store — tier 3)
+            </label>
+            {#if sbLinkErr}<div class="emp-warn-text emp-fineprint">{sbLinkErr}</div>{/if}
+            {#if sbLink}
+              <div class="emp-codeblock emp-mt">
+                <button class="emp-copybtn" onclick={() => copyText(sbLink, 'sblink')}>{copied === 'sblink' ? '✓' : 'copy'}</button>
+                <pre class="emp-pre emp-pre-wrap">{sbLink}</pre>
+              </div>
+              <div class="emp-fineprint">
+                <span class="emp-muted">expires in {fmtExpIn(sbLinkExp)}</span>
+                <button class="emp-btn emp-btn-sm emp-ml-8" onclick={() => window.open(sbLink, '_blank')}>Open ↗</button>
+              </div>
+            {/if}
+          {/if}
+
+          {#if wTab === 'activity'}
+            <div class="emp-h">ACTIVITY</div>
+            <p class="emp-doc-p">Traffic, latency + errors for this widget.</p>
+            <div class="emp-detail-actions">
+              <button class="emp-btn emp-btn-accent" onclick={() => { openWidget(ceId); nav('monitoring'); }}>Open full monitoring ↗</button>
+            </div>
+            <div class="emp-muted emp-fineprint">Calls, error rate, latency distribution, per-call Q/A + origins — on the Monitoring drill-down for this widget.</div>
+          {/if}
           </section>
 
-          <!-- ── right column: live chat bubble ── -->
+          <!-- ── right column: live chat bubble (persistent across sub-tabs) ── -->
           <section class="emp-panel emp-pg-col emp-pg-chatcol">
             <div class="emp-chat-card">
               <div class="emp-chat-head" style="background:{configColor};">
@@ -1067,58 +1518,11 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
               real session ({sbSession ? sbSession.slice(0,12) + '…' : 'new'}) · markdown rendered
               <button class="emp-btn emp-btn-sm emp-ml-8" onclick={sbReset}>Reset</button>
             </div>
-            {#if !isLive || origins.length === 0}
-              <div class="emp-warn-text emp-fineprint">⚠ widget not live / no origins — calls 403 until fixed in Widgets.</div>
+            {#if !ceLive || ceOrigins.length === 0}
+              <div class="emp-warn-text emp-fineprint">⚠ widget not live / no origins — calls 403 until fixed in Appearance / Widgets.</div>
             {/if}
           </section>
           </div>
-
-          <!-- ── shareable test link ── -->
-          <section class="emp-panel">
-            <div class="emp-h">SHARE TEST LINK</div>
-            <p class="emp-doc-p">Signed, expiring URL — share with your dev, no login. Impersonate a store/role to preview 3-tier masking. Secret never leaves the server.</p>
-            <div class="emp-sb-controls">
-              <label class="emp-field">expiry
-                <select class="emp-input emp-sel" bind:value={sbLinkTtl}>
-                  <option value={900}>15 min</option>
-                  <option value={3600}>1 hour</option>
-                  <option value={86400}>24 hours</option>
-                </select>
-              </label>
-              <label class="emp-field">store <span class="emp-req">*</span>
-                {#if outlets.length}
-                  <select class="emp-input emp-sel" bind:value={sbStore} disabled={sbGlobal}>
-                    <option value="">— pick a store —</option>
-                    {#each outlets as o}<option value={o}>{o}</option>{/each}
-                  </select>
-                {:else}
-                  <input class="emp-input" placeholder="20063-CCBRBKMY" bind:value={sbStore} disabled={sbGlobal} />
-                {/if}
-              </label>
-              <label class="emp-field">role
-                <select class="emp-input emp-sel" bind:value={sbRole}>
-                  <option value="staff">staff</option>
-                  <option value="customer">customer</option>
-                </select>
-              </label>
-              <button class="emp-btn" onclick={sbGenLink} disabled={sbLinkBusy || (!sbGlobal && !sbStore)}>{sbLinkBusy ? '…' : 'Generate'}</button>
-            </div>
-            <label class="emp-fineprint emp-sb-global">
-              <input type="checkbox" bind:checked={sbGlobal} />
-              test global / catalog view (no store — tier 3)
-            </label>
-            {#if sbLinkErr}<div class="emp-warn-text emp-fineprint">{sbLinkErr}</div>{/if}
-            {#if sbLink}
-              <div class="emp-codeblock emp-mt">
-                <button class="emp-copybtn" onclick={() => copyText(sbLink, 'sblink')}>{copied === 'sblink' ? '✓' : 'copy'}</button>
-                <pre class="emp-pre emp-pre-wrap">{sbLink}</pre>
-              </div>
-              <div class="emp-fineprint">
-                <span class="emp-muted">expires in {fmtExpIn(sbLinkExp)}</span>
-                <button class="emp-btn emp-btn-sm emp-ml-8" onclick={() => window.open(sbLink, '_blank')}>Open ↗</button>
-              </div>
-            {/if}
-          </section>
         {/if}
       {/if}
 
@@ -1647,7 +2051,13 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
   .emp-dl-k { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pw-muted, #877f74); font-weight: 600; min-width: 90px; }
   .emp-dl-snip { margin-top: 6px; }
   .emp-dl-snip-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
-  .emp-detail-actions { display: flex; gap: 8px; margin-top: 8px; }
+  .emp-detail-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .emp-dl-grouphead { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--pw-border, #e5ddcf); color: var(--pw-accent, #9a4a2f); }
+  .emp-dl-grouphead:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+  .emp-dl-config { gap: 8px 18px; font-size: 12px; }
+  .emp-dl-config > span { display: inline-flex; align-items: center; }
+  .emp-php-tabs { margin-bottom: 0; }
+  .emp-php-block { max-height: 420px; overflow: auto; }
 
   .emp-center { min-height: 60vh; display: flex; align-items: center; justify-content: center; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .emp-denied { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
@@ -1816,6 +2226,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
   /* downloadable SDK list */
   .emp-h-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
   .emp-h-row .emp-h { margin-bottom: 0; }
+  .emp-h-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .emp-sdk-list { display: flex; flex-direction: column; border: 1px solid var(--pw-border, #e5ddcf); }
   .emp-sdk-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 9px 12px; border-bottom: 1px solid var(--pw-border, #e5ddcf); }
   .emp-sdk-row:last-child { border-bottom: none; }
@@ -1869,6 +2280,28 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
   .emp-field { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: #6b6557; text-transform: uppercase; letter-spacing: 0.04em; }
   .emp-sel { min-width: 120px; }
   .emp-pre-wrap { white-space: pre-wrap; word-break: break-all; }
+
+  /* ── widget cockpit ── */
+  .emp-row-go { color: var(--pw-accent, #9a4a2f); font-weight: 700; margin-right: 2px; }
+  .emp-wc-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+  .emp-wc-crumb { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+  .emp-crumb-link { background: none; border: none; cursor: pointer; color: var(--pw-accent, #9a4a2f); font-family: inherit; font-size: 13px; padding: 0; }
+  .emp-crumb-link:hover { text-decoration: underline; }
+  .emp-crumb-sep { color: var(--pw-muted, #877f74); }
+  .emp-wc-name { font-family: var(--pw-serif, Georgia, serif); font-size: 18px; color: var(--pw-ink, #2c2a26); }
+  .emp-wc-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .emp-wc-tabs { display: inline-flex; border: 1px solid var(--pw-border, #e5ddcf); margin-bottom: 16px; flex-wrap: wrap; }
+  .emp-wc-tab { padding: 7px 16px; font-size: 12px; font-weight: 600; background: #fff; color: #6b6557; border: none; border-right: 1px solid var(--pw-border, #e5ddcf); cursor: pointer; font-family: inherit; }
+  .emp-wc-tab:last-child { border-right: none; }
+  .emp-wc-tab:hover { color: var(--pw-accent, #9a4a2f); }
+  .emp-wc-on { background: var(--pw-accent, #c96342); color: #fff; }
+  .emp-wc-on:hover { color: #fff; }
+
+  /* ── brand / inherit ── */
+  .emp-swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.15); display: inline-block; flex-shrink: 0; }
+  .emp-appr-toggle { display: flex; gap: 18px; margin-bottom: 12px; font-size: 13px; }
+  .emp-appr-toggle label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .emp-inherit-card { border: 1px dashed var(--pw-border-strong, #cdc6b8); padding: 12px 14px; background: var(--pw-bg-alt, #f6f2ea); }
 
   /* ── playground 2-col ── */
   .emp-pg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
