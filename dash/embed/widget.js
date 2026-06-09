@@ -437,8 +437,15 @@
   // ── Markdown renderer ───────────────────────────────────────────────
   function renderMd(s) {
     if (!s) return '';
-    // Strip leftover tag patterns like [TAG: ...] (defense in depth)
-    var cleaned = String(s).replace(/\[[A-Z_]+:[^\]]*\]/g, '');
+    // Strip leftover tag patterns like [TAG: ...] (defense in depth).
+    // Two-pass: drop complete [TAG: ...] tokens, then mop up any TRUNCATED
+    // tag that lost its closing bracket mid-stream (a real past bug — a raw
+    // "[CONFIDENCE_BREAK…" leaking into consumer view). The second pattern
+    // only fires on a line that *starts* with a known/uppercase tag head so
+    // we never eat ordinary "[note]" prose.
+    var cleaned = String(s)
+      .replace(/\[[A-Z_]+:[^\]]*\]/g, '')
+      .replace(/\[(?:HEADLINE|LEAD|CONFIDENCE|CONFIDENCE_BREAKDOWN|SOURCE|KPI|WHY|SO_WHAT|RELATED|FINDING|SEGMENT|ANCHOR|BECAUSE|KILL|ASSUMPTION|MODE|DRUG|COMPOSITION|INDICATION|DOSE|CAUTION|INTERACTS|STOCK|EQUIV|EVIDENCE)\b[^\n\]]*$/gim, '');
 
     // Escape HTML first
     var esc = escapeHtml(cleaned);
@@ -586,11 +593,83 @@
     if (prose.length > 30) h += '<div style="margin-top:10px;">' + renderMd(prose) + '</div>';
     return h;
   }
-  // Render assistant answer: monograph card if [DRUG:] present, else markdown.
+  // ── Universal "chemist-grade" band + analytical metrics body (parity) ──
+  function _confDot(level) {
+    var L = String(level || '').toUpperCase();
+    if (L === 'HIGH') return { g: '●', c: '#2e7d32', bg: 'rgba(46,125,50,0.10)', t: 'HIGH' };
+    if (L === 'MEDIUM') return { g: '◐', c: '#b9770e', bg: 'rgba(185,119,14,0.10)', t: 'MEDIUM' };
+    if (L === 'LOW') return { g: '○', c: '#8a8a8a', bg: 'rgba(138,138,138,0.12)', t: 'LOW' };
+    return null;
+  }
+  // Returns a band (title + confidence dot + source chip) for any tagged answer.
+  function _renderBand(s, title) {
+    var e = escapeHtml;
+    var conf = _confDot(_tag1(s, 'CONFIDENCE'));
+    var src = _tag1(s, 'SOURCE') || 'articles';
+    var h = '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:8px;margin-bottom:10px;border-bottom:1px solid rgba(0,0,0,0.08);">';
+    h += '<div style="display:flex;align-items:center;gap:7px;min-width:0;"><span style="color:#9a4a2f;font-size:14px;">⬡</span>';
+    h += '<span style="font-size:15px;font-weight:700;color:#1f1a14;overflow-wrap:anywhere;">' + e(title || 'Answer') + '</span></div>';
+    h += '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">';
+    if (conf) h += '<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap;color:' + conf.c + ';background:' + conf.bg + ';">' + conf.g + ' ' + conf.t + '</span>';
+    h += '<span style="font-size:10px;font-weight:600;color:#9a4a2f;background:#f3ece1;padding:2px 8px;border-radius:999px;white-space:nowrap;">⌖ ' + e(src) + '</span>';
+    h += '</div></div>';
+    return h;
+  }
+  // Analytical card: band + lead + KPI tiles + Why + So-what. Null if no signal.
+  function renderMetrics(s) {
+    var e = escapeHtml;
+    var headline = _tag1(s, 'HEADLINE');
+    var lead = _tag1(s, 'LEAD');
+    var kpis = _tagMany(s, 'KPI');
+    var whys = _tagMany(s, 'WHY');
+    var soWhatRaw = _tag1(s, 'SO_WHAT');
+    // Need at least one structured signal to render the card.
+    if (!headline && !lead && !kpis.length && !whys.length && !soWhatRaw) return null;
+
+    var h = '<div style="border-left:3px solid #c96342;padding-left:12px;margin:2px 0;">';
+    h += _renderBand(s, headline);
+    if (lead) h += '<p style="display:flex;gap:7px;align-items:baseline;font-size:14px;font-weight:600;line-height:1.5;margin:0 0 10px;"><span style="color:#9a4a2f;">➜</span><span>' + e(lead) + '</span></p>';
+    if (kpis.length) {
+      h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;">';
+      kpis.forEach(function(raw){
+        var kp = _parts(raw, 3); // value|label|change
+        h += '<div style="flex:1;min-width:90px;background:#f6ecda;border-radius:5px;padding:8px 10px;">';
+        h += '<div style="font-size:17px;font-weight:700;color:#1f1a14;">' + e(kp[0]) + '</div>';
+        h += '<div style="font-size:11px;color:#7a6f60;">' + e(kp[1]) + '</div>';
+        if (kp[2]) h += '<div style="font-size:11px;color:#2e7d32;font-weight:600;">' + e(kp[2]) + '</div>';
+        h += '</div>';
+      });
+      h += '</div>';
+    }
+    if (whys.length) {
+      h += '<div style="margin:10px 0 4px;"><div style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#8a7a66;margin-bottom:3px;">Why</div><ul style="margin:0;padding-left:18px;">';
+      whys.forEach(function(w){ h += '<li style="font-size:13px;line-height:1.5;margin:2px 0;">' + e(w) + '</li>'; });
+      h += '</ul></div>';
+    }
+    if (soWhatRaw) {
+      var sw = _parts(soWhatRaw, 3); // action|owner|effort
+      var meta = [sw[1], sw[2]].filter(Boolean).join(' · ');
+      h += '<div style="margin:10px 0 4px;padding:8px 12px;background:rgba(154,74,47,0.05);border-left:2px solid #9a4a2f;border-radius:3px;font-size:13px;">';
+      h += '<span style="font-weight:700;color:#9a4a2f;">So what →</span> <span style="font-weight:600;">' + e(sw[0]) + '</span>';
+      if (meta) h += ' <span style="color:#8a7a66;font-size:12px;">(' + e(meta) + ')</span>';
+      h += '</div>';
+    }
+    h += '</div>';
+    // Prose after stripping all known tags.
+    var prose = s.replace(/\[(HEADLINE|LEAD|CONFIDENCE|SOURCE|KPI|WHY|SO_WHAT|RELATED):\s*[^\]]+\]/g, '').trim();
+    if (prose.length > 30) h += '<div style="margin-top:10px;">' + renderMd(prose) + '</div>';
+    return h;
+  }
+  // Render assistant answer: monograph if [DRUG:], else metrics card if
+  // analytical tags present, else plain markdown (chitchat).
   function renderAnswer(s) {
     if (!s) return '';
-    var mono = renderMonograph(String(s));
-    return mono != null ? mono : renderMd(s);
+    var str = String(s);
+    var mono = renderMonograph(str);
+    if (mono != null) return mono;
+    var metrics = renderMetrics(str);
+    if (metrics != null) return metrics;
+    return renderMd(str);
   }
 
   function pushMsg(role, content) {

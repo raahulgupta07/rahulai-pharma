@@ -319,6 +319,49 @@ export interface Monograph {
   evidence: { article: string; table: string } | null;
 }
 
+// ── Universal "chemist-grade" card tags (v1 locked contract) ──────────
+// The backend emits this lean set for analytical answers:
+//   [HEADLINE: title] [LEAD: one sentence] [CONFIDENCE: HIGH|MEDIUM|LOW]
+//   [SOURCE: name] [KPI: value|label|change?] [WHY: point]
+//   [SO_WHAT: action|owner|effort] [RELATED: question]
+// HEADLINE / CONFIDENCE / KPI / SO_WHAT / RELATED already have parsers
+// (parseActionTitle fallback + AnswerCard inline regexes). These three are new.
+
+// [LEAD: one sentence] — single. The one-line "so what does this answer say".
+export function parseLead(content: string): { lead: string; stripped: string } {
+  const re = /\[LEAD:\s*([^\]]+)\]/g;
+  const items = _matches(content, re);
+  return { lead: items[0] || '', stripped: _strip(content, re) };
+}
+
+// [WHY: point] — repeatable (1-3). The reasoning bullets behind the headline.
+export function parseWhy(content: string): { items: string[]; stripped: string } {
+  const re = /\[WHY:\s*([^\]]+)\]/g;
+  return { items: _matches(content, re), stripped: _strip(content, re) };
+}
+
+// [SOURCE: name] — single. The table / dataset the answer came from.
+export function parseSource(content: string): { source: string; stripped: string } {
+  const re = /\[SOURCE:\s*([^\]]+)\]/g;
+  const items = _matches(content, re);
+  return { source: items[0] || '', stripped: _strip(content, re) };
+}
+
+// Catch-all strip for legacy / now-unused tags so a stray (or truncated) one
+// never renders raw. This was a real bug: a half-streamed
+// `[CONFIDENCE_BREAKDOWN:100|100|` leaked into the UI once. We strip both the
+// well-formed `[TAG:...]` form AND a trailing truncated `[TAG:...` (no closing
+// bracket, e.g. a stream cut mid-tag) for the legacy set.
+const _LEGACY_STRIP_TAGS =
+  'FINDING|ANCHOR|BECAUSE|KILL|ASSUMPTION|SEGMENT|CONFIDENCE_BREAKDOWN|MODE';
+export function stripLegacyTags(content: string): string {
+  if (!content) return content;
+  const closed = new RegExp(`\\[(?:${_LEGACY_STRIP_TAGS}):[^\\]]*\\]`, 'g');
+  // Truncated tag at end-of-buffer (streaming): `[TAG:....` with no `]` before EOL/EOS.
+  const truncated = new RegExp(`\\[(?:${_LEGACY_STRIP_TAGS}):[^\\]\\n]*$`, 'gm');
+  return content.replace(closed, '').replace(truncated, '');
+}
+
 export function parseMonograph(content: string): { mono: Monograph | null; stripped: string } {
   const reDrug = /\[DRUG:\s*([^\]]+)\]/;
   const dm = content.match(reDrug);

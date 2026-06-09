@@ -15,7 +15,11 @@
     parseRootCause,
     parseAudit,
     parseSkillUsed,
-    parseMonograph
+    parseMonograph,
+    parseLead,
+    parseWhy,
+    parseSource,
+    stripLegacyTags
   } from '$lib/answer-tags';
 
   let { content = '', tier = 'standard', msg = {}, onAction = () => {} } = $props();
@@ -41,8 +45,14 @@
   const forecastsParsed = $derived(parseForecasts(benchmarksParsed.stripped));
   const recsParsed = $derived(parseRecommendations(forecastsParsed.stripped));
   const auditParsed = $derived(parseAudit(recsParsed.stripped));
+  // Universal band tags (v1 lean contract).
+  const leadParsed = $derived(parseLead(auditParsed.stripped));
+  const whyParsed = $derived(parseWhy(leadParsed.stripped));
+  const sourceParsed = $derived(parseSource(whyParsed.stripped));
   const skillUsed = $derived(parseSkillUsed(content || ''));
-  const cleanedBody = $derived(auditParsed.stripped);
+  // Strip any stray legacy tag (and truncated stream fragments) so no raw
+  // bracketed tag can ever surface in the prose body.
+  const cleanedBody = $derived(stripLegacyTags(sourceParsed.stripped));
 
   // Clinical monograph (chemist → chemist drug card). Present only when the
   // agent emitted a [DRUG:] tag → renders the monograph instead of exec blocks.
@@ -301,6 +311,71 @@
   const showRelated = $derived(relatedItems.length > 0);
   const showAudit = $derived(auditParsed.items?.length > 0);
 
+  // ── Universal "chemist-grade" band ──────────────────────────────────
+  // One calm header band sits at the very top of every NON-chitchat answer.
+  // Title = monograph salt if a monograph is present, else the [HEADLINE].
+  const bandTitle = $derived(mono ? (mono.salt || '') : actionTitle);
+
+  // Lead line (➜). Optional for monographs (they have their own summary).
+  const bandLead = $derived(leadParsed.lead || '');
+
+  // Confidence: [CONFIDENCE: HIGH|MEDIUM|LOW]. Drive a single dot + class.
+  const _confRaw = $derived(
+    (_extractLegacyTag(/\[CONFIDENCE:\s*([A-Za-z]+)\]/i, content)[0] || '').toUpperCase()
+  );
+  const confLevel = $derived(
+    _confRaw === 'HIGH' || _confRaw === 'MEDIUM' || _confRaw === 'LOW' ? _confRaw : ''
+  );
+  function confGlyph(level) {
+    if (level === 'HIGH') return '●';
+    if (level === 'MEDIUM') return '◐';
+    if (level === 'LOW') return '○';
+    return '';
+  }
+
+  // Source chip (⌖). [SOURCE], falling back to a sensible default.
+  const bandSource = $derived(
+    sourceParsed.source || (mono ? 'catalog' : 'articles')
+  );
+
+  // Why bullets for the analytical body.
+  const whyItems = $derived(whyParsed.items || []);
+
+  // Evidence line text — prefer monograph evidence, else [EVIDENCE] / source.
+  const _evidenceRaw = $derived(
+    _extractLegacyTag(/\[EVIDENCE:\s*([^\]]+)\]/i, content)[0] || ''
+  );
+  const evidenceText = $derived(
+    mono && mono.evidence
+      ? [mono.evidence.article, mono.evidence.table].filter(Boolean).join(' · ')
+      : _evidenceRaw || bandSource
+  );
+
+  // Is there ANY structured signal? If not (pure prose / chitchat) we skip the
+  // band entirely and render plain markdown — no empty band for chitchat.
+  const hasStructure = $derived(
+    !!mono ||
+    !!actionTitle ||
+    kpiList.length > 0 ||
+    whyItems.length > 0 ||
+    meansItems.length > 0 ||
+    !!confLevel ||
+    !!sourceParsed.source ||
+    showTrend ||
+    showTopN
+  );
+  const showBand = $derived(hasStructure);
+
+  // SO_WHAT — pipe-aware (action | owner | effort). meansItems drops piped
+  // values, so parse it here for the calm "So what →" line.
+  const soWhat = $derived.by(() => {
+    const m = (content || '').match(/\[SO_WHAT:\s*([^\]]+)\]/i);
+    if (!m) return null;
+    const [action, owner, effort] = m[1].split('|').map((s) => s.trim());
+    if (!action) return null;
+    return { action, owner: owner || '', effort: effort || '' };
+  });
+
   onMount(async () => {
     if (!hasEcharts || !chartEl) return;
     try {
@@ -376,7 +451,15 @@
       {#if mono.status || mono.klass}
         <span class="mono-status">{[mono.status, mono.klass].filter(Boolean).join(' · ')}</span>
       {/if}
+      <span class="band-meta">
+        {#if confLevel}<span class="conf-dot conf-{confLevel.toLowerCase()}" title="Confidence: {confLevel}">{confGlyph(confLevel)} {confLevel}</span>{/if}
+        <span class="src-chip" title="Source: {bandSource}">⌖ {bandSource}</span>
+      </span>
     </div>
+
+    {#if bandLead}
+      <p class="band-lead"><span class="lead-arrow" aria-hidden="true">➜</span> {@html formatInline(bandLead)}</p>
+    {/if}
 
     {#if mono.composition || mono.indication || mono.dose}
       <div class="mono-fields">
@@ -440,7 +523,22 @@
     {/if}
   {:else}
 
-  {#if actionTitle}
+  {#if showBand && (bandTitle || confLevel || bandSource)}
+    <!-- ─── Universal "chemist-grade" band (analytical) ─── -->
+    <div class="chem-band">
+      <div class="chem-band-title">
+        <span class="band-hex" aria-hidden="true">⬡</span>
+        <span class="band-title-text">{@html formatInline(bandTitle || 'Answer')}</span>
+      </div>
+      <div class="band-meta">
+        {#if confLevel}<span class="conf-dot conf-{confLevel.toLowerCase()}" title="Confidence: {confLevel}">{confGlyph(confLevel)} {confLevel}</span>{/if}
+        <span class="src-chip" title="Source: {bandSource}">⌖ {bandSource}</span>
+      </div>
+    </div>
+    {#if bandLead}
+      <p class="band-lead"><span class="lead-arrow" aria-hidden="true">➜</span> {@html formatInline(bandLead)}</p>
+    {/if}
+  {:else if actionTitle}
     <h2 class="action-title">
       <span class="title-icon" aria-hidden="true">🧪</span>
       {@html formatInline(actionTitle)}
@@ -478,6 +576,31 @@
         </div>
       {/each}
     </div>
+  {/if}
+
+  {#if whyItems.length}
+    <div class="why-block">
+      <div class="why-label">Why</div>
+      <ul class="why-list">
+        {#each whyItems as w}
+          <li>{@html formatInline(w)}</li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
+
+  {#if soWhat}
+    <div class="sowhat-line">
+      <span class="sowhat-arrow" aria-hidden="true">So what →</span>
+      <span class="sowhat-action">{@html formatInline(soWhat.action)}</span>
+      {#if soWhat.owner || soWhat.effort}
+        <span class="sowhat-meta">({[soWhat.owner, soWhat.effort].filter(Boolean).join(' · ')})</span>
+      {/if}
+    </div>
+  {/if}
+
+  {#if showBand && evidenceText}
+    <div class="evidence-row" title="Grounding">▸ Evidence&nbsp;&nbsp;{evidenceText}</div>
   {/if}
 
   {#if showTrend}
@@ -681,6 +804,108 @@
     padding: 20px 22px 16px;
     margin: 12px 0;
     font-family: inherit;
+  }
+
+  /* ── Universal "chemist-grade" band ───────────────────────────────── */
+  .chem-band {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 0 10px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  }
+  .chem-band-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .band-hex {
+    color: #9a4a2f;
+    font-size: 15px;
+    flex-shrink: 0;
+  }
+  .band-title-text {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--pw-ink, #1f1a14);
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+  .band-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .conf-dot {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .conf-high { color: #2e7d32; background: rgba(46, 125, 50, 0.10); }
+  .conf-medium { color: #b9770e; background: rgba(185, 119, 14, 0.10); }
+  .conf-low { color: #8a8a8a; background: rgba(138, 138, 138, 0.12); }
+  .src-chip {
+    font-size: 11px;
+    font-weight: 600;
+    color: #9a4a2f;
+    background: #f3ece1;
+    padding: 2px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .band-lead {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.5;
+    margin: 0 0 12px;
+    color: var(--pw-ink, #1f1a14);
+  }
+  .lead-arrow { color: #9a4a2f; flex-shrink: 0; }
+
+  /* Why bullets + So-what + evidence (analytical body) */
+  .why-block { margin: 12px 0 4px; }
+  .why-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #8a7a66;
+    margin-bottom: 4px;
+  }
+  .why-list { margin: 0; padding-left: 18px; }
+  .why-list li { font-size: 13.5px; line-height: 1.55; margin: 2px 0; }
+  .sowhat-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: baseline;
+    margin: 10px 0 4px;
+    padding: 8px 12px;
+    background: rgba(154, 74, 47, 0.05);
+    border-left: 2px solid #9a4a2f;
+    border-radius: 3px;
+    font-size: 13.5px;
+  }
+  .sowhat-arrow { font-weight: 700; color: #9a4a2f; white-space: nowrap; }
+  .sowhat-action { font-weight: 600; }
+  .sowhat-meta { color: #8a7a66; font-size: 12.5px; }
+  .evidence-row {
+    margin: 10px 0 2px;
+    font-size: 12px;
+    color: #8a7a66;
+    font-variant-numeric: tabular-nums;
   }
 
   .tier-badge {
