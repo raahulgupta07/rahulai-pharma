@@ -2,6 +2,65 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-09 (latest+46) — Unified "Admin Clean" rail + People Activity dashboard (app vs embed users)
+
+**Why.** (1) The two admin left-rails (Usage & Cost vs command-center) didn't match — position + style drift. (2) No way to see per-user activity / how active / performance. (3) App users and anonymous embed-widget visitors needed to be visible but kept separate.
+
+**1. Unified rail = "Admin Clean" (user-approved design).**
+  - Diagnosed mismatch: Usage rail floated (cream gradient, 210px, `routes/usage/+page.svelte` `max-width:1400px;margin:auto` centered it + a "USAGE & COST" title strip); command-center rail was flush flat-bg full-height with an **invisible active bar** (`border-left:2px solid transparent` on `.cc-rail-btn.active`).
+  - Presented 3 directions via AskUserQuestion (Admin Clean / Floating Card / Minimal Flat) → user picked **Admin Clean**.
+  - Applied to BOTH: flush full-height (`calc(100vh-56px)`, sticky, `overflow-y:auto`), flat `--pw-bg-alt`, **220px**, white-card active (`box-shadow` ring + 3px terracotta `::before` accent bar at `left:0`), `--pw-*` tokens, hover `rgba(201,99,66,.06)`, `.15s` transitions. UsagePanel `.u-rail` rewritten to match `.cc-rail` byte-for-byte; fixed cc active bar (`left:-8px`→`left:0` to dodge `overflow-y` clip). Route wrapper → `width:100%` (full-bleed). Dropped rail title → first NAV group label `Overview`. **RULE: restyle both `.u-rail` + `.cc-rail` together — intentionally identical.**
+
+**2. People Activity dashboard (new "People" tab, `UsagePanel.svelte`).** Per-user leaderboard + drill-down for registered users.
+  - Backend `app/usage_api.py`: `GET /people` (LEFT JOIN `dash_users` ⋈ windowed `v_usage_unified`-by-actor ⋈ `dash_chat_sessions`-by-user ⋈ `dash_feedback`-by-user → requests/tokens/cost/errors/last-ts + sessions + 👍👎; svc:* flagged `is_service`) + `GET /person?username=` (header agg + daily series + by-source + recent sessions + rated questions).
+  - Frontend: summary tiles (active/most-active/avg-Q/satisfaction/humans+keys) + sortable table (Last active · Sessions · Questions · Q/sess · 👍/👎 · Tokens · Cost · Err%, client-side `sortedPeople` derived) + search + humans-only toggle; row click → entity slide-over drawer (`drawerType='person'`: KPIs, daily-questions sparkline `.dw-spark`, by-source, sessions, rated questions).
+  - **Verified live:** 59 users (1 human `demo`, 58 `svc:*` keys); top = `svc:outlet-20003-CCJ8` 124 req / 24K tok / $0.028.
+
+**3. App users vs Embed users — separate populations.** Embed-widget visitors are anonymous (`external_user` empty, identity = `session_token`), live ONLY in `dash_embed_calls` — not registered, not in `dash_users`. So they can't share the leaderboard.
+  - Backend: `GET /embed-people` (summary + by_session + by_widget off `dash_embed_calls` ⋈ `dash_agent_embeds` for the widget name/`bound_scope_id`) + `GET /embed-session?session=` (header + message turns from `message_text`/`response_text`, only when `EMBED_LOG_BODIES=1`).
+  - Frontend: `App users / Embed users` segment toggle (`peopleSeg`) at the top of People; embed view = tiles (sessions/messages/widgets/avg-msgs/success%) + **By session / By widget** sub-toggle; session row click → drawer (`drawerType='embed'`: origin/IP + `.emc` conversation turns).
+  - **Verified live:** 165 anon sessions · 167 msgs · 23 widgets; old embed rows `$0` tokens (never logged historically — known).
+  - **RULE: never merge the two** — app = `dash_users`+trace `actor`; embed = anon `dash_embed_calls`. Two tables, two drawers.
+
+**Caveat (both tabs).** Web-chat question volume depends on the trace `actor` stamp → thin for back-history (demo shows 18 sessions but 1 stamped request); session counts are solid; API-key (svc) rows have full req/tok/cost.
+
+**Deploy.** Frontend baked into image → `compose build dash-api` each round + force-recreate per the deploy rule. All 4 endpoints verified via login→curl.
+
+---
+
+### Session 2026-06-09 (latest+45) — Model consolidation + 2-mode chat + grouped LLM panel
+
+**Why.** Burmese+English accuracy benchmark to pick the chat model, then simplify the inherited BI model sprawl for a pharmacy counter.
+
+**1. Benchmark (standalone, NOT project tests).**
+  - `/tmp/burmese_lang_test.py` — 7 gemini models × 12 graded Burmese tasks (EN→MY, MY→EN, QA, math, gen, sentiment). `gemini-2.5-flash` / `gemini-3-flash-preview` / `gemini-3.1-flash-lite` = 100%. Low pro scores were FALSE fails (truncation at max_tokens=300 + chatty romanization), not Burmese incompetence.
+  - `/tmp/pharma_bilingual_test.py` — 10 articles from the real `articles_list_07052026.csv` × 3 Q-types (generic / category / diabetes-indication) asked in EN **and** MY, graded vs the CSV. `gemini-3-flash-preview`: EN==MY 90% (generic+category perfect 10/10; the 3 "misses" = pregabalin rows where the model correctly said "treats diabetic *nerve pain*, not diabetes" — grader keyword-flagged `ဆီးချို`). `gemini-3.5-flash` ~same. **True ≈100%, EN==MY parity.**
+  - Encoding audit: the CSV is **clean Myanmar Unicode** (UTF-8+BOM) — 117k U+103A asat, ~0 Zawgyi private-block, no Shan/Mon/Karen. Latin cells = English drug/chem names, not romanized Burmese. That's why Gemini scores high.
+
+**2. All chat/training roles → `gemini-3-flash-preview`** (except LITE=`gemini-3.1-flash-lite-preview`, EMBED=`text-embedding-3-small`). `compose.yaml` `MID_MODEL`+`ULTRA_MODEL` defaults flipped off `openai/gpt-5.4-nano|mini` → gemini across 3 service blocks (dash-api/ml/mcp). Env-only → force-recreate (no rebuild for this part).
+
+**3. Tier collapse** — `dash/routing/complexity_router._model_for_tier`: 6 tiers → **2 models**. `TRIVIAL/LOOKUP → FAST (get_lite_model)`, rest → `REASON (get_chat_model)`. mid/deep/reasoning/ultra settings stay editable but no longer drive chat (deep_model STILL drives deep TRAINING tasks).
+
+**4. Chat picker = AUTO / FAST / REASON** (`frontend/src/routes/project/[slug]/+page.svelte`): `_ALLOWED_MODES=['auto','fast','reason']`; old `standard`→`reason` migrated in localStorage; `fast`→`'quick'`, `reason`→`'deep'`, `auto`→router. `/deep`+`/quick` kept. (`chat/+page.svelte` has no picker.)
+
+**5. `training_model` setting** — `dash/admin/settings.py` REGISTRY entry + `dash/settings.get_training_model()` (DB→env→follow CHAT). Wired into both `training_llm_call` paths (`cfg.get('model') or get_training_model()`; async variant too). ⚠️ ~20 raw `TRAINING_MODEL` constant uses in `app/upload.py` still read boot value (= gemini-3-flash already) — swap to `get_training_model()` for full UI control.
+
+**6. LLM CONFIG panel re-grouped** (`frontend/src/lib/admin/LLMConfigPanel.svelte`) → CHAT (FAST ⚡ / REASON ◆ + AUTO note) / TRAINING / EMBEDDING cards, tool chips, click-to-edit via a Svelte `{#snippet editRow}`; legacy MID/DEEP/REASONING/ULTRA in a collapsed **Advanced** expander. Backend `app/admin_api.py`: `training_model` added to `_LLM_MODEL_KEYS`, new `_LLM_GROUPS` returned as `out['groups']`, training value resolved with `inherited:true` when no override. Old flat rows kept for back-compat.
+
+**Verified:** `_model_for_tier` in-container (TRIVIAL/LOOKUP→lite, rest→chat), `get_training_model()`→gemini-3-flash, `/api/admin/llm/models` returns groups + training inherited value. Login route = `/api/auth/login` returns `{token}` (not `access_token`). Two image rebuilds + force-recreate, health 200.
+
+### Session 2026-06-09 (latest+44) — Real LLM cost in Usage & Cost + Usage reskin + embed code-block fix
+
+**1. Real LLM cost + usage (the `$0` Spend / wrong "BY MODEL" fix).** Usage&Cost showed Spend `$0.00` and BY MODEL listed agent aliases, not LLM ids. Diagnosed via live DB (not assumptions): only `api_key` (359 rows, 68K tok) + `embed` (167 rows, 0 tok) sources active, both `$0`. Two real gaps: (a) gateway logged the caller's OpenAI **alias** (`citypharma-analyst`) into `dash_apigw_usage.model` → `_apigw_cost()` no price match → 0; (b) embed never captured tokens. Fix:
+  - **mig `178_llm_cost_real_model.sql`** — `ADD COLUMN engine_model TEXT` on `dash_apigw_usage` + `dash_embed_calls`; backfill engine_model (request_type→gemini-3-flash / embedding model); backfill `cost_usd` on token-bearing 0-cost rows (gemini in·0.30+out·1.20 / embed in·0.10 per 1M); **DROP+CREATE `v_usage_unified` in LIVE 174 shape** (dash_llm_costs + dash_apigw_usage + dash_embed_calls) with `model = COALESCE(NULLIF(engine_model,''), model)` for apigw+embed. Idempotent.
+  - **`app/api_gateway.py` `_log_usage`** — derive real engine model (`CHAT_MODEL` / `get_embedding_model()` by request_type), price via `_apigw_cost(engine_model,…)`, INSERT `engine_model`.
+  - **`app/embed_public.py`** — `_embed_usage_from_response()` reads `response.metrics.to_dict()` input/output_tokens (sums lists) + model; both blocking + streaming paths compute `_compute_cost` + store tokens/cost/engine_model.
+  - Verified live BEFORE rebuild: api_key `$0`→`$0.0779`, model now `google/gemini-3-flash-preview`. **Old embed rows stay $0** (tokens never logged — unrecoverable). **Drift note:** mig 175 (dash_traces view rewrite) is marked-applied but the live view is 174's — confirm via `pg_get_viewdef` before editing the spine.
+
+**2. Usage & Cost reskin → Admin-Overview look.** `UsagePanel.svelte`: horizontal top-tabs → grouped **left-rail** (`.u-rail` 200px sticky, NAV groups Overview/Analytics/Billing + SVG icons + green pulse on Live) + `.u-main` header w/ dynamic title + `● live · {lastMs}ms` badge (`lastMs` stamped in `loadTab` finally) + KPI tile row (`.u-tiles`). **Overview tab (latest+44):** content blocks wrapped in `◷`-titled **section panels** (`.u-sec`/`.u-sech`/`.u-sect` terracotta-caps/`.u-secbadge` live·ms): Trends · Breakdown · Activity heatmap · Users & activity. Mirrors command-center `.ccc-panel` chrome. Overview tab only (other tabs unchanged per scope).
+
+**3. Embed console code-block fix.** Drop-in snippet + full PHP + custom-embed snippet rendered as plain text on the warm card: the three `<pre>` carried only `class="emp-codeblock"` (position wrapper, no bg) but not `.emp-pre` (dark `#1a1614`). Added `emp-pre` to all three → proper dark code-block styling.
+
 ### Session 2026-06-09 (latest+43) — Dead-feature purge + single-tenant auto-fill + Eval Health card + notifications-drawer fix
 
 Cleanup + single-tenant-polish session. Six independent changes, each rebuilt + force-recreated + health-polled + verified.

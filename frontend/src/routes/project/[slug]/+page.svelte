@@ -901,8 +901,8 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
    msgText = msgText.slice(7).trim();
  } else if (reasoningMode === 'fast') {
    forcedReasoning = 'quick';
- } else if (reasoningMode === 'standard') {
-   forcedReasoning = 'standard';
+ } else if (reasoningMode === 'reason') {
+   forcedReasoning = 'deep';
  }  // else 'auto' → empty → router decides
  // (DEEP/REASONING/ULTRA tiers removed — pharmacy counter needs none. `/deep `
  //  slash command above still works as a power-user escape hatch.)
@@ -2233,18 +2233,19 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  // CityPharma = pharmacy counter tool: only 3 tiers needed (AUTO/FAST/STANDARD).
  // DEEP/REASONING/ULTRA (RCA/forecast/visible-chain/counter-hypothesis) are
  // BI-research tiers with no counter use — removed 2026-06-08.
- const _ALLOWED_MODES = ['auto', 'fast', 'standard'];
+ const _ALLOWED_MODES = ['auto', 'fast', 'reason'];
  let reasoningMode = $state<string>((() => {
    if (typeof window === 'undefined') return 'auto';
-   const v = localStorage.getItem('reasoning_mode') || 'auto';
+   let v = localStorage.getItem('reasoning_mode') || 'auto';
+   if (v === 'standard') v = 'reason';   // migrate old STANDARD → REASON
    return _ALLOWED_MODES.includes(v) ? v : 'auto';   // clamp stale deep/reasoning/ultra
  })());
  $effect(() => { try { localStorage.setItem('reasoning_mode', reasoningMode); } catch {} });
  let modeMenuOpen = $state(false);
  const MODE_OPTIONS = [
-   { id: 'auto',      label: 'AUTO',      desc: 'Router auto-picks tier from question' },
-   { id: 'fast',      label: 'FAST',      desc: 'Quick answer — stock / lookup · <500ms' },
-   { id: 'standard',  label: 'STANDARD',  desc: 'Analytical card — KPI strip + breakdown · ~2s' },
+   { id: 'auto',    label: 'AUTO',   desc: 'Router auto-picks FAST or REASON' },
+   { id: 'fast',    label: 'FAST',   desc: 'Quick answer — stock / lookup · <500ms' },
+   { id: 'reason',  label: 'REASON', desc: 'Thinks step-by-step — multi-part / analytical' },
  ];
  const analysisType = '';
  const effort = '';

@@ -1203,40 +1203,10 @@ Do not attempt any Slack tool calls.\
 
 
 def _skill_layer14(agent_name: str, project_slug: str | None) -> str:
-    """Phase 9 Layer 14 — auto-inject top-1 matching skill from recent user message.
-
-    Reads last user message from ContextVar (set by chat endpoint).
-    Returns empty string when EXPERIMENTAL_AGI off or no match.
-    """
-    try:
-        from dash.skills.inject import auto_inject_block
-        last_msg = None
-        try:
-            from dash.agentic.run_context import get_context
-            rc = get_context()
-            if rc and rc.user_attrs:
-                last_msg = rc.user_attrs.get("last_user_message")
-        except Exception:
-            pass
-        if not last_msg:
-            # fall back: scan ContextVar separately if set
-            try:
-                from contextvars import ContextVar
-                from dash.agentic import hooks as _hooks
-                last_msg = getattr(_hooks, "current_user_message", None)
-                if last_msg and hasattr(last_msg, "get"):
-                    last_msg = last_msg.get()
-            except Exception:
-                pass
-        if not last_msg:
-            return ""
-        block = auto_inject_block(
-            user_message=last_msg, project_slug=project_slug,
-            agent_name=agent_name, top_k=1,
-        )
-        return block or ""
-    except Exception:
-        return ""
+    """Skills feature REMOVED 2026-06-09 — no-op (was Phase 9 Layer 14 skill
+    auto-inject; gated off via EXPERIMENTAL_AGI and never used in pharma).
+    Kept as a no-op so the 3 prompt-build call sites stay intact."""
+    return ""
 
 
 def _schema_replace(instructions: str, user_id: str | None) -> str:

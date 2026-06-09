@@ -160,20 +160,17 @@ def _tier_for_score(score: float) -> str:
 
 
 def _model_for_tier(tier: str) -> str:
-    # Live-resolve via DB settings (UI-editable) → env fallback → default.
-    from dash.settings import (
-        get_lite_model, get_mid_model, get_deep_model,
-        get_reasoning_model, get_ultra_model,
-    )
+    # CityPharma counter tool: collapsed to TWO models (FAST / REASON).
+    #   TRIVIAL / LOOKUP   → FAST   = lite_model  (quick stock / drug lookup)
+    #   everything heavier → REASON = chat_model  (think step-by-step + analytics)
+    # The 5-tier BI split (ANALYSIS/AGENTIC/REASONING/ULTRA on separate models)
+    # had no counter use; mid/deep/reasoning/ultra settings stay editable under
+    # "Advanced" but no longer drive chat. Live-resolve via DB → env → default.
+    from dash.settings import get_lite_model, get_chat_model
 
-    return {
-        "TRIVIAL": get_lite_model(),
-        "LOOKUP": get_lite_model(),
-        "ANALYSIS": get_mid_model(),
-        "AGENTIC": get_deep_model(),
-        "REASONING": get_reasoning_model(),
-        "ULTRA": get_ultra_model(),
-    }.get(tier, get_mid_model())
+    if tier in ("TRIVIAL", "LOOKUP"):
+        return get_lite_model()   # FAST
+    return get_chat_model()        # REASON (ANALYSIS/AGENTIC/REASONING/ULTRA)
 
 
 def _score_deterministic(norm: str) -> tuple[float, list[str], bool]:

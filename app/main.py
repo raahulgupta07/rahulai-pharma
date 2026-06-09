@@ -270,18 +270,9 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
         except Exception as _mig_e:
             import logging as _mig_log
             _mig_log.getLogger(__name__).warning(f"migration runner skipped: {_mig_e}")
-    # Register builtin skills (idempotent upsert into dash_skill_registry).
-    # Includes skl_dash_builder / skl_panel_designer / skl_dash_critic for
-    # Deep Dash 9-stage pipeline. Worker-rank gated to avoid 8x duplicate inserts.
-    try:
-        if getenv("WORKER_RANK", "0") == "0":
-            from dash.skills.builtin import register_builtins as _reg_skills
-            _skill_count = _reg_skills()
-            import logging as _skill_log
-            _skill_log.getLogger(__name__).info(f"skills: registered {_skill_count} builtins")
-    except Exception as _skill_e:
-        import logging as _skill_log
-        _skill_log.getLogger(__name__).warning(f"skill register skipped: {_skill_e}")
+    # Skills feature REMOVED 2026-06-09 (single-tenant pharma never used it:
+    # 0 invocations/bindings, injection gated off, builtins were deck/chart
+    # generators irrelevant to a pharmacy counter). No builtin registration.
     # Seed shipped RLS blueprints (idempotent UPSERT on slug PK; is_system=TRUE).
     try:
         from dash.embed import _get_engine as _bp_eng
@@ -1013,7 +1004,7 @@ from app.suggested_rules import router as suggested_rules_router
 from app.scores import router as scores_router
 from app.export import router as export_router
 from app.schedules import router as schedules_router
-from app.learning import router as learning_router, templates_router as visibility_templates_router, marketplace_router as skill_marketplace_router, admin_router as engines_admin_router
+from app.learning import router as learning_router, templates_router as visibility_templates_router, admin_router as engines_admin_router
 # Industry preset agent template API removed.
 agent_templates_router = None
 from app.connectors import router as connectors_router
@@ -1223,7 +1214,7 @@ except Exception as _e:  # noqa: BLE001
     _lg.getLogger(__name__).warning("wiki_api router not registered: %s", _e)
 app.include_router(engines_admin_router)
 app.include_router(visibility_templates_router)
-app.include_router(skill_marketplace_router)
+# skill_marketplace_router removed 2026-06-09 (skills feature removed)
 if agent_templates_router is not None:
     app.include_router(agent_templates_router)
 app.include_router(connectors_router)
@@ -1403,19 +1394,8 @@ try:
 except Exception as e:
     logger.warning(f"workflows_api not loaded: {e}")
 
-# Dash-OS Phase 4 — Skills system + 10 builtin domain experts
-try:
-    from app.skills_api import router as skills_router
-    app.include_router(skills_router)
-except Exception as e:
-    logger.warning(f"skills_api not loaded: {e}")
-
-# B4 — Skill resolver (LLM intent-classification router)
-try:
-    from app.resolver_api import router as resolver_router
-    app.include_router(resolver_router)
-except Exception as e:
-    logger.warning(f"resolver_api not loaded: {e}")
+# Skills system + skill resolver REMOVED 2026-06-09 (feature removed:
+# app.skills_api / app.resolver_api unmounted, dash_skill_* tables dropped)
 
 # Dash-OS Phase 5 — Comm surfaces (Slack/Email/Voice)
 try:
@@ -1438,12 +1418,7 @@ try:
 except Exception as e:
     logger.warning(f"memory_api not loaded: {e}")
 
-# Dash-OS Phase 10 — Skill draft approval queue
-try:
-    from app.skill_drafts_api import router as skill_drafts_router
-    app.include_router(skill_drafts_router)
-except Exception as e:
-    logger.warning(f"skill_drafts_api not loaded: {e}")
+# Skill draft approval queue REMOVED 2026-06-09 (skills feature removed)
 
 # minions_api DELETED 2026-05-23 (orphan, 0 frontend refs)
 # custom_agents_api DELETED 2026-05-23 (orphan, 0 frontend refs)

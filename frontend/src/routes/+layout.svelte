@@ -108,6 +108,8 @@
  // Active route helpers for grouped nav
  const isProjectsActive = $derived(page.url.pathname.includes('/projects') || page.url.pathname.includes('/project/'));
  const isChatActive = $derived(page.url.pathname.endsWith('/chat'));
+ // Chat screens (project conversation / /chat) hide the floating robot — it clutters the chat surface.
+ const isChatScreen = $derived(page.url.pathname.includes('/project/') || page.url.pathname.endsWith('/chat'));
  const isBuildActive = $derived(
  page.url.pathname.includes('/dashboard') ||
  page.url.pathname.includes('/presentations') ||
@@ -1229,11 +1231,8 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
             <span class="pw-nav-label">Chat</span>
           </button>
-          <button onclick={() => { openMenu = null; window.location.href = uploadHref; }} class="pw-nav" class:pw-nav-active={page.url.pathname.includes('/settings') && page.url.hash === '#upload'}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>
-            <span class="pw-nav-label">Data Source</span>
-          </button>
-          <button onclick={() => { openMenu = null; window.location.href = agentBrainHref; }} class="pw-nav" class:pw-nav-active={page.url.pathname.includes('/settings') && page.url.hash !== '#upload'}>
+          <!-- Data Source top button removed — it lives as the DATA SOURCE tab inside Workspace's left rail. -->
+          <button onclick={() => { openMenu = null; window.location.href = agentBrainHref; }} class="pw-nav" class:pw-nav-active={page.url.pathname.includes('/settings')}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
             <span class="pw-nav-label">Workspace</span>
           </button>
@@ -1547,7 +1546,6 @@
         <button class="pw-mobile-row" onclick={() => navTo('/ui/chat')}>Chat</button>
         {#if singleAgent}
           <button class="pw-mobile-row" onclick={() => { mobileNavOpen = false; window.location.href = overviewHref; }}>Dashboard</button>
-          <button class="pw-mobile-row" onclick={() => { mobileNavOpen = false; window.location.href = uploadHref; }}>Data Source</button>
           <button class="pw-mobile-row" onclick={() => { mobileNavOpen = false; window.location.href = agentBrainHref; }}>Workspace</button>
         {/if}
         <div class="pw-mobile-section">Build</div>
@@ -1696,8 +1694,8 @@
   </div>
 {/if}
 
-<!-- ── Floating Robot Panel (always visible when logged in) ── -->
-{#if !isLogin}
+<!-- ── Floating Robot Panel (logged in, hidden on chat screens) ── -->
+{#if !isLogin && !isChatScreen}
   <RobotPanel
     logs={cliLogs}
     isTraining={srvTraining || cliTraining}

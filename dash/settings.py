@@ -218,7 +218,7 @@ agent_db = get_postgres_db()
 # get_lite_model() for runtime resolution (DB-first → env fallback → default).
 _DEFAULT_CHAT = "google/gemini-3-flash-preview"
 _DEFAULT_DEEP = "openai/gpt-5.4-mini"
-_DEFAULT_LITE = "google/gemini-3.1-flash-lite-preview"
+_DEFAULT_LITE = "google/gemini-3-flash-preview"  # Burmese+English agent: 3.1-flash-lite is weak on Burmese, so FAST tier uses 3-flash too
 _DEFAULT_EMBED = "openai/text-embedding-3-small"
 
 CHAT_MODEL = getenv("CHAT_MODEL") or _DEFAULT_CHAT
@@ -253,6 +253,11 @@ def get_lite_model() -> str:
 
 def get_embedding_model() -> str:
     return _model_from_settings("embedding_model", getenv("EMBEDDING_MODEL") or _DEFAULT_EMBED)
+
+
+def get_training_model() -> str:
+    # DB-editable training_model → env TRAINING_MODEL → fall back to CHAT model.
+    return _model_from_settings("training_model", "") or get_chat_model()
 
 
 def get_mid_model() -> str:
@@ -579,7 +584,7 @@ def training_llm_call(prompt: str, task: str = "extraction", model: str | None =
                 return None
         except Exception:
             return None
-    model = model or cfg.get("model", TRAINING_MODEL)
+    model = model or cfg.get("model") or get_training_model()
     # Live-resolve: if model still matches boot-time CHAT/DEEP/LITE, swap to current setting
     if model == CHAT_MODEL:   model = get_chat_model()
     elif model == DEEP_MODEL: model = get_deep_model()
@@ -706,7 +711,7 @@ def training_vision_call(prompt: str, images: list[dict], task: str = "vision") 
     if not api_key and not _get_pool().has_keys():
         return None
     cfg = TRAINING_CONFIGS.get(task, TRAINING_CONFIGS["extraction"])
-    model = cfg.get("model", TRAINING_MODEL)
+    model = cfg.get("model") or get_training_model()
     if model == CHAT_MODEL:   model = get_chat_model()
     elif model == DEEP_MODEL: model = get_deep_model()
     elif model == LITE_MODEL: model = get_lite_model()

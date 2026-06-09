@@ -361,7 +361,36 @@ def llm_pool_refresh(request: Request):
 
 
 # ── Model config (chat/deep/lite/embedding) — backed by dash_admin_settings ─
-_LLM_MODEL_KEYS = ["chat_model", "mid_model", "deep_model", "reasoning_model", "ultra_model", "lite_model", "embedding_model"]
+_LLM_MODEL_KEYS = ["chat_model", "mid_model", "deep_model", "reasoning_model", "ultra_model", "lite_model", "embedding_model", "training_model"]
+
+# Grouped view for the redesigned LLM CONFIG panel: CHAT (FAST/REASON + AUTO) /
+# TRAINING / EMBEDDING. FAST=lite_model, REASON=chat_model after the tier
+# collapse (see complexity_router._model_for_tier). `tools`/`tasks`/`powers`
+# are display-only — what each model actually drives in the pharma counter.
+_LLM_GROUPS = [
+    {
+        "id": "chat", "label": "CHAT", "note": "2 modes + AUTO",
+        "modes": [
+            {"mode": "FAST",   "key": "lite_model", "glyph": "⚡",
+             "hint": "quick lookup · <500ms",
+             "tools": ["stock_check", "drug_profile", "substitutes", "find_nearby_stock"]},
+            {"mode": "REASON", "key": "chat_model", "glyph": "◆",
+             "hint": "thinks step-by-step",
+             "tools": ["run_sql", "catalog analytics", "indications", "balance_stock", "search_all"]},
+        ],
+        "auto": "Router auto-picks FAST vs REASON per question (chat default)",
+    },
+    {
+        "id": "training", "label": "TRAINING", "key": "training_model",
+        "hint": "follows CHAT unless overridden",
+        "tasks": ["Q&A-gen", "vision OCR", "extraction", "dashboard-gen", "profiling", "enrichment"],
+    },
+    {
+        "id": "embedding", "label": "EMBEDDING", "key": "embedding_model",
+        "hint": "vector model — not a chat model",
+        "powers": ["pgvector RAG", "semantic search", "KG entity match", "brain memory"],
+    },
+]
 
 # Per-tier usage map — shown in UI under each model row so operator sees where
 # the choice actually fires. Triggers = complexity-router classification cues.
@@ -394,6 +423,10 @@ _LLM_USAGE: dict[str, dict] = {
         "triggers": ["All vector embedding calls (any text → vector)"],
         "used_by":  ["dash_vectors PgVector index (semantic search)", "Knowledge graph entity matching", "Brain embedding tier", "Skill library similarity", "RAG retrieval"],
     },
+    "training_model": {
+        "triggers": ["training_llm_call tasks with no explicit model (empty = follow CHAT)"],
+        "used_by":  ["Q&A generation", "vision OCR", "fact extraction", "dashboard generation", "table profiling", "persona enrichment"],
+    },
 }
 
 
@@ -414,6 +447,12 @@ def llm_models_get(request: Request):
             "triggers": usage.get("triggers", []),
             "used_by":  usage.get("used_by", []),
         }
+    # training_model with no override follows CHAT — show the effective model
+    # (flagged so the UI can render it as inherited rather than a hard value).
+    if not out.get("training_model", {}).get("value"):
+        from dash.settings import get_chat_model
+        out["training_model"]["value"] = get_chat_model()
+        out["training_model"]["inherited"] = True
     # Common OpenRouter models for dropdown
     out["catalog"] = {
         "chat": [
@@ -446,6 +485,9 @@ def llm_models_get(request: Request):
             "cohere/embed-v4.0",
         ],
     }
+    # Grouped view (CHAT FAST/REASON + AUTO / TRAINING / EMBEDDING) — the panel
+    # renders this; flat per-key rows above stay for back-compat + Advanced tiers.
+    out["groups"] = _LLM_GROUPS
     return out
 
 

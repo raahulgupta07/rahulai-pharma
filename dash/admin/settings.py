@@ -93,6 +93,7 @@ REGISTRY: dict[str, dict] = {
     "deep_model":                     {"type": "string", "default": "openai/gpt-5.4-mini",                  "env": "DEEP_MODEL",      "scope": "global", "desc": "Deep analysis, relationships, domain knowledge"},
     "lite_model":                     {"type": "string", "default": "google/gemini-3.1-flash-lite-preview", "env": "LITE_MODEL",      "scope": "global", "desc": "Scoring, routing, extraction, meta-learning"},
     "embedding_model":                {"type": "string", "default": "openai/text-embedding-3-small",        "env": "EMBEDDING_MODEL", "scope": "global", "desc": "Vector embeddings"},
+    "training_model":                 {"type": "string", "default": "google/gemini-3-flash-preview",        "env": "TRAINING_MODEL",  "scope": "global", "desc": "Training pipeline: Q&A-gen, vision OCR, extraction, dashboard-gen (empty = follow CHAT)"},
     "mid_model":                      {"type": "string", "default": "google/gemini-3-flash-preview",        "env": "MID_MODEL",       "scope": "global", "desc": "Complexity-router ANALYSIS tier (compare/trend/breakdown questions)"},
     "reasoning_model":                {"type": "string", "default": "openai/gpt-5.4-mini",                  "env": "REASONING_MODEL", "scope": "global", "desc": "Complexity-router REASONING tier (heavy multi-step questions)"},
     "ultra_model":                    {"type": "string", "default": "openai/gpt-5.4-mini",                  "env": "ULTRA_MODEL",     "scope": "global", "desc": "Complexity-router ULTRA tier (hardest multi-dataset planning)"},

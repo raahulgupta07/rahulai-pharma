@@ -11,5 +11,5 @@
 </div>
 
 <style>
-  .usage-page { max-width: 1400px; margin: 0 auto; }
+  .usage-page { width: 100%; }
 </style>

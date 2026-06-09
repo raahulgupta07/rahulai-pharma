@@ -22,11 +22,13 @@
     ultra_model: ModelEntry;
     lite_model: ModelEntry;
     embedding_model: ModelEntry;
+    training_model: ModelEntry;
     catalog?: { chat: string[]; deep: string[]; lite: string[]; embedding: string[] };
+    groups?: any[];
   };
-  type ModelRowKey = 'chat_model' | 'mid_model' | 'deep_model' | 'reasoning_model' | 'ultra_model' | 'lite_model' | 'embedding_model';
+  type ModelRowKey = 'chat_model' | 'mid_model' | 'deep_model' | 'reasoning_model' | 'ultra_model' | 'lite_model' | 'embedding_model' | 'training_model';
   type ModelType = 'chat' | 'deep' | 'lite' | 'embedding';
-  const MODEL_ROW_KEYS: ModelRowKey[] = ['chat_model','mid_model','deep_model','reasoning_model','ultra_model','lite_model','embedding_model'];
+  const MODEL_ROW_KEYS: ModelRowKey[] = ['chat_model','mid_model','deep_model','reasoning_model','ultra_model','lite_model','embedding_model','training_model'];
 
   type PoolStat = {
     key_suffix: string;
@@ -70,6 +72,8 @@
   function toggleModelRow(k: ModelRowKey) {
     expandedModelRow = expandedModelRow === k ? null : k;
   }
+  // Advanced (legacy MID/DEEP/REASONING/ULTRA tiers) — collapsed by default.
+  let advancedOpen = $state(false);
 
   // Sync state
   let syncStatus = $state<{ count: number; last_synced_at: string | null }>({ count: 0, last_synced_at: null });
@@ -294,7 +298,8 @@
     reasoning_model: 'deep',
     ultra_model: 'deep',
     lite_model: 'lite',
-    embedding_model: 'embedding'
+    embedding_model: 'embedding',
+    training_model: 'chat'
   };
 
   function openModelPicker(rowKey: ModelRowKey, current: string) {
@@ -450,81 +455,77 @@
   <div class="llm-section">
     <div class="llm-section-h">MODELS</div>
     {#if models}
-      <table class="llm-mtable">
-        <thead>
-          <tr>
-            <th class="llm-mt-role">ROLE</th>
-            <th class="llm-mt-model">MODEL</th>
-            <th class="llm-mt-tier">TIER</th>
-            <th class="llm-mt-summary">USED BY</th>
-            <th class="llm-mt-act"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each [
-            { k: 'chat_model' as ModelRowKey,      label: 'CHAT',      tierShort: 'baseline'  },
-            { k: 'mid_model' as ModelRowKey,       label: 'MID',       tierShort: 'ANALYSIS'  },
-            { k: 'deep_model' as ModelRowKey,      label: 'DEEP',      tierShort: 'AGENTIC'   },
-            { k: 'reasoning_model' as ModelRowKey, label: 'REASONING', tierShort: 'REASONING' },
-            { k: 'ultra_model' as ModelRowKey,     label: 'ULTRA',     tierShort: 'ULTRA'     },
-            { k: 'lite_model' as ModelRowKey,      label: 'LITE',      tierShort: 'LOOKUP'    },
-            { k: 'embedding_model' as ModelRowKey, label: 'EMBED',     tierShort: 'embed'     }
-          ] as row (row.k)}
-            {@const m = (models as any)[row.k] as ModelEntry}
-            {@const current = modelEdits[row.k] ?? m.value}
-            {@const dirty = current !== m.value}
-            {@const expanded = expandedModelRow === row.k}
-            {@const summary = (m.used_by && m.used_by[0]) ? m.used_by[0] : m.desc}
-            <tr class="llm-mt-row" class:dirty onclick={() => toggleModelRow(row.k)}>
-              <td class="llm-mt-role"><strong>{row.label}</strong></td>
-              <td class="llm-mt-model llm-mono">{current}{#if dirty}<span class="llm-dirty-dot">●</span>{/if}</td>
-              <td class="llm-mt-tier"><span class="llm-tier-pill">{row.tierShort}</span></td>
-              <td class="llm-mt-summary">{summary}</td>
-              <td class="llm-mt-act"><span class="llm-chev">{expanded ? '▾' : '▸'}</span></td>
-            </tr>
-            {#if expanded}
-              <tr class="llm-mt-expand">
-                <td colspan="5">
-                  <div class="llm-exp-body">
-                    {#if m.desc}<div class="llm-exp-desc">{m.desc}</div>{/if}
-                    {#if m.triggers && m.triggers.length}
-                      <div class="llm-exp-block">
-                        <div class="llm-exp-h">FIRES WHEN</div>
-                        {#each m.triggers as t}
-                          <div class="llm-exp-line">▸ {t}</div>
-                        {/each}
-                      </div>
-                    {/if}
-                    {#if m.used_by && m.used_by.length}
-                      <div class="llm-exp-block">
-                        <div class="llm-exp-h">USED BY</div>
-                        {#each m.used_by as u}
-                          <div class="llm-exp-line">• {u}</div>
-                        {/each}
-                      </div>
-                    {/if}
-                    <div class="llm-exp-meta">
-                      <span><strong>Default:</strong> <code>{m.default}</code></span>
-                      {#if m.env}<span><strong>Env var:</strong> <code>{m.env}</code></span>{/if}
-                    </div>
-                    <div class="llm-exp-actions" onclick={(e) => e.stopPropagation()} role="group">
-                      <button class="llm-btn-sm" onclick={(e) => { e.stopPropagation(); openModelPicker(row.k, current); }}>Change model ▾</button>
-                      <button class="llm-btn-sm" disabled={!dirty} onclick={(e) => { e.stopPropagation(); resetModelEdit(row.k); }}>Reset edit</button>
-                      {#if m.default && current !== m.default}
-                        <button class="llm-btn-sm" onclick={(e) => { e.stopPropagation(); modelEdits[row.k] = m.default; }}>Reset to default</button>
-                      {/if}
-                      <button class="llm-btn-sm llm-btn-primary-sm" disabled={!dirty || savingModel === row.k} onclick={(e) => { e.stopPropagation(); saveModel(row.k); }}>
-                        {savingModel === row.k ? 'Saving…' : 'Save'}
-                      </button>
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            {/if}
-          {/each}
-        </tbody>
-      </table>
-      <div class="llm-note">Click any row to expand. Edits are live for next LLM call (no restart). DB row wins over env.</div>
+
+      {#snippet editRow(key: ModelRowKey, glyph: string, label: string, hint: string, chips: string[])}
+        {@const m = (models as any)[key] as ModelEntry}
+        {@const current = modelEdits[key] ?? m?.value ?? ''}
+        {@const dirty = !!m && current !== m.value}
+        {@const expanded = expandedModelRow === key}
+        <div class="llm-grow" class:dirty>
+          <div class="llm-grow-main" role="button" tabindex="0"
+               onclick={() => toggleModelRow(key)}
+               onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleModelRow(key); } }}>
+            <div class="llm-grow-mode">
+              {#if glyph}<span class="llm-grow-glyph">{glyph}</span>{/if}
+              <span class="llm-grow-label">{label}</span>
+              {#if hint}<span class="llm-grow-hint">{hint}</span>{/if}
+            </div>
+            <div class="llm-grow-model llm-mono">{current}{#if dirty}<span class="llm-dirty-dot">●</span>{/if}</div>
+            <div class="llm-grow-chips">{#each chips as c}<span class="llm-chip">{c}</span>{/each}</div>
+            <span class="llm-chev">{expanded ? '▾' : '▸'}</span>
+          </div>
+          {#if expanded}
+            <div class="llm-grow-edit" role="group" onclick={(e) => e.stopPropagation()}>
+              {#if m?.default}<span class="llm-grow-meta">default <code>{m.default}</code></span>{/if}
+              {#if m?.env}<span class="llm-grow-meta">env <code>{m.env}</code></span>{/if}
+              <button class="llm-btn-sm" onclick={() => openModelPicker(key, current)}>Change model ▾</button>
+              <button class="llm-btn-sm" disabled={!dirty} onclick={() => resetModelEdit(key)}>Reset</button>
+              {#if m?.default && current !== m.default}
+                <button class="llm-btn-sm" onclick={() => modelEdits[key] = m.default}>Default</button>
+              {/if}
+              <button class="llm-btn-sm llm-btn-primary-sm" disabled={!dirty || savingModel === key} onclick={() => saveModel(key)}>
+                {savingModel === key ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          {/if}
+        </div>
+      {/snippet}
+
+      <!-- CHAT — FAST / REASON + AUTO -->
+      <div class="llm-grp">
+        <div class="llm-grp-h"><span class="llm-grp-t">CHAT</span><span class="llm-grp-note">2 modes + AUTO</span></div>
+        {@render editRow('lite_model', '⚡', 'FAST', 'quick lookup · <500ms', ['stock_check','drug_profile','substitutes','find_nearby_stock'])}
+        {@render editRow('chat_model', '◆', 'REASON', 'thinks step-by-step', ['run_sql','catalog analytics','indications','balance_stock'])}
+        <div class="llm-grp-auto">◐ AUTO — router auto-picks FAST vs REASON per question (chat default)</div>
+      </div>
+
+      <!-- TRAINING -->
+      <div class="llm-grp">
+        <div class="llm-grp-h"><span class="llm-grp-t">TRAINING</span><span class="llm-grp-note">follows CHAT unless set</span></div>
+        {@render editRow('training_model', '', 'MODEL', '', ['Q&A-gen','vision OCR','extraction','dashboard-gen','profiling','enrichment'])}
+      </div>
+
+      <!-- EMBEDDING -->
+      <div class="llm-grp">
+        <div class="llm-grp-h"><span class="llm-grp-t">EMBEDDING</span><span class="llm-grp-note">vector model — not a chat model</span></div>
+        {@render editRow('embedding_model', '', 'MODEL', '', ['pgvector RAG','semantic search','KG entity match','brain memory'])}
+      </div>
+
+      <!-- ADVANCED — legacy tiers -->
+      <button class="llm-adv-toggle" onclick={() => advancedOpen = !advancedOpen}>
+        {advancedOpen ? '▾' : '▸'} Advanced — legacy router tiers (MID / DEEP / REASONING / ULTRA)
+      </button>
+      {#if advancedOpen}
+        <div class="llm-adv-note">Tiers collapsed to FAST / REASON — these no longer drive chat. DEEP still used by deep training tasks (deep_analysis, relationships, ml_prediction). Edit only if you know why.</div>
+        <div class="llm-grp llm-grp-adv">
+          {@render editRow('mid_model', '', 'MID', 'ANALYSIS tier (legacy)', [])}
+          {@render editRow('deep_model', '', 'DEEP', 'AGENTIC + deep training tasks', [])}
+          {@render editRow('reasoning_model', '', 'REASONING', 'REASONING tier (legacy)', [])}
+          {@render editRow('ultra_model', '', 'ULTRA', 'ULTRA tier (legacy)', [])}
+        </div>
+      {/if}
+
+      <div class="llm-note">Click a row to change its model. Edits are live for the next LLM call (no restart). DB row wins over env.</div>
     {/if}
   </div>
 </div>
@@ -649,6 +650,33 @@
   .llm-btn-primary-sm { background: var(--pw-accent, #c96342); color: #fff; border-color: var(--pw-accent, #c96342); }
   .llm-btn-primary-sm:hover { background: #b3543a; }
   .llm-btn-primary-sm:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Grouped MODELS view (CHAT / TRAINING / EMBEDDING) ── */
+  .llm-grp { border: 1px solid var(--pw-border, #d8d3c5); border-radius: 8px; background: var(--pw-bg, #fff); margin-bottom: 14px; overflow: hidden; }
+  .llm-grp-h { display: flex; align-items: baseline; gap: 10px; padding: 9px 14px; background: var(--pw-bg-alt, #f5f1e6); border-bottom: 1px solid var(--pw-border, #d8d3c5); }
+  .llm-grp-t { font-size: 11px; font-weight: 700; letter-spacing: 0.07em; color: var(--pw-accent, #9a4a2f); text-transform: uppercase; }
+  .llm-grp-note { font-size: 10.5px; color: var(--pw-ink-soft, #877f74); }
+  .llm-grow { border-bottom: 1px solid var(--pw-border-soft, #ece8de); }
+  .llm-grow:last-child { border-bottom: none; }
+  .llm-grow.dirty { background: #fdf6f2; }
+  .llm-grow-main { display: grid; grid-template-columns: 150px minmax(220px, 1fr) auto 18px; align-items: center; gap: 12px; padding: 10px 14px; cursor: pointer; }
+  .llm-grow-main:hover { background: var(--pw-bg-alt, #faf7ef); }
+  .llm-grow-mode { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+  .llm-grow-glyph { color: var(--pw-accent, #c96342); font-size: 13px; }
+  .llm-grow-label { font-weight: 700; font-size: 13px; color: var(--pw-ink, #2c2a26); }
+  .llm-grow-hint { font-size: 10.5px; color: var(--pw-ink-soft, #877f74); }
+  .llm-grow-model { font-size: 12px; color: var(--pw-ink, #2c2a26); }
+  .llm-grow-model .llm-dirty-dot { color: #c96342; margin-left: 6px; }
+  .llm-grow-chips { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+  .llm-chip { font-size: 10px; background: #f3ece1; color: #9a4a2f; padding: 2px 7px; border-radius: 10px; white-space: nowrap; font-family: ui-monospace, Menlo, monospace; }
+  .llm-grow-edit { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 14px; background: var(--pw-bg-alt, #f5f1e6); border-top: 1px dashed var(--pw-border, #d8d3c5); }
+  .llm-grow-meta { font-size: 11px; color: var(--pw-ink-soft, #877f74); margin-right: 6px; }
+  .llm-grow-meta code { font-family: ui-monospace, monospace; background: #fff; padding: 1px 5px; border-radius: 3px; color: var(--pw-ink, #2c2a26); }
+  .llm-grp-auto { padding: 8px 14px; font-size: 11px; color: var(--pw-ink-soft, #877f74); background: var(--pw-bg-alt, #faf7ef); border-top: 1px solid var(--pw-border-soft, #ece8de); }
+  .llm-adv-toggle { width: 100%; text-align: left; background: none; border: 1px dashed var(--pw-border, #d8d3c5); border-radius: 6px; padding: 8px 12px; font-size: 11.5px; color: var(--pw-ink-soft, #6b6557); cursor: pointer; margin-bottom: 8px; }
+  .llm-adv-toggle:hover { background: var(--pw-bg-alt, #f5f1e6); }
+  .llm-adv-note { font-size: 10.5px; color: var(--pw-ink-soft, #877f74); font-style: italic; margin-bottom: 8px; line-height: 1.5; }
+  .llm-grp-adv .llm-grow-label { color: var(--pw-ink-soft, #6b6557); }
   .llm-toast {
     position: fixed; bottom: 24px; right: 24px; padding: 10px 16px;
     border-radius: 4px; font-size: 13px; z-index: 9999;

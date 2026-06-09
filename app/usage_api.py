@@ -356,6 +356,304 @@ def get_entity(request: Request, type: str, id: str,
         return {"type": type, "id": id, "totals": {}, "by_model": [], "series": [], "activity": [], "error": str(e)}
 
 
+# --- people activity (per-user leaderboard + drill-down) ---------------------
+def _last_active(*vals) -> str | None:
+    """Newest of several timestamp-ish values (str/datetime/None)."""
+    best = None
+    for v in vals:
+        if not v:
+            continue
+        s = str(v)
+        if best is None or s > best:
+            best = s
+    return best
+
+
+@router.get("/people")
+def get_people(request: Request, frm: str | None = Query(None, alias="from"), to: str | None = None,
+               include_service: bool = True):
+    """Per-user leaderboard: activity, recency, engagement, satisfaction, cost.
+
+    LEFT JOINs every registered user against windowed usage (v_usage_unified by
+    actor=username), chat sessions, and feedback. Service accounts (svc:*) are
+    flagged so the UI can split humans vs API keys.
+    """
+    _gate(request)
+    start, end = _window(frm, to)
+    p = {"s": start, "e": end}
+    sql = """
+        WITH usage AS (
+            SELECT actor,
+                   COUNT(*) reqs,
+                   COALESCE(SUM(tokens_in + tokens_out), 0) tokens,
+                   COALESCE(SUM(cost_usd), 0) cost,
+                   COUNT(*) FILTER (WHERE status = 'error') errors,
+                   MAX(ts) last_ts
+            FROM public.v_usage_unified
+            WHERE ts >= :s AND ts < :e
+            GROUP BY actor
+        ),
+        sess AS (
+            SELECT user_id, COUNT(*) sessions, MAX(updated_at) last_sess
+            FROM public.dash_chat_sessions
+            WHERE updated_at >= :s AND updated_at < :e
+            GROUP BY user_id
+        ),
+        fb AS (
+            SELECT user_id,
+                   COUNT(*) FILTER (WHERE rating = 'up') ups,
+                   COUNT(*) FILTER (WHERE rating = 'down') downs
+            FROM public.dash_feedback
+            WHERE created_at >= :s AND created_at < :e
+            GROUP BY user_id
+        )
+        SELECT u.id, u.username, COALESCE(u.email, ''), COALESCE(u.role, 'user'),
+               COALESCE(u.is_active, TRUE), u.last_login,
+               COALESCE(us.reqs, 0), COALESCE(us.tokens, 0), COALESCE(us.cost, 0),
+               COALESCE(us.errors, 0), us.last_ts,
+               COALESCE(s.sessions, 0), s.last_sess,
+               COALESCE(f.ups, 0), COALESCE(f.downs, 0)
+        FROM public.dash_users u
+        LEFT JOIN usage us ON us.actor = u.username
+        LEFT JOIN sess  s  ON s.user_id = u.id
+        LEFT JOIN fb    f  ON f.user_id = u.id
+        ORDER BY COALESCE(us.reqs, 0) DESC, COALESCE(s.sessions, 0) DESC, u.username
+    """
+    try:
+        rows = _rows(sql, p)
+        people = []
+        active_count = 0
+        for r in rows:
+            username = r[1]
+            is_service = bool(username and username.startswith("svc:"))
+            if is_service and not include_service:
+                continue
+            reqs = int(r[6] or 0); sessions = int(r[11] or 0)
+            ups = int(r[13] or 0); downs = int(r[14] or 0)
+            la = _last_active(r[10], r[12], r[5])
+            if reqs or sessions:
+                active_count += 1
+            people.append({
+                "user_id": r[0], "username": username,
+                "label": username[4:] if is_service else username,
+                "email": r[2], "role": r[3], "active": bool(r[4]),
+                "is_service": is_service,
+                "requests": reqs, "tokens": int(r[7] or 0), "cost": float(r[8] or 0),
+                "errors": int(r[9] or 0), "sessions": sessions,
+                "ups": ups, "downs": downs,
+                "satisfaction": round(100.0 * ups / (ups + downs)) if (ups + downs) else None,
+                "err_pct": round(100.0 * int(r[9] or 0) / reqs, 1) if reqs else 0.0,
+                "q_per_session": round(reqs / sessions, 1) if sessions else (reqs or 0),
+                "last_active": la, "last_login": str(r[5]) if r[5] else None,
+            })
+        humans = [x for x in people if not x["is_service"]]
+        most = max(people, key=lambda x: x["requests"], default=None)
+        tot_reqs = sum(x["requests"] for x in people)
+        tot_ups = sum(x["ups"] for x in people); tot_downs = sum(x["downs"] for x in people)
+        return {
+            "window": {"from": start.isoformat(), "to": end.isoformat()},
+            "people": people,
+            "summary": {
+                "total_users": len(people), "humans": len(humans),
+                "service_accounts": len(people) - len(humans),
+                "active": active_count,
+                "avg_q_per_user": round(tot_reqs / active_count, 1) if active_count else 0,
+                "satisfaction": round(100.0 * tot_ups / (tot_ups + tot_downs)) if (tot_ups + tot_downs) else None,
+                "most_active": most["label"] if most and most["requests"] else None,
+                "most_active_reqs": most["requests"] if most else 0,
+            },
+        }
+    except Exception as e:
+        logger.warning("GET /api/admin/usage/people failed: %s", e)
+        return {"people": [], "summary": {}, "error": str(e)}
+
+
+@router.get("/person")
+def get_person(request: Request, username: str,
+               frm: str | None = Query(None, alias="from"), to: str | None = None,
+               limit: int = 50):
+    """Drill-down for one user: header agg + daily series + their sessions +
+    rated questions (with 👍/👎). Usage joined by actor=username, sessions +
+    feedback by user_id."""
+    _gate(request)
+    start, end = _window(frm, to)
+    lim = max(1, min(limit, 200))
+    p = {"u": username, "s": start, "e": end, "l": lim}
+    try:
+        urow = _rows("SELECT id, COALESCE(email,''), COALESCE(role,'user'), "
+                     "COALESCE(is_active,TRUE), last_login, created_at "
+                     "FROM public.dash_users WHERE username = :u LIMIT 1", {"u": username})
+        if not urow:
+            return {"username": username, "found": False}
+        uid = urow[0][0]
+        p["uid"] = uid
+
+        agg = _rows("SELECT COUNT(*), COALESCE(SUM(tokens_in+tokens_out),0), COALESCE(SUM(cost_usd),0), "
+                    "COUNT(*) FILTER (WHERE status='error'), MAX(ts) "
+                    "FROM public.v_usage_unified WHERE actor = :u AND ts >= :s AND ts < :e", p)
+        a = agg[0] if agg else (0, 0, 0, 0, None)
+
+        series = _rows("SELECT date_trunc('day', ts), COUNT(*), COALESCE(SUM(cost_usd),0), "
+                       "COALESCE(SUM(tokens_in+tokens_out),0) "
+                       "FROM public.v_usage_unified WHERE actor = :u AND ts >= :s AND ts < :e "
+                       "GROUP BY 1 ORDER BY 1", p)
+        by_src = _rows("SELECT src, COUNT(*), COALESCE(SUM(cost_usd),0) "
+                       "FROM public.v_usage_unified WHERE actor = :u AND ts >= :s AND ts < :e "
+                       "GROUP BY 1 ORDER BY 2 DESC", p)
+        sess = _rows("SELECT session_id, first_message, project_slug, created_at, updated_at "
+                     "FROM public.dash_chat_sessions WHERE user_id = :uid "
+                     "AND updated_at >= :s AND updated_at < :e ORDER BY updated_at DESC LIMIT :l", p)
+        fb = _rows("SELECT created_at, question, answer, rating, session_id "
+                   "FROM public.dash_feedback WHERE user_id = :uid "
+                   "AND created_at >= :s AND created_at < :e ORDER BY created_at DESC LIMIT :l", p)
+        fbc = _rows("SELECT COUNT(*) FILTER (WHERE rating='up'), COUNT(*) FILTER (WHERE rating='down') "
+                    "FROM public.dash_feedback WHERE user_id = :uid AND created_at >= :s AND created_at < :e", p)
+        ups = int(fbc[0][0]) if fbc else 0; downs = int(fbc[0][1]) if fbc else 0
+        reqs = int(a[0] or 0)
+        return {
+            "username": username, "found": True,
+            "window": {"from": start.isoformat(), "to": end.isoformat()},
+            "header": {
+                "email": urow[0][1], "role": urow[0][2], "active": bool(urow[0][3]),
+                "last_login": str(urow[0][4]) if urow[0][4] else None,
+                "created": str(urow[0][5]) if urow[0][5] else None,
+                "is_service": username.startswith("svc:"),
+                "requests": reqs, "tokens": int(a[1] or 0), "cost": float(a[2] or 0),
+                "errors": int(a[3] or 0), "last_active": str(a[4]) if a[4] else None,
+                "sessions": len(sess), "ups": ups, "downs": downs,
+                "satisfaction": round(100.0 * ups / (ups + downs)) if (ups + downs) else None,
+                "err_pct": round(100.0 * int(a[3] or 0) / reqs, 1) if reqs else 0.0,
+            },
+            "series": [{"bucket": str(r[0]), "requests": int(r[1] or 0), "cost": float(r[2] or 0),
+                        "tokens": int(r[3] or 0)} for r in series],
+            "by_source": [{"src": r[0], "requests": int(r[1] or 0), "cost": float(r[2] or 0)} for r in by_src],
+            "sessions": [{"session_id": r[0], "first_message": r[1], "project": r[2],
+                          "created": str(r[3]) if r[3] else None,
+                          "updated": str(r[4]) if r[4] else None} for r in sess],
+            "questions": [{"ts": str(r[0]), "question": r[1], "answer": r[2], "rating": r[3],
+                           "session_id": r[4]} for r in fb],
+        }
+    except Exception as e:
+        logger.warning("GET /api/admin/usage/person failed: %s", e)
+        return {"username": username, "found": False, "error": str(e)}
+
+
+# --- embed users (anonymous widget visitors — separate population) -----------
+@router.get("/embed-people")
+def get_embed_people(request: Request, frm: str | None = Query(None, alias="from"), to: str | None = None,
+                     limit: int = 200):
+    """Embed-widget visitors. NOT registered users — anonymous browser sessions
+    (session_token) on public widgets, grouped per widget (embed_id → store).
+    Sourced from dash_embed_calls, joined to dash_agent_embeds for the label.
+    Kept fully separate from /people (registered dash_users)."""
+    _gate(request)
+    start, end = _window(frm, to)
+    lim = max(1, min(limit, 500))
+    p = {"s": start, "e": end, "l": lim}
+    try:
+        summ = _rows(
+            "SELECT COUNT(*), COUNT(DISTINCT session_token), COUNT(DISTINCT embed_id), "
+            "COALESCE(SUM(tokens_in+tokens_out),0), COALESCE(SUM(cost_usd),0), "
+            "COUNT(*) FILTER (WHERE NOT success), MAX(ts) "
+            "FROM public.dash_embed_calls WHERE ts >= :s AND ts < :e", p)
+        sm = summ[0] if summ else (0, 0, 0, 0, 0, 0, None)
+        calls = int(sm[0] or 0); sessions = int(sm[1] or 0)
+        by_session = _rows(
+            "SELECT c.session_token, c.embed_id, COALESCE(e.name,''), COALESCE(e.bound_scope_id,''), "
+            "MAX(c.origin), COUNT(*), COALESCE(SUM(c.tokens_in+c.tokens_out),0), COALESCE(SUM(c.cost_usd),0), "
+            "COUNT(*) FILTER (WHERE NOT c.success), COALESCE(AVG(c.latency_ms),0), MIN(c.ts), MAX(c.ts) "
+            "FROM public.dash_embed_calls c "
+            "LEFT JOIN public.dash_agent_embeds e ON e.embed_id = c.embed_id "
+            "WHERE c.ts >= :s AND c.ts < :e "
+            "GROUP BY c.session_token, c.embed_id, e.name, e.bound_scope_id "
+            "ORDER BY MAX(c.ts) DESC LIMIT :l", p)
+        by_widget = _rows(
+            "SELECT c.embed_id, COALESCE(e.name,''), COALESCE(e.bound_scope_id,''), "
+            "COUNT(DISTINCT c.session_token), COUNT(*), COALESCE(SUM(c.cost_usd),0), "
+            "COUNT(*) FILTER (WHERE NOT c.success), MAX(c.ts) "
+            "FROM public.dash_embed_calls c "
+            "LEFT JOIN public.dash_agent_embeds e ON e.embed_id = c.embed_id "
+            "WHERE c.ts >= :s AND c.ts < :e "
+            "GROUP BY c.embed_id, e.name, e.bound_scope_id "
+            "ORDER BY COUNT(*) DESC LIMIT :l", p)
+
+        def _msgs(n):
+            return round(calls / n, 1) if n else 0
+        return {
+            "window": {"from": start.isoformat(), "to": end.isoformat()},
+            "summary": {
+                "messages": calls, "sessions": sessions, "widgets": int(sm[2] or 0),
+                "tokens": int(sm[3] or 0), "cost": float(sm[4] or 0),
+                "errors": int(sm[5] or 0),
+                "success_pct": round(100.0 * (calls - int(sm[5] or 0)) / calls, 1) if calls else 100.0,
+                "avg_msgs_per_session": _msgs(sessions),
+                "last_seen": str(sm[6]) if sm[6] else None,
+            },
+            "by_session": [{
+                "session": r[0], "session_short": (r[0] or "")[5:13] if r[0] else "(none)",
+                "embed_id": r[1], "widget": r[2] or r[1], "store": r[3], "origin": r[4],
+                "messages": int(r[5] or 0), "tokens": int(r[6] or 0), "cost": float(r[7] or 0),
+                "errors": int(r[8] or 0), "avg_latency_ms": int(r[9] or 0),
+                "first_seen": str(r[10]) if r[10] else None, "last_seen": str(r[11]) if r[11] else None,
+            } for r in by_session],
+            "by_widget": [{
+                "embed_id": r[0], "widget": r[1] or r[0], "store": r[2],
+                "sessions": int(r[3] or 0), "messages": int(r[4] or 0), "cost": float(r[5] or 0),
+                "errors": int(r[6] or 0), "last_seen": str(r[7]) if r[7] else None,
+            } for r in by_widget],
+        }
+    except Exception as e:
+        logger.warning("GET /api/admin/usage/embed-people failed: %s", e)
+        return {"summary": {}, "by_session": [], "by_widget": [], "error": str(e)}
+
+
+@router.get("/embed-session")
+def get_embed_session(request: Request, session: str,
+                      frm: str | None = Query(None, alias="from"), to: str | None = None,
+                      limit: int = 100):
+    """Drill one embed visitor session: header + their message/response pairs
+    (only populated when EMBED_LOG_BODIES=1 at write time)."""
+    _gate(request)
+    start, end = _window(frm, to)
+    lim = max(1, min(limit, 200))
+    p = {"sess": session, "s": start, "e": end, "l": lim}
+    try:
+        h = _rows(
+            "SELECT c.embed_id, COALESCE(e.name,''), COALESCE(e.bound_scope_id,''), MAX(c.origin), MAX(c.ip), "
+            "COUNT(*), COALESCE(SUM(c.tokens_in+c.tokens_out),0), COALESCE(SUM(c.cost_usd),0), "
+            "COUNT(*) FILTER (WHERE NOT c.success), COALESCE(AVG(c.latency_ms),0), MIN(c.ts), MAX(c.ts) "
+            "FROM public.dash_embed_calls c "
+            "LEFT JOIN public.dash_agent_embeds e ON e.embed_id = c.embed_id "
+            "WHERE c.session_token = :sess AND c.ts >= :s AND c.ts < :e "
+            "GROUP BY c.embed_id, e.name, e.bound_scope_id", p)
+        if not h:
+            return {"session": session, "found": False}
+        hh = h[0]
+        msgs = _rows(
+            "SELECT ts, message_text, response_text, success, latency_ms, message_chars, response_chars "
+            "FROM public.dash_embed_calls WHERE session_token = :sess AND ts >= :s AND ts < :e "
+            "ORDER BY ts ASC LIMIT :l", p)
+        bodies = any((r[1] or r[2]) for r in msgs)
+        calls = int(hh[5] or 0)
+        return {
+            "session": session, "found": True, "bodies_logged": bodies,
+            "header": {
+                "embed_id": hh[0], "widget": hh[1] or hh[0], "store": hh[2],
+                "origin": hh[3], "ip": hh[4], "messages": calls,
+                "tokens": int(hh[6] or 0), "cost": float(hh[7] or 0), "errors": int(hh[8] or 0),
+                "avg_latency_ms": int(hh[9] or 0),
+                "first_seen": str(hh[10]) if hh[10] else None, "last_seen": str(hh[11]) if hh[11] else None,
+            },
+            "messages": [{
+                "ts": str(r[0]), "question": r[1], "answer": r[2], "success": bool(r[3]),
+                "latency_ms": int(r[4] or 0), "q_chars": int(r[5] or 0), "a_chars": int(r[6] or 0),
+            } for r in msgs],
+        }
+    except Exception as e:
+        logger.warning("GET /api/admin/usage/embed-session failed: %s", e)
+        return {"session": session, "found": False, "error": str(e)}
+
+
 # --- chat bodies (gated by APIGW_LOG_BODIES at write time) -------------------
 @router.get("/messages")
 def get_messages(request: Request, key_id: int | None = None, store: str | None = None,

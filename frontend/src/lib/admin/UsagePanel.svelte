@@ -6,7 +6,8 @@
 
   // ---- left-rail nav (grouped, admin-Overview style) ----
   const NAV = [
-    { label: '', items: [['overview', 'Overview', 'grid'], ['performance', 'Performance', 'gauge'], ['errors', 'Errors', 'alert']] },
+    { label: 'Overview', items: [['overview', 'Overview', 'grid'], ['performance', 'Performance', 'gauge'], ['errors', 'Errors', 'alert']] },
+    { label: 'People', items: [['people', 'People', 'people2']] },
     { label: 'Analytics', items: [['tools', 'Tools', 'wrench'], ['security', 'Security', 'shield'], ['entities', 'Entities', 'users']] },
     { label: 'Billing', items: [['billing', 'Billing', 'receipt'], ['live', 'Live', 'bolt']] },
   ] as { label: string; items: [string, string, string][] }[];
@@ -19,6 +20,7 @@
     users: '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 6a3 3 0 0 1 0 6M21 20a6 6 0 0 0-4-5.6"/>',
     receipt: '<path d="M5 3v18l2-1 2 1 2-1 2 1 2-1 2 1V3l-2 1-2-1-2 1-2-1-2 1z"/><path d="M9 8h6M9 12h6"/>',
     bolt: '<path d="M13 2 4 14h6l-1 8 9-12h-6z"/>',
+    people2: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
   };
   let tab = $state('overview');
   let loaded: Record<string, boolean> = $state({});
@@ -42,6 +44,12 @@
   let budget: any = $state(null), invoice: any = $state(null);
   let entUsers: any[] = $state([]), entStores: any[] = $state([]);
   let logins: any[] = $state([]);
+  // people activity
+  let people: any = $state(null);
+  let peopleSort = $state('requests'); let peopleDesc = $state(true);
+  let showService = $state(true); let peopleSearch = $state('');
+  let peopleSeg = $state('app'); // 'app' (registered) | 'embed' (anonymous widget visitors)
+  let embedPeople: any = $state(null); let embedView = $state('session'); // 'session' | 'widget'
   let loading = $state(false); let error = $state('');
 
   // budget edit
@@ -96,6 +104,14 @@
       else if (t === 'billing') {
         const [b, i] = await Promise.all([jget(`/api/admin/usage/budget`), jget(`/api/admin/usage/invoice?${qs({ group: invGroup })}`)]);
         budget = b; invoice = i; bDaily = b?.daily_usd ?? 0; bMonthly = b?.monthly_usd ?? 0;
+      } else if (t === 'people') {
+        if (peopleSeg === 'embed') {
+          embedPeople = await jget(`/api/admin/usage/embed-people?${qs()}`);
+          if (embedPeople?.error) error = embedPeople.error;
+        } else {
+          people = await jget(`/api/admin/usage/people?${qs({ include_service: String(showService) })}`);
+          if (people?.error) error = people.error;
+        }
       } else if (t === 'entities') {
         const u = await jget(`/api/admin/usage?${qs({ group_by: 'actor', limit: '1' })}`);
         const s = await jget(`/api/admin/usage?${qs({ group_by: 'store_id', limit: '1' })}`);
@@ -115,6 +131,36 @@
     finally { drawerLoading = false; }
   }
   function closeDrawer() { drawerOpen = false; drawerData = null; }
+
+  async function openPerson(username: string) {
+    drawerOpen = true; drawerType = 'person'; drawerId = username; drawerData = null; drawerLoading = true;
+    try { drawerData = await jget(`/api/admin/usage/person?username=${encodeURIComponent(username)}&${qs()}`); }
+    catch (e: any) { drawerData = { error: e?.message }; }
+    finally { drawerLoading = false; }
+  }
+  async function openEmbedSession(session: string, label: string) {
+    drawerOpen = true; drawerType = 'embed'; drawerId = label || session; drawerData = null; drawerLoading = true;
+    try { drawerData = await jget(`/api/admin/usage/embed-session?session=${encodeURIComponent(session)}&${qs()}`); }
+    catch (e: any) { drawerData = { error: e?.message }; }
+    finally { drawerLoading = false; }
+  }
+  function switchSeg(seg: string) { peopleSeg = seg; loadTab('people', true); }
+  function setPeopleSort(col: string) { if (peopleSort === col) peopleDesc = !peopleDesc; else { peopleSort = col; peopleDesc = true; } }
+  const sortedPeople = $derived.by(() => {
+    let rows = [...((people?.people ?? []) as any[])];
+    const q = peopleSearch.trim().toLowerCase();
+    if (q) rows = rows.filter((r) => (r.username || '').toLowerCase().includes(q) || (r.email || '').toLowerCase().includes(q));
+    const k = peopleSort;
+    rows.sort((a, b) => {
+      let av = a[k], bv = b[k];
+      if (k === 'last_active') { av = av ? new Date(av).getTime() : 0; bv = bv ? new Date(bv).getTime() : 0; }
+      else if (k === 'username') { av = (av || '').toLowerCase(); bv = (bv || '').toLowerCase(); return peopleDesc ? bv.localeCompare(av) : av.localeCompare(bv); }
+      else if (k === 'satisfaction') { av = av ?? -1; bv = bv ?? -1; }
+      else { av = av ?? 0; bv = bv ?? 0; }
+      return peopleDesc ? (bv - av) : (av - bv);
+    });
+    return rows;
+  });
 
   async function saveBudget() {
     bSaving = true;
@@ -188,7 +234,6 @@
  <div class="u-shell">
   <!-- left rail (admin-Overview style) -->
   <nav class="u-rail">
-    <div class="u-railhead">Usage &amp; Cost</div>
     {#each NAV as g}
       {#if g.label}<div class="u-railgrp">{g.label}</div>{/if}
       {#each g.items as [id, label, icon]}
@@ -247,71 +292,208 @@
       <div class="u-tile" class:bad={t.errors > 0}><b>{t.errors}</b><span>Errors</span></div>
       <div class="u-tile"><b>{ov.adoption?.active ?? 0}<small>/{ov.adoption?.total_users ?? 0}</small></b><span>Active users</span></div>
     </div>
-    <div class="u-cards3">
-      {#each [['Spend', spendChart, true, t.spend, p.spend], ['Requests', reqChart, false, t.requests, p.requests], ['Tokens', tokChart, false, (t.tokens_in + t.tokens_out), p.tokens]] as [title, ch, money, cur, prv]}
-        {@const d = delta(cur, prv)}
-        <div class="oc">
-          <div class="oc-head">{title}<span class="oc-delta" class:up={d.up} class:flat={d.flat}>{d.txt}</span></div>
-          <div class="oc-total">{money ? usd(ch.grand) : compact(ch.grand)}</div>
-          <div class="oc-bars">
-            {#each ch.buckets as b}<div class="oc-col" title={money ? usd(b.total) : compact(b.total)}><div class="oc-stack" style={`height:${Math.round((b.total / ch.maxT) * 100)}%`}>{#each b.segs as s}<div class="oc-seg" style={`flex:${s.val || 0.0001};background:${s.color}`}></div>{/each}</div></div>{/each}
-            {#if !ch.buckets.length}<div class="u-empty">no activity</div>{/if}
+    <!-- ◷ TRENDS -->
+    <section class="u-sec">
+      <div class="u-sech"><span class="u-sect">Trends</span><span class="u-secbadge">● live · {lastMs}ms</span></div>
+      <div class="u-cards3">
+        {#each [['Spend', spendChart, true, t.spend, p.spend], ['Requests', reqChart, false, t.requests, p.requests], ['Tokens', tokChart, false, (t.tokens_in + t.tokens_out), p.tokens]] as [title, ch, money, cur, prv]}
+          {@const d = delta(cur, prv)}
+          <div class="oc">
+            <div class="oc-head">{title}<span class="oc-delta" class:up={d.up} class:flat={d.flat}>{d.txt}</span></div>
+            <div class="oc-total">{money ? usd(ch.grand) : compact(ch.grand)}</div>
+            <div class="oc-bars">
+              {#each ch.buckets as b}<div class="oc-col" title={money ? usd(b.total) : compact(b.total)}><div class="oc-stack" style={`height:${Math.round((b.total / ch.maxT) * 100)}%`}>{#each b.segs as s}<div class="oc-seg" style={`flex:${s.val || 0.0001};background:${s.color}`}></div>{/each}</div></div>{/each}
+              {#if !ch.buckets.length}<div class="u-empty">no activity</div>{/if}
+            </div>
+            <div class="oc-legend">{#each ch.legend as l}<div class="oc-leg"><span class="dot" style={`background:${l.color}`}></span><span class="lbl">{l.label}</span><span class="val">{money ? usd(l.value) : compact(l.value)}</span></div>{/each}</div>
           </div>
-          <div class="oc-legend">{#each ch.legend as l}<div class="oc-leg"><span class="dot" style={`background:${l.color}`}></span><span class="lbl">{l.label}</span><span class="val">{money ? usd(l.value) : compact(l.value)}</span></div>{/each}</div>
+        {/each}
+      </div>
+      <div class="u-substats">
+        <span>Errors <b class:bad={t.errors > 0}>{t.errors}</b></span>
+        <span>Cost/req <b>{usd(ov.cost_per?.per_request || 0)}</b></span>
+        <span>Cost/1k tok <b>{usd(ov.cost_per?.per_1k_tokens || 0)}</b></span>
+        <span>Active users <b>{ov.adoption?.active ?? 0}</b>/{ov.adoption?.total_users ?? 0}</span>
+        <span>DAU <b>{ov.adoption?.dau ?? 0}</b> · WAU <b>{ov.adoption?.wau ?? 0}</b></span>
+      </div>
+    </section>
+
+    <!-- ◷ BREAKDOWN -->
+    <section class="u-sec">
+      <div class="u-sech"><span class="u-sect">Breakdown</span><span class="u-secbadge">● live · {lastMs}ms</span></div>
+      <div class="u-grid2">
+        <div class="u-card"><div class="u-ctitle">By source</div>
+          <table class="u-tbl"><thead><tr><th>source</th><th>req</th><th>tokens</th><th>cost</th></tr></thead><tbody>
+            {#each ov.by_source as r}<tr><td><span class="u-tag {r.src}">{srcLabel(r.src)}</span></td><td>{compact(r.requests)}</td><td>{compact(r.tokens)}</td><td class="num">{usd(r.cost)}</td></tr>{/each}
+          </tbody></table>
         </div>
-      {/each}
-    </div>
-
-    <div class="u-substats">
-      <span>Errors <b class:bad={t.errors > 0}>{t.errors}</b></span>
-      <span>Cost/req <b>{usd(ov.cost_per?.per_request || 0)}</b></span>
-      <span>Cost/1k tok <b>{usd(ov.cost_per?.per_1k_tokens || 0)}</b></span>
-      <span>Active users <b>{ov.adoption?.active ?? 0}</b>/{ov.adoption?.total_users ?? 0}</span>
-      <span>DAU <b>{ov.adoption?.dau ?? 0}</b> · WAU <b>{ov.adoption?.wau ?? 0}</b></span>
-    </div>
-
-    <div class="u-grid2">
-      <div class="u-card"><div class="u-ctitle">By source</div>
-        <table class="u-tbl"><thead><tr><th>source</th><th>req</th><th>tokens</th><th>cost</th></tr></thead><tbody>
-          {#each ov.by_source as r}<tr><td><span class="u-tag {r.src}">{srcLabel(r.src)}</span></td><td>{compact(r.requests)}</td><td>{compact(r.tokens)}</td><td class="num">{usd(r.cost)}</td></tr>{/each}
-        </tbody></table>
+        <div class="u-card"><div class="u-ctitle">By model (cost)</div>
+          <table class="u-tbl"><thead><tr><th>model</th><th>req</th><th>tokens</th><th>cost</th></tr></thead><tbody>
+            {#each ov.by_model as r}<tr><td class="mono">{r.model}</td><td>{compact(r.requests)}</td><td>{compact(r.tokens)}</td><td class="num">{usd(r.cost)}</td></tr>{/each}
+          </tbody></table>
+        </div>
       </div>
-      <div class="u-card"><div class="u-ctitle">By model (cost)</div>
-        <table class="u-tbl"><thead><tr><th>model</th><th>req</th><th>tokens</th><th>cost</th></tr></thead><tbody>
-          {#each ov.by_model as r}<tr><td class="mono">{r.model}</td><td>{compact(r.requests)}</td><td>{compact(r.tokens)}</td><td class="num">{usd(r.cost)}</td></tr>{/each}
-        </tbody></table>
-      </div>
-    </div>
+    </section>
 
-    <!-- heatmap -->
-    <div class="u-card"><div class="u-ctitle">Activity heatmap (requests · day × hour)</div>
+    <!-- ◷ ACTIVITY HEATMAP -->
+    <section class="u-sec">
+      <div class="u-sech"><span class="u-sect">Activity heatmap · day × hour</span><span class="u-secbadge">● live · {lastMs}ms</span></div>
       <div class="heat">
         <div class="heat-row head"><span class="heat-lbl"></span>{#each Array(24) as _, h}<span class="heat-h">{h % 6 === 0 ? h : ''}</span>{/each}</div>
         {#each DOW as dname, di}
           <div class="heat-row"><span class="heat-lbl">{dname}</span>{#each Array(24) as _, h}{@const v = heatVal(di, h)}<span class="heat-c" title={`${dname} ${h}:00 · ${v} req`} style={`background:rgba(154,74,47,${v ? 0.12 + 0.88 * (v / heatMax) : 0.03})`}></span>{/each}</div>
         {/each}
       </div>
-    </div>
+    </section>
 
-    <div class="u-grid2">
-      <div class="u-card"><div class="u-ctitle">Breakdown by
-        <select class="u-mini" bind:value={groupBy} onchange={() => loadTab('overview', true)}><option value="actor">user/key</option><option value="model">model</option><option value="store_id">store</option><option value="src">source</option><option value="status">status</option></select></div>
-        <table class="u-tbl"><thead><tr><th>{groupBy}</th><th>req</th><th>cost</th><th>last</th></tr></thead><tbody>
-          {#each ov.breakdown as r}<tr class="click" onclick={() => openDrawer(groupBy === 'store_id' ? 'store' : 'actor', r.key)}><td class="mono">{r.key}</td><td>{compact(r.requests)}</td><td class="num">{usd(r.cost)}</td><td class="dim">{ago(r.last)}</td></tr>{/each}
+    <!-- ◷ USERS & ACTIVITY -->
+    <section class="u-sec">
+      <div class="u-sech"><span class="u-sect">Users &amp; activity</span><span class="u-secbadge">● live · {lastMs}ms</span></div>
+      <div class="u-grid2">
+        <div class="u-card"><div class="u-ctitle">Breakdown by
+          <select class="u-mini" bind:value={groupBy} onchange={() => loadTab('overview', true)}><option value="actor">user/key</option><option value="model">model</option><option value="store_id">store</option><option value="src">source</option><option value="status">status</option></select></div>
+          <table class="u-tbl"><thead><tr><th>{groupBy}</th><th>req</th><th>cost</th><th>last</th></tr></thead><tbody>
+            {#each ov.breakdown as r}<tr class="click" onclick={() => openDrawer(groupBy === 'store_id' ? 'store' : 'actor', r.key)}><td class="mono">{r.key}</td><td>{compact(r.requests)}</td><td class="num">{usd(r.cost)}</td><td class="dim">{ago(r.last)}</td></tr>{/each}
+          </tbody></table>
+        </div>
+        <div class="u-card"><div class="u-ctitle">Who — logins &amp; usage</div>
+          <table class="u-tbl"><thead><tr><th>user</th><th>role</th><th>last login</th><th>req</th><th>cost</th></tr></thead><tbody>
+            {#each logins as r}<tr class="click" onclick={() => openDrawer('actor', r.username)}><td class="mono">{r.username}</td><td>{r.role}</td><td class="dim">{ago(r.last_login)}</td><td>{compact(r.requests)}</td><td class="num">{usd(r.cost)}</td></tr>{/each}
+          </tbody></table>
+        </div>
+      </div>
+      <div class="u-card" style="margin-top:14px;"><div class="u-ctitle">Activity log<button class="u-btn ghost sm" onclick={exportActivity}>export csv</button></div>
+        <table class="u-tbl"><thead><tr><th>time</th><th>src</th><th>actor</th><th>store</th><th>model</th><th>tok</th><th>cost</th><th>lat</th><th>status</th></tr></thead><tbody>
+          {#each ov.activity as a}<tr><td class="dim">{shortTs(a.ts)}</td><td><span class="u-tag {a.src}">{srcLabel(a.src)}</span></td><td class="mono">{a.actor ?? '—'}</td><td class="mono">{a.store_id ?? '—'}</td><td class="mono dim">{a.model ?? '—'}</td><td>{compact(a.tokens)}</td><td class="num">{usd(a.cost)}</td><td class="dim">{ms(a.latency_ms)}</td><td><span class="u-st {a.status}">{a.status}</span></td></tr>{/each}
         </tbody></table>
       </div>
-      <div class="u-card"><div class="u-ctitle">Who — logins &amp; usage</div>
-        <table class="u-tbl"><thead><tr><th>user</th><th>role</th><th>last login</th><th>req</th><th>cost</th></tr></thead><tbody>
-          {#each logins as r}<tr class="click" onclick={() => openDrawer('actor', r.username)}><td class="mono">{r.username}</td><td>{r.role}</td><td class="dim">{ago(r.last_login)}</td><td>{compact(r.requests)}</td><td class="num">{usd(r.cost)}</td></tr>{/each}
-        </tbody></table>
-      </div>
-    </div>
+    </section>
+  {/if}
 
-    <div class="u-card"><div class="u-ctitle">Activity log<button class="u-btn ghost sm" onclick={exportActivity}>export csv</button></div>
-      <table class="u-tbl"><thead><tr><th>time</th><th>src</th><th>actor</th><th>store</th><th>model</th><th>tok</th><th>cost</th><th>lat</th><th>status</th></tr></thead><tbody>
-        {#each ov.activity as a}<tr><td class="dim">{shortTs(a.ts)}</td><td><span class="u-tag {a.src}">{srcLabel(a.src)}</span></td><td class="mono">{a.actor ?? '—'}</td><td class="mono">{a.store_id ?? '—'}</td><td class="mono dim">{a.model ?? '—'}</td><td>{compact(a.tokens)}</td><td class="num">{usd(a.cost)}</td><td class="dim">{ms(a.latency_ms)}</td><td><span class="u-st {a.status}">{a.status}</span></td></tr>{/each}
-      </tbody></table>
+  <!-- ============ PEOPLE ============ -->
+  {#if tab === 'people'}
+    <div class="u-frow" style="margin-bottom:1rem">
+      <div class="u-seg">
+        <button class="u-segbtn" class:on={peopleSeg === 'app'} onclick={() => switchSeg('app')}>App users</button>
+        <button class="u-segbtn" class:on={peopleSeg === 'embed'} onclick={() => switchSeg('embed')}>Embed users</button>
+      </div>
+      <span class="u-hint">{peopleSeg === 'app' ? 'Registered accounts — humans + API keys' : 'Anonymous widget visitors — not registered'}</span>
     </div>
+  {/if}
+
+  <!-- ---- APP USERS (registered) ---- -->
+  {#if tab === 'people' && peopleSeg === 'app' && people}
+    {@const s = people.summary ?? {}}
+    <div class="u-tiles">
+      <div class="u-tile"><b>{s.active ?? 0}<small>/{s.total_users ?? 0}</small></b><span>Active users</span></div>
+      <div class="u-tile"><b>{s.most_active ?? '—'}</b><span>Most active · {compact(s.most_active_reqs ?? 0)} req</span></div>
+      <div class="u-tile"><b>{s.avg_q_per_user ?? 0}</b><span>Avg questions / user</span></div>
+      <div class="u-tile"><b>{s.satisfaction != null ? s.satisfaction + '%' : '—'}</b><span>Satisfaction 👍</span></div>
+      <div class="u-tile"><b>{s.humans ?? 0}<small> + {s.service_accounts ?? 0} keys</small></b><span>Humans · API keys</span></div>
+    </div>
+    <section class="u-sec">
+      <div class="u-sech">
+        <span class="u-sect">User leaderboard</span>
+        <span class="u-secbadge">● live · {lastMs}ms</span>
+      </div>
+      <div class="u-frow" style="margin-bottom:.6rem">
+        <input class="u-in" placeholder="search user / email…" bind:value={peopleSearch} style="min-width:180px" />
+        <button class="u-chip" class:on={showService} onclick={() => { showService = !showService; loadTab('people', true); }}>{showService ? '● incl. API keys' : '○ humans only'}</button>
+        <span class="u-hint" style="margin-left:auto">click a row → full activity drill-down</span>
+      </div>
+      <table class="u-tbl u-ppl">
+        <thead><tr>
+          {#each [['username','User'],['last_active','Last active'],['sessions','Sessions'],['requests','Questions'],['q_per_session','Q/sess'],['satisfaction','👍/👎'],['tokens','Tokens'],['cost','Cost'],['err_pct','Err%']] as [col,lbl]}
+            <th class="sortable" class:numh={col!=='username'} onclick={() => setPeopleSort(col)}>
+              {lbl}{#if peopleSort === col}<span class="sarrow">{peopleDesc ? '▾' : '▴'}</span>{/if}
+            </th>
+          {/each}
+        </tr></thead>
+        <tbody>
+          {#each sortedPeople as r}
+            <tr class="click" onclick={() => openPerson(r.username)}>
+              <td>
+                <span class="ppl-name">{r.label}</span>
+                {#if r.is_service}<span class="ppl-badge svc">key</span>{:else}<span class="ppl-badge">user</span>{/if}
+                {#if !r.active}<span class="ppl-badge off">off</span>{/if}
+                {#if r.email}<div class="ppl-email">{r.email}</div>{/if}
+              </td>
+              <td class="dim">{ago(r.last_active)}</td>
+              <td class="num">{compact(r.sessions)}</td>
+              <td class="num"><b>{compact(r.requests)}</b></td>
+              <td class="num dim">{r.q_per_session ?? 0}</td>
+              <td class="num">
+                {#if r.satisfaction != null}
+                  <span class="sat" class:good={r.satisfaction >= 70} class:bad={r.satisfaction < 50}>{r.satisfaction}%</span>
+                  <span class="dim" style="font-size:10px"> {r.ups}/{r.downs}</span>
+                {:else}<span class="dim">—</span>{/if}
+              </td>
+              <td class="num">{compact(r.tokens)}</td>
+              <td class="num">{usd(r.cost)}</td>
+              <td class="num" class:bad={r.err_pct > 5}>{r.err_pct ?? 0}%</td>
+            </tr>
+          {/each}
+          {#if !sortedPeople.length}<tr><td colspan="9" class="u-empty">no users in this window</td></tr>{/if}
+        </tbody>
+      </table>
+    </section>
+  {/if}
+
+  <!-- ---- EMBED USERS (anonymous widget visitors) ---- -->
+  {#if tab === 'people' && peopleSeg === 'embed' && embedPeople}
+    {@const s = embedPeople.summary ?? {}}
+    <div class="u-tiles">
+      <div class="u-tile"><b>{compact(s.sessions ?? 0)}</b><span>Visitor sessions</span></div>
+      <div class="u-tile"><b>{compact(s.messages ?? 0)}</b><span>Messages</span></div>
+      <div class="u-tile"><b>{s.widgets ?? 0}</b><span>Active widgets</span></div>
+      <div class="u-tile"><b>{s.avg_msgs_per_session ?? 0}</b><span>Avg msgs / session</span></div>
+      <div class="u-tile" class:bad={(s.success_pct ?? 100) < 95}><b>{s.success_pct ?? 100}%</b><span>Success rate</span></div>
+    </div>
+    <section class="u-sec">
+      <div class="u-sech">
+        <span class="u-sect">Embed visitors</span>
+        <span class="u-secbadge">● live · {lastMs}ms</span>
+      </div>
+      <div class="u-frow" style="margin-bottom:.6rem">
+        <div class="u-seg sm">
+          <button class="u-segbtn" class:on={embedView === 'session'} onclick={() => embedView = 'session'}>By session</button>
+          <button class="u-segbtn" class:on={embedView === 'widget'} onclick={() => embedView = 'widget'}>By widget</button>
+        </div>
+        {#if (s.tokens ?? 0) === 0}<span class="u-hint">older calls logged $0 tokens — only new traffic prices</span>{/if}
+        <span class="u-hint" style="margin-left:auto">click a session → message history</span>
+      </div>
+      {#if embedView === 'session'}
+        <table class="u-tbl">
+          <thead><tr><th>Visitor</th><th>Widget</th><th>Origin</th><th class="numh">Msgs</th><th class="numh">Avg ms</th><th class="numh">Tokens</th><th class="numh">Cost</th><th class="numh">Err</th><th>Last seen</th></tr></thead>
+          <tbody>
+            {#each embedPeople.by_session as r}
+              <tr class="click" onclick={() => openEmbedSession(r.session, r.session_short)}>
+                <td><span class="mono">{r.session_short}</span>{#if r.store}<span class="ppl-badge svc">{r.store}</span>{/if}</td>
+                <td class="dw-q" style="max-width:160px">{r.widget}</td>
+                <td class="dim mono" style="font-size:10.5px">{r.origin ?? '—'}</td>
+                <td class="num"><b>{compact(r.messages)}</b></td>
+                <td class="num dim">{r.avg_latency_ms}</td>
+                <td class="num">{compact(r.tokens)}</td>
+                <td class="num">{usd(r.cost)}</td>
+                <td class="num" class:bad={r.errors > 0}>{r.errors || 0}</td>
+                <td class="dim">{ago(r.last_seen)}</td>
+              </tr>
+            {/each}
+            {#if !embedPeople.by_session.length}<tr><td colspan="9" class="u-empty">no embed visitors in this window</td></tr>{/if}
+          </tbody>
+        </table>
+      {:else}
+        <table class="u-tbl">
+          <thead><tr><th>Widget</th><th>Store</th><th class="numh">Sessions</th><th class="numh">Messages</th><th class="numh">Cost</th><th class="numh">Err</th><th>Last seen</th></tr></thead>
+          <tbody>
+            {#each embedPeople.by_widget as r}
+              <tr><td class="dw-q" style="max-width:220px">{r.widget}</td><td class="mono dim">{r.store || '—'}</td><td class="num"><b>{compact(r.sessions)}</b></td><td class="num">{compact(r.messages)}</td><td class="num">{usd(r.cost)}</td><td class="num" class:bad={r.errors > 0}>{r.errors || 0}</td><td class="dim">{ago(r.last_seen)}</td></tr>
+            {/each}
+            {#if !embedPeople.by_widget.length}<tr><td colspan="7" class="u-empty">no widgets active</td></tr>{/if}
+          </tbody>
+        </table>
+      {/if}
+    </section>
   {/if}
 
   <!-- ============ PERFORMANCE ============ -->
@@ -492,6 +674,91 @@
       <div class="dw-body">
         {#if drawerLoading}<div class="u-load">loading…</div>
         {:else if drawerData?.error}<div class="u-err">{drawerData.error}</div>
+        {:else if drawerType === 'embed' && drawerData}
+          {#if !drawerData.found}
+            <div class="u-empty">no record for this session</div>
+          {:else}
+            {@const h = drawerData.header}
+            <div class="dw-meta">
+              <span class="ppl-badge svc">embed visitor</span>
+              <span class="dw-q" style="max-width:240px">{h.widget}</span>
+              {#if h.store}<span class="dim">· {h.store}</span>{/if}
+            </div>
+            <div class="u-substats" style="margin:0 0 1rem">
+              <span>Origin <b>{h.origin ?? '—'}</b></span>
+              <span>IP <b>{h.ip ?? '—'}</b></span>
+              <span>First <b>{ago(h.first_seen)}</b></span>
+              <span>Last <b>{ago(h.last_seen)}</b></span>
+            </div>
+            <div class="u-kpis dw-kpis">
+              <div class="u-kpi"><span class="k">MESSAGES</span><b>{compact(h.messages)}</b></div>
+              <div class="u-kpi"><span class="k">AVG LATENCY</span><b>{ms(h.avg_latency_ms)}</b></div>
+              <div class="u-kpi"><span class="k">TOKENS</span><b>{compact(h.tokens)}</b></div>
+              <div class="u-kpi"><span class="k">COST</span><b>{usd(h.cost)}</b></div>
+              <div class="u-kpi" class:bad={h.errors > 0}><span class="k">ERRORS</span><b>{h.errors}</b></div>
+            </div>
+            <div class="u-ctitle">Conversation</div>
+            {#if !drawerData.bodies_logged}
+              <p class="u-hint">Message bodies not logged (set EMBED_LOG_BODIES=1). Showing turns + sizes only.</p>
+            {/if}
+            {#each drawerData.messages ?? [] as m}
+              <div class="emc">
+                <div class="emc-ts">{shortTs(m.ts)} · {ms(m.latency_ms)} {#if !m.success}<span class="u-st error">error</span>{/if}</div>
+                {#if m.question}<div class="emc-q">{m.question}</div>{:else}<div class="emc-q dim">[question · {m.q_chars} chars]</div>{/if}
+                {#if m.answer}<div class="emc-a">{m.answer}</div>{:else}<div class="emc-a dim">[answer · {m.a_chars} chars]</div>{/if}
+              </div>
+            {/each}
+            {#if !(drawerData.messages ?? []).length}<div class="u-empty">no messages</div>{/if}
+          {/if}
+        {:else if drawerType === 'person' && drawerData}
+          {#if !drawerData.found}
+            <div class="u-empty">no record for this user</div>
+          {:else}
+            {@const h = drawerData.header}
+            <div class="dw-meta">
+              <span class="ppl-badge {h.is_service ? 'svc' : ''}">{h.is_service ? 'API key' : 'user'}</span>
+              {#if h.email}<span class="dim">{h.email}</span>{/if}
+              <span class="dim">· {h.role}</span>
+              {#if !h.active}<span class="ppl-badge off">disabled</span>{/if}
+            </div>
+            <div class="u-kpis dw-kpis">
+              <div class="u-kpi"><span class="k">QUESTIONS</span><b>{compact(h.requests)}</b></div>
+              <div class="u-kpi"><span class="k">SESSIONS</span><b>{compact(h.sessions)}</b></div>
+              <div class="u-kpi"><span class="k">SATISFACTION</span><b>{h.satisfaction != null ? h.satisfaction + '%' : '—'}</b></div>
+              <div class="u-kpi"><span class="k">TOKENS</span><b>{compact(h.tokens)}</b></div>
+              <div class="u-kpi"><span class="k">COST</span><b>{usd(h.cost)}</b></div>
+              <div class="u-kpi" class:bad={h.err_pct > 5}><span class="k">ERROR %</span><b>{h.err_pct}%</b></div>
+            </div>
+            <div class="u-substats" style="margin:0 0 1rem">
+              <span>👍 <b>{h.ups}</b></span><span>👎 <b>{h.downs}</b></span>
+              <span>Last active <b>{ago(h.last_active)}</b></span>
+              <span>Last login <b>{ago(h.last_login)}</b></span>
+              {#if h.created}<span>Joined <b>{shortTs(h.created)}</b></span>{/if}
+            </div>
+            {#if (drawerData.series ?? []).length}
+              {@const mx = Math.max(1, ...drawerData.series.map((x:any)=>x.requests))}
+              <div class="u-ctitle">Daily questions</div>
+              <div class="dw-spark">
+                {#each drawerData.series as b}<div class="dw-bar" title={`${shortTs(b.bucket)} · ${b.requests} q`} style={`height:${Math.round((b.requests/mx)*100)}%`}></div>{/each}
+              </div>
+            {/if}
+            {#if (drawerData.by_source ?? []).length}
+              <div class="u-ctitle" style="margin-top:1rem">By source</div>
+              <table class="u-tbl"><thead><tr><th>source</th><th>req</th><th>cost</th></tr></thead><tbody>
+                {#each drawerData.by_source as r}<tr><td><span class="u-tag {r.src}">{srcLabel(r.src)}</span></td><td>{compact(r.requests)}</td><td class="num">{usd(r.cost)}</td></tr>{/each}
+              </tbody></table>
+            {/if}
+            <div class="u-ctitle" style="margin-top:1rem">Recent sessions ({drawerData.sessions?.length ?? 0})</div>
+            <table class="u-tbl"><thead><tr><th>started</th><th>first message</th></tr></thead><tbody>
+              {#each drawerData.sessions ?? [] as r}<tr><td class="dim">{shortTs(r.updated)}</td><td class="dw-q">{r.first_message ?? '—'}</td></tr>{/each}
+              {#if !(drawerData.sessions ?? []).length}<tr><td colspan="2" class="u-empty">no sessions in window</td></tr>{/if}
+            </tbody></table>
+            <div class="u-ctitle" style="margin-top:1rem">Rated questions ({drawerData.questions?.length ?? 0})</div>
+            <table class="u-tbl"><thead><tr><th>when</th><th>question</th><th>👍/👎</th></tr></thead><tbody>
+              {#each drawerData.questions ?? [] as r}<tr><td class="dim">{shortTs(r.ts)}</td><td class="dw-q">{r.question}</td><td>{#if r.rating === 'up'}<span class="sat good">👍</span>{:else}<span class="sat bad">👎</span>{/if}</td></tr>{/each}
+              {#if !(drawerData.questions ?? []).length}<tr><td colspan="3" class="u-empty">no rated questions (only thumbs-rated answers show here)</td></tr>{/if}
+            </tbody></table>
+          {/if}
         {:else if drawerData}
           {@const t = drawerData.totals}
           <div class="u-kpis dw-kpis">
@@ -517,17 +784,23 @@
 <style>
   .usage { color: #2c2620; font-size: 13px; }
   /* shell = rail + main, admin-Overview layout */
-  .u-shell { display: flex; align-items: flex-start; gap: 0; }
-  .u-rail { flex: none; width: 200px; padding: 1.1rem .6rem; border-right: 1px solid #ece2d4; min-height: 70vh; position: sticky; top: 0; }
-  .u-railhead { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #9a4a2f; padding: 0 .55rem .6rem; }
-  .u-railgrp { font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: #b8ad9c; padding: .9rem .55rem .3rem; }
-  .u-railitem { width: 100%; display: flex; align-items: center; gap: .55rem; border: none; background: none; cursor: pointer; padding: .45rem .55rem; border-radius: 8px; font-size: 13px; color: #6b6052; text-align: left; }
-  .u-railitem:hover { background: #f5efe7; color: #2c2620; }
-  .u-railitem.on { background: #f3e6df; color: #9a4a2f; font-weight: 600; }
-  .u-ricon { width: 16px; height: 16px; flex: none; opacity: .85; }
-  .u-railitem.on .u-ricon { opacity: 1; }
+  /* Admin Clean — matches command-center .cc-rail exactly (flush, flat bg, white-card active) */
+  .u-shell { display: flex; align-items: stretch; gap: 0; }
+  .u-rail { flex: none; width: 220px; padding: 0 8px 120px; border-right: 1px solid var(--pw-border, #e8e6dd); background: var(--pw-bg-alt, #f7f6f3); position: sticky; top: 0; height: calc(100vh - 56px); overflow-y: auto; overscroll-behavior: contain; align-self: start; }
+  .u-rail::-webkit-scrollbar { width: 6px; }
+  .u-rail::-webkit-scrollbar-thumb { background: var(--pw-border, #e8e6dd); border-radius: 3px; }
+  .u-rail::-webkit-scrollbar-track { background: transparent; }
+  .u-railgrp { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--pw-muted, #6f6e69); padding: 12px 14px 6px; }
+  .u-railitem { position: relative; width: 100%; display: flex; align-items: center; gap: 10px; border: none; background: transparent; cursor: pointer; padding: 8px 12px; border-radius: 8px; font-size: 12px; line-height: 1.3; color: var(--pw-ink, #2c2c2c); text-align: left; transition: background .15s ease, color .15s ease, transform .12s ease; }
+  .u-railitem:hover { background: rgba(201,99,66,.06); color: var(--pw-ink, #2c2c2c); }
+  .u-railitem:active { transform: translateY(.5px); }
+  .u-railitem.on { background: #fff; color: var(--pw-accent, #c96342); font-weight: 600; box-shadow: 0 1px 3px rgba(201,99,66,.08), 0 0 0 1px rgba(201,99,66,.14); }
+  .u-railitem.on::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 3px; height: 60%; border-radius: 3px; background: linear-gradient(180deg, #c96342, var(--pw-accent, #c96342)); }
+  .u-ricon { width: 14px; height: 14px; flex: 0 0 auto; color: var(--pw-muted, #6f6e69); transition: color .15s ease; }
+  .u-railitem.on .u-ricon { color: var(--pw-accent, #c96342); }
   .u-rlbl { flex: 1; }
-  .u-rdot { width: 7px; height: 7px; border-radius: 50%; background: #2f6b3a; flex: none; box-shadow: 0 0 0 3px rgba(47,107,58,.15); }
+  .u-rdot { width: 7px; height: 7px; border-radius: 50%; background: #2f6b3a; flex: none; box-shadow: 0 0 0 3px rgba(47,107,58,.15); animation: u-pulse 2s ease-in-out infinite; }
+  @keyframes u-pulse { 0%,100% { box-shadow: 0 0 0 3px rgba(47,107,58,.15); } 50% { box-shadow: 0 0 0 5px rgba(47,107,58,.06); } }
   .u-main { flex: 1; min-width: 0; padding: 1.1rem 1.25rem; }
   .u-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1rem; }
   .u-head h1 { margin: 0; font-size: 1.35rem; }
@@ -540,7 +813,7 @@
   .u-tile b small { font-size: .9rem; font-weight: 600; color: #9a8f80; }
   .u-tile span { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: #9a8f80; }
   .u-tile.bad b { color: #b3261e; }
-  @media (max-width: 900px) { .u-rail { width: 56px; } .u-railhead, .u-railgrp, .u-rlbl { display: none; } .u-railitem { justify-content: center; } .u-tiles { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 900px) { .u-rail { width: 56px; } .u-railgrp, .u-rlbl { display: none; } .u-railitem { justify-content: center; } .u-tiles { grid-template-columns: repeat(2, 1fr); } }
   .u-filters { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; }
   .u-frow { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
   .u-lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #9a8f80; }
@@ -575,6 +848,15 @@
   .u-card { background: #fff; border: 1px solid #ece2d4; border-radius: 10px; padding: .75rem .9rem; margin-bottom: 1rem; }
   .u-ctitle { font-size: 12px; font-weight: 600; color: #6b6052; margin-bottom: .5rem; text-transform: uppercase; letter-spacing: .03em; }
   .u-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  /* Admin-Overview section panels (◷ TITLE + live badge) */
+  .u-sec { border: 1px solid #ece2d4; border-radius: 10px; padding: 1rem 1.1rem; background: #fff; margin-bottom: 1rem; }
+  .u-sech { display: flex; align-items: center; justify-content: space-between; margin-bottom: .9rem; }
+  .u-sect { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; color: #9a4a2f; }
+  .u-sect::before { content: '◷'; margin-right: .4rem; opacity: .8; }
+  .u-secbadge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #9a8f80; font-family: ui-monospace, Menlo, monospace; }
+  .u-sec .u-cards3, .u-sec .u-substats { margin-bottom: 0; }
+  .u-sec .u-substats { margin-top: .75rem; }
+  .u-sec > .u-card:last-child, .u-sec .u-grid2 .u-card { margin-bottom: 0; }
   .u-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
   .u-tbl th { text-align: left; font-weight: 600; color: #9a8f80; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; padding: .3rem .4rem; border-bottom: 1px solid #ece2d4; }
   .u-tbl td { padding: .3rem .4rem; border-bottom: 1px solid #f5efe7; }
@@ -605,5 +887,35 @@
   .dw-type { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: #9a8f80; }
   .dw-head h2 { margin: .15rem 0 0; font-size: 1rem; }
   .dw-x { border: none; background: none; font-size: 1.5rem; cursor: pointer; color: #9a8f80; line-height: 1; }
-  .dw-body { padding: 1.25rem; } .dw-kpis { grid-template-columns: repeat(2, 1fr); }
+  .dw-body { padding: 1.25rem; } .dw-kpis { grid-template-columns: repeat(3, 1fr); }
+  /* people leaderboard */
+  .u-tbl th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+  .u-tbl th.sortable:hover { color: #9a4a2f; }
+  .u-tbl th.numh { text-align: right; }
+  .sarrow { margin-left: 2px; color: #9a4a2f; }
+  .u-ppl td { vertical-align: top; }
+  .ppl-name { font-weight: 600; color: #2c2620; }
+  .ppl-email { font-size: 10.5px; color: #b8ad9c; margin-top: 1px; }
+  .ppl-badge { font-size: 9px; text-transform: uppercase; letter-spacing: .04em; padding: .05rem .3rem; border-radius: 4px; background: #f3ece1; color: #8a7a5a; margin-left: .35rem; vertical-align: middle; }
+  .ppl-badge.svc { background: #e7eef5; color: #2f5a9a; }
+  .ppl-badge.off { background: #fbe9e7; color: #b3261e; }
+  .sat { font-weight: 600; color: #6b6052; } .sat.good { color: #2f6b3a; } .sat.bad { color: #b3261e; }
+  /* person drawer extras */
+  .dw-meta { display: flex; align-items: center; gap: .5rem; font-size: 12px; margin-bottom: 1rem; flex-wrap: wrap; }
+  .dw-meta .ppl-badge { margin-left: 0; }
+  .dw-spark { display: flex; align-items: flex-end; gap: 2px; height: 70px; padding: .25rem 0; }
+  .dw-bar { flex: 1; min-width: 2px; background: linear-gradient(180deg, #c96342, #9a4a2f); border-radius: 2px 2px 0 0; min-height: 2px; opacity: .85; }
+  .dw-q { font-size: 11.5px; color: #2c2620; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* segment toggle (App users / Embed users) */
+  .u-seg { display: inline-flex; border: 1px solid #e0d6c8; border-radius: 8px; overflow: hidden; background: #fff; }
+  .u-segbtn { border: none; background: #fff; color: #6b6052; padding: .4rem .9rem; cursor: pointer; font-size: 12px; font-weight: 600; border-right: 1px solid #e0d6c8; }
+  .u-segbtn:last-child { border-right: none; }
+  .u-segbtn.on { background: #9a4a2f; color: #fff; }
+  .u-seg.sm .u-segbtn { padding: .25rem .65rem; font-size: 11px; }
+  /* embed conversation turns */
+  .emc { border: 1px solid #ece2d4; border-radius: 8px; padding: .6rem .7rem; margin-bottom: .6rem; background: #faf6f0; }
+  .emc-ts { font-size: 10px; color: #9a8f80; margin-bottom: .35rem; }
+  .emc-q { font-size: 12px; color: #2c2620; font-weight: 600; margin-bottom: .3rem; white-space: pre-wrap; }
+  .emc-a { font-size: 11.5px; color: #6b6052; white-space: pre-wrap; }
+  .emc-q.dim, .emc-a.dim { font-weight: 400; color: #b8ad9c; font-style: italic; }
 </style>

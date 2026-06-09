@@ -5591,6 +5591,8 @@ function signUserJWT($user) {
    if (activeTab === 'upload' && !dsData && !dsLoading) {
      loadDataSource();
      try { if (!dqLoaded) loadDataQuality(false); } catch {}
+     // Overview/EDA/Quality now stack in one view → eagerly load EDA too.
+     try { if (!edaData && !edaLoading) loadEda(); } catch {}
    }
  });
 
@@ -6560,28 +6562,7 @@ function signUserJWT($user) {
 </script>
 
 <div class="set-shell">
-  {#if activeTab === 'upload'}
-  <!-- Data Source dedicated rail (Overview / EDA / Quality) — same .set-rail style as all screens -->
-  <aside class="set-rail">
-    <div class="set-rail-group">
-      <div class="set-rail-grouplabel">DATA SOURCE</div>
-      <button data-tab="ds-overview" class:active={dsView==='overview'} onclick={() => dsGoView('overview')}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-        <span>Overview</span>
-        {#if dsData?.summary?.tables}<span class="set-rail-count">{dsData.summary.tables}</span>{/if}
-      </button>
-      <button data-tab="ds-eda" class:active={dsView==='eda'} onclick={() => dsGoView('eda')}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6"/><rect x="12" y="7" width="3" height="10"/><rect x="17" y="13" width="3" height="4"/></svg>
-        <span>EDA</span>
-      </button>
-      <button data-tab="ds-quality" class:active={dsView==='quality'} onclick={() => dsGoView('quality')}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        <span>Quality</span>
-        {#if qualityRollup.issues.length}<span class="set-rail-count">{qualityRollup.issues.length}</span>{/if}
-      </button>
-    </div>
-  </aside>
-  {:else}
+  <!-- Data Source no longer swaps the rail — it's a Workspace rail item; its Overview/EDA/Quality stack in the main pane. -->
   <aside class="set-rail">
     {#if !loading}
     {@const railTabs = tabs}
@@ -6589,6 +6570,7 @@ function signUserJWT($user) {
     {@const groups = [
       { label: 'Workspace', icon: 'workspace', items: [
         { id: 'datasets', label: 'Cockpit' },
+        { id: 'upload', label: 'Data Source' },
         { id: 'training', label: 'Training' },
         { id: 'docs', label: 'Docs' },
         { id: 'queries', label: 'Queries' },
@@ -6627,7 +6609,7 @@ function signUserJWT($user) {
         <div class="set-rail-group">
           <div class="set-rail-grouplabel">{g.label}</div>
           {#each visibleItems as it}
-            <button data-tab={it.id} class:active={activeTab === it.id} onclick={(e) => { activeTab = it.id; logTabSwitch(it.id); if (it.id === 'lineage' && detail?.tables) { for (const t of detail.tables) loadTableDetail(t.name); } if (it.id === 'fed-health') loadFedHealth(); if (it.id === 'rls' && !rlsConfig) { loadRlsConfig(); loadRlsSchemaHints(); } /* agent-template API removed (single-agent): loadAgentTpl() dropped — its panel is gated on agentTplStatus?.applied (stays null), so skipping avoids 3 dead /agent-template 404s on Cockpit open */ if (it.id === 'upload') { loadDataSource(); if (!dqLoaded) loadDataQuality(false); } if (it.id === 'pipeline') { loadTrainingSteps(); loadTrainingRuns(); } if (it.id === 'datasets') { try { inspectsBatchLoaded = false; } catch {} if (!detail) { loadDetail()?.catch?.(()=>{}); } if (!extractionPlansLoaded) loadExtractionPlans(); } try { (e.currentTarget as HTMLElement)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch {} }}>
+            <button data-tab={it.id} class:active={activeTab === it.id} onclick={(e) => { activeTab = it.id; logTabSwitch(it.id); if (it.id === 'lineage' && detail?.tables) { for (const t of detail.tables) loadTableDetail(t.name); } if (it.id === 'fed-health') loadFedHealth(); if (it.id === 'rls' && !rlsConfig) { loadRlsConfig(); loadRlsSchemaHints(); } /* agent-template API removed (single-agent): loadAgentTpl() dropped — its panel is gated on agentTplStatus?.applied (stays null), so skipping avoids 3 dead /agent-template 404s on Cockpit open */ if (it.id === 'upload') { loadDataSource(); if (!dqLoaded) loadDataQuality(false); if (!edaData && !edaLoading) loadEda(); } if (it.id === 'pipeline') { loadTrainingSteps(); loadTrainingRuns(); } if (it.id === 'datasets') { try { inspectsBatchLoaded = false; } catch {} if (!detail) { loadDetail()?.catch?.(()=>{}); } if (!extractionPlansLoaded) loadExtractionPlans(); } try { (e.currentTarget as HTMLElement)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch {} }}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 {#if it.id === 'cockpit'}<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2" fill="currentColor"/>
                 {:else if it.id === 'brain-definitions'}<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
@@ -6641,6 +6623,7 @@ function signUserJWT($user) {
                 {:else if it.id === 'brain-conflicts'}<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
                 {:else if it.id.startsWith('brain-')}<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><line x1="7.5" y1="7.5" x2="10.5" y2="16"/><line x1="16.5" y1="7.5" x2="13.5" y2="16"/><line x1="8.5" y1="6" x2="15.5" y2="6"/>
                 {:else if it.id === 'datasets'}<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+                {:else if it.id === 'upload'}<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>
                 {:else if it.id === 'data-quality'}<path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="9"/>
                 {:else if it.id === 'knowledge'}<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
                 {:else if it.id === 'rules'}<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
@@ -6678,7 +6661,6 @@ function signUserJWT($user) {
     {/each}
     {/if}
   </aside>
-  {/if}
 
   <main class="set-main">
 
@@ -6863,11 +6845,6 @@ function signUserJWT($user) {
           <span class="set-quick-name">Graph</span>
           <span class="set-quick-sub">Entities + links</span>
         </button>
-        <a class="set-quick-card" href="{base}/project/{slug}/resolver">
-          <span class="set-quick-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 12h6"/><path d="M15 12h6"/><path d="M12 3v6"/><path d="M12 15v6"/></svg></span>
-          <span class="set-quick-name">Resolver</span>
-          <span class="set-quick-sub">Skill router</span>
-        </a>
         <a class="set-quick-card" href="{base}/project/{slug}/pages">
           <span class="set-quick-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg></span>
           <span class="set-quick-name">Pages</span>
@@ -7516,7 +7493,8 @@ function signUserJWT($user) {
     {#if activeTab === 'upload'}
     <input type="file" accept=".csv,.xlsx,.xls,.json,.sql,.md,.txt,.py,.pptx,.docx,.pdf,.jpg,.jpeg,.png,.tiff,.bmp,.gif,.webp,.parquet,.ods,.xml,.html,.htm,.zip,.eml" multiple onchange={(e) => { const files = (e.target as HTMLInputElement).files; if (files && files.length > 0) routeUpload(files); }} bind:this={fileInputEl} style="display: none;" />
 
-    {#if dsView === 'overview'}
+    <!-- Data Source: Overview → EDA → Quality, all stacked in one scroll (no sub-rail) -->
+    <div class="dsx-sechead">DATA SOURCE</div>
     <!-- ═══ HEALTH RINGS ═══ -->
     {#if true}
     {@const _ds = dsData?.summary || {}}
@@ -7620,7 +7598,7 @@ function signUserJWT($user) {
       {#if dsData && !dsSortedTables().length}<div class="dsx-empty">no tables{dsFilter ? ' match filter' : ' — upload data to begin'}</div>{/if}
     </div>
 
-    {:else if dsView === 'eda'}
+    <div class="dsx-sechead dsx-sechead-gap">EDA</div>
     <!-- ═══ EDA — per-column profiling (live SQL scan) ═══ -->
     <div class="dsx-eda-head">
       <span class="dsx-eda-title">Exploratory analysis</span>
@@ -7677,7 +7655,7 @@ function signUserJWT($user) {
       </div>
     {/if}
 
-    {:else if dsView === 'quality'}
+    <div class="dsx-sechead dsx-sechead-gap">QUALITY</div>
     <!-- ═══ QUALITY — detailed error scanner (rich dqData) ═══ -->
     <div id="dq-section" class="dsx-eda-head">
       <span class="dsx-eda-title">Data quality</span>
@@ -7791,7 +7769,6 @@ function signUserJWT($user) {
     {:else}
       <div class="dsx-empty">no scan yet — press ⟳ rescan</div>
     {/if}
-    {/if}<!-- end dsView -->
 
     {/if}<!-- end upload tab -->
   <!-- ═══ BRAIN (unified hub, shared with /ui/brain) — rail item drives the category ═══ -->
@@ -18296,6 +18273,8 @@ function signUserJWT($user) {
 .dsx-subcount { margin-left:auto; font-size:11px; font-weight:700; background:#c0392b; color:#fff; border-radius:20px; padding:1px 7px; }
 .dsx-vbody { flex:1; min-width:0; }
 /* EDA + Quality */
+.dsx-sechead { font-size:12px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:var(--pw-muted,#9a8f80); padding:0 0 8px; border-bottom:1px solid var(--pw-border,#e7e0d6); margin:0 0 14px; }
+.dsx-sechead-gap { margin-top:30px; }
 .dsx-eda-head { display:flex; align-items:center; gap:10px; margin:0 0 12px; }
 .dsx-eda-title { font-size:14px; font-weight:700; color:var(--pw-ink,#2c2620); }
 .dsx-eda-meta { font-size:12px; color:var(--pw-muted,#6b6052); }

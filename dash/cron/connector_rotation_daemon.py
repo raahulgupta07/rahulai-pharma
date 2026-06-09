@@ -85,6 +85,15 @@ def run_cycle() -> dict:
     # Fetch connections whose secret is overdue AND cooldown has passed.
     from sqlalchemy import text as _t
 
+    # dash.dash_connections removed 2026-06-09 (mig 180, connectors feature unused
+    # in single-tenant pharma). Skip quietly if table absent — no traceback noise.
+    try:
+        with eng.connect() as c:
+            if c.execute(_t("SELECT to_regclass('dash.dash_connections')")).scalar() is None:
+                return out
+    except Exception:
+        return out
+
     try:
         with eng.connect() as c:
             rows = c.execute(

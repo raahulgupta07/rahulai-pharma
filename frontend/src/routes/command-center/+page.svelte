@@ -3496,6 +3496,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  :global(.cc-rail .rail-group:hover) { background: rgba(201,99,66,0.04); }
  :global(.cc-rail .rail-group .caret) { font-size: 9px; color: var(--pw-muted); }
  :global(.cc-rail-btn) {
+ position: relative;
  display: flex;
  align-items: center;
  gap: 10px;
@@ -3504,21 +3505,33 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  background: transparent;
  border: none;
  padding: 8px 12px;
- border-radius: 0;
+ border-radius: 8px;
  font-size: 12px;
  color: var(--pw-ink);
  font-family: inherit;
  cursor: pointer;
- border-left: 2px solid transparent;
  line-height: 1.3;
+ transition: background .15s ease, color .15s ease, transform .12s ease;
  }
- :global(.cc-rail-btn svg) { width: 14px; height: 14px; flex: 0 0 auto; color: var(--pw-muted); }
- :global(.cc-rail-btn:hover) { background: rgba(201, 99, 66, 0.04); }
+ :global(.cc-rail-btn svg) { width: 14px; height: 14px; flex: 0 0 auto; color: var(--pw-muted); transition: color .15s ease; }
+ :global(.cc-rail-btn:hover) { background: rgba(201, 99, 66, 0.06); color: var(--pw-ink); }
+ :global(.cc-rail-btn:active) { transform: translateY(.5px); }
  :global(.cc-rail-btn.active) {
- background: rgba(201, 99, 66, 0.08);
+ background: #fff;
  color: var(--pw-accent);
  font-weight: 600;
- border-left: 2px solid transparent;
+ box-shadow: 0 1px 3px rgba(201,99,66,.08), 0 0 0 1px rgba(201,99,66,.14);
+ }
+ :global(.cc-rail-btn.active::before) {
+ content: '';
+ position: absolute;
+ left: 0;
+ top: 50%;
+ transform: translateY(-50%);
+ width: 3px;
+ height: 60%;
+ border-radius: 3px;
+ background: linear-gradient(180deg, #c96342, var(--pw-accent));
  }
  :global(.cc-rail-btn.active svg) { color: var(--pw-accent); }
 

@@ -12828,3 +12828,138 @@ CREATE POLICY vec_scope ON dash.dash_vectors USING (((COALESCE(current_setting('
 
 \unrestrict 7mCQm2rlrXfdkFhFKDGnzYlPuATnq005MEjseRsSjZEnluhZhzZ2H7sQ963B6Ke
 
+
+-- ============================================================
+-- POST-BASELINE RECONCILIATION (migrations 179, 180)
+-- Keeps fresh-deploy schema == live. Baseline still CREATEs the
+-- dormant clusters above; this block drops them + adds latency_ms
+-- to v_usage_unified. Idempotent (IF EXISTS / OR REPLACE).
+-- ============================================================
+
+-- mig 179: latency_ms on v_usage_unified
+CREATE OR REPLACE VIEW public.v_usage_unified AS
+  SELECT 'platform'::text AS src,
+     dash_llm_costs.ts,
+     COALESCE(dash_llm_costs.actor, 'system'::text) AS actor,
+     NULL::text AS store_id,
+     dash_llm_costs.model,
+     COALESCE(dash_llm_costs.tokens_in, 0) AS tokens_in,
+     COALESCE(dash_llm_costs.tokens_out, 0) AS tokens_out,
+     COALESCE(dash_llm_costs.cost_usd, 0::numeric) AS cost_usd,
+         CASE WHEN dash_llm_costs.ok THEN 'ok'::text ELSE 'error'::text END AS status,
+     NULL::integer AS latency_ms
+    FROM dash_llm_costs
+   WHERE COALESCE(dash_llm_costs.task, ''::text) !~~ 'train%'::text
+ UNION ALL
+  SELECT 'training'::text AS src,
+     dash_llm_costs.ts,
+     'system'::text AS actor,
+     NULL::text AS store_id,
+     dash_llm_costs.model,
+     COALESCE(dash_llm_costs.tokens_in, 0) AS tokens_in,
+     COALESCE(dash_llm_costs.tokens_out, 0) AS tokens_out,
+     COALESCE(dash_llm_costs.cost_usd, 0::numeric) AS cost_usd,
+         CASE WHEN dash_llm_costs.ok THEN 'ok'::text ELSE 'error'::text END AS status,
+     NULL::integer AS latency_ms
+    FROM dash_llm_costs
+   WHERE COALESCE(dash_llm_costs.task, ''::text) ~~ 'train%'::text
+ UNION ALL
+  SELECT
+         CASE WHEN dash_apigw_usage.request_type = 'embedding'::text THEN 'embedding'::text
+              ELSE 'api_key'::text END AS src,
+     dash_apigw_usage.ts,
+     COALESCE(dash_apigw_usage.service_account, 'unknown'::text) AS actor,
+     dash_apigw_usage.store_id,
+     COALESCE(NULLIF(dash_apigw_usage.engine_model, ''::text), dash_apigw_usage.model) AS model,
+     COALESCE(dash_apigw_usage.prompt_tokens, 0) AS tokens_in,
+     COALESCE(dash_apigw_usage.completion_tokens, 0) AS tokens_out,
+     COALESCE(dash_apigw_usage.cost_usd, 0::numeric) AS cost_usd,
+     COALESCE(dash_apigw_usage.status, 'ok'::text) AS status,
+     dash_apigw_usage.latency_ms
+    FROM dash_apigw_usage
+ UNION ALL
+  SELECT 'embed'::text AS src,
+     dash_embed_calls.ts,
+     COALESCE(dash_embed_calls.external_user, 'anon'::text) AS actor,
+     NULL::text AS store_id,
+     COALESCE(NULLIF(dash_embed_calls.engine_model, ''::text), 'google/gemini-3-flash-preview'::text) AS model,
+     COALESCE(dash_embed_calls.tokens_in, 0) AS tokens_in,
+     COALESCE(dash_embed_calls.tokens_out, 0) AS tokens_out,
+     COALESCE(dash_embed_calls.cost_usd, 0::numeric) AS cost_usd,
+         CASE WHEN dash_embed_calls.success THEN 'ok'::text ELSE 'error'::text END AS status,
+     dash_embed_calls.latency_ms
+    FROM dash_embed_calls;
+
+-- mig 180: drop 10 dormant clusters
+DROP TABLE IF EXISTS dash.dash_venture_competitors CASCADE;
+DROP TABLE IF EXISTS dash.dash_venture_deals CASCADE;
+DROP TABLE IF EXISTS dash.dash_venture_financials CASCADE;
+DROP TABLE IF EXISTS dash.dash_venture_partners CASCADE;
+DROP TABLE IF EXISTS dash.dash_venture_scenarios CASCADE;
+DROP TABLE IF EXISTS dash.dash_venture_verdict_drift CASCADE;
+DROP TABLE IF EXISTS dash.dash_investment_memos CASCADE;
+DROP TABLE IF EXISTS dash.dash_investment_runs CASCADE;
+DROP TABLE IF EXISTS dash.dash_automl_experiments CASCADE;
+DROP TABLE IF EXISTS dash.dash_automl_followups CASCADE;
+DROP TABLE IF EXISTS dash.dash_automl_reports CASCADE;
+DROP TABLE IF EXISTS dash.dash_automl_staging CASCADE;
+DROP TABLE IF EXISTS dash.dash_automl_upload_sets CASCADE;
+DROP TABLE IF EXISTS dash.dash_dream_findings CASCADE;
+DROP TABLE IF EXISTS dash.dash_dream_insights CASCADE;
+DROP TABLE IF EXISTS dash.dash_dream_lite_runs CASCADE;
+DROP TABLE IF EXISTS dash.dash_dream_precompute_cache CASCADE;
+DROP TABLE IF EXISTS dash.dash_dream_runs CASCADE;
+DROP TABLE IF EXISTS dash.dash_autosim_briefs CASCADE;
+DROP TABLE IF EXISTS dash.dash_autosim_packs CASCADE;
+DROP TABLE IF EXISTS dash.dash_autosim_runs CASCADE;
+DROP TABLE IF EXISTS dash.dash_campaigns CASCADE;
+DROP TABLE IF EXISTS dash.dash_campaign_events CASCADE;
+DROP TABLE IF EXISTS dash.dash_campaign_metrics CASCADE;
+DROP TABLE IF EXISTS dash.dash_conversions CASCADE;
+DROP TABLE IF EXISTS dash.dash_touchpoints CASCADE;
+DROP TABLE IF EXISTS dash.dash_customer_scores CASCADE;
+DROP TABLE IF EXISTS dash.dash_attribution_credits CASCADE;
+DROP TABLE IF EXISTS dash.dash_segment_snapshots CASCADE;
+DROP TABLE IF EXISTS dash.dash_subscription_snapshots CASCADE;
+DROP TABLE IF EXISTS dash.dash_slack_workspaces CASCADE;
+DROP TABLE IF EXISTS dash.dash_slack_channel_routes CASCADE;
+DROP TABLE IF EXISTS dash.dash_voice_numbers CASCADE;
+DROP TABLE IF EXISTS dash.dash_email_accounts CASCADE;
+DROP TABLE IF EXISTS dash.dash_channel_messages CASCADE;
+DROP TABLE IF EXISTS dash.dash_channel_threads CASCADE;
+DROP TABLE IF EXISTS dash.dash_slide_critique CASCADE;
+DROP TABLE IF EXISTS dash.dash_slide_live_data CASCADE;
+DROP TABLE IF EXISTS dash.dash_slide_narration CASCADE;
+DROP TABLE IF EXISTS dash.dash_slide_templates CASCADE;
+DROP TABLE IF EXISTS dash.dash_deep_deck_gaps CASCADE;
+DROP TABLE IF EXISTS dash.dash_deep_deck_queries CASCADE;
+DROP TABLE IF EXISTS dash.dash_deep_deck_runs CASCADE;
+DROP TABLE IF EXISTS dash.dash_mcp_servers CASCADE;
+DROP TABLE IF EXISTS dash.dash_mcp_invocations CASCADE;
+DROP TABLE IF EXISTS dash.dash_mcp_tool_bindings CASCADE;
+DROP TABLE IF EXISTS dash.dash_connections CASCADE;
+DROP TABLE IF EXISTS dash.dash_connection_audit CASCADE;
+DROP TABLE IF EXISTS dash.dash_connection_user_tokens CASCADE;
+DROP TABLE IF EXISTS dash.dash_approval_requests CASCADE;
+DROP TABLE IF EXISTS dash.dash_approval_audit CASCADE;
+DROP TABLE IF EXISTS dash.dash_approval_signatures CASCADE;
+DROP TABLE IF EXISTS dash.dash_hitl_pending CASCADE;
+DROP TABLE IF EXISTS dash.dash_hook_audit CASCADE;
+DROP TABLE IF EXISTS dash.dash_brainbench_corpus CASCADE;
+DROP TABLE IF EXISTS dash.dash_brainbench_results CASCADE;
+DROP TABLE IF EXISTS dash.dash_brainbench_runs CASCADE;
+DROP TABLE IF EXISTS dash.dash_eval_baselines CASCADE;
+DROP TABLE IF EXISTS dash.dash_eval_results CASCADE;
+DROP TABLE IF EXISTS dash.dash_ab_revert_events CASCADE;
+DROP TABLE IF EXISTS dash.dash_ab_revert_runs CASCADE;
+DROP TABLE IF EXISTS dash.dash_sim_comparison_runs CASCADE;
+DROP TABLE IF EXISTS dash.dash_sim_recommendations CASCADE;
+DROP TABLE IF EXISTS dash.dash_anti_patterns CASCADE;
+
+-- mig 181: drop skills marketplace feature (6 tables)
+DROP TABLE IF EXISTS dash.dash_skill_bindings CASCADE;
+DROP TABLE IF EXISTS dash.dash_skill_invocations CASCADE;
+DROP TABLE IF EXISTS dash.dash_skill_drafts CASCADE;
+DROP TABLE IF EXISTS dash.dash_skill_marketplace CASCADE;
+DROP TABLE IF EXISTS dash.dash_skill_audit_log CASCADE;
+DROP TABLE IF EXISTS dash.dash_skills CASCADE;

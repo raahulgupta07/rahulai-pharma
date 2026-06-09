@@ -1219,45 +1219,11 @@ async def project_chat(slug: str, request: Request):
     except Exception as _she:
         logging.debug(f"shop context skipped: {_she}")
 
-    # Follow-up context: when scope-gate bypass detected a short pronoun-question,
-    # prepend the prior Q+A pair so the agent has context to resolve "this/that".
-    # Without this, agent sees "Show me the data behind this" alone → may still
-    # refuse internally even though scope gate let it through.
-    if _skip_scope_gate and session_id:
-        try:
-            from db import get_sql_engine as _gse_fu2
-            _fu_eng = _gse_fu2()
-            with _fu_eng.connect() as _fc:
-                _last = _fc.execute(text(
-                    "SELECT runs FROM ai.agno_sessions WHERE session_id=:sid"
-                ), {"sid": session_id}).fetchone()
-            if _last and _last[0]:
-                import json as _fj
-                _runs = _last[0] if isinstance(_last[0], list) else _fj.loads(_last[0])
-                if isinstance(_runs, list) and _runs:
-                    _prev = _runs[-1]
-                    _pq = ""
-                    _pa = ""
-                    if isinstance(_prev, dict):
-                        msgs = _prev.get("messages") or []
-                        for _m in reversed(msgs):
-                            if isinstance(_m, dict):
-                                if not _pa and _m.get("role") == "assistant":
-                                    _pa = (_m.get("content") or "")[:600]
-                                if not _pq and _m.get("role") == "user":
-                                    _pq = (_m.get("content") or "")[:400]
-                                if _pa and _pq:
-                                    break
-                    if _pq or _pa:
-                        _follow_ctx = (
-                            "## PRIOR TURN (for context — current question is a follow-up)\n"
-                            f"Previous Q: {_pq}\n"
-                            f"Previous A: {_pa}\n\n"
-                            "## CURRENT FOLLOW-UP QUESTION\n"
-                        )
-                        context_msg = _follow_ctx + context_msg
-        except Exception as _fe:
-            logging.debug(f"follow-up context prepend skipped: {_fe}")
+    # Follow-up context: previously prepended a "## PRIOR TURN" Q+A block onto
+    # the user message for scope-gate-bypass pronoun questions. Removed — Agno
+    # already carries multi-turn memory via ai.agno_sessions.runs, so the manual
+    # prepend was redundant and leaked scaffolding into the stored/displayed turn.
+    # Raw user question is now sent + stored + shown unchanged.
 
     # ── Complexity Router (Feature A) — informational only ───────────────
     # Classify how hard this message is and which model tier it maps to.

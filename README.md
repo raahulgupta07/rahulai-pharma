@@ -62,6 +62,14 @@ A pharmacist/clinical layer over the catalog's clinical columns (`composition` /
 
 **Data gaps (data, not code):** no retail/MRP price (only cost `weighted_cost_price`); pack/strength is inside the brand string; `dosage` = Burmese patient instructions; no UI yet to self-pick "my branch" (set `dash_users.site_code` per login).
 
+### Models & chat modes (2026-06-09)
+
+Benchmarked all Gemini models on EN+Burmese (generic Burmese tasks + paired EN/MY questions on the real catalog CSV): **`gemini-3-flash-preview` reads and answers Burmese as well as English** (EN==MY parity), so it now runs **every chat + training role**. Only two other models stay: **`gemini-3.1-flash-lite-preview`** for cheap routers/scorers + FAST lookups, and **`text-embedding-3-small`** for vectors. The OpenAI `gpt-5.4-nano/mini` tiers are retired from the runtime.
+
+- **Chat has 2 modes + AUTO:** **FAST** (quick stock/drug lookup, lite model, <500ms) · **REASON** (thinks step-by-step, chat model — multi-part / analytical) · **AUTO** (router auto-picks FAST vs REASON per question). The old 5-tier BI split (ANALYSIS/AGENTIC/REASONING/ULTRA) collapsed to these two — a pharmacy counter needs no more. `/deep` and `/quick` slash commands still force a mode.
+- **LLM CONFIG panel** (Command Center → LLM config) is grouped into three cards — **CHAT** (FAST ⚡ / REASON ◆ + AUTO), **TRAINING**, **EMBEDDING** — each showing the model + what it drives (tool chips), click a row to change the model live (no restart, DB wins over env). Legacy per-tier models are tucked into an **Advanced** expander (still editable — `deep_model` still drives deep training tasks).
+- **`training_model`** is a real setting now (empty = follow CHAT). Training (Q&A-gen, vision OCR, extraction, dashboard-gen) runs `gemini-3-flash-preview` by default.
+
 ### Ingestion paths
 - **File upload** (`POST /api/upload`) — CSV/Excel/etc → train.
 - **DB connector** (`/api/connectors/*`) — PostgreSQL / MySQL / Microsoft Fabric: test → pick tables → sync → train.
@@ -173,9 +181,10 @@ Gotchas baked in: writes go through **`get_write_engine()`** (the read engine ha
 
 ## Usage & Cost dashboard (`/ui/usage`)
 
-Standalone super-admin page (Admin ▾ → People → **Usage & Cost**) unifying **all** usage across sources — platform chat · API keys · embeddings · embed widget · training — into one cross-source view with date filters. 8 tabs:
+Standalone super-admin page (Admin ▾ → People → **Usage & Cost**) unifying **all** usage across sources — platform chat · API keys · embeddings · embed widget · training — into one cross-source view with date filters. **Left-rail nav** (grouped: Overview / People / Analytics / Billing) + KPI tile row + per-section `● live · Xms` badges. The rail is the shared **"Admin Clean"** style — flush full-height, flat `--pw-bg-alt`, 220px, white-card active with a 3px terracotta accent bar — **byte-identical to the Admin command-center rail** (unified 2026-06-09; both `.u-rail`/`.cc-rail` share spec + `--pw-*` tokens). 9 sections:
 
-- **Overview** — stacked-by-model Spend/Requests/Tokens cards (period-over-period ▲▼), cost-per-request & per-1k-tokens, DAU/WAU/active-users, day×hour activity heatmap, by-source & by-model tables, who-logged-in, full activity log (CSV export).
+- **Overview** — KPI tiles (Spend/Requests/Tokens/Errors/Active-users) then `◷`-titled **section panels**: Trends (stacked-by-model Spend/Requests/Tokens cards, period-over-period ▲▼ + cost-per-request & per-1k-tokens), Breakdown (by-source & by-model tables), Activity heatmap (day×hour), Users & activity (who-logged-in + grouped breakdown + full activity log CSV export).
+- **People** (2026-06-09) — per-user activity, **split into two populations** via an `App users / Embed users` segment toggle. *App users* = registered `dash_users` (humans + `svc:*` API keys): sortable leaderboard (Last active · Sessions · Questions · Q/sess · 👍/👎 satisfaction · Tokens · Cost · Err%) + search + humans-only toggle; click a row → drawer (KPIs, 👍/👎, daily-questions sparkline, by-source, recent sessions, rated questions). *Embed users* = **anonymous** widget visitors from `dash_embed_calls` (identity = `session_token`, grouped per `embed_id` → store): By-session / By-widget tables; click a session → drawer with origin/IP + full message-turn conversation (bodies when `EMBED_LOG_BODIES=1`). Two separate populations, two tables — never mixed.
 - **Performance** — p50/p95/p99 latency overall + by source/model + slowest calls.
 - **Errors** — error rate, by-source, top error codes, recent failures.
 - **Tools** — what the agent actually ran (per-tool calls / error% / p50 / p95).
@@ -184,7 +193,7 @@ Standalone super-admin page (Admin ▾ → People → **Usage & Cost**) unifying
 - **Billing** — daily/monthly budget targets (alerts when over) + invoice rollup per store/key (CSV).
 - **Live** — active sessions, tokens/min, 5s auto-refresh.
 
-Backend `app/usage_api.py` (`/api/admin/usage/*`, super-admin, fail-soft). Cost spine = `public.v_usage_unified` (mig 174/175): chat/training cost+tokens+latency from `dash_traces` ROOT spans (the real ledger — `dash_llm_costs` is unused here), embeddings from `dash_apigw_usage`, embed from `dash_embed_calls`. Each chat run is attributed via trace `meta` (actor/channel/store/model) stamped by `app/projects.py`; gateway calls self-tag `channel='api'`. Optional gateway chat-body logging behind env `APIGW_LOG_BODIES=1` (off by default). Full design + gotchas: `docs/DEVLOG.md` latest+22.
+Backend `app/usage_api.py` (`/api/admin/usage/*`, super-admin, fail-soft; People tab adds `/people` + `/person` for registered users joining users⋈sessions⋈feedback⋈usage-view, and `/embed-people` + `/embed-session` for anonymous embed visitors off `dash_embed_calls`⋈`dash_agent_embeds`). Cost spine = `public.v_usage_unified` view in its **LIVE 174 shape** (mig 175's dash_traces rewrite is logically-applied but the live view is 174's — drift): platform/training from `dash_llm_costs`, gateway chat + embeddings from `dash_apigw_usage`, embed widget from `dash_embed_calls`. **Real LLM cost (mig 178, 2026-06-09):** the gateway used to log the caller's OpenAI *alias* (e.g. `citypharma-analyst`) → no price match → `$0`; now `app/api_gateway._log_usage` + `app/embed_public` store the **real engine model** (`engine_model` col on dash_apigw_usage + dash_embed_calls) + price off it (`dash.settings._compute_cost`), and the view surfaces `COALESCE(NULLIF(engine_model,''), model)` so "BY MODEL (COST)" shows `google/gemini-3-flash-preview` with non-zero cost. Old embed rows stay `$0` (tokens were never logged — unrecoverable; new calls price). Optional gateway chat-body logging behind env `APIGW_LOG_BODIES=1` (off by default). Full design + gotchas: `docs/DEVLOG.md` latest+44.
 
 ## Brain (Workspace) — single-tenant merged view
 

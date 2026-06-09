@@ -1189,7 +1189,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
                               <span class="emp-dl-k">DROP-IN SNIPPET</span>
                               <button class="emp-btn emp-btn-sm" onclick={() => copyText(buildSnippet(eid, e.public_key || '', scope), `dsnip-${eid}`)}>{copied === `dsnip-${eid}` ? '✓ copied' : 'copy'}</button>
                             </div>
-                            <pre class="emp-codeblock">{buildSnippet(eid, e.public_key || '', scope)}</pre>
+                            <pre class="emp-codeblock emp-pre">{buildSnippet(eid, e.public_key || '', scope)}</pre>
                           </div>
 
                           <!-- FULL PHP -->
@@ -1208,7 +1208,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
                             {#if phpBusy === `${eid}:${phpTabOf(eid)}`}
                               <div class="emp-row emp-muted">◐ loading {phpTabOf(eid)}…</div>
                             {:else if phpCode[`${eid}:${phpTabOf(eid)}`]}
-                              <pre class="emp-codeblock emp-php-block">{phpCode[`${eid}:${phpTabOf(eid)}`]}</pre>
+                              <pre class="emp-codeblock emp-pre emp-php-block">{phpCode[`${eid}:${phpTabOf(eid)}`]}</pre>
                             {:else}
                               <button class="emp-btn emp-btn-sm" onclick={() => loadPhp(e, phpTabOf(eid))}>show {phpTabOf(eid)}</button>
                               <span class="emp-muted emp-fineprint">templated with this widget's keys · secret read from your env</span>
@@ -1386,7 +1386,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
               <span class="emp-muted emp-fineprint">paste before <code class="emp-code">&lt;/body&gt;</code> on your site</span>
               <button class="emp-btn emp-btn-sm" onclick={() => copyText(buildSnippet(ceId, cePk, ceScope), `dsnip-${ceId}`)}>{copied === `dsnip-${ceId}` ? '✓ copied' : 'copy'}</button>
             </div>
-            <pre class="emp-codeblock">{buildSnippet(ceId, cePk, ceScope)}</pre>
+            <pre class="emp-codeblock emp-pre">{buildSnippet(ceId, cePk, ceScope)}</pre>
 
             <div class="emp-h emp-mt">ONE-CLICK DEPLOY</div>
             <p class="emp-doc-p">Ready-to-host folder — <code class="emp-code">index.html</code> + <code class="emp-code">snippet.html</code> + <code class="emp-code">README</code>, keys pre-baked. No editing.</p>
