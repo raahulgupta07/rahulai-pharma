@@ -2,6 +2,30 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-09 (latest+42) — Embed console rebuild + admin merge + auth fixes + gateway default OFF
+
+Big multi-part UX session on the **Embed console** + **Admin command-center**, plus two prod fixes. Commit `8ae6c59` (embed/auth/rail) then a follow-up (overview-merge + gateway-default).
+
+**Embed console (`frontend/src/lib/admin/EmbedPanel.svelte`, `app/embed.py`, `app/embed_public.py`):**
+- **One-click deploy zips** — `GET /api/embed/deploy/{embed_id}.zip` (per-store) + `/deploy/all.zip` (every store, folder-per-store + `INDEX.html` + `HOW-TO-DEPLOY.txt`). Each store folder = `index.html` (working host-as-is page) + `snippet.html` + `README.txt`, **keys pre-baked** (`_deploy_files`, base from `_public_base`/`PUBLIC_URL`). Public — added `/api/embed/deploy` to `main.py` SKIP_PREFIXES. `all.zip` shadow fixed (`{embed_id}.zip` caught `all.zip` → short-circuit `if embed_id=="all"`). Buttons: per-row + header "⤓ Download ALL stores (.zip)".
+- **Widget cockpit** — clicking a widget opens a per-widget cockpit (`view='widget'`, `openWidgetCockpit`) merging the old **Playground** tab: sub-tabs **Appearance · Snippet & Deploy · Share link · Activity** + persistent live-test chat on the right. Playground rail item removed.
+- **Inline expand on the Widgets row** (restored — no navigation): chevron `›` expands in place → **KEYS** (embed_id · public_key+rotate · **secret reveal** · endpoint), **CONFIG**, **DROP-IN SNIPPET**, **FULL PHP CODE** (tabs `widget-embed.php`/`CityAgentClient.php`, templated via `loadPhp`→`/api/embed/sdk/file/{name}`; secret stays `getenv()`), **ACTIONS** (Deploy .zip · Test · ⚙ Configure→cockpit · Revoke). Secret reveal `GET /api/projects/{slug}/embeds/{id}/secret` (super-admin, Fernet-decrypt via `dash.embed.secret_storage.decrypt_secret`; public-auth → "no secret").
+- **Single-point Brand theme** — new **Brand** rail page (`view='brand'`): one default appearance for ALL widgets + live preview + inheritance counts + "Reset ALL widgets to brand". Backend `GET/PUT /api/projects/{slug}/embed-brand` + `POST .../reset-widgets`; stored as JSON in the global `embed_brand` setting. **Resolution at render** (`/api/embed/config/{id}`): `per-widget override (non-empty) ?? brand default ?? hard fallback`. Per-widget Appearance gains **◉ Inherit / ○ Override** toggle (`revertToBrand` PATCHes `''` — empty string counts as inherit in both resolver + count, no NULL). E2E: PUT brand → reset-widgets (78 rows) → `/config` resolves to brand.
+
+**Auth fixes (`app/auth.py`, `frontend/src/routes/users/+page.svelte`):**
+- **Login accepts email OR username** — `WHERE username = :u OR LOWER(email) = LOWER(:u)` (exact-username preferred on tie). Form labels it "email" → users typed email → "invalid". E2E verified both + wrong-pw rejected.
+- **Dead "map in Authentication →" link** — pointed to `/ui/auth-admin` (empty route dir → 404). Now `/ui/command-center?tab=auth` (real `AuthAdminPanel`).
+
+**Admin command-center (`frontend/src/routes/command-center/+page.svelte`):**
+- **Rail trim** — removed redundant **Users**, **Chat logs**, **API Gateway** (duplicate `/ui/users` + `/ui/gateway`) + matching JUMP-TO cards. Empty rail groups skip (`{#if g.items.filter(tabMeta).length}`).
+- **Overview merge** — Cockpit + Platform stats + System health + Observability → **one scrollable page** (rail OVERVIEW = single "Overview"; `cockpit` relabeled). Sections: KPIs → ① System Health → ② Integrations → ③ Platform Stats → ④ Observability → ⑤ Jump To, each with a **live badge** (`secBadge`/`secLive`, `● live · Nms` / `✗`). `loadCockpit` also runs `loadStats`+`loadTraces` + stamps per-section ok/ms. Old `?tab=stats|health|observability` → redirect `cockpit`. **Svelte gotcha:** `{@const}` must be immediate child of a block — hoisted the 3 `secBadge` consts to the top of the cockpit `{:else if}` (not inside `<section>`).
+
+**API Gateway default → INACTIVE** (`dash/admin/settings.py`): `gateway_enabled` default `True → False` so fresh installs don't expose `/api/v1` until a super-admin enables it. Second fix required: `integrations_enabled._on` hardcoded `return True` on missing DB row → now returns the **registry default** per key. Verified `/api/flags` → gateway:False, embed:True. Saved rows unaffected.
+
+**Diagnostics (no code change):**
+- Fresh-AWS `404 Project not found` on chat — RCA: no `dash_projects` row for locked slug `citypharma` on a fresh DB (baseline is structure-only, nothing seeds the row). Proposed boot-time `ensure_locked_project()` self-heal (NOT built yet) + manual unblock SQL.
+- "Traces vs Audit logs same table" — verified distinct blocks + endpoints in the running container (`/api/admin/traces` vs `/api/auth/admin/audit-log`). Reported as stale browser page chunk (needs a true cache clear).
+
 ### Session 2026-06-09 (latest+41) — Chitchat answers as plain pharmacist prose (kill the card)
 
 **Asked:** screenshot of `/ui/project/citypharma` — "what u can do" rendered as a card titled *PharmaStock Intelligence Agent Capabilities Overview* with a raw leaked `[CONFIDENCE_BREAKDOWN:100|100|` tag. "why the output is like this, plan the output like chatgpt, or pharmicist no card no chart."

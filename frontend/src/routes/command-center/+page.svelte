@@ -51,7 +51,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  ];
 
  const tabMeta: Record<string, { label: string; subtitle: string }> = {
- cockpit: { label: 'Cockpit', subtitle: 'Platform health · access · gateway · data' },
+ cockpit: { label: 'Overview', subtitle: 'Health · stats · traces · integrations — one page' },
  observability: { label: 'Observability', subtitle: 'Per-chat traces & context health' },
  gateway: { label: 'API Gateway', subtitle: 'External /api/v1 keys & usage' },
  embed: { label: 'Embed', subtitle: 'Embeddable chat widgets + usage' },
@@ -97,7 +97,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  // drift (ML monitoring, no consumer), fed-admin (multi-tenant), channels (Slack/Teams fan-out),
  // mcp (agent-builder). Content blocks left dead-but-unreachable (no rail entry point).
  const _railGroupsBase: { label: string; items: string[] }[] = [
- { label: 'Overview', items: ['cockpit','stats','health','observability'] },
+ { label: 'Overview', items: ['cockpit'] },
  { label: 'People', items: ['projects'] },
  { label: 'Data', items: ['schemas','integrations'] },
  { label: 'Platform', items: ['auth'] },
@@ -964,13 +964,30 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
 
  /* ─── cockpit (folded-in Super Dashboard landing) ─── */
  let cockpit = $state<any>({});
+ // per-section live status for the merged Overview page (●/◐/✗ + latency)
+ let secLive = $state<Record<string, { ok: boolean; ms: number }>>({});
  async function loadCockpit() {
    loadAdminSettings();   // for the Integrations on/off toggles
+   const _t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
    const j = async (u: string) => { try { const r = await fetch(u, { headers: _h() }); return r.ok ? await r.json() : null; } catch { return null; } };
    const [arch, hl, dm, g] = await Promise.all([
      j('/api/architecture'), j('/api/health'), j('/api/health/daemons'), j('/api/auth/apigw-usage'),
    ]);
    cockpit = { metrics: arch?.metrics || {}, models: arch?.models || {}, health: hl || {}, daemons: dm || {}, gw: g || {} };
+   const _ms = () => Math.max(1, Math.round(((typeof performance !== 'undefined') ? performance.now() : 0) - _t0));
+   secLive = { ...secLive, health: { ok: (hl?.status === 'ok'), ms: _ms() } };
+   // fold in the former Platform-stats + Observability tabs as sections
+   try { const s0 = (typeof performance !== 'undefined') ? performance.now() : 0; await loadStats(); secLive = { ...secLive, stats: { ok: !!stats, ms: Math.max(1, Math.round(((typeof performance !== 'undefined') ? performance.now() : 0) - s0)) } }; }
+   catch { secLive = { ...secLive, stats: { ok: false, ms: 0 } }; }
+   try { const o0 = (typeof performance !== 'undefined') ? performance.now() : 0; await loadTraces(); secLive = { ...secLive, obs: { ok: !traceLoadError, ms: Math.max(1, Math.round(((typeof performance !== 'undefined') ? performance.now() : 0) - o0)) } }; }
+   catch { secLive = { ...secLive, obs: { ok: false, ms: 0 } }; }
+ }
+ // live-status badge snippet helper
+ function secBadge(k: string): { dot: string; txt: string } {
+   const s = secLive[k];
+   if (!s) return { dot: 'cc-sb-load', txt: '…' };
+   if (s.ok) return { dot: 'cc-sb-ok', txt: `live · ${s.ms}ms` };
+   return { dot: 'cc-sb-down', txt: 'unavailable' };
  }
 
  /* ═══════════════════════════════════════════════════════════ */
@@ -1154,6 +1171,10 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
    'governance': 'gov-overview',
    'agent-os-admin': 'aos-overview',
    'telemetry-admin': 'tel-overview',
+   // Overview merge: Cockpit/Stats/Health/Observability folded into one page.
+   'stats': 'cockpit',
+   'health': 'cockpit',
+   'observability': 'cockpit',
  };
 
  function _isSubTab(id: string): boolean {
@@ -3104,6 +3125,9 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
   <LLMConfigPanel />
 
 {:else if activeTab === 'cockpit'}
+  {@const _hb = secBadge('health')}
+  {@const _sb = secBadge('stats')}
+  {@const _ob = secBadge('obs')}
   <div class="ccc-kpis">
     <div class="ccc-kpi"><span class="ccc-n">{cockpit.metrics?.users ?? '—'}</span><span class="ccc-l">Users</span></div>
     <div class="ccc-kpi"><span class="ccc-n">{cockpit.metrics?.projects ?? '—'}</span><span class="ccc-l">Projects</span></div>
@@ -3112,17 +3136,22 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
     <div class="ccc-kpi"><span class="ccc-n">{cockpit.gw?.totals?.calls ?? '—'}</span><span class="ccc-l">GW calls 7d</span></div>
   </div>
   <section class="ccc-panel">
-    <div class="ccc-h">SYSTEM HEALTH</div>
+    <div class="ccc-h-row">
+      <div class="ccc-h">① SYSTEM HEALTH</div>
+      <span class="cc-sb"><i class="cc-sb-dot {_hb.dot}"></i>{_hb.txt}</span>
+    </div>
     <div class="ccc-health">
       <span class="ccc-hi"><i class="ccc-dot" class:ok={cockpit.health?.status === 'ok'}></i>API <b>{cockpit.health?.status || '—'}</b></span>
       <span class="ccc-hi"><i class="ccc-dot" class:ok={cockpit.health?.db === 'connected'}></i>DB <b>{cockpit.health?.db || '—'}</b></span>
       <span class="ccc-hi"><i class="ccc-dot" class:warn={cockpit.health?.staleness_warning} class:ok={!cockpit.health?.staleness_warning}></i>Image <b>{cockpit.health?.staleness_warning ? 'stale' : 'fresh'}</b></span>
       <span class="ccc-hi"><i class="ccc-dot" class:ok={cockpit.daemons?.daemons_should_run_on_this_worker}></i>Daemons <b>{cockpit.daemons?.daemons_should_run_on_this_worker ? 'leader' : `w${cockpit.daemons?.worker_rank ?? '?'}`}</b></span>
+      {#if cockpit.health?.workers}<span class="ccc-hi"><i class="ccc-dot ok"></i>Workers <b>{cockpit.health.workers}</b></span>{/if}
+      {#if cockpit.health?.redis}<span class="ccc-hi"><i class="ccc-dot" class:ok={cockpit.health.redis === 'ok' || cockpit.health.redis === 'connected'}></i>Redis <b>{cockpit.health.redis}</b></span>{/if}
     </div>
   </section>
   <section class="ccc-panel">
     <div class="ccc-h-row">
-      <div class="ccc-h">INTEGRATIONS</div>
+      <div class="ccc-h">② INTEGRATIONS</div>
       <button class="ccc-save" disabled={!integDirty || integSaving} onclick={saveIntegrations}>
         {integSaving ? 'Saving…' : 'Save'}
       </button>
@@ -3151,8 +3180,63 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
       {#if integDirty}<div class="ccc-toggle-hint">Unsaved — click Save to apply (page reloads so the nav updates).</div>{/if}
     </div>
   </section>
+
+  <!-- ③ PLATFORM STATS (folded from the Platform-stats tab) -->
   <section class="ccc-panel">
-    <div class="ccc-h">JUMP TO</div>
+    <div class="ccc-h-row">
+      <div class="ccc-h">③ PLATFORM STATS</div>
+      <span class="cc-sb"><i class="cc-sb-dot {_sb.dot}"></i>{_sb.txt}</span>
+    </div>
+    {#if stats}
+      <div class="ccc-statgrid">
+        {#each [
+          { l: 'Users', v: stats.users ?? stats.stats?.users ?? '—' },
+          { l: 'Projects', v: stats.projects ?? stats.stats?.projects ?? '—' },
+          { l: 'Sessions', v: stats.sessions ?? stats.stats?.sessions ?? '—' },
+          { l: 'Tables', v: stats.tables ?? stats.stats?.table_count ?? stats.table_count ?? '—' },
+          { l: 'Total rows', v: (() => { const n = stats.total_rows ?? stats.stats?.total_rows; return typeof n === 'number' ? n.toLocaleString() : (n ?? '—'); })() },
+          { l: 'Knowledge', v: stats.knowledge_vectors ?? stats.stats?.knowledge_vectors ?? '—' },
+          { l: 'Memories', v: stats.memories ?? stats.stats?.memories ?? '—' },
+          { l: 'Training runs', v: stats.training_runs ?? stats.stats?.training_runs ?? '—' },
+        ] as c}
+          <div class="ccc-stat"><span class="ccc-stat-v">{c.v}</span><span class="ccc-stat-l">{c.l}</span></div>
+        {/each}
+      </div>
+    {:else}
+      <div class="ccc-muted">stats unavailable</div>
+    {/if}
+  </section>
+
+  <!-- ④ OBSERVABILITY (folded from the Observability tab) -->
+  <section class="ccc-panel">
+    <div class="ccc-h-row">
+      <div class="ccc-h">④ OBSERVABILITY</div>
+      <span class="cc-sb"><i class="cc-sb-dot {_ob.dot}"></i>{_ob.txt}</span>
+    </div>
+    {#if traceRollup}
+      <div class="ccc-health">
+        <span class="ccc-hi"><i class="ccc-dot ok"></i>Runs <b>{traceRollup.runs ?? 0}</b></span>
+        <span class="ccc-hi"><i class="ccc-dot" class:warn={Number(traceRollup.failed) > 0} class:ok={!Number(traceRollup.failed)}></i>Errors <b>{traceRollup.failed ?? 0}</b></span>
+        <span class="ccc-hi"><i class="ccc-dot" class:ok={traceCrons.length === 0 || traceCrons.every((c) => c.ok !== false)}></i>Cron <b>{traceCrons.length === 0 ? '—' : (traceCrons.every((c) => c.ok !== false) ? 'ok' : 'issue')}</b></span>
+        {#if traceRollup.cost_usd != null}<span class="ccc-hi"><i class="ccc-dot ok"></i>Cost <b>{traceCost(traceRollup.cost_usd)}</b></span>{/if}
+        {#if traceRollup.slowest?.name}<span class="ccc-hi"><i class="ccc-dot"></i>Slowest <b>{traceRollup.slowest.name}</b> ({traceDur(traceRollup.slowest.duration_ms)})</span>{/if}
+      </div>
+      {#if traceAgents.length}
+        <div class="ccc-agents">
+          {#each traceAgents.slice(0, 5) as a}
+            <span class="ccc-agent"><b>{a.agent || a.name || '—'}</b> {a.runs ?? a.count ?? 0}</span>
+          {/each}
+        </div>
+      {/if}
+      <div class="ccc-jump" style="margin-top:8px;"><button onclick={() => switchTab('traces')}>open full Traces →</button></div>
+    {:else}
+      <div class="ccc-muted">{traceLoadError ? 'traces unavailable' : 'no traces yet'}</div>
+    {/if}
+  </section>
+
+  <!-- ⑤ JUMP TO -->
+  <section class="ccc-panel">
+    <div class="ccc-h">⑤ JUMP TO</div>
     <div class="ccc-jump">
       <button onclick={() => switchTab('brain')}>🧠 Brain</button>
       <button onclick={() => switchTab('llm')}>🤖 Models</button>
@@ -3776,6 +3860,20 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  .ccc-jump button { text-align: left; border: 1px solid var(--pw-border, #e7e1d6); border-radius: 8px; padding: 14px 16px; background: var(--pw-bg-alt, #faf7f1); font-size: 14px; font-weight: 600; color: var(--pw-ink, #1a1614); cursor: pointer; transition: background 0.12s, border-color 0.12s; }
  .ccc-jump button:hover { background: rgba(201,99,66,0.06); border-color: var(--pw-accent, #c96342); }
  @media (max-width: 900px) { .ccc-kpis { grid-template-columns: repeat(2, 1fr); } .ccc-jump { grid-template-columns: 1fr; } }
+ /* merged-overview: live badges + sections */
+ .cc-sb { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--pw-muted, #877f74); font-family: ui-monospace, Menlo, monospace; }
+ .cc-sb-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; background: #c0392b; }
+ .cc-sb-ok { background: #2d8a4e; }
+ .cc-sb-down { background: #c0392b; }
+ .cc-sb-load { background: #c08a00; }
+ .ccc-statgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+ .ccc-stat { border: 1px solid var(--pw-border, #e7e1d6); border-radius: 8px; padding: 10px 12px; background: var(--pw-bg-alt, #faf7f1); text-align: center; }
+ .ccc-stat-v { display: block; font-size: 18px; font-weight: 900; color: var(--pw-ink, #1a1614); }
+ .ccc-stat-l { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--pw-muted, #877f74); margin-top: 2px; }
+ .ccc-muted { font-size: 12px; color: var(--pw-muted, #877f74); }
+ .ccc-agents { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; font-size: 12px; }
+ .ccc-agent { color: var(--pw-muted, #877f74); }
+ .ccc-agent b { color: var(--pw-ink, #1a1614); }
  .ccc-h-row { display: flex; align-items: center; justify-content: space-between; }
  .ccc-save { font-size: 12px; font-weight: 600; padding: 6px 16px; border-radius: 7px; border: 1px solid var(--pw-accent, #c96342); background: var(--pw-accent, #c96342); color: #fff; cursor: pointer; transition: opacity 0.12s; }
  .ccc-save:disabled { opacity: 0.35; cursor: default; }

@@ -99,7 +99,7 @@ REGISTRY: dict[str, dict] = {
 
     # Integrations kill switches (super-admin) — when off, the surface vanishes
     # from the top-nav Integrations dropdown AND its API routes return 403.
-    "gateway_enabled":                {"type": "bool", "default": True,  "env": None, "scope": "global", "desc": "Enable the API Gateway (/api/v1). Off → routes 403 + nav item hidden"},
+    "gateway_enabled":                {"type": "bool", "default": False, "env": None, "scope": "global", "desc": "Enable the API Gateway (/api/v1). Default OFF — fresh installs don't expose the external API until a super-admin turns it on. Off → routes 403 + nav item hidden"},
     "embed_enabled":                  {"type": "bool", "default": True,  "env": None, "scope": "global", "desc": "Enable Embed widgets (/api/embed). Off → routes 403 + nav item hidden"},
 
     # Single-point brand theme — default widget appearance (JSON string). Widgets
@@ -355,9 +355,9 @@ def integrations_enabled() -> dict:
     # always fresh — a super-admin who flips the toggle + reloads must see the
     # nav update immediately, not after a cache window.
     def _on(key: str) -> bool:
-        raw = _read_db(key, "global", None)   # None when no row → default ON
+        raw = _read_db(key, "global", None)   # None when no row → registry default
         if raw is None:
-            return True
+            return bool(REGISTRY.get(key, {}).get("default", True))
         return _coerce(raw, "bool") is True
     try:
         return {"gateway": _on("gateway_enabled"), "embed": _on("embed_enabled")}
