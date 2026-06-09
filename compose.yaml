@@ -200,7 +200,10 @@ services:
       - LITE_FALLBACKS=${LITE_FALLBACKS:-}
       - SUPER_ADMIN=${SUPER_ADMIN:?SUPER_ADMIN required}
       - SUPER_ADMIN_PASS=${SUPER_ADMIN_PASS:?SUPER_ADMIN_PASS required}
-      - CORS_ORIGINS=${CORS_ORIGINS:?CORS_ORIGINS required}
+      # Blank is a VALID value: app falls back to PUBLIC_URL, else allows all
+      # origins without credentials. Use :- (default empty), NOT :? (which
+      # rejects an empty string and breaks cold installs shipping a blank .env).
+      - CORS_ORIGINS=${CORS_ORIGINS:-}
       - DOMAIN=${DOMAIN:-localhost}
       # Optional — Keycloak SSO
       - KEYCLOAK_URL=${KEYCLOAK_URL:-}
