@@ -3430,16 +3430,17 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  display: grid;
  grid-template-columns: 220px 1fr;
  background: var(--pw-bg);
- min-height: calc(100vh - 56px);
+ height: calc(100vh - 64px);
+ min-height: 0;
+ overflow: hidden;
  font-family: var(--pw-font-body, 'Inter', system-ui, sans-serif);
  color: var(--pw-ink);
  }
 
  :global(.cc-rail) {
- position: sticky;
- top: 0;
- align-self: start;
- height: calc(100vh - 56px);
+ align-self: stretch;
+ height: 100%;
+ min-height: 0;
  overflow-y: auto;
  overscroll-behavior: contain;
  background: var(--pw-bg-alt);
@@ -3577,6 +3578,9 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  max-width: 1280px;
  margin: 0 auto;
  width: 100%;
+ min-height: 0;
+ overflow-y: auto;
+ overscroll-behavior: contain;
  box-sizing: border-box;
  }
  @media (max-width: 1024px) {

@@ -2,6 +2,15 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-09 (latest+48) — Independent rail/content scroll on all admin pages + stacked-scroll tables
+UX: left rail stays fixed, only the right content pane scrolls (was: whole page scrolled as one, rail slid under the top nav).
+
+- **The pattern (apply to any rail+content page):** shell = fixed height + clip → `height: calc(100vh - 64px); min-height: 0; overflow: hidden;`; rail = `align-self: stretch; height: 100%; min-height: 0; overflow-y: auto;` (drop `position:sticky`); content/main = `min-height: 0; overflow-y: auto; overscroll-behavior: contain;`. For a flex shell use `flex:1` instead of `height:100%`. **`min-height:0` is mandatory** — without it a flex/grid child refuses to shrink below content size, so `overflow` never engages and nothing scrolls.
+- **Applied to:** `UsagePanel` (`.u-shell`/`.u-rail`/`.u-main` — flex variant), command-center `:global(.cc-shell/.cc-rail/.cc-main)`, `EmbedPanel` `.emp-wrap/.emp-rail/.emp-main`, `GatewayPanel` `.gw-layout/.gw-rail/.gw-main`. Project **settings** (`.set-shell`) already had it — used as the working model. Embedded modes (`.emp-embedded`, `.usage.embedded`) revert to `height:auto; overflow:visible` so the widget still flows normally.
+- **LANDMINE that ate 2 rebuilds (Usage):** a hidden wrapper `<div class="usage">` sat between `.usage-page` and `.u-shell`. The `flex:1`/`height:100%` chain only works if EVERY ancestor between the layout `<main>` and the scroll pane passes the height down (each must be `flex-col`+`min-height:0` or `height:100%`). One plain-block wrapper in the middle = chain breaks = pane gets no definite height = no scroll (and `overflow:hidden` then CLIPS it so content is unreachable). Fix was making `.usage` itself `height:100%; display:flex; flex-direction:column; min-height:0`. **When a pane won't scroll, walk the full ancestor chain from layout `<main>` down — the break is usually an un-flexed wrapper.**
+- **Stacked-scroll tables (Usage → Overview → Users & activity):** the two tables (Breakdown / Who) were side-by-side and grew unbounded; now stacked top/bottom (`.u-grid2`→`.u-stack2` flex-column) and each table body wrapped in `.u-scroll { max-height: 400px; overflow-y: auto }` with **sticky `thead th`** (`position:sticky; top:0`) so headers stay while scrolling.
+- Header offset = **64px** for the calc-height pages (matches the working settings page); Usage uses the flex `height:100%` chain so it needs no magic number. Caveat: cc/emp/gw `*-main` keep `max-width + margin:auto`, so the scrollbar sits at the content edge on very wide screens (functional, slightly inset). CSS-only; rebuilt + deployed.
+
 ### Session 2026-06-09 (latest+47) — Schema prune (49 dormant tables) + Skills feature fully removed + usage latency fix
 Cut the database from **221 → 172 tables** and finished removing the inherited Skills feature (code + DB), all verified live.
 

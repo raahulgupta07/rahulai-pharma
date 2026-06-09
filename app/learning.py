@@ -598,7 +598,7 @@ def get_auto_train_status(slug: str, request: Request):
         with _engine.connect() as conn:
             row = conn.execute(text(
                 "SELECT id, status, started_at FROM public.dash_training_runs "
-                "WHERE project_slug = :s AND status IN ('running','queued') "
+                "WHERE project_slug = :s AND status IN ('running','queued','finalizing') "
                 "ORDER BY started_at DESC LIMIT 1"
             ), {"s": slug}).fetchone()
         active_run = {"id": row[0], "status": row[1], "started_at": str(row[2])} if row else None
@@ -631,7 +631,7 @@ def get_auto_train_log(slug: str, request: Request, since: int = 0, limit: int =
                 "SELECT id, status, current_step, "
                 "COALESCE(jsonb_array_length(logs), 0) AS n "
                 "FROM public.dash_training_runs WHERE project_slug = :s "
-                "ORDER BY (status IN ('running','queued')) DESC, started_at DESC "
+                "ORDER BY (status IN ('running','queued','finalizing')) DESC, started_at DESC "
                 "LIMIT 1"
             ), {"s": slug}).fetchone()
             if not row:

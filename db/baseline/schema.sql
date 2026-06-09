@@ -12836,6 +12836,12 @@ CREATE POLICY vec_scope ON dash.dash_vectors USING (((COALESCE(current_setting('
 -- to v_usage_unified. Idempotent (IF EXISTS / OR REPLACE).
 -- ============================================================
 
+SET search_path = public, dash;
+
+-- mig 178: real engine_model on usage tables (view below references it)
+ALTER TABLE public.dash_apigw_usage ADD COLUMN IF NOT EXISTS engine_model text;
+ALTER TABLE public.dash_embed_calls ADD COLUMN IF NOT EXISTS engine_model text;
+
 -- mig 179: latency_ms on v_usage_unified
 CREATE OR REPLACE VIEW public.v_usage_unified AS
   SELECT 'platform'::text AS src,

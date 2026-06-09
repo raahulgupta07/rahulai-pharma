@@ -2367,17 +2367,16 @@ curl -X POST ${pubOrigin}/api/auth/api-key \\
   .gw-denied-title { font-size: 18px; font-weight: 600; color: var(--pw-accent); }
 
   /* layout */
-  .gw-layout { display: grid; grid-template-columns: 240px 1fr; min-height: calc(100vh - 56px); align-items: start; }
+  .gw-layout { display: grid; grid-template-columns: 240px 1fr; height: calc(100vh - 64px); min-height: 0; overflow: hidden; align-items: stretch; }
   .gw-rail {
     background: var(--pw-bg-alt, #f6f2ea);
     border-right: 1px solid var(--pw-border, #e5ddcf);
     padding: 0 8px 120px;
     font-family: inherit;
     /* Pin the rail: it stays in view while only the right pane scrolls. */
-    position: sticky;
-    top: 0;
-    height: 100vh;
-    align-self: start;
+    align-self: stretch;
+    height: 100%;
+    min-height: 0;
     overflow-y: auto;
   }
   .gw-rg { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
@@ -2395,7 +2394,7 @@ curl -X POST ${pubOrigin}/api/auth/api-key \\
   .gw-rg-on .gw-rg-icon { color: var(--pw-accent); }
   .gw-rg-text { flex: 1; }
 
-  .gw-main { padding: 28px 48px 80px; max-width: 1100px; font-family: inherit; }
+  .gw-main { padding: 28px 48px 80px; max-width: 1100px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; font-family: inherit; }
   .gw-main-wide { max-width: none; }
 
   /* ── per-outlet detail page ── */

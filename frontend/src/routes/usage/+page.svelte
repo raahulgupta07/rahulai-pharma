@@ -11,5 +11,5 @@
 </div>
 
 <style>
-  .usage-page { width: 100%; }
+  .usage-page { width: 100%; height: 100%; min-height: 0; display: flex; flex-direction: column; }
 </style>

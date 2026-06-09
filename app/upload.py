@@ -1634,7 +1634,14 @@ def _detect_delimiter(file_path: str) -> str:
 _ID_COL_RE = re.compile(r'(^|_)(id|code|barcode|sku|ean|upc|gtin|ref|refno|acct|account)($|_|no$)', re.I)
 
 def _is_id_colname(name) -> bool:
-    return bool(_ID_COL_RE.search(str(name)))
+    # Normalize separators (space / hyphen / dot / camelCase punctuation) to "_"
+    # and lowercase BEFORE matching — the raw file header ("Article Code",
+    # "Article-Code") is checked here, before the pipeline snake-cases columns.
+    # Without this, "Article Code" failed the `(^|_)code` anchor (space ≠ "_")
+    # and landed as int64 while the snake-cased "article_code" in another file
+    # landed as text → cross-table join type-mismatch. 2026-06-09.
+    norm = re.sub(r'[^a-z0-9]+', '_', str(name).strip().lower())
+    return bool(_ID_COL_RE.search(norm))
 
 def _id_dtypes(file_path: str, ext: str, header_row, sep: str | None = None) -> dict:
     """Header-only pre-scan → {col: str} for ID/code columns so pandas keeps them
@@ -12857,15 +12864,19 @@ async def retrain_project(slug: str, request: Request):
         # (post-training evals + auto-configure now run concurrently in the
         #  tail ThreadPoolExecutor above — see _task_evals / _task_auto_configure)
 
-        # Mark master run as done
+        # Tables are trained, but post-hooks (bilingual twins, catalog vectors,
+        # shop_flat denorm, dream-lite, vertical pack) still run below for
+        # several more minutes. Mark 'finalizing' here — the final 'done' is
+        # written at the END of _bg so status never says done while shop_flat /
+        # vectors are still being built. 2026-06-09.
         _set_step("finalizing")
         if master_run_id:
             try:
                 with master_engine.connect() as conn:
                     conn.execute(text(
-                        "UPDATE public.dash_training_runs SET status = 'done', steps = :steps, "
-                        "tables_trained = :trained, finished_at = NOW() WHERE id = :id"
-                    ), {"steps": f"complete||{total_tables}|{total_tables}", "trained": trained, "id": master_run_id})
+                        "UPDATE public.dash_training_runs SET status = 'finalizing', steps = :steps, "
+                        "tables_trained = :trained WHERE id = :id"
+                    ), {"steps": f"finalizing||{total_tables}|{total_tables}", "trained": trained, "id": master_run_id})
                     conn.commit()
             except Exception:
                 pass
@@ -12996,6 +13007,20 @@ async def retrain_project(slug: str, request: Request):
             _vp_log.getLogger(__name__).debug(
                 f"vertical pack auto-install skipped for {slug}: {_vp_e}"
             )
+
+        # ─── FINAL done-mark — all post-hooks above are complete. status flips
+        # 'finalizing' → 'done' only now, so the UI / poll never reports done
+        # while shop_flat / catalog vectors are still building. Fail-soft. ───
+        if master_run_id:
+            try:
+                with master_engine.connect() as conn:
+                    conn.execute(text(
+                        "UPDATE public.dash_training_runs SET status = 'done', steps = :steps, "
+                        "finished_at = NOW() WHERE id = :id"
+                    ), {"steps": f"complete||{total_tables}|{total_tables}", "id": master_run_id})
+                    conn.commit()
+            except Exception:
+                pass
 
     _fut = _bg_executor.submit(_bg)
     def _check_bg(f):

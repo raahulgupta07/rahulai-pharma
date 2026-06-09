@@ -2013,14 +2013,16 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
   .emp-denied-title { font-size: 18px; font-weight: 600; color: var(--pw-accent); }
 
   /* layout */
-  .emp-wrap { display: grid; grid-template-columns: 240px 1fr; min-height: calc(100vh - 56px); }
-  .emp-embedded { min-height: 0; }
+  .emp-wrap { display: grid; grid-template-columns: 240px 1fr; height: calc(100vh - 64px); min-height: 0; overflow: hidden; }
+  .emp-embedded { min-height: 0; height: auto; overflow: visible; }
   .emp-rail {
     background: var(--pw-bg-alt, #f6f2ea);
     border-right: 1px solid var(--pw-border, #e5ddcf);
     padding: 0 8px 120px;
     font-family: inherit;
     align-self: stretch;
+    height: 100%;
+    min-height: 0;
     overflow-y: auto;
   }
   .emp-rg { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
@@ -2038,7 +2040,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
   .emp-rg-on .emp-rg-icon { color: var(--pw-accent); }
   .emp-rg-text { flex: 1; }
 
-  .emp-main { padding: 28px 48px 80px; max-width: 1340px; margin: 0 auto; width: 100%; font-family: inherit; box-sizing: border-box; }
+  .emp-main { padding: 28px 48px 80px; max-width: 1340px; margin: 0 auto; width: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; font-family: inherit; box-sizing: border-box; }
   .emp-pagehead { margin-bottom: 22px; }
   .emp-pagetitle { font-family: var(--pw-serif, Georgia, serif); font-size: 26px; font-weight: 600; color: var(--pw-ink, #2c2a26); margin: 0 0 4px; }
   .emp-pagesub { color: var(--pw-muted, #877f74); font-size: 13px; margin: 0; }

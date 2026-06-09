@@ -349,17 +349,21 @@
     <!-- ◷ USERS & ACTIVITY -->
     <section class="u-sec">
       <div class="u-sech"><span class="u-sect">Users &amp; activity</span><span class="u-secbadge">● live · {lastMs}ms</span></div>
-      <div class="u-grid2">
+      <div class="u-stack2">
         <div class="u-card"><div class="u-ctitle">Breakdown by
           <select class="u-mini" bind:value={groupBy} onchange={() => loadTab('overview', true)}><option value="actor">user/key</option><option value="model">model</option><option value="store_id">store</option><option value="src">source</option><option value="status">status</option></select></div>
+          <div class="u-scroll">
           <table class="u-tbl"><thead><tr><th>{groupBy}</th><th>req</th><th>cost</th><th>last</th></tr></thead><tbody>
             {#each ov.breakdown as r}<tr class="click" onclick={() => openDrawer(groupBy === 'store_id' ? 'store' : 'actor', r.key)}><td class="mono">{r.key}</td><td>{compact(r.requests)}</td><td class="num">{usd(r.cost)}</td><td class="dim">{ago(r.last)}</td></tr>{/each}
           </tbody></table>
+          </div>
         </div>
         <div class="u-card"><div class="u-ctitle">Who — logins &amp; usage</div>
+          <div class="u-scroll">
           <table class="u-tbl"><thead><tr><th>user</th><th>role</th><th>last login</th><th>req</th><th>cost</th></tr></thead><tbody>
             {#each logins as r}<tr class="click" onclick={() => openDrawer('actor', r.username)}><td class="mono">{r.username}</td><td>{r.role}</td><td class="dim">{ago(r.last_login)}</td><td>{compact(r.requests)}</td><td class="num">{usd(r.cost)}</td></tr>{/each}
           </tbody></table>
+          </div>
         </div>
       </div>
       <div class="u-card" style="margin-top:14px;"><div class="u-ctitle">Activity log<button class="u-btn ghost sm" onclick={exportActivity}>export csv</button></div>
@@ -782,11 +786,14 @@
 </div>
 
 <style>
-  .usage { color: #2c2620; font-size: 13px; }
+  /* pass the page height down to .u-shell so rail + main scroll independently */
+  .usage { color: #2c2620; font-size: 13px; height: 100%; min-height: 0; display: flex; flex-direction: column; }
+  .usage.embedded { display: block; height: auto; }
   /* shell = rail + main, admin-Overview layout */
   /* Admin Clean — matches command-center .cc-rail exactly (flush, flat bg, white-card active) */
-  .u-shell { display: flex; align-items: stretch; gap: 0; }
-  .u-rail { flex: none; width: 220px; padding: 0 8px 120px; border-right: 1px solid var(--pw-border, #e8e6dd); background: var(--pw-bg-alt, #f7f6f3); position: sticky; top: 0; height: calc(100vh - 56px); overflow-y: auto; overscroll-behavior: contain; align-self: start; }
+  /* Independent scroll: shell fills the layout <main>; rail + main-pane each scroll on their own */
+  .u-shell { display: flex; align-items: stretch; gap: 0; flex: 1; min-height: 0; overflow: hidden; }
+  .u-rail { flex: none; width: 220px; padding: 0 8px 40px; border-right: 1px solid var(--pw-border, #e8e6dd); background: var(--pw-bg-alt, #f7f6f3); align-self: stretch; overflow-y: auto; overscroll-behavior: contain; }
   .u-rail::-webkit-scrollbar { width: 6px; }
   .u-rail::-webkit-scrollbar-thumb { background: var(--pw-border, #e8e6dd); border-radius: 3px; }
   .u-rail::-webkit-scrollbar-track { background: transparent; }
@@ -801,7 +808,7 @@
   .u-rlbl { flex: 1; }
   .u-rdot { width: 7px; height: 7px; border-radius: 50%; background: #2f6b3a; flex: none; box-shadow: 0 0 0 3px rgba(47,107,58,.15); animation: u-pulse 2s ease-in-out infinite; }
   @keyframes u-pulse { 0%,100% { box-shadow: 0 0 0 3px rgba(47,107,58,.15); } 50% { box-shadow: 0 0 0 5px rgba(47,107,58,.06); } }
-  .u-main { flex: 1; min-width: 0; padding: 1.1rem 1.25rem; }
+  .u-main { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 1.1rem 1.25rem; }
   .u-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1rem; }
   .u-head h1 { margin: 0; font-size: 1.35rem; }
   .u-sub { margin: .2rem 0 0; font-size: 12px; color: #9a8f80; }
@@ -848,6 +855,10 @@
   .u-card { background: #fff; border: 1px solid #ece2d4; border-radius: 10px; padding: .75rem .9rem; margin-bottom: 1rem; }
   .u-ctitle { font-size: 12px; font-weight: 600; color: #6b6052; margin-bottom: .5rem; text-transform: uppercase; letter-spacing: .03em; }
   .u-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  /* Users & activity: 2 tables stacked top/bottom, each scrolls internally */
+  .u-stack2 { display: flex; flex-direction: column; gap: 1rem; }
+  .u-scroll { max-height: 400px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid #f0e9de; border-radius: 8px; }
+  .u-scroll .u-tbl thead th { position: sticky; top: 0; z-index: 1; background: #fff; box-shadow: 0 1px 0 #ece2d4; }
   /* Admin-Overview section panels (◷ TITLE + live badge) */
   .u-sec { border: 1px solid #ece2d4; border-radius: 10px; padding: 1rem 1.1rem; background: #fff; margin-bottom: 1rem; }
   .u-sech { display: flex; align-items: center; justify-content: space-between; margin-bottom: .9rem; }
@@ -856,7 +867,7 @@
   .u-secbadge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #9a8f80; font-family: ui-monospace, Menlo, monospace; }
   .u-sec .u-cards3, .u-sec .u-substats { margin-bottom: 0; }
   .u-sec .u-substats { margin-top: .75rem; }
-  .u-sec > .u-card:last-child, .u-sec .u-grid2 .u-card { margin-bottom: 0; }
+  .u-sec > .u-card:last-child, .u-sec .u-grid2 .u-card, .u-sec .u-stack2 .u-card { margin-bottom: 0; }
   .u-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
   .u-tbl th { text-align: left; font-weight: 600; color: #9a8f80; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; padding: .3rem .4rem; border-bottom: 1px solid #ece2d4; }
   .u-tbl td { padding: .3rem .4rem; border-bottom: 1px solid #f5efe7; }
