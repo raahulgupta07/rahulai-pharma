@@ -118,6 +118,11 @@ Symptom: clicking a "Related questions" chip on the chat answer card did nothing
 - Fix: in the wrapper added `if (act === 'related') { onAction?.('related', payload); return; }` AND changed the default bubble `onAction?.(act)` → `onAction?.(act, payload)` so any arg-aware handler keeps its payload.
 - **Rule:** an intermediate `onAction` re-dispatcher MUST forward the payload by default, not just for the cases it special-cases. A bare `onAction?.(act)` silently breaks every arg-carrying action.
 
+### Chat answer style — chitchat skips the dashboard scaffolding (2026-06-09)
+`/api/super-chat` builds the system instruction via `app/main.py:_apply_reasoning_mode("", reasoning, …)`, which appends the McKinsey FAST/DEEP **structured-tag scaffolding** (`[MODE]/[HEADLINE]/[CONFIDENCE_BREAKDOWN]/[SO_WHAT]/[FINDING]/[KPI]/[RELATED]…` → frontend renders an AnswerCard). That's right for data questions, WRONG for chitchat — "what u can do" came back as a confidence-breakdown card (truncated tag leaking raw into the UI).
+- `_is_chitchat(message)` (`_CHITCHAT_RE`, ≤60 char) catches greeting/capability/meta Qs (`who are u/you`, `what can u/you do`, `hello`, `help`, `what information u have`, SMS `u`/`r` spellings). At the call site: chitchat → `_chitchat_instructions()` (plain pharmacist prose, 2-5 sentences, **bans every tag/card/chart/table/SOURCES**) and skip routing-hint (force `data`). Else → normal scaffolding.
+- Data Qs keep full structured tags (verified no regression). `_smart_route`'s `general_patterns` only skipped *project routing*, not the tag scaffolding — that was the gap.
+
 ### Current-data table resolver (sync to latest upload)
 ALL pharma data access resolves the live table via `dash/tools/table_sync.py` — never hardcode `*_07052026`.
 - `latest_table(cur,schema,cols)` (psycopg) / `latest_table_sa(conn,schema,cols)` (SQLAlchemy): pick the table with all `cols`, **ordered by `dash_table_metadata.updated_at DESC`** (NOW() on every upload), 30s TTL cache. Col-sets: `STOCK_COLS`(site_code+stock_qty), `CATALOG_COLS`(brand+generic), `INDICATION_COLS`(generic+indication).

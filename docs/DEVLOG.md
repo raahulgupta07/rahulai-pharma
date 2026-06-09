@@ -2,6 +2,24 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-09 (latest+41) — Chitchat answers as plain pharmacist prose (kill the card)
+
+**Asked:** screenshot of `/ui/project/citypharma` — "what u can do" rendered as a card titled *PharmaStock Intelligence Agent Capabilities Overview* with a raw leaked `[CONFIDENCE_BREAKDOWN:100|100|` tag. "why the output is like this, plan the output like chatgpt, or pharmicist no card no chart."
+
+**Cause:** `app/main.py` `/api/super-chat` always built the system instruction via `_apply_reasoning_mode("", reasoning, …)`, which appends the McKinsey FAST/DEEP **structured-tag scaffolding** (`[MODE]/[HEADLINE]/[CONFIDENCE_BREAKDOWN]/[SO_WHAT]/[FINDING]/[KPI]/[RELATED]…`) to EVERY question — including conversational/capability/greeting ones. So "what u can do" came back as a confidence-breakdown card (and a truncated tag leaked raw into the UI). `_smart_route` already had a `general_patterns` list that returned None, but that only skips project routing, not the tag scaffolding.
+
+**Fixed (commit 072764f, `app/main.py`):**
+- `_CHITCHAT_RE` + `_is_chitchat(message)` — matches short (≤60 char) greeting/capability/meta questions: `who are u/you`, `what (can|are) you/u`, `what (do|can) you/u do`, `introduce`, `help`, `hello/hi/hey`, `how are u/you`, `what information u/you have`, `thanks/bye`. Handles the `u`/`you` and `u`/`r` SMS spellings.
+- `_chitchat_instructions()` — directive to answer **like a friendly pharmacist in plain prose**, 2-5 sentences or a tight bullet list, and **explicitly bans every dashboard tag** (`[MODE]…[ASSUMPTION]`), card title, table, chart, SOURCES.
+- At the `/api/super-chat` call site: `if _is_chitchat(message): reasoning_instructions = _chitchat_instructions()` else the normal scaffolding; also skip `_detect_routing_hint` (force `"data"`) for chitchat.
+
+**Verified E2E (rebuild + force-recreate, no hot-copy):**
+- classifier: chitchat True for `what u can do / who are u / who are you / what can u do / hello / what information u have`; False for `how many active products / top 5 stockouts / which medicine we have`.
+- `what u can do` → clean conversational answer, **zero tags, no card**.
+- `how many active products are catalogued` → full `[MODE:fast]/[HEADLINE]/[CONFIDENCE_BREAKDOWN]/[FINDING]/[KPI]` structure **intact** (no regression).
+
+---
+
 ### Session 2026-06-09 (latest+40) — Production failure-mode hardening (deep audit)
 
 **Asked:** "check the code deeply, which code will break in production" → then "fix all."
