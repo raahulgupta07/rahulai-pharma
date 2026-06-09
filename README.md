@@ -497,12 +497,19 @@ Audited and load-tested for 100 concurrent platform admins + 1000 stores hitting
 
 **What's ready (verified live):**
 - **Web tier** — 100 concurrent requests → 100/100, p50 **41ms**. The chat SSE generator is synchronous → Starlette runs it in the anyio threadpool, so it never blocks the worker event loop (concurrency is not capped at worker count).
-- **DB** — PgBouncer transaction mode (3000 clients → 80-conn pool, DB `max_connections=300`), NullPool everywhere.
+- **DB** — PgBouncer transaction mode (3000 clients → 80-conn pool, DB `max_connections=300`). App engines: `pool_size=5, max_overflow=10` per engine (raised from 2/3 on 2026-06-09 — 5 conns/worker queued under concurrent agent runs).
 - **API gateway** — Redis **global** fixed-window rate limit (shared across workers) + usage metering + 3-tier store-scoping. Built for 1000 keys.
-- **Embed** — per-embed 60s rate window + CORS allowlist + HMAC.
+- **Embed** — per-org rate limit is now also a **Redis global** fixed-window (2026-06-09; was per-worker in-memory = 16× the cap) with in-memory fallback if Redis is down + CORS allowlist + HMAC.
+- **Auth** — logout/revoke propagates across all workers within 60s (per-worker token cache re-validates the DB; fixed 2026-06-09).
 - **Reliability under concurrency = 100%** — a 15-concurrent real-chat test returned 15/15 successful answers even though the LLM key threw 10 × HTTP 429; the OpenRouter pool's per-key cooldown + retry recovered every one.
 
-**Tuning applied:** `WORKERS=4` (concurrent-chat ceiling ~80→~160), Redis `maxmemory 1gb`, and the multi-key pool activated via `OPENROUTER_API_KEYS`.
+**Tuning applied:** Redis `maxmemory 1gb`, multi-key pool via `OPENROUTER_API_KEYS`.
+
+**Prod env you MUST set on AWS** (`.env`):
+- `PUBLIC_URL=https://pharma.yourdomain.com` — drives every embed/SDK/gateway URL + CORS fallback. Blank → SDK snippets ship `localhost`.
+- `CORS_ORIGINS=https://pharma.yourdomain.com` — lock to your domain. Blank → falls back to PUBLIC_URL; if that's also blank, allows all origins **without** credentials.
+- `WORKERS` — size to RAM (~1–2/GB), NOT CPU. Default caps at `min(8, cpu_count)`; each worker loads the full agent stack (heavy). 16 needs a 16GB+ box.
+- Optional: `EXPORT_ROW_CAP` (default 200000) caps per-table rows in project export (prevents OOM on huge tables); `DEBUG=1` to surface tracebacks in API error bodies (off in prod).
 
 **The one go-live requirement — add OpenRouter keys.** On a single key, latency balloons under load (the 15-chat test ran p50 ~38s / tail 77s vs a ~20s single-chat baseline) purely from 429 throttling. Add 3–5 keys to flatten it:
 ```bash

@@ -2,6 +2,35 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-09 (latest+40) — Production failure-mode hardening (deep audit)
+
+**Asked:** "check the code deeply, which code will break in production" → then "fix all."
+
+**Method:** 3 parallel audit agents (deploy fragility / concurrency-scale / security-data). Most findings were hypothetical ("anti-pattern but safe", "if multi-tenant re-enabled") — **each verified by hand**, kept only real ones. Found 1 more (embed RLS) during E2E testing.
+
+**Fixed (commit d1abaca):**
+
+*Security*
+1. **Logout doesn't revoke across workers** (`auth.py`). Per-worker `_token_cache` returned cached info gated only by the 7-day token expiry (no DB re-check) → a token deleted by `logout` on one worker stayed valid on the other 15 for up to 7 days. Added `_TOKEN_CACHE_FRESH_TTL=60` + `cached_at` stamp on both cache writes → cache hit re-validates DB after 60s, so logout/revoke propagates everywhere within the window.
+2. **`DROP SCHEMA` injection** (`auth.py` delete_user). `schema_name = f"user_{username.lower()}"` → `DROP SCHEMA IF EXISTS "{schema_name}" CASCADE` with `username` an unsanitized path param. App DB role `ai` is **superuser** → an admin-tier (not super) user could `"` breakout and drop `citypharma` = total data loss. Fixed: `re.sub(r"[^a-z0-9_]","_",...)[:63]`.
+3. **CORS `*`+credentials** (`main.py`). Default (CORS_ORIGINS unset) was `allow_origins=["*"]` + `allow_credentials=True`. Now falls back to PUBLIC_URL; if still unset, allows all origins WITHOUT credentials (can't be ridden cross-site). Practical risk was low anyway (Bearer-token auth, not cookies).
+4. **Traceback leaked to clients** (`dashboards_api.py` 4 sites). `traceback.format_exc()` returned in JSON → file paths/code structure. Gated behind `DEBUG` env via `_dbg_trace()` (always logged server-side).
+5. **Embed RLS tuple/dict mismatch** (found in testing). `dash/embed/rls.py load_rls_for_embed` returns a **4-tuple** `(enabled, claims_def, policies, claim_source)`, but all 3 `embed_public.py` call sites (session/create + blocking chat + streaming chat) did `.get("rls_enabled")` on it → `AttributeError: 'tuple' object has no attribute 'get'` on **every embed chat** (caught fail-open, so RLS never applied + a traceback per chat). Unpacked the tuple at all 3 sites + fixed the `extract_claims(claims_def, source, *, …_payload=)` arg order at session/create. All 78 embeds are `rls_enabled=false` → no behavior change, just removes the exception.
+
+*Scale / resource*
+6. **DB pool too small** (`db/session.py`). `pool_size=2, max_overflow=3` = 5 conns/worker; held during long agent runs → bursts >5 concurrent chats/worker wait 30s then 500. Bumped all 5 engines to `pool_size=5, max_overflow=10`. pgbouncer (DEFAULT_POOL_SIZE=80, MAX_DB_CONNECTIONS=200) + PG max_connections=300 absorb it.
+7. **Per-org embed rate-limit was per-worker** (`rate_limit.py`). In-memory deque → each of 16 workers enforced the cap independently = 16× the global limit. Added `_redis_fixed_window()` (Redis INCR+EXPIRE, key `rl:org:{slug}:embed_chat:{bucket}`, global across workers) used first in `_check_org_limit`, falling back to the in-memory window if Redis is down. **Gateway `/api/v1` already had its own Redis limiter** — this was only the human/embed surface.
+8. **Project export OOM** (`projects.py:2307`). `pd.read_sql('SELECT * FROM …')` loaded a 100k-row table into a DataFrame then a CSV string in RAM → OOM under concurrent exports. Now chunked (50k) + capped `EXPORT_ROW_CAP=200000`, filename flagged `_TRUNCATED`. Also fixed a leaked file handle (`open()` without `with`) at `projects.py:84`.
+9. **`WORKERS` default = cpu_count** (`gunicorn_conf.py`). 16 on a 16-core box, each loading the full agent stack → OOM on small-RAM hosts. Default capped `min(8, cpu_count)`; override via `WORKERS`. `.env.example` WORKERS guidance + CORS_ORIGINS default no longer `*`.
+
+**Deploy config (not code) — set on AWS `.env`:** `PUBLIC_URL` (drives embed/SDK/CORS URLs) + `CORS_ORIGINS` (lock to your domain).
+
+**Dismissed as false (agents over-claimed):** SMTP boot crash (guarded by `smtp_configured()` before the env-access), embed team-cache cross-store leak (store scope is a per-request `API_STORE_SCOPE` contextvar set/reset in `embed_chat`, NOT baked into the cached team — sharing the team is safe), SQL-injection in `auth.py:185/1270` (hardcoded column lists, no user input), gateway rate-limit 16× bypass (it's Redis-global).
+
+**Verified:** rebuild clean, health 200, login/logout/authed/embed-chat all 200, zero tracebacks, Redis limiter counts down globally `(True,4)→(True,3)` + key created.
+
+---
+
 ### Session 2026-06-08 (latest+39) — Fresh-deploy hardening + embed Q&A logging + dead-table audit
 
 **Asked:** explain `dash_data_sources` boot errors → audit unwanted tables → why no Q&A in embed Monitoring → fix the AWS engineer's install errors so a fresh box has **zero errors**.
