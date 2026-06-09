@@ -2,6 +2,31 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-09 (latest+49) — Fresh-DB wipe, real pharma data load+train, 5-issue fix pass, training-pipeline hardening, data-quality report
+
+Long session: wiped DB to a clean single-super-admin state, loaded two real source files, trained, then fixed everything that surfaced.
+
+**Fresh wipe + baseline fixes.** `scripts/init_fresh_db.sh --reset` → empty schema, `init_auth()` reseeds only the env super-admin (`demo`). Two latent baseline bugs that would break ANY fresh cloud deploy, fixed in `db/baseline/schema.sql` recon block: (1) it ran under empty `search_path` so bare table refs failed → added `SET search_path = public, dash;`; (2) the `v_usage_unified` recreate referenced `engine_model` (mig 178) absent from baseline table defs → added `ALTER TABLE … ADD COLUMN IF NOT EXISTS engine_model text` for `dash_apigw_usage`/`dash_embed_calls`. Backup before wipe: `/tmp/pre_wipe_*.dump`.
+
+**Data load.** `articles-export 1.xlsx` (drug catalog, 4-row banner → header row 4) + `balance_stock 2.csv` (stock, 53 stores). Both CLEAN — zero 1E+12 corruption, all 13-digit. Uploaded via `/api/upload?project=citypharma` (had to seed the locked `dash_projects` row first — `ensure_locked_project()` still not built; insert by hand: slug=schema=`citypharma`, user_id=1). Tables: `articles_clean` (4892), `balance_stock_2` (106322). Trained via `/retrain?force=1`.
+
+**5-issue fix pass (committed `3434c43`):**
+1. **Agent aggregation undercount (CODE BUG)** — agent sometimes wrote a row-level `SELECT` then summed rows in-head → wrong totals on many-row queries (one article's stock reported 1,182u/10-sites vs true 4,449u/53; unstocked 1,422 vs 1,788). Fix: HARD RULE in `dash/instructions.py` (new "AGGREGATE IN SQL" section) — totals/counts/distinct MUST use SQL `SUM`/`COUNT(DISTINCT)`/`GROUP BY`, never sum fetched rows, prefer `shop_flat`. Verified: now exact.
+2. **`article_code` bigint↔text mismatch** — `_is_id_colname` (`app/upload.py`) checked the raw header against `(^|_)code`; `"Article Code"` (space) failed the anchor so it landed int64 while snake-cased `article_code` in stock landed text. Fix: normalize separators (`re.sub(r'[^a-z0-9]+','_', name.lower())`) before the regex. Also `ALTER`'d the existing `articles_clean.article_code` → text.
+3. orphan stock — exported `/tmp/orphan_stock.csv` (source-side fix).
+4. unstocked articles — exported `/tmp/unstocked_articles.csv`.
+5. **Training status race** — run was marked `done` ~5 min before post-hooks (bilingual/catalog vectors/shop_flat) finished. Fix: mark `finalizing` at table-completion, flip `done` only at the END of `_bg`; `app/learning.py` active-run + log-priority filters now include `finalizing`.
+
+**svc:outlet cleanup.** Loading 53-store stock auto-minted 53 `svc:outlet-*` API service accounts (`_auto_provision_missing()`, env `APIGW_AUTO_PROVISION` defaulted ON). Deleted them + set `APIGW_AUTO_PROVISION=0` (`.env` AND compose env block, `${APIGW_AUTO_PROVISION:-0}`) → fresh data loads no longer create them. Back to single user `demo`.
+
+**ML Models badge removed.** The cockpit "⊘ ML Models" badge came from `_task_ml()` writing a dead `ml_auto_create='skipped'` row to `dash_training_steps` (AutoML removed 2026-05-23). Fix: `_task_ml()` now PURGES the row instead of writing it; frontend `settings/+page.svelte` filters any `ml`/`ml_auto_create`/`ml_models` step. There is NO machine-learning step in this product.
+
+**`relationships` step hung forever (root cause #3).** `_discover_relationships` + `_seed_cross_table_qa` (`app/upload.py`) run `::text`-cast overlap/JOIN verify SQL (bigint↔text article_code defeats indexes → correlated seq-scan of 106k rows × distinct keys) with **no `statement_timeout`** → a single run sat `running` forever, UI spinner never stopped. Two-layer fix: (1) `connect_args={"options":"-c statement_timeout=30000"}` on both verify engines → query aborts at 30s, caught, skipped; (2) **universal watchdog** `_reap_stale_runs(slug)` in `app/learning.py`, called on every status poll — any `running`/`finalizing` run with no log progress > `STALE_RUN_MINUTES` (default 12) auto-marked `failed`. Verified: retrain now clears `relationships` in ~30s.
+
+**shop_flat self-collision + persona JSON.** Two run-5 warnings fixed: (1) `shop_flat` had become a TRAINED table (got a `dash_table_metadata` row) and matched `STOCK_COLS` (site_code+stock_qty) → resolver picked it as the stock table → `build_shop_flat` read `article_code` (it has `art_key`) → rebuild silently skipped. Fix: exclude `{shop_flat}` from the training table list (`app/upload.py:11543`) + harden resolver `STOCK_COLS += "article_code"` (`dash/tools/table_sync.py`) so the derived table can never be picked + purged the stray metadata row. (2) persona-enrich did raw `json.loads()` on LLM output (the only un-stripped site in the file) → "Expecting value" on fenced JSON; added the strip-fences + first/last-brace fallback used by the other 6 sites. Verified: `✓ shop_flat: 106322 rows` + `✓ persona enriched`.
+
+**Data-quality findings (source-side, NOT bugs).** Built `CityPharma_Data_Issues.xlsx` (7 sheets, color-coded full join) for the user. Issue 1: **366** article codes have stock but no catalog entry (3,992 rows, 52,026 units → agent can't name them). Issue 2: **1,788** catalog codes have zero stock anywhere. Issue 3: **1,792** catalog rows missing fields — **1,566 have no `generic_name`** (blocks `find_substitutes`/`alternatives_for_indication`), 895 no composition, 113 no category. All `article_code`s verified clean (0 scientific-notation). Fixes are POS-catalog backfill + re-upload.
+
 ### Session 2026-06-09 (latest+48) — Independent rail/content scroll on all admin pages + stacked-scroll tables
 UX: left rail stays fixed, only the right content pane scrolls (was: whole page scrolled as one, rail slid under the top nav).
 

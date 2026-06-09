@@ -566,10 +566,45 @@ def list_training_runs(slug: str, request: Request):
                       "logs": r[7] if r[7] else []} for r in rows]}
 
 
+def _reap_stale_runs(slug: str) -> int:
+    """Watchdog: fail any run stuck 'running'/'finalizing' with no log progress
+    for > STALE_RUN_MINUTES (default 12). A hung step (e.g. an un-timed-out SQL
+    verify) otherwise leaves the run 'running' forever and the UI spinner never
+    stops. Uses the newest log entry's tsabs as the liveness signal, falling
+    back to started_at when a run has logged nothing yet. Cheap; fail-soft.
+    The 12-min default clears the ~4-5 min silent gap while catalog vectors
+    embed during 'finalizing'. Returns rows reaped."""
+    import os as _os
+    try:
+        stale_min = max(2, int(_os.getenv("STALE_RUN_MINUTES", "12")))
+    except (TypeError, ValueError):
+        stale_min = 12
+    try:
+        with _engine.connect() as conn:
+            res = conn.execute(text(
+                "UPDATE public.dash_training_runs "
+                "SET status='failed', finished_at=now(), "
+                "    current_step = left(COALESCE(NULLIF(current_step,''),'')"
+                "                   || ' · aborted (stale: no progress > ' || :m || ' min)', 200) "
+                "WHERE project_slug = :s AND status IN ('running','finalizing') "
+                "  AND COALESCE( "
+                "        (SELECT max((e->>'tsabs')::float) FROM jsonb_array_elements(logs) e), "
+                "        EXTRACT(EPOCH FROM started_at) "
+                "      ) < EXTRACT(EPOCH FROM now()) - (:m * 60)"
+            ), {"s": slug, "m": stale_min})
+            conn.commit()
+            return res.rowcount or 0
+    except Exception:
+        return 0
+
+
 @router.get("/{slug}/auto-train/status")
 def get_auto_train_status(slug: str, request: Request):
     """Return auto-train daemon status + recent training runs for this project."""
     _get_user(request)
+    # Watchdog sweep on every poll — self-heals a hung run so the UI spinner
+    # can never spin forever (see _reap_stale_runs).
+    _reap_stale_runs(slug)
     try:
         from dash.cron.auto_train_daemon import get_daemon_status
         daemon = get_daemon_status()
@@ -3153,6 +3188,30 @@ def eval_health(slug: str):
         "average_score": float(r["average_score"] or 0),
         "run_at": str(r["run_at"]) if r["run_at"] else None,
     }
+
+
+@router.get("/{slug}/semantic-layer")
+def semantic_layer(slug: str):
+    """Engineer-built materialized views for a project (name, purpose, grain,
+    live row count). Feeds the Data Source → Semantic Layer UI panel."""
+    import os as _os
+    enabled = _os.environ.get("ENGINEER_SEMANTIC_LAYER") in ("1", "true", "True")
+    try:
+        from db import db_url as _du
+        from dash.training.semantic_layer import list_semantic_layer
+    except Exception:
+        return {"project_slug": slug, "enabled": enabled, "matviews": []}
+    mvs = list_semantic_layer(slug, _du)
+    schema = re.sub(r"[^a-z0-9_]", "_", slug.lower())[:63]
+    for m in mvs:
+        try:
+            with _engine.connect() as conn:
+                conn.execute(text(f"SET search_path = {schema}, public"))
+                m["rows"] = int(conn.execute(
+                    text(f'SELECT COUNT(*) FROM {schema}."{m["name"]}"')).scalar() or 0)
+        except Exception:
+            m["rows"] = None
+    return {"project_slug": slug, "enabled": enabled, "matviews": mvs}
 
 
 @router.get("/{slug}/refine-tools/{tool_name}/failures")

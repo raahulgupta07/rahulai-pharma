@@ -24,8 +24,12 @@ import time
 _TTL = 30.0
 _CACHE: dict[tuple[str, tuple[str, ...]], tuple[str, float]] = {}
 
-# column-sets that identify each logical table
-STOCK_COLS = ("site_code", "stock_qty")
+# column-sets that identify each logical table.
+# article_code is REQUIRED in STOCK_COLS so the resolver can't pick the derived
+# shop_flat table (it keys on art_key, not article_code) even if shop_flat ever
+# carries a dash_table_metadata row. The real source stock table
+# (balance_stock_*) always has site_code + stock_qty + article_code. 2026-06-09.
+STOCK_COLS = ("site_code", "stock_qty", "article_code")
 CATALOG_COLS = ("brand_name", "generic_name")        # shop/graph catalog
 INDICATION_COLS = ("generic_name", "indication")     # chemist catalog
 

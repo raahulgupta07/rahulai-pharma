@@ -5560,6 +5560,16 @@ function signUserJWT($user) {
  let dsTrainingTables = $state<Record<string, boolean>>({});
  let dsPollTimer: any = null;
 
+ // ═══ Semantic Layer (Engineer-built materialized views) ═══
+ let slData = $state<any>(null);
+ let mvExpanded = $state<string | null>(null);
+ async function loadSemanticLayer() {
+   try {
+     const r = await fetch(`/api/projects/${slug}/semantic-layer`, { headers: _h() });
+     if (r.ok) slData = await r.json();
+   } catch {}
+ }
+
  async function loadDataSource() {
    if (dsLoading) return;
    dsLoading = true;
@@ -5593,6 +5603,7 @@ function signUserJWT($user) {
      try { if (!dqLoaded) loadDataQuality(false); } catch {}
      // Overview/EDA/Quality now stack in one view → eagerly load EDA too.
      try { if (!edaData && !edaLoading) loadEda(); } catch {}
+     try { if (!slData) loadSemanticLayer(); } catch {}
    }
  });
 
@@ -5830,7 +5841,15 @@ function signUserJWT($user) {
  const prevRunId = trainStepsRunId;
  trainStepsRunId = d.run_id ?? null;
  trainStepsRunStatus = d.run_status || '';
- const newSteps = Array.isArray(d.steps) ? d.steps : [];
+ // Drop the dead ML step — the ml_worker / auto_create_models feature was
+ // removed (2026-05-23 LLM-native pivot). The backend no longer writes it, but
+ // filter here too so any stale 'ml_auto_create'/'ml' row never renders the
+ // confusing "ML Models ⊘" badge. There is no machine-learning step. 2026-06-09.
+ const _rawSteps = Array.isArray(d.steps) ? d.steps : [];
+ const newSteps = _rawSteps.filter((s: any) => {
+   const n = String(s?.name || s?.step || '').toLowerCase().replace(/\s+/g, '_');
+   return n !== 'ml' && n !== 'ml_auto_create' && n !== 'ml_models';
+ });
  // Reset step log dedup on new run
  if (trainStepsRunId !== prevRunId) _cliLoggedSteps.clear();
  // Dispatch CLI log line for any step that transitioned to done/running
@@ -7597,6 +7616,35 @@ function signUserJWT($user) {
       {/each}
       {#if dsData && !dsSortedTables().length}<div class="dsx-empty">no tables{dsFilter ? ' match filter' : ' — upload data to begin'}</div>{/if}
     </div>
+
+    <!-- ═══ SEMANTIC LAYER — Engineer-built materialized views ═══ -->
+    {#if slData}
+    <div class="dsx-sechead dsx-sechead-gap">SEMANTIC LAYER
+      <span class="sl-tag" class:sl-tag-on={slData.enabled}>{slData.enabled ? 'Engineer ON' : 'Engineer OFF'}</span>
+    </div>
+    <div class="sl-hint">Materialized views the Engineer agent designs over your tables — pre-joined &amp; pre-aggregated so the agent reads fast. Derived (not trained); refreshed each training run.</div>
+    <div class="dsx-rows">
+      <div class="dsx-row dsx-rowhead sl-head">
+        <span>VIEW</span><span>ROWS</span><span>GRAIN</span><span>SOURCE</span>
+      </div>
+      {#each (slData.matviews || []) as m (m.name)}
+        <div class="dsx-row dsx-rowclk sl-row" onclick={() => mvExpanded = mvExpanded === m.name ? null : m.name}>
+          <span class="dsx-tname">{mvExpanded === m.name ? '▾' : '▸'} {m.name} <span class="sl-mvtag">matview</span></span>
+          <span>{m.rows == null ? '—' : Number(m.rows).toLocaleString()}</span>
+          <span class="sl-grain">{m.grain || '—'}</span>
+          <span class="sl-src">{m.source || 'engineer_agent'}</span>
+        </div>
+        {#if mvExpanded === m.name}
+          <div class="dsx-detail">
+            <div class="dsx-dsec"><b>PURPOSE</b> {m.purpose || '—'}</div>
+            <div class="dsx-dsec"><b>GRAIN</b> {m.grain || '—'}</div>
+            {#if m.refresh_sql}<div class="dsx-dsec"><b>REFRESH</b> <code class="emp-code">{m.refresh_sql}</code></div>{/if}
+          </div>
+        {/if}
+      {/each}
+      {#if !(slData.matviews || []).length}<div class="dsx-empty">{slData.enabled ? 'no matviews yet — train to let the Engineer design them' : 'Engineer disabled (set ENGINEER_SEMANTIC_LAYER=1)'}</div>{/if}
+    </div>
+    {/if}
 
     <div class="dsx-sechead dsx-sechead-gap">EDA</div>
     <!-- ═══ EDA — per-column profiling (live SQL scan) ═══ -->
@@ -18275,6 +18323,12 @@ function signUserJWT($user) {
 /* EDA + Quality */
 .dsx-sechead { font-size:12px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:var(--pw-muted,#9a8f80); padding:0 0 8px; border-bottom:1px solid var(--pw-border,#e7e0d6); margin:0 0 14px; }
 .dsx-sechead-gap { margin-top:30px; }
+.sl-tag { float:right; font-size:9px; font-weight:700; letter-spacing:0.04em; padding:2px 7px; border-radius:9px; background:#efe7db; color:#9a8f80; border:1px solid #e0d6c8; }
+.sl-tag-on { background:#e6f3ea; color:#2f7d49; border-color:#bfe0c9; }
+.sl-hint { font-size:11px; color:var(--pw-ink-soft,#8a7f70); margin:-6px 0 12px; line-height:1.5; }
+.sl-head span:nth-child(3), .sl-head span:nth-child(4) { color:var(--pw-ink-soft); }
+.sl-mvtag { font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:#9a4a2f; background:#f3ece1; border-radius:6px; padding:1px 5px; margin-left:4px; }
+.sl-grain, .sl-src { font-size:11px; color:var(--pw-ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .dsx-eda-head { display:flex; align-items:center; gap:10px; margin:0 0 12px; }
 .dsx-eda-title { font-size:14px; font-weight:700; color:var(--pw-ink,#2c2620); }
 .dsx-eda-meta { font-size:12px; color:var(--pw-muted,#6b6052); }

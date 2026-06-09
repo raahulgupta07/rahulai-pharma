@@ -2934,9 +2934,16 @@ Return empty array [] if no relationships found."""
         rels = json.loads(content.strip().strip("`").strip())
 
         if isinstance(rels, list) and rels:
-            # VERIFY relationships: check actual value overlap in PostgreSQL
+            # VERIFY relationships: check actual value overlap in PostgreSQL.
+            # statement_timeout=30s is MANDATORY here — the overlap check below
+            # casts both sides to ::text (article_code is bigint in one table,
+            # text in another), which defeats every index and turns the EXISTS
+            # subquery into a correlated seq-scan of a 100k+ row table per
+            # distinct key. Without a timeout a single bad pair froze the whole
+            # training run indefinitely (run hung at 'relationships' forever).
+            # On timeout the query aborts → caught below → LLM confidence kept.
             schema = re.sub(r"[^a-z0-9_]", "_", project_slug.lower())[:63]
-            engine = create_engine(db_url)
+            engine = create_engine(db_url, connect_args={"options": "-c statement_timeout=30000"})
             with engine.connect() as conn:
                 for r in rels[:10]:
                     ft, fc = r.get("from_table", ""), r.get("from_column", "")
@@ -3014,7 +3021,12 @@ def _seed_cross_table_qa(project_slug: str) -> int:
 
         training_dir = KNOWLEDGE_DIR / project_slug / "training"
         training_dir.mkdir(parents=True, exist_ok=True)
-        verify_engine = create_engine(db_url, poolclass=NullPool)
+        # statement_timeout=30s — the generated JOIN-verify SQL below casts the
+        # join keys to ::text (bigint↔text article_code), defeating indexes on
+        # 100k+ row tables. A heavy GROUP-BY/LEFT-JOIN must abort, not hang the
+        # training run. On timeout the pair is skipped (best-effort QA seed).
+        verify_engine = create_engine(db_url, poolclass=NullPool,
+                                      connect_args={"options": "-c statement_timeout=30000"})
 
         for ft, fc, tt, tc, conf in rels:
             # Pick a dimension col on `to` side (first text col not FK)
@@ -4945,7 +4957,16 @@ Return ONLY valid JSON (no markdown):
             )
 
             if enriched_persona:
-                persona_data = json.loads(enriched_persona)
+                # Lenient parse — gemini wraps JSON in ```json fences / trailing
+                # prose, which plain json.loads rejected ("Expecting value").
+                # Strip fences like the 6 other LLM-JSON sites in this file, then
+                # fall back to first-brace…last-brace extraction. 2026-06-09.
+                _raw = enriched_persona.strip().strip("`").lstrip("json").strip()
+                try:
+                    persona_data = json.loads(_raw)
+                except json.JSONDecodeError:
+                    _i, _j = _raw.find("{"), _raw.rfind("}")
+                    persona_data = json.loads(_raw[_i:_j + 1]) if _i != -1 and _j > _i else None
                 if isinstance(persona_data, dict) and persona_data.get("persona_prompt"):
                     # Save enriched persona to file
                     persona_file = KNOWLEDGE_DIR / project_slug / "persona.json"
@@ -11529,6 +11550,24 @@ async def retrain_project(slug: str, request: Request):
     insp = inspect(engine)
 
     tables = insp.get_table_names(schema=schema)
+    # Exclude DERIVED tables from training. shop_flat is a denormalized stock
+    # table rebuilt by build_shop_flat() in the post-hooks — it is NOT a source
+    # upload. Training it (a) wastes a full pipeline pass, (b) writes a
+    # dash_table_metadata row that makes the stock resolver (STOCK_COLS =
+    # site_code+stock_qty, which shop_flat also has) pick shop_flat as the
+    # "latest stock table" → build_shop_flat then reads article_code (shop_flat
+    # has art_key) → "column does not exist" → rebuild silently skipped.
+    # 2026-06-09.
+    _DERIVED_TABLES = {"shop_flat"}
+    # Engineer-built matviews are derived too — exclude every registered
+    # semantic-layer view so they never enter the per-table training loop and
+    # can't be picked by the stock resolver.
+    try:
+        from dash.training.semantic_layer import list_semantic_layer
+        _DERIVED_TABLES |= {m["name"] for m in list_semantic_layer(slug, db_url)}
+    except Exception:
+        pass
+    tables = [t for t in tables if t not in _DERIVED_TABLES]
 
     # Fire column enrichment IMMEDIATELY (parallel to training, fire-and-forget).
     # User clicked "Train All" → columns should refresh even if training stalls.
@@ -12483,6 +12522,34 @@ async def retrain_project(slug: str, request: Request):
                     counts[_t] = -1
             return counts
 
+        # Engineer semantic layer (gated) — the Engineer agent designs + creates
+        # materialized views over the trained tables. Runs AFTER relationships
+        # (needs the join keys) and BEFORE the KG/vector backfill so those see
+        # the views. Whitelist-gated DDL; shop_flat stays as the guaranteed
+        # baseline below regardless. Flag default OFF.
+        if os.environ.get("ENGINEER_SEMANTIC_LAYER") in ("1", "true", "True"):
+            _set_step("semantic_layer")
+            _master_log("Engineer: designing semantic layer (materialized views)...", "", total_tables)
+            try:
+                from dash.training.engineer_agent import design_semantic_layer
+                from dash.training.semantic_layer import apply_semantic_layer
+                _base = _tail_table_names()
+                _plan = design_semantic_layer(slug, schema, db_url)
+                if _plan and getattr(_plan, "matviews", None):
+                    _res = apply_semantic_layer(
+                        slug, _plan.matviews, _base, db_url, schema=schema,
+                        log=lambda m: _master_log(m, "", total_tables))
+                    _ok = sum(1 for r in _res if r.get("ok"))
+                    _master_log(f"✓ semantic layer: {_ok}/{len(_res)} matviews created", "", total_tables)
+                    for _sk in (getattr(_plan, "skipped", None) or [])[:5]:
+                        _master_log(f"  · skipped: {str(_sk)[:100]}", "", total_tables)
+                else:
+                    _master_log("· Engineer proposed no matviews", "", total_tables)
+            except Exception as _sle:
+                import logging as _l
+                _l.getLogger(__name__).warning(f"semantic layer failed for {slug}: {_sle}")
+                _master_log(f"⚠ semantic layer skipped: {str(_sle)[:100]}", "", total_tables)
+
         # Cross-Source Knowledge Graph (runs even if all tables were skipped)
         # Knowledge graph runs FIRST (serially) — subagent_synthesis depends on it.
         _set_step("knowledge_graph")
@@ -12692,23 +12759,19 @@ async def retrain_project(slug: str, request: Request):
 
         def _task_ml():
             # ml_worker container + auto_create_models() were removed in the
-            # 2026-05-23 ML pivot (LLM-native, in-process ≤50K rows). This
-            # step is dead — kept as no-op so older _tail_runner audit rows
-            # still resolve, but never fires the deleted code. Don't log
-            # FAILED in the master log. Overwrite any prior cached step row
-            # so stale FAILED status doesn't linger.
+            # 2026-05-23 ML pivot (LLM-native, in-process ≤50K rows). The step
+            # is DEAD. We used to write a 'ml_auto_create'='skipped' audit row
+            # here so the UI could resolve it — but that row is exactly what
+            # rendered the confusing "ML Models ⊘" badge on a product with no
+            # ML feature. True no-op now: write nothing, purge any leftover row
+            # so the badge disappears. There is no machine-learning step.
+            # 2026-06-09.
             try:
                 with master_engine.begin() as _mc:
-                    _mc.execute(text("""
-                        INSERT INTO public.dash_training_steps
-                          (run_id, project_slug, step_no, name, scope, status,
-                           elapsed_ms, error, started_at, finished_at, updated_at)
-                        VALUES (:r, :s, 32, 'ml_auto_create', 'project', 'skipped',
-                                0, NULL, now(), now(), now())
-                        ON CONFLICT (project_slug, name, scope) DO UPDATE
-                          SET status='skipped', error=NULL, elapsed_ms=0,
-                              finished_at=now(), updated_at=now(), run_id=EXCLUDED.run_id
-                    """), {"r": master_run_id, "s": slug})
+                    _mc.execute(text(
+                        "DELETE FROM public.dash_training_steps "
+                        "WHERE project_slug = :s AND name IN ('ml_auto_create','ml','ml_models')"
+                    ), {"s": slug})
             except Exception:
                 pass
             return
@@ -12922,6 +12985,20 @@ async def retrain_project(slug: str, request: Request):
             import logging as _l
             _l.getLogger(__name__).warning(f"shop_flat skipped for {slug}: {_sfe}")
             _master_log(f"⚠ shop_flat skipped: {str(_sfe)[:80]}", "", total_tables)
+
+        # ─── Engineer semantic-layer matviews — REFRESH every registered view
+        # so reads reflect the just-loaded data. CONCURRENTLY (no read lock);
+        # falls back to plain refresh if the unique index is missing. Fail-soft.
+        if os.environ.get("ENGINEER_SEMANTIC_LAYER") in ("1", "true", "True"):
+            try:
+                from dash.training.semantic_layer import refresh_semantic_layer
+                _rn = refresh_semantic_layer(slug, db_url, schema=schema,
+                                             log=lambda m: _master_log(m, "", total_tables))
+                if _rn:
+                    _master_log(f"✓ semantic layer: {_rn} matviews refreshed", "", total_tables)
+            except Exception as _rfe:
+                import logging as _l
+                _l.getLogger(__name__).warning(f"matview refresh skipped for {slug}: {_rfe}")
 
         # AutoSim grounded-scenario enqueue REMOVED — the sim chassis was deleted
         # in the 2026-05-23 trim, so `autosim_generate_grounded` has NO registered

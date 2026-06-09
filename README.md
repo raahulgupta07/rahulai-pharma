@@ -71,9 +71,16 @@ Benchmarked all Gemini models on EN+Burmese (generic Burmese tasks + paired EN/M
 - **`training_model`** is a real setting now (empty = follow CHAT). Training (Q&A-gen, vision OCR, extraction, dashboard-gen) runs `gemini-3-flash-preview` by default.
 
 ### Ingestion paths
-- **File upload** (`POST /api/upload`) — CSV/Excel/etc → train.
+- **File upload** (`POST /api/upload`) — CSV/Excel/etc → train. Code/ID columns (e.g. `article_code`) land as **TEXT** even when values look numeric (the `_is_id_colname` separator-normalize) so barcodes aren't rounded and cross-table joins don't hit a bigint↔text mismatch.
 - **DB connector** (`/api/connectors/*`) — PostgreSQL / MySQL / Microsoft Fabric: test → pick tables → sync → train.
 - **SFTP — not implemented** (no `paramiko`). Build if pull-from-SFTP is needed.
+
+### Training pipeline (2026-06-09 hardening)
+- **Status:** `running` → `finalizing` (post-hooks: bilingual twins · catalog vectors · `shop_flat` denorm) → `done`. A run never reports `done` while post-hooks are still building.
+- **No hangs:** relationship/QA verify SQL runs with `statement_timeout=30s`; a watchdog (`_reap_stale_runs`, `STALE_RUN_MINUTES` default 12) auto-fails any run stuck with no log progress so the UI spinner can't spin forever.
+- **`shop_flat` is derived, not trained** — it's rebuilt by `build_shop_flat` in post-hooks; it's excluded from the training table list and from the stock resolver (`STOCK_COLS` requires `article_code`, which `shop_flat` lacks — it keys on `art_key`).
+- **No ML step / no "ML Models" badge** — AutoML was removed; the agent answers are LLM-native, no model training.
+- **Data-quality:** a re-upload with bad joins is visible, not silent — orphan stock (code with stock but no catalog row) lands in `shop_flat` as `linked=false`, never as a false "out of stock".
 
 ---
 
