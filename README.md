@@ -185,7 +185,7 @@ Standalone super-admin page (Admin ▾ → People → **Usage & Cost**) unifying
 
 - **Overview** — KPI tiles (Spend/Requests/Tokens/Errors/Active-users) then `◷`-titled **section panels**: Trends (stacked-by-model Spend/Requests/Tokens cards, period-over-period ▲▼ + cost-per-request & per-1k-tokens), Breakdown (by-source & by-model tables), Activity heatmap (day×hour), Users & activity (who-logged-in + grouped breakdown + full activity log CSV export).
 - **People** (2026-06-09) — per-user activity, **split into two populations** via an `App users / Embed users` segment toggle. *App users* = registered `dash_users` (humans + `svc:*` API keys): sortable leaderboard (Last active · Sessions · Questions · Q/sess · 👍/👎 satisfaction · Tokens · Cost · Err%) + search + humans-only toggle; click a row → drawer (KPIs, 👍/👎, daily-questions sparkline, by-source, recent sessions, rated questions). *Embed users* = **anonymous** widget visitors from `dash_embed_calls` (identity = `session_token`, grouped per `embed_id` → store): By-session / By-widget tables; click a session → drawer with origin/IP + full message-turn conversation (bodies when `EMBED_LOG_BODIES=1`). Two separate populations, two tables — never mixed.
-- **Performance** — p50/p95/p99 latency overall + by source/model + slowest calls.
+- **Performance** — p50/p95/p99 latency overall + by source/model + slowest calls. (Reads `v_usage_unified.latency_ms`, added by **mig 179** 2026-06-09 — the live mig-174 view was missing the column so this tab + the Overview activity feed silently rendered empty; appending it revived both.)
 - **Errors** — error rate, by-source, top error codes, recent failures.
 - **Tools** — what the agent actually ran (per-tool calls / error% / p50 / p95).
 - **Security** — guardrail events: cross-store leak attempts, rate-limited (429s), auth failures.
@@ -206,7 +206,7 @@ Brain is one unified view (single-tenant). The multi-tenant scope tiers (THIS AG
 | Layer | Tech |
 |---|---|
 | Backend | FastAPI + Agno (AgentOS), gunicorn (`app.main:app`), Python 3.12 |
-| DB | PostgreSQL 18 + pgvector, via PgBouncer (transaction pooling, NullPool) |
+| DB | PostgreSQL 18 + pgvector, via PgBouncer (transaction pooling, NullPool). **172 tables** (public 97 / dash 51 / ai 21 / citypharma 3) — pruned from 221 (mig 180/181 dropped 49 dormant inherited-Dash + Skills tables, 2026-06-09); per-table map in `docs/TABLE_TEST_REPORT.md` |
 | Cache | Redis |
 | Frontend | SvelteKit 5 (Svelte 5 runes), base path `/ui`, adapter-static, Tailwind v4, ECharts |
 | Proxy | Caddy |
