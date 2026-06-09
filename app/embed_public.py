@@ -27,14 +27,38 @@ def _embed_log_bodies() -> bool:
 
 def _embed_call_insert_sql(log_bodies: bool) -> str:
     """Build the dash_embed_calls INSERT. Adds body columns only when logging is on
-    (and migration 177 has added them), so older DBs / bodies-off keep working."""
+    (and migration 177 has added them), so older DBs / bodies-off keep working.
+    Always writes token/cost columns (migration 178) for the Usage dashboard."""
     cols = ("embed_id, session_token, external_user, origin, ip, "
-            "message_chars, response_chars, latency_ms, success, error")
-    vals = ":e, :t, :u, :o, :ip, :mc, :rc, :ms, :s, :err"
+            "message_chars, response_chars, latency_ms, success, error, "
+            "tokens_in, tokens_out, cost_usd, engine_model")
+    vals = (":e, :t, :u, :o, :ip, :mc, :rc, :ms, :s, :err, "
+            ":ti, :to, :cost, :emodel")
     if log_bodies:
         cols += ", message_text, response_text"
         vals += ", :mt, :rt"
     return f"INSERT INTO public.dash_embed_calls ({cols}) VALUES ({vals})"
+
+
+def _embed_usage_from_response(response) -> dict:
+    """Pull token usage + model from an Agno RunResponse for the Usage dashboard.
+    Reuses RunMetrics (input_tokens/output_tokens). Fail-soft → zeros."""
+    out = {"tokens_in": 0, "tokens_out": 0, "model": ""}
+    try:
+        m = getattr(response, "metrics", None)
+        if hasattr(m, "to_dict"):
+            m = m.to_dict()
+        if isinstance(m, dict):
+            ti = m.get("input_tokens"); to = m.get("output_tokens")
+            # metrics values may be per-message lists — sum if so
+            out["tokens_in"] = int(sum(ti) if isinstance(ti, (list, tuple)) else (ti or 0))
+            out["tokens_out"] = int(sum(to) if isinstance(to, (list, tuple)) else (to or 0))
+        mdl = getattr(response, "model", None) or (m.get("model") if isinstance(m, dict) else None)
+        if mdl:
+            out["model"] = str(mdl)
+    except Exception:
+        pass
+    return out
 
 router = APIRouter(prefix="/api/embed", tags=["EmbedPublic"])
 
@@ -1279,6 +1303,7 @@ async def embed_chat(req: Request):
     success = True
     err_msg: str | None = None
     content = ""
+    _usage = {"tokens_in": 0, "tokens_out": 0, "model": ""}
     try:
         from dash.team import create_project_team
         team = create_project_team(
@@ -1322,6 +1347,7 @@ async def embed_chat(req: Request):
                 team.run, message + ctx_note, session_id=f"embed_{token[:16]}"
             )
         content = response.content or ""
+        _usage = _embed_usage_from_response(response)  # tokens + model for cost
 
         # WHY: bound_intent is non-private by default for embeds; strip raw
         # numbers from narrative so banding policy is enforced end-to-end.
@@ -1382,6 +1408,17 @@ async def embed_chat(req: Request):
             origin = req.headers.get("Origin") or ""
             ip = req.client.host if req.client else None
             _lb = _embed_log_bodies()
+            # Price embed tokens off the real engine model (caller has no alias).
+            try:
+                from dash.settings import CHAT_MODEL as _ECM, _compute_cost as _ecc
+                _emodel = _usage.get("model") or _ECM
+                _ecost = _ecc(_emodel, {
+                    "prompt_tokens": _usage.get("tokens_in", 0),
+                    "completion_tokens": _usage.get("tokens_out", 0),
+                })
+            except Exception:
+                _emodel = _usage.get("model") or "google/gemini-3-flash-preview"
+                _ecost = 0.0
             _params = {
                 "e": embed_id, "t": token,
                 "u": sess.get("external_user"),
@@ -1390,6 +1427,10 @@ async def embed_chat(req: Request):
                 "rc": len(content or ""),
                 "ms": latency_ms,
                 "s": success, "err": err_msg,
+                "ti": int(_usage.get("tokens_in", 0) or 0),
+                "to": int(_usage.get("tokens_out", 0) or 0),
+                "cost": float(_ecost or 0.0),
+                "emodel": _emodel,
             }
             if _lb:
                 _params["mt"] = message
@@ -1672,6 +1713,7 @@ async def embed_chat_stream(req: Request):
         t0 = _time_mod.monotonic()
         started_at = datetime.now(timezone.utc).isoformat()
         full_buffer: list[str] = []
+        _stream_usage = {"tokens_in": 0, "tokens_out": 0, "model": ""}  # for cost
         buffer_bytes = 0
         capped = False
         last_step_label = ""
@@ -1775,6 +1817,21 @@ async def embed_chat_stream(req: Request):
                     data = {}
 
                 event_name = data.get("event") or type(event).__name__
+
+                # Accumulate token usage from completion events' metrics (same
+                # shape projects.py reads) so embed cost is priced, not $0.
+                try:
+                    _mt = data.get("metrics") if isinstance(data.get("metrics"), dict) else None
+                    if _mt:
+                        _it = _mt.get("input_tokens"); _ot = _mt.get("output_tokens")
+                        _it = sum(_it) if isinstance(_it, (list, tuple)) else (_it or 0)
+                        _ot = sum(_ot) if isinstance(_ot, (list, tuple)) else (_ot or 0)
+                        _stream_usage["tokens_in"] += int(_it)
+                        _stream_usage["tokens_out"] += int(_ot)
+                        if _mt.get("model"):
+                            _stream_usage["model"] = str(_mt["model"])
+                except Exception:
+                    pass
 
                 # Forward a COMPACT activity step for tool / reasoning events
                 # so the widget can show "what the agent is doing". Final
@@ -1906,6 +1963,16 @@ async def embed_chat_stream(req: Request):
                 origin = req.headers.get("Origin") or ""
                 ip = req.client.host if req.client else None
                 _lb = _embed_log_bodies()
+                try:
+                    from dash.settings import CHAT_MODEL as _ECM, _compute_cost as _ecc
+                    _emodel = _stream_usage.get("model") or _ECM
+                    _ecost = _ecc(_emodel, {
+                        "prompt_tokens": _stream_usage.get("tokens_in", 0),
+                        "completion_tokens": _stream_usage.get("tokens_out", 0),
+                    })
+                except Exception:
+                    _emodel = _stream_usage.get("model") or "google/gemini-3-flash-preview"
+                    _ecost = 0.0
                 _params = {
                     "e": embed_id, "t": token,
                     "u": sess.get("external_user"),
@@ -1914,6 +1981,10 @@ async def embed_chat_stream(req: Request):
                     "rc": len(content_assembled or ""),
                     "ms": latency_ms,
                     "s": True, "err": None,
+                    "ti": int(_stream_usage.get("tokens_in", 0) or 0),
+                    "to": int(_stream_usage.get("tokens_out", 0) or 0),
+                    "cost": float(_ecost or 0.0),
+                    "emodel": _emodel,
                 }
                 if _lb:
                     _params["mt"] = message

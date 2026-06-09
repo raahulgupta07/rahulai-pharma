@@ -4,14 +4,25 @@
 
   let { embedded = false } = $props();
 
-  // ---- tabs ----
-  const TABS = [
-    ['overview', 'Overview'], ['performance', 'Performance'], ['errors', 'Errors'],
-    ['tools', 'Tools'], ['security', 'Security'], ['entities', 'Entities'],
-    ['billing', 'Billing'], ['live', 'Live'],
-  ];
+  // ---- left-rail nav (grouped, admin-Overview style) ----
+  const NAV = [
+    { label: '', items: [['overview', 'Overview', 'grid'], ['performance', 'Performance', 'gauge'], ['errors', 'Errors', 'alert']] },
+    { label: 'Analytics', items: [['tools', 'Tools', 'wrench'], ['security', 'Security', 'shield'], ['entities', 'Entities', 'users']] },
+    { label: 'Billing', items: [['billing', 'Billing', 'receipt'], ['live', 'Live', 'bolt']] },
+  ] as { label: string; items: [string, string, string][] }[];
+  const ICONS: Record<string, string> = {
+    grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+    gauge: '<path d="M12 14l4-4"/><circle cx="12" cy="13" r="8"/>',
+    alert: '<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
+    wrench: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8 6.2 21l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.1-2.1z"/>',
+    shield: '<path d="M12 3l8 3v5c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/>',
+    users: '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 6a3 3 0 0 1 0 6M21 20a6 6 0 0 0-4-5.6"/>',
+    receipt: '<path d="M5 3v18l2-1 2 1 2-1 2 1 2-1 2 1V3l-2 1-2-1-2 1-2-1-2 1z"/><path d="M9 8h6M9 12h6"/>',
+    bolt: '<path d="M13 2 4 14h6l-1 8 9-12h-6z"/>',
+  };
   let tab = $state('overview');
   let loaded: Record<string, boolean> = $state({});
+  let lastMs = $state(0); // last fetch latency for the live·Xms badge
 
   // ---- shared filters ----
   const SOURCES = [
@@ -72,7 +83,7 @@
 
   async function loadTab(t: string, force = false) {
     if (loaded[t] && !force) return;
-    loading = true; error = '';
+    loading = true; error = ''; const _t0 = Date.now();
     try {
       if (t === 'overview') {
         const [a, b] = await Promise.all([jget(`/api/admin/usage?${qs({ group_by: groupBy })}`), jget(`/api/admin/usage/logins?${qs()}`)]);
@@ -92,7 +103,7 @@
       }
       loaded[t] = true; loaded = { ...loaded };
     } catch (e: any) { error = e?.message || String(e); }
-    finally { loading = false; }
+    finally { loading = false; lastMs = Date.now() - _t0; }
   }
   function switchTab(t: string) { tab = t; loadTab(t); }
   function reloadAll() { loaded = {}; loadTab(tab, true); }
@@ -174,14 +185,31 @@
 </script>
 
 <div class="usage" class:embedded>
-  {#if !embedded}<header class="u-head"><h1>Usage &amp; Cost</h1></header>{/if}
-
-  <!-- tab strip -->
-  <div class="u-tabs">
-    {#each TABS as [id, label]}
-      <button class="u-tab" class:on={tab === id} onclick={() => switchTab(id)}>{label}</button>
+ <div class="u-shell">
+  <!-- left rail (admin-Overview style) -->
+  <nav class="u-rail">
+    <div class="u-railhead">Usage &amp; Cost</div>
+    {#each NAV as g}
+      {#if g.label}<div class="u-railgrp">{g.label}</div>{/if}
+      {#each g.items as [id, label, icon]}
+        <button class="u-railitem" class:on={tab === id} onclick={() => switchTab(id)}>
+          <svg class="u-ricon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">{@html ICONS[icon]}</svg>
+          <span class="u-rlbl">{label}</span>
+          {#if id === 'live'}<span class="u-rdot"></span>{/if}
+        </button>
+      {/each}
     {/each}
-  </div>
+  </nav>
+
+  <!-- main column -->
+  <div class="u-main">
+  {#if !embedded}
+    <header class="u-head">
+      <div><h1>{NAV.flatMap((g) => g.items).find(([id]) => id === tab)?.[1] ?? 'Overview'}</h1>
+        <p class="u-sub">Spend · requests · tokens · activity — one page</p></div>
+      <span class="u-livebadge">● live · {lastMs}ms</span>
+    </header>
+  {/if}
 
   <!-- shared filters (hidden on live) -->
   {#if tab !== 'live'}
@@ -212,6 +240,13 @@
   <!-- ============ OVERVIEW ============ -->
   {#if tab === 'overview' && ov}
     {@const t = ov.totals}{@const p = ov.prev}
+    <div class="u-tiles">
+      <div class="u-tile"><b>{usd(t.spend)}</b><span>Spend</span></div>
+      <div class="u-tile"><b>{compact(t.requests)}</b><span>Requests</span></div>
+      <div class="u-tile"><b>{compact((t.tokens_in || 0) + (t.tokens_out || 0))}</b><span>Tokens</span></div>
+      <div class="u-tile" class:bad={t.errors > 0}><b>{t.errors}</b><span>Errors</span></div>
+      <div class="u-tile"><b>{ov.adoption?.active ?? 0}<small>/{ov.adoption?.total_users ?? 0}</small></b><span>Active users</span></div>
+    </div>
     <div class="u-cards3">
       {#each [['Spend', spendChart, true, t.spend, p.spend], ['Requests', reqChart, false, t.requests, p.requests], ['Tokens', tokChart, false, (t.tokens_in + t.tokens_out), p.tokens]] as [title, ch, money, cur, prv]}
         {@const d = delta(cur, prv)}
@@ -446,6 +481,9 @@
     {/if}
   {/if}
 
+  </div><!-- /u-main -->
+ </div><!-- /u-shell -->
+
   <!-- ============ DRAWER ============ -->
   {#if drawerOpen}
     <div class="dw-backdrop" onclick={closeDrawer} role="presentation"></div>
@@ -477,12 +515,32 @@
 </div>
 
 <style>
-  .usage { padding: 1rem 1.25rem; color: #2c2620; font-size: 13px; }
-  .u-head h1 { margin: 0 0 .75rem; font-size: 1.25rem; }
-  .u-tabs { display: flex; gap: .25rem; border-bottom: 1px solid #ece2d4; margin-bottom: 1rem; flex-wrap: wrap; }
-  .u-tab { border: none; background: none; padding: .5rem .85rem; cursor: pointer; font-size: 13px; color: #6b6052; border-bottom: 2px solid transparent; margin-bottom: -1px; }
-  .u-tab.on { color: #9a4a2f; border-bottom-color: #9a4a2f; font-weight: 600; }
-  .u-tab:hover { color: #9a4a2f; }
+  .usage { color: #2c2620; font-size: 13px; }
+  /* shell = rail + main, admin-Overview layout */
+  .u-shell { display: flex; align-items: flex-start; gap: 0; }
+  .u-rail { flex: none; width: 200px; padding: 1.1rem .6rem; border-right: 1px solid #ece2d4; min-height: 70vh; position: sticky; top: 0; }
+  .u-railhead { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #9a4a2f; padding: 0 .55rem .6rem; }
+  .u-railgrp { font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: #b8ad9c; padding: .9rem .55rem .3rem; }
+  .u-railitem { width: 100%; display: flex; align-items: center; gap: .55rem; border: none; background: none; cursor: pointer; padding: .45rem .55rem; border-radius: 8px; font-size: 13px; color: #6b6052; text-align: left; }
+  .u-railitem:hover { background: #f5efe7; color: #2c2620; }
+  .u-railitem.on { background: #f3e6df; color: #9a4a2f; font-weight: 600; }
+  .u-ricon { width: 16px; height: 16px; flex: none; opacity: .85; }
+  .u-railitem.on .u-ricon { opacity: 1; }
+  .u-rlbl { flex: 1; }
+  .u-rdot { width: 7px; height: 7px; border-radius: 50%; background: #2f6b3a; flex: none; box-shadow: 0 0 0 3px rgba(47,107,58,.15); }
+  .u-main { flex: 1; min-width: 0; padding: 1.1rem 1.25rem; }
+  .u-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1rem; }
+  .u-head h1 { margin: 0; font-size: 1.35rem; }
+  .u-sub { margin: .2rem 0 0; font-size: 12px; color: #9a8f80; }
+  .u-livebadge { font-size: 11px; color: #2f6b3a; white-space: nowrap; padding-top: .35rem; }
+  /* KPI tiles (admin Overview big-number style) */
+  .u-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: .75rem; margin-bottom: 1.1rem; }
+  .u-tile { background: #fff; border: 1px solid #ece2d4; border-radius: 12px; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .3rem; }
+  .u-tile b { font-size: 1.85rem; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+  .u-tile b small { font-size: .9rem; font-weight: 600; color: #9a8f80; }
+  .u-tile span { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: #9a8f80; }
+  .u-tile.bad b { color: #b3261e; }
+  @media (max-width: 900px) { .u-rail { width: 56px; } .u-railhead, .u-railgrp, .u-rlbl { display: none; } .u-railitem { justify-content: center; } .u-tiles { grid-template-columns: repeat(2, 1fr); } }
   .u-filters { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; }
   .u-frow { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
   .u-lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #9a8f80; }

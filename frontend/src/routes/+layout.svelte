@@ -1055,8 +1055,7 @@
 
 <DeleteConfirmModal />
 
-{#if isLogin}
-  {@render children()}
+<!-- Global overlays — render in ANY auth branch (moved out of {#if isLogin}) -->
 {#if showChangePassword}
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div style="position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; display: flex; align-items: center; justify-content: center;" onclick={(e) => { if (e.target === e.currentTarget) showChangePassword = false; }}>
@@ -1202,6 +1201,9 @@
   </div>
 </div>
 {/if}
+
+{#if isLogin}
+  {@render children()}
 
 {:else if checking}
   <div style="min-height: 100vh; background: var(--pw-bg); display: flex; align-items: center; justify-content: center; font-family: var(--pw-font-body); font-size: 13px; color: var(--pw-muted);">
@@ -1431,7 +1433,7 @@
         {/if}
 
         <!-- Feed bell -->
-        <button onmousedown={(e) => { e.stopPropagation(); e.preventDefault(); showNotifications = !showNotifications; if (showNotifications) loadNotifications(); }} onclick={(e) => { e.stopPropagation(); }} class="pw-feed-btn" title="Notifications">
+        <button onclick={(e) => { e.stopPropagation(); showNotifications = !showNotifications; if (showNotifications) loadNotifications(); }} class="pw-feed-btn" title="Notifications">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
           <span>Feed</span>
           {#if unreadCount > 0}

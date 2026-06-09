@@ -1092,12 +1092,6 @@ def build_engineer_tools(knowledge: Knowledge, user_id: str | None = None, proje
     except ImportError:
         pass
 
-    # Phase 2 internal action execution (HITL-gated webhooks/APIs)
-    try:
-        from dash.tools.action_tools import request_action, execute_approved_action
-        tools.extend([request_action, execute_approved_action])
-    except ImportError:
-        pass
 
     # External connectors — opt-in per project via feature_config.tools.external_connectors.
     try:

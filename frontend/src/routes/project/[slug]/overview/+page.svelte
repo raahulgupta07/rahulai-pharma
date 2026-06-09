@@ -23,6 +23,7 @@
   let log = $state<any[]>([]);
   let gateway = $state<any>(null);
   let chem = $state<any>(null);          // /chemist (clinical coverage)
+  let evalHealth = $state<any>(null);    // /eval-health (latest golden-eval run)
 
   function _h(): Record<string, string> {
     const t = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
@@ -38,7 +39,7 @@
 
   async function load() {
     const s = slug;
-    const [h, dm, o, d, q, ins, th, tr, lg, gw, ch] = await Promise.all([
+    const [h, dm, o, d, q, ins, th, tr, lg, gw, ch, eh] = await Promise.all([
       _j(`/api/health`),
       _j(`/api/health/daemons`),
       _j(`/api/projects/${s}/overview`),
@@ -50,8 +51,9 @@
       _j(`/api/projects/${s}/auto-train/log?limit=12`),
       _j(`/api/auth/apigw-usage`),
       _j(`/api/projects/${s}/chemist`),
+      _j(`/api/projects/${s}/eval-health`),
     ]);
-    health = h; daemons = dm; ov = o; ds = d?.summary || null; dq = q; chem = ch;
+    health = h; daemons = dm; ov = o; ds = d?.summary || null; dq = q; chem = ch; evalHealth = eh;
     insights = Array.isArray(ins) ? ins : (ins?.insights || []);
     tools = th?.scores || [];
     runs = tr?.runs || [];
@@ -291,19 +293,24 @@
     </div>
 
     <div class="ov-card">
-      <div class="ov-card-h">TOOL HEALTH</div>
-      {#if topTools.length}
+      <div class="ov-card-h">EVAL HEALTH <span class="ov-card-hx">golden</span></div>
+      {#if evalHealth?.has_data}
+        {@const ev = evalHealth}
+        {@const pct = (n) => ev.total ? Math.round((n / ev.total) * 100) : 0}
+        <div class="ov-eval-bar" title="{ev.passed} pass · {ev.partial} partial · {ev.failed} fail">
+          <span class="ov-seg pass" style="width:{pct(ev.passed)}%"></span>
+          <span class="ov-seg part" style="width:{pct(ev.partial)}%"></span>
+          <span class="ov-seg fail" style="width:{pct(ev.failed)}%"></span>
+        </div>
         <div class="ov-rows">
-          {#each topTools as t}
-            <div class="ov-r">
-              <span class="dot" style="background:{(t.success_rate ?? 1) >= 0.9 ? 'var(--color-primary)' : '#a06000'}"></span>
-              <span class="ov-mono">{t.tool_name}</span>
-              <span class="ov-r-x">{fmtN(t.calls)} calls · {Math.round((t.success_rate ?? 0) * 100)}%</span>
-            </div>
-          {/each}
+          <div class="ov-r"><span class="dot" style="background:var(--color-primary)"></span>Pass<span class="ov-r-x">{ev.passed}/{ev.total} · {Math.round(ev.pass_rate * 100)}%</span></div>
+          <div class="ov-r"><span class="dot" style="background:#a06000"></span>Partial<span class="ov-r-x">{ev.partial}</span></div>
+          <div class="ov-r"><span class="dot" style="background:#b3261e"></span>Fail<span class="ov-r-x">{ev.failed}</span></div>
+          <div class="ov-r">Avg score<span class="ov-r-x">{(ev.average_score ?? 0).toFixed(1)} / 5</span></div>
+          <div class="ov-r">Last run<span class="ov-r-x">{ev.run_at ? new Date(ev.run_at).toLocaleDateString() : '—'}</span></div>
         </div>
       {:else}
-        <div class="ov-empty">No tool telemetry yet</div>
+        <div class="ov-empty">No eval runs yet</div>
       {/if}
     </div>
   </div>
@@ -504,6 +511,11 @@
   .ov-logline span { color: #e8e3d6; }
 
   .ov-empty { padding: 24px 14px; text-align: center; color: var(--color-on-surface-dim); font-size: 11px; }
+  .ov-eval-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 4px 0 10px; background: var(--color-surface-variant, #eee); }
+  .ov-seg { height: 100%; transition: width .3s ease; }
+  .ov-seg.pass { background: var(--color-primary); }
+  .ov-seg.part { background: #a06000; }
+  .ov-seg.fail { background: #b3261e; }
 
   .ov-chem-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--color-on-surface); border-bottom: 1px solid var(--pw-border, #e5ddcf); }
   .ov-chem-stat { background: var(--color-surface); padding: 12px 10px; text-align: center; }

@@ -206,6 +206,20 @@
     activeTab = t;
     if (t === 'summary' && !summary && projectSlug) loadSummary();
   }
+
+  let singleAgent = $state(false);
+
+  onMount(async () => {
+    // single-tenant: auto-fill the locked slug + load — no manual entry needed
+    try {
+      const f = await fetch('/api/flags').then((r) => (r.ok ? r.json() : null));
+      if (f?.single_agent && f.locked_slug) {
+        singleAgent = true;
+        projectSlug = f.locked_slug;
+        loadSessions();
+      }
+    } catch { /* ignore */ }
+  });
 </script>
 
 <div class="sa-shell">
@@ -215,14 +229,16 @@
       <p class="muted">Per-session view: tables touched · skills applied · tools called · cost · RLS · errors</p>
     </div>
     <div class="ctrls">
-      <input
-        type="text"
-        placeholder="project slug (e.g. proj_demo_pharma)"
-        bind:value={projectSlug}
-        onkeydown={(e) => { if (e.key === 'Enter') { if (activeTab === 'sessions') loadSessions(); else if (activeTab === 'summary') loadSummary(); } }}
-      />
+      {#if !singleAgent}
+        <input
+          type="text"
+          placeholder="project slug"
+          bind:value={projectSlug}
+          onkeydown={(e) => { if (e.key === 'Enter') { if (activeTab === 'sessions') loadSessions(); else if (activeTab === 'summary') loadSummary(); } }}
+        />
+      {/if}
       <button class="primary" onclick={() => { if (activeTab === 'sessions') loadSessions(); else if (activeTab === 'summary') loadSummary(); }}>
-        Load
+        {singleAgent ? 'Refresh' : 'Load'}
       </button>
     </div>
   </header>

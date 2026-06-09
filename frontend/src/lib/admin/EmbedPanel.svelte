@@ -26,7 +26,7 @@
   }
 
   // ---- left-rail view (persisted in URL hash so refresh stays put) ----
-  const _validViews = ['overview', 'brand', 'widgets', 'widget', 'usage', 'monitoring', 'developer'];
+  const _validViews = ['overview', 'brand', 'widgets', 'widget', 'monitoring', 'developer'];
   function _viewFromHash(): string {
     if (typeof window === 'undefined') return 'overview';
     const h = (window.location.hash || '').replace(/^#/, '');
@@ -48,7 +48,6 @@
     ] },
     { group: 'ANALYTICS', items: [
       { id: 'monitoring', label: 'Monitoring', icon: 'activity' },
-      { id: 'usage', label: 'Usage', icon: 'chart' },
     ] },
     { group: 'DEVELOPER', items: [
       { id: 'developer', label: 'Snippet & Docs', icon: 'code' },
@@ -79,7 +78,6 @@
     widgets: { title: 'Widgets', sub: 'List, create + revoke — click a row to expand: keys, snippet, full PHP code + deploy' },
     widget: { title: 'Widget', sub: '' },
     monitoring: { title: 'Monitoring', sub: 'Live widget traffic, latency, errors + per-store breakdown' },
-    usage: { title: 'Usage Analytics', sub: 'Calls, tokens + sessions over time' },
     developer: { title: 'Developer Docs', sub: 'Snippet, code examples + 3-tier access reference' },
   };
 
@@ -370,24 +368,6 @@
     } catch (e) { configErr = 'unreachable'; }
     configBusy = false;
   }
-
-  // ---- usage ----
-  let usageDays = $state(7);
-  let usageEmbed = $state<any>(null);
-  let usageData = $state<any>(null);
-  let usageErr = $state('');
-
-  async function loadUsage() {
-    usageErr = '';
-    const eid = usageEmbed?.embed_id || usageEmbed?.id || (embeds[0]?.embed_id || embeds[0]?.id);
-    if (!eid) return;
-    try {
-      const r = await apiFetch(`/api/projects/${slug}/embeds/${eid}/usage?days=${usageDays}`);
-      if (r.ok) usageData = await r.json();
-      else usageErr = `usage ${r.status}`;
-    } catch (e) { usageErr = 'unreachable'; }
-  }
-  function setUsageDays(n: number) { usageDays = n; loadUsage(); }
 
   // ---- monitoring (rich embed usage dashboard) ----
   let monDays = $state(7);
@@ -811,7 +791,6 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
     if (embeds.length > 0) loadConfig();
   });
   $effect(() => {
-    if (view === 'usage' && embeds.length > 0) { usageEmbed = embeds[0]; loadUsage(); }
   });
   $effect(() => {
     if (view === 'monitoring' && monData === null && !monBusy) loadMonitoring();
@@ -1888,37 +1867,6 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
         {/if}
       {/if}
 
-      <!-- ==================== USAGE ==================== -->
-      {#if view === 'usage'}
-        <section class="emp-panel">
-          <div class="emp-h-row">
-            <div class="emp-h">USAGE</div>
-            <div class="emp-pills">
-              <button class="emp-pill" class:emp-pill-on={usageDays === 1} onclick={() => setUsageDays(1)}>1d</button>
-              <button class="emp-pill" class:emp-pill-on={usageDays === 7} onclick={() => setUsageDays(7)}>7d</button>
-              <button class="emp-pill" class:emp-pill-on={usageDays === 30} onclick={() => setUsageDays(30)}>30d</button>
-            </div>
-          </div>
-          {#if usageErr}
-            <div class="emp-row emp-err">✗ usage unavailable ({usageErr})</div>
-          {:else if usageData}
-            <div class="emp-status-grid">
-              <div><span class="emp-k">calls</span>{usageData.calls ?? usageData.total_calls ?? 0}</div>
-              <div><span class="emp-k">tokens</span>{usageData.tokens ?? usageData.total_tokens ?? 0}</div>
-              <div><span class="emp-k">sessions</span>{usageData.sessions ?? usageData.total_sessions ?? 0}</div>
-              <div><span class="emp-k">p50 latency</span>{usageData.p50_ms ? `${usageData.p50_ms}ms` : '—'}</div>
-            </div>
-          {:else}
-            <div class="emp-row emp-muted">◐ loading… (or no usage data yet)</div>
-            <div class="emp-empty-state emp-muted">
-              <div class="emp-empty-icon">○</div>
-              <div>No usage data yet</div>
-              <div class="emp-fineprint">Usage will appear here once the embed widget receives traffic.</div>
-            </div>
-          {/if}
-        </section>
-      {/if}
-
       <!-- ==================== DEVELOPER ==================== -->
       {#if view === 'developer'}
         <!-- status banner: live? origins? -->
@@ -2188,7 +2136,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
   }
   .emp-preview-meta { font-size: 11px; display: flex; flex-direction: column; gap: 4px; }
 
-  /* usage */
+  /* empty state (shared: monitoring) */
   .emp-empty-state { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 24px 0; text-align: center; }
   .emp-empty-icon { font-size: 22px; }
 

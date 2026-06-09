@@ -223,8 +223,10 @@
 
   const passPct = $derived(drift ? (drift.pass_rate * 100).toFixed(1) : '—');
 
-  onMount(() => {
-    // optional URL ?slug= deeplink
+  let singleAgent = $state(false);
+
+  onMount(async () => {
+    // optional URL ?slug= deeplink takes priority
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const s = params.get('slug') || params.get('project_slug');
@@ -232,8 +234,19 @@
         projectSlug = s;
         projectsInput = s;
         loadAll();
+        return;
       }
     }
+    // single-tenant: auto-fill the locked slug — no manual entry needed
+    try {
+      const f = await fetch('/api/flags').then(r => (r.ok ? r.json() : null));
+      if (f?.single_agent && f.locked_slug) {
+        singleAgent = true;
+        projectSlug = f.locked_slug;
+        projectsInput = f.locked_slug;
+        loadAll();
+      }
+    } catch { /* ignore */ }
   });
 
   function onSlugSubmit(e: Event) {
@@ -250,15 +263,17 @@
       <p class="muted">Curated truth pairs — view, edit, and run drift checks per project</p>
     </div>
     <div class="ctrls">
-      <form onsubmit={onSlugSubmit} class="slug-form">
-        <input
-          type="text"
-          placeholder="project_slug"
-          bind:value={projectsInput}
-          class="slug-input"
-        />
-        <button type="submit" class="btn-ghost">Load</button>
-      </form>
+      {#if !singleAgent}
+        <form onsubmit={onSlugSubmit} class="slug-form">
+          <input
+            type="text"
+            placeholder="project_slug"
+            bind:value={projectsInput}
+            class="slug-input"
+          />
+          <button type="submit" class="btn-ghost">Load</button>
+        </form>
+      {/if}
       <button class="btn-ghost" onclick={loadAll} disabled={loading || !projectSlug}>
         {loading ? '…' : 'Refresh'}
       </button>

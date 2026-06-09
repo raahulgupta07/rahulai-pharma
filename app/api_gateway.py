@@ -276,14 +276,25 @@ def _log_usage(user: dict, model: str, p_toks: int, c_toks: int,
     try:
         from sqlalchemy import text
         from db.session import get_write_engine
+        # Real underlying LLM model — the caller-supplied `model` is the public
+        # OpenAI alias (e.g. "citypharma-analyst"), which carries no price. Price
+        # the tokens against the actual engine the gateway runs so cost_usd is
+        # non-zero, and store it in engine_model for the BY-MODEL breakdown.
+        try:
+            from dash.settings import CHAT_MODEL as _CM, get_embedding_model as _gem
+            engine_model = (_gem() if (request_type or "") == "embedding" else _CM)
+        except Exception:
+            engine_model = ("google/gemini-embedding-2-preview"
+                            if (request_type or "") == "embedding"
+                            else "google/gemini-3-flash-preview")
         eng = get_write_engine()
         with eng.connect() as conn:
             conn.execute(text(
                 "INSERT INTO public.dash_apigw_usage "
-                "(key_id, service_account, store_id, scope_mode, model, "
+                "(key_id, service_account, store_id, scope_mode, model, engine_model, "
                 " prompt_tokens, completion_tokens, total_tokens, streamed, "
                 " cost_usd, request_type, status, session_id, latency_ms) "
-                "VALUES (:kid, :svc, :sid, :sm, :model, :p, :c, :t, :streamed, "
+                "VALUES (:kid, :svc, :sid, :sm, :model, :emodel, :p, :c, :t, :streamed, "
                 "        :cost, :rt, :st, :sess, :lat)"
             ), {
                 "kid": _user_key_id(user),
@@ -291,11 +302,12 @@ def _log_usage(user: dict, model: str, p_toks: int, c_toks: int,
                 "sid": (user or {}).get("store_id") or (user or {}).get("site_code"),
                 "sm": (user or {}).get("scope_mode") or "global",
                 "model": model,
+                "emodel": engine_model,
                 "p": int(p_toks or 0),
                 "c": int(c_toks or 0),
                 "t": int((p_toks or 0) + (c_toks or 0)),
                 "streamed": bool(streamed),
-                "cost": _apigw_cost(model, p_toks, c_toks),
+                "cost": _apigw_cost(engine_model, p_toks, c_toks),
                 "rt": request_type or "chat",
                 "st": status or "ok",
                 "sess": session_id,

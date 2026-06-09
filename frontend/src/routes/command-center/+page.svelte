@@ -8,12 +8,7 @@
  import TelemetryPanel from './_panels/TelemetryPanel.svelte';
  import AccuracyPanel from '$lib/admin/AccuracyPanel.svelte';
  import GoldenPanel from '$lib/admin/GoldenPanel.svelte';
- import MDLPanel from '$lib/admin/MDLPanel.svelte';
- import DiffPanel from '$lib/admin/DiffPanel.svelte';
  import ScopeAuditPanel from '$lib/admin/ScopeAuditPanel.svelte';
- import ApprovalsPanel from '$lib/admin/ApprovalsPanel.svelte';
- import ActionsPanel from '$lib/admin/ActionsPanel.svelte';
- import MetricflowPanel from '$lib/admin/MetricflowPanel.svelte';
  import DataviewPanel from '$lib/admin/DataviewPanel.svelte';
  import PacksPanel from '$lib/admin/PacksPanel.svelte';
  import ConnectorsPanel from '$lib/admin/ConnectorsPanel.svelte';
@@ -79,12 +74,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  mcp: { label: 'MCP Servers', subtitle: 'External Model Context Protocol server registry + tool bindings' },
  accuracy: { label: 'Accuracy trend', subtitle: 'Pass-rate over time + per-tier breakdown' },
  golden: { label: 'Golden Q&A', subtitle: 'Manage golden corpus + drift status' },
- mdl: { label: 'MDL editor', subtitle: 'View/edit installed semantic models + metrics + packs' },
- diff: { label: 'Version diffs', subtitle: 'Skill / metric / model change history' },
  'scope-audit': { label: 'Chat scope audit', subtitle: 'Per-session timeline + tables/skills/tools/cost' },
- approvals: { label: 'Action approvals', subtitle: 'Pending action requests + audit' },
- actions: { label: 'Action registry', subtitle: 'Whitelisted internal action endpoints' },
- metricflow: { label: 'MetricFlow import', subtitle: 'dbt MetricFlow YAML → MDL pack' },
  dataview: { label: 'Dataview', subtitle: 'Inspect tables, presets, archive' },
  packs: { label: 'Packs', subtitle: 'Vertical packs registry + install' },
  llm: { label: 'LLM config', subtitle: 'OpenRouter API keys (encrypted) + models — hot reload, no restart' },
@@ -102,7 +92,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  { label: 'Data', items: ['schemas','integrations'] },
  { label: 'Platform', items: ['auth'] },
  { label: 'System', items: ['traces','logs','admin-settings','llm'] },
- { label: 'Trust & Governance', items: ['accuracy','golden','mdl','diff','scope-audit','actions','metricflow'] },
+ { label: 'Trust & Governance', items: ['accuracy','golden','scope-audit'] },
  ];
  const railGroups = $derived(
  singleAgent
@@ -1529,12 +1519,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
                 {:else if id === 'connectors'}<path d="M9 2v6M15 2v6M7 8h10v4a5 5 0 0 1-5 5 5 5 0 0 1-5-5V8zM12 17v5"/>
                 {:else if id === 'accuracy'}<polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/>
                 {:else if id === 'golden'}<polygon points="12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9"/>
-                {:else if id === 'mdl'}<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><line x1="10" y1="6.5" x2="14" y2="6.5"/><line x1="6.5" y1="10" x2="6.5" y2="14"/>
-                {:else if id === 'diff'}<polyline points="8 3 4 7 8 11"/><path d="M4 7h12a4 4 0 0 1 4 4v2"/><polyline points="16 21 20 17 16 13"/><path d="M20 17H8a4 4 0 0 1-4-4v-2"/>
                 {:else if id === 'scope-audit'}<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16" y2="16"/><line x1="8" y1="11" x2="14" y2="11"/>
-                {:else if id === 'approvals'}<circle cx="12" cy="12" r="9"/><polyline points="8 12 11 15 16 9"/>
-                {:else if id === 'actions'}<polygon points="13 2 4 14 12 14 11 22 20 10 12 10 13 2"/>
-                {:else if id === 'metricflow'}<polygon points="3 4 21 4 14 12 14 20 10 18 10 12 3 4"/>
                 {:else if id === 'dataview'}<rect x="3" y="4" width="18" height="16" rx="1"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="14" x2="21" y2="14"/><line x1="9" y1="4" x2="9" y2="20"/>
                 {:else if id === 'packs'}<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
                 {/if}
@@ -3106,20 +3091,8 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
 {:else if activeTab === 'golden'}
   <GoldenPanel />
 
-{:else if activeTab === 'mdl'}
-  <MDLPanel />
-
-{:else if activeTab === 'diff'}
-  <DiffPanel />
-
 {:else if activeTab === 'scope-audit'}
   <ScopeAuditPanel />
-
-{:else if activeTab === 'actions'}
-  <ActionsPanel />
-
-{:else if activeTab === 'metricflow'}
-  <MetricflowPanel />
 
 {:else if activeTab === 'llm'}
   <LLMConfigPanel />

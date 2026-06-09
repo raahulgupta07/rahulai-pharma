@@ -961,12 +961,8 @@ try:
 except Exception:
     dashboard_to_deck_router = None  # Phase 3 — Dashboard → Deck (POST /api/dashboards/{id}/to-deck)
 from app.accuracy_api import router as accuracy_router
-from app.actions_api import router as actions_router
-from app.metricflow_api import router as metricflow_router
 from app.research_api import router as research_router
 from app.golden_api import router as golden_router
-from app.mdl_editor_api import router as mdl_editor_router
-from app.diff_api import router as diff_router
 from app.scope_audit_api import router as scope_audit_router
 try:
     from app.sql_validator_api import router as sql_validator_router
@@ -1158,12 +1154,8 @@ app.include_router(dashboards_v2_router)
 if dashboard_to_deck_router is not None:
     app.include_router(dashboard_to_deck_router)
 app.include_router(accuracy_router)
-app.include_router(actions_router)
-app.include_router(metricflow_router)
 app.include_router(research_router)
 app.include_router(golden_router)
-app.include_router(mdl_editor_router)
-app.include_router(diff_router)
 app.include_router(scope_audit_router)
 if sql_validator_router is not None:
     try:

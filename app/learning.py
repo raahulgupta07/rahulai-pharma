@@ -3124,6 +3124,37 @@ def refine_tools_scores_get(slug: str):
     return {"project_slug": slug, "scores": [dict(r) for r in rows]}
 
 
+@router.get("/{slug}/eval-health")
+def eval_health(slug: str):
+    """Latest golden-eval run summary — feeds the dashboard Eval Health card."""
+    with _engine.connect() as conn:
+        r = conn.execute(text(
+            "SELECT id, total, passed, partial, failed, average_score, run_at "
+            "FROM public.dash_eval_runs "
+            "WHERE project_slug = :s "
+            "ORDER BY run_at DESC NULLS LAST, id DESC LIMIT 1"
+        ), {"s": slug}).mappings().first()
+    if not r:
+        return {"project_slug": slug, "has_data": False}
+    total = int(r["total"] or 0)
+    passed = int(r["passed"] or 0)
+    partial = int(r["partial"] or 0)
+    failed = int(r["failed"] or 0)
+    ok = passed + partial
+    return {
+        "project_slug": slug,
+        "has_data": total > 0,
+        "total": total,
+        "passed": passed,
+        "partial": partial,
+        "failed": failed,
+        "pass_rate": round(passed / total, 4) if total else 0.0,
+        "ok_rate": round(ok / total, 4) if total else 0.0,
+        "average_score": float(r["average_score"] or 0),
+        "run_at": str(r["run_at"]) if r["run_at"] else None,
+    }
+
+
 @router.get("/{slug}/refine-tools/{tool_name}/failures")
 def refine_tools_failures(slug: str, tool_name: str, limit: int = 10):
     """Recent failed invocations of a tool for diagnostic drill-down."""
