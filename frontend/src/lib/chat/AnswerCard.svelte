@@ -19,7 +19,8 @@
     parseLead,
     parseWhy,
     parseSource,
-    stripLegacyTags
+    stripLegacyTags,
+    scrubTags
   } from '$lib/answer-tags';
 
   let { content = '', tier = 'standard', msg = {}, onAction = () => {} } = $props();
@@ -163,6 +164,10 @@
       .replace(/^\s*\|.*\|\s*$/gm, '')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
+    // Final orphan-bracket / truncated-tag scrub so no lone `]` or `[TAG: …`
+    // fragment survives into the rendered prose.
+    s = scrubTags(s).trim();
+    if (!s) return '';
     // Render the remaining markdown prose to HTML so tables/bold/lists work
     return markdownToHtml(s);
   });
@@ -376,6 +381,35 @@
     return { action, owner: owner || '', effort: effort || '' };
   });
 
+  // Is there ANY structured signal at all (band / KPIs / monograph / why /
+  // so-what / trend / topN / recs / related)? Used for the blank-body fallback
+  // decision. NOTE: `hasStructure` (above) is the band-trigger; this is the
+  // broader "is there anything to render besides prose" check.
+  const hasAnyStructured = $derived(
+    !!mono ||
+    !!actionTitle ||
+    kpiList.length > 0 ||
+    whyItems.length > 0 ||
+    meansItems.length > 0 ||
+    recsList.length > 0 ||
+    relatedItems.length > 0 ||
+    !!confLevel ||
+    !!sourceParsed.source ||
+    showTrend ||
+    showTopN
+  );
+
+  // Blank-body guard: everything got stripped (e.g. an all-tags answer that was
+  // also truncated) AND there's no structured content to show → render a tiny
+  // fallback line instead of an empty card. When structure DOES exist we render
+  // the structured card with no prose paragraph (handled by showSummary).
+  const fallbackBody = $derived(
+    !summaryText && !narration && !hasAnyStructured
+      ? '*(No answer text returned — please try rephrasing.)*'
+      : ''
+  );
+  const showFallback = $derived(!!fallbackBody);
+
   onMount(async () => {
     if (!hasEcharts || !chartEl) return;
     try {
@@ -554,6 +588,12 @@
     <div class="summary-card">
       {@html summaryText}
     </div>
+  {/if}
+
+  {#if showFallback}
+    <!-- Everything got stripped and there's no structured content to show.
+         Render a minimal note rather than a blank card. -->
+    <p class="fallback-note">{@html formatInline(fallbackBody)}</p>
   {/if}
 
   {#if showKpis}
@@ -974,6 +1014,13 @@
     color: var(--pw-ink-muted, #7a6f60);
     margin: 8px 0 0;
     font-size: 14px;
+  }
+
+  .fallback-note {
+    font-style: italic;
+    color: var(--pw-ink-muted, #7a6f60);
+    margin: 4px 0;
+    font-size: 13.5px;
   }
 
   .summary-card {

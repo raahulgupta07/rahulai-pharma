@@ -2144,6 +2144,25 @@ def _apply_reasoning_mode(message: str, mode: str, analysis_type: str = "auto") 
             "Do NOT invent numbers — every figure must trace to the SQL result; hallucinated numbers are caught and flagged."
         )
 
+    # Bilingual: on a Burmese turn the structured-tag scaffolding above is all
+    # English, so the model tends to fill the tag VALUES in English too. Append a
+    # forceful language-aware line so the tag/prose TEXT comes back in Burmese.
+    # The bracketed tag KEYS and identifiers (numbers/codes/brand/generic names)
+    # stay ASCII. try/except so a missing import never breaks reasoning-mode build.
+    try:
+        from dash.instructions import REPLY_LANG
+        if (REPLY_LANG.get() or "en") == "my":
+            parts.append(
+                "LANGUAGE — write all tag VALUES and prose in Burmese (မြန်မာ): the [HEADLINE:] title, "
+                "the [LEAD:] sentence, every [WHY:] bullet, the [SO_WHAT:] action text, and any monograph "
+                "narrative are Burmese. Keep ASCII as-is: numbers, currency, dates, article_code/SKU codes, "
+                "brand names, generic drug names (Latin), table names, AND the literal bracketed tag keys "
+                "themselves ([HEADLINE:, [LEAD:, [WHY:, [SO_WHAT:, [KPI:, [CONFIDENCE:, [SOURCE:, [RELATED:). "
+                "Never translate a bracketed tag key — only the value text after the colon becomes Burmese."
+            )
+    except Exception:
+        pass
+
     return " ".join(parts) + f"\n\nQuestion: {message}"
 
 

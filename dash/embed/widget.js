@@ -447,6 +447,23 @@
       .replace(/\[[A-Z_]+:[^\]]*\]/g, '')
       .replace(/\[(?:HEADLINE|LEAD|CONFIDENCE|CONFIDENCE_BREAKDOWN|SOURCE|KPI|WHY|SO_WHAT|RELATED|FINDING|SEGMENT|ANCHOR|BECAUSE|KILL|ASSUMPTION|MODE|DRUG|COMPOSITION|INDICATION|DOSE|CAUTION|INTERACTS|STOCK|EQUIV|EVIDENCE)\b[^\n\]]*$/gim, '');
 
+    // Third pass — orphan-bracket / truncated-tag scrub (parity with the main
+    // chat AnswerCard `scrubTags`). Removes a `[TAG: …` fragment that lost its
+    // closing `]` mid-stream, an orphaned `[TAG:` at end-of-line, and lone
+    // stray `[`/`]` brackets. UPPERCASE `[TAG:`-shaped only, so markdown links
+    // `[label](url)` and ordinary prose brackets survive.
+    cleaned = cleaned
+      // unclosed tag at end-of-buffer (stream cut mid-tag)
+      .replace(/\[[A-Z][A-Z0-9_]*:[^\]\n]*$/g, '')
+      // orphaned opening `[TAG:` with no content/close on the rest of the line
+      .replace(/\[[A-Z][A-Z0-9_]*:\s*$/gm, '')
+      // a lone `]` or `[` on its own line
+      .replace(/^[ \t]*[[\]][ \t]*$/gm, '')
+      // stray leading `]` / trailing `[`/`]` clinging to the whole body
+      .replace(/^\s*\]+/, '')
+      .replace(/[[\]]+\s*$/, '')
+      .replace(/\n{3,}/g, '\n\n');
+
     // Escape HTML first
     var esc = escapeHtml(cleaned);
 
@@ -669,7 +686,14 @@
     if (mono != null) return mono;
     var metrics = renderMetrics(str);
     if (metrics != null) return metrics;
-    return renderMd(str);
+    var md = renderMd(str);
+    // Blank-body guard: no monograph, no metrics card, and the markdown came
+    // back empty (everything was tags / a truncated tag got scrubbed away).
+    // Return a small fallback rather than an empty bubble.
+    if (!md || !md.replace(/<[^>]*>/g, '').trim()) {
+      return '<p><i>Sorry, I didn’t catch that — could you rephrase?</i></p>';
+    }
+    return md;
   }
 
   function pushMsg(role, content) {

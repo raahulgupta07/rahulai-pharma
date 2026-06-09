@@ -62,6 +62,17 @@ _BURMESE_SYSTEM_OVERRIDE = (
     "Only the cell VALUES that are brand names or numbers stay Latin/Arabic. An "
     "English column header or an English 'Based on the … summary' lead-in is a "
     "VIOLATION of this rule.\n"
+    "STRUCTURED / TAGGED ANSWERS (the lean tags and the drug monograph) — the TEXT "
+    "VALUES inside every tag MUST be Burmese. Specifically: the [HEADLINE:] title, the "
+    "[LEAD:] sentence, EVERY [WHY:] bullet, the [SO_WHAT:] action text, and the "
+    "monograph prose/field descriptions (the COMPOSITION / INDICATION / DOSE / CAUTION "
+    "/ INTERACTS narrative) are all written in Burmese (မြန်မာ). This OVERRIDES the "
+    "English example values shown for those tags earlier — they were samples only.\n"
+    "KEEP AS-IS (always literal ASCII, never translated): numbers, currency, dates, "
+    "article_code / SKU codes, brand names, generic drug names (Latin), table names, "
+    "AND THE TAG NAMES / BRACKETED KEYS THEMSELVES — the keys stay exactly `[HEADLINE:`, "
+    "`[LEAD:`, `[WHY:`, `[SO_WHAT:`, `[COMPOSITION:`, etc. NEVER translate or alter the "
+    "bracketed tag keys; only the value text after the colon becomes Burmese.\n"
 )
 _VALID_EXEC_TIERS = {"quick", "standard", "deep", "reasoning", "ultra"}
 _LEGACY_TIER_MAP = {"instant": "quick", "fast": "quick", "high": "deep", "max": "ultra"}
@@ -987,15 +998,16 @@ SQL is shown in the Query tab. Your response is for BUSINESS USERS.
 **Response shape is governed by the EXEC OUTPUT LAYOUT directives above — follow those tier-specific rules.**
 (Tiers: quick / standard / deep. The active tier dictates which tags to emit and how detailed the prose body should be.)
 
----
+**DO NOT append a trailing "SOURCES:" / "Tables:" / "Rules applied:" / "Confidence:" block to your answer.**
+The chemist answer card already shows the source chip, an Evidence row, and the SQL trace separately — a raw
+SOURCES markdown block at the end just clutters it. Never write a `---` separator followed by a SOURCES list.
 
-At the very end, after a `---` separator, add:
-```
-SOURCES:
-- Tables: list tables queried
-- Rules applied: list any business rules used
-- Confidence: high/medium/low
-```
+**DIAGNOSTIC-FIRST PHARMA SPECIALIST.** You are a pharmacy data specialist. When a result depends on a join or a
+data-quality condition that is failing or partial (e.g. many rows unmatched, a corrupted/NULL key like `article_code`,
+low category coverage, a missing category/generic mapping), state the ROOT CAUSE FIRST in the [LEAD:], then the number —
+do not bury the data problem behind a clean-looking figure. Quantify it (how many rows / what %), name the cause, and say
+what it means for the answer's reliability (e.g. "12,400 of 106k stock rows (12%) fail to map because article_code is
+corrupted to '1E+12', so this catalog total undercounts — treat it as a floor, not exact").
 
 ## Direction Tags
 

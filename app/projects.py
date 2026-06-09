@@ -932,6 +932,55 @@ async def project_chat(slug: str, request: Request):
     if len(message) > 50000:
         raise HTTPException(413, "Message too long (max 50000 chars)")
 
+    # ── Unintelligible-input guard ───────────────────────────────────────
+    # Fire on stray single letters/symbols ("v", ".", "??", "x") so we don't
+    # spin up the whole agent on noise. Conservative by design — must NOT block
+    # legitimate short messages: Burmese text (unicode), "hi"/"ok"/"fever", or
+    # any message with >=2 alpha chars passes. Returns the SAME shape as the
+    # TRIVIAL short-circuit (stream → RouterDecision-less SSE; non-stream → dict).
+    try:
+        _ng = (message or "").strip()
+        # Known short greeting/ack tokens that are legit even at <=2 chars.
+        _KNOWN_SHORT = {
+            "hi", "hii", "ok", "yo", "no", "ty", "k", "kk", "hey", "yes",
+            "yep", "sup", "thx", "bye", "lol", "haha", "cya", "nope",
+        }
+        _ng_lc = _ng.lower()
+        # Count letters across all scripts (Burmese, Latin, etc.) — \W is too
+        # blunt, so use str.isalpha() which is unicode-aware.
+        _alpha = [c for c in _ng if c.isalpha()]
+        _alnum = [c for c in _ng if c.isalnum()]
+        _is_nonsense = False
+        if _ng:
+            if len(_alpha) == 0:
+                # No letter at all → ".", "??", "123" alone, pure symbols.
+                _is_nonsense = True
+            elif len(_alnum) < 2:
+                # After stripping non-alphanumerics, <2 chars remain → "v", "x.".
+                _is_nonsense = True
+            else:
+                # Single short token (<=2 chars) that isn't a known word/greeting.
+                _toks = _ng.split()
+                if (len(_toks) == 1 and len(_ng) <= 2
+                        and _ng_lc not in _KNOWN_SHORT):
+                    _is_nonsense = True
+        if _is_nonsense:
+            _clar = (
+                "I didn't quite catch that — could you rephrase? I can help with "
+                "stock levels, drug info, substitutes, valuations, or categories."
+            )
+            if stream:
+                async def _clarify_stream():
+                    yield f"event: TeamRunContent\ndata: {_json.dumps({'content': _clar})}\n\n"
+                    yield "event: TeamRunCompleted\ndata: {}\n\n"
+                return StreamingResponse(_clarify_stream(), media_type="text/event-stream")
+            return {"content": _clar, "session_id": session_id, "clarify": True}
+    except HTTPException:
+        raise
+    except Exception:
+        # Never let the guard block a real chat — fail open to the agent.
+        pass
+
     # Begin root trace for this chat message.
     start_trace("chat", project_slug=slug, name="chat")
     # Tag the run for the Usage dashboard: who ran it (actor), how it came in
@@ -1105,9 +1154,16 @@ async def project_chat(slug: str, request: Request):
             import logging
             logging.warning(f"scope classifier failed (fail-open): {e}")
 
-    # Apply reasoning mode + analysis type (backend detection)
-    from app.main import _apply_reasoning_mode
-    context_msg = _apply_reasoning_mode(message, reasoning, analysis_type)
+    # Apply reasoning mode + analysis type (backend detection).
+    # Capability/greeting questions that DO run the agent (e.g. "who are you",
+    # "what can you do", "help") should answer like a pharmacist in plain prose
+    # — NOT with the dashboard tag scaffolding. _is_chitchat catches those and
+    # _chitchat_instructions bans every structured tag/card/chart/table.
+    from app.main import _apply_reasoning_mode, _is_chitchat, _chitchat_instructions
+    if _is_chitchat(message):
+        context_msg = _chitchat_instructions()
+    else:
+        context_msg = _apply_reasoning_mode(message, reasoning, analysis_type)
 
     # Per-message retrieval: rank trained Q→SQL pairs by relevance to THIS question
     # and prepend the best matches so short prompts hit the right proven SQL.

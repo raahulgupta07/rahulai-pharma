@@ -57,8 +57,12 @@ _TRIVIAL_TOKENS = {
     "nope", "yeah", "sure", "morning", "afternoon", "evening", "lol", "haha",
 }
 _TRIVIAL_PHRASES = (
+    # Pure greetings / acks only — capability questions ("who are you",
+    # "what can you do", "help") were REMOVED so they fall through to the
+    # agent, which answers them as a pharmacist via _is_chitchat /
+    # _chitchat_instructions (wired in app/projects.py).
     "thank you", "got it", "sounds good", "good morning", "good afternoon",
-    "good evening", "how are you", "who are you", "what can you do", "help",
+    "good evening", "how are you",
 )
 # Any of these means there's a real data ask → NOT trivial.
 _DATA_HINT_RE = re.compile(
@@ -68,8 +72,9 @@ _DATA_HINT_RE = re.compile(
 )
 
 _TRIVIAL_REPLY = (
-    "Hi! I'm your data agent. Ask me about your data — totals and counts, "
-    "trends and comparisons, breakdowns, or a forecast — and I'll dig in."
+    "Hi! I'm your CityPharma assistant. Ask me about stock levels, drug info "
+    "(composition, dose, substitutes), valuations, or categories across your "
+    "branches — and I'll dig in."
 )
 
 

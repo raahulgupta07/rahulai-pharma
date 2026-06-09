@@ -354,12 +354,48 @@ export function parseSource(content: string): { source: string; stripped: string
 // bracket, e.g. a stream cut mid-tag) for the legacy set.
 const _LEGACY_STRIP_TAGS =
   'FINDING|ANCHOR|BECAUSE|KILL|ASSUMPTION|SEGMENT|CONFIDENCE_BREAKDOWN|MODE';
+
+// Final-pass scrub for orphan brackets and truncated/split tag fragments that
+// survive the structured per-tag strips. Two real-world bugs this guards:
+//   1. a lone `]` (or `[`) left over from a malformed / multi-line / split tag
+//      leaking into the visible prose,
+//   2. a `[TAG: …` fragment whose closing `]` never arrived because the stream
+//      was cut mid-tag.
+// It deliberately targets ONLY UPPERCASE `[TAG:`-shaped fragments and lone
+// stray brackets — markdown links `[label](url)` (lowercase + `(` after `]`)
+// and ordinary prose brackets are left untouched.
+export function scrubTags(content: string): string {
+  if (!content) return content;
+  let s = content;
+
+  // a) Unclosed tag fragment at end-of-buffer: `[TAG: …` with no `]` before
+  //    EOL / end-of-string (a stream cut mid-tag). UPPERCASE tag head only.
+  s = s.replace(/\[[A-Z][A-Z0-9_]*:[^\]\n]*$/g, '');
+
+  // b) An opening `[TAG:` with no content/close on the rest of the same line
+  //    (e.g. a tag head that got orphaned by a line split).
+  s = s.replace(/\[[A-Z][A-Z0-9_]*:\s*$/gm, '');
+
+  // c) A lone `]` or `[` sitting on its own line (surrounded by whitespace).
+  s = s.replace(/^\s*[[\]]\s*$/gm, '');
+
+  // d) A stray leading `]` or trailing `[`/`]` clinging to the whole body
+  //    (the visible "lone ]" bug). Not inside words, only edge brackets.
+  s = s.replace(/^\s*\]+/, '');
+  s = s.replace(/[[\]]+\s*$/, '');
+
+  // Collapse any blank-line gaps the removals opened up.
+  return s.replace(/\n{3,}/g, '\n\n');
+}
+
 export function stripLegacyTags(content: string): string {
   if (!content) return content;
   const closed = new RegExp(`\\[(?:${_LEGACY_STRIP_TAGS}):[^\\]]*\\]`, 'g');
   // Truncated tag at end-of-buffer (streaming): `[TAG:....` with no `]` before EOL/EOS.
   const truncated = new RegExp(`\\[(?:${_LEGACY_STRIP_TAGS}):[^\\]\\n]*$`, 'gm');
-  return content.replace(closed, '').replace(truncated, '');
+  const stripped = content.replace(closed, '').replace(truncated, '');
+  // Final orphan-bracket / truncated-tag cleanup so every consumer benefits.
+  return scrubTags(stripped);
 }
 
 export function parseMonograph(content: string): { mono: Monograph | null; stripped: string } {
