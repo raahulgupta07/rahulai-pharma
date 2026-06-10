@@ -96,64 +96,100 @@
 
   // ---- inline mini graph — declarative SVG (always paints; no canvas/WebGL) ----
   // Fixed viewBox so SVG scales to the card regardless of pixel size — no clientWidth race.
-  const GW = 900, GH = 240;
+  const GW = 900, GH = 420;
+  // fullscreen canvas — bigger viewBox, denser fetch
+  const FW = 1600, FH = 900;
+  let fgNodes: any[] = $state([]);
+  let fgEdges: any[] = $state([]);
+  let showGraph = $state(false);
+  let graphLoading = $state(false);
+  let hoverNode: any = $state(null);
+
+  // shared force-settle — returns positioned nodes + edges for a given canvas
+  function settle(rawNodes: any[], rawEdges: any[], W: number, H: number, iters: number) {
+    const idx = new Map<string, number>();
+    const N = rawNodes.map((n: any, i: number) => {
+      idx.set(n.id, i);
+      return {
+        x: 20 + Math.random() * (W - 40),
+        y: 14 + Math.random() * (H - 28),
+        vx: 0, vy: 0,
+        r: Math.max(2, 1.6 + Math.min(W > 1000 ? 11 : 6, Math.sqrt(n.val || 1) * (W > 1000 ? 1.7 : 1.0))),
+        color: n.color || '#7c9cff',
+        label: n.label || n.id,
+      };
+    });
+    const E: number[][] = [];
+    for (const e of rawEdges) {
+      const a = idx.get(e.source), b = idx.get(e.target);
+      if (a != null && b != null) E.push([a, b]);
+    }
+    const cx = W / 2, cy = H / 2;
+    const rep = W > 1000 ? 280 : 160;
+    const farClip = W > 1000 ? 40000 : 14000;
+    const cap = W > 1000 ? 8 : 5;
+    for (let iter = 0; iter < iters; iter++) {
+      for (let i = 0; i < N.length; i++) { const p = N[i]; p.vx += (cx - p.x) * 0.002; p.vy += (cy - p.y) * 0.004; }
+      for (let i = 0; i < N.length; i++) {
+        for (let j = i + 1; j < N.length; j++) {
+          const a = N[i], b = N[j];
+          let dx = a.x - b.x, dy = a.y - b.y;
+          const d2 = dx * dx + dy * dy || 0.01;
+          if (d2 < farClip) { const f = rep / d2; dx *= f; dy *= f; a.vx += dx; a.vy += dy; b.vx -= dx; b.vy -= dy; }
+        }
+      }
+      for (const [a, b] of E) {
+        const p = N[a], q = N[b];
+        const dx = q.x - p.x, dy = q.y - p.y;
+        p.vx += dx * 0.0010; p.vy += dy * 0.0010; q.vx -= dx * 0.0010; q.vy -= dy * 0.0010;
+      }
+      for (const p of N) {
+        p.x += Math.max(-cap, Math.min(cap, p.vx)); p.y += Math.max(-cap, Math.min(cap, p.vy));
+        p.vx *= 0.86; p.vy *= 0.86;
+        p.x = Math.max(8, Math.min(W - 8, p.x)); p.y = Math.max(8, Math.min(H - 8, p.y));
+      }
+    }
+    const outE = E.map(([a, b]) => ({ x1: N[a].x, y1: N[a].y, x2: N[b].x, y2: N[b].y }));
+    return { nodes: N, edges: outE };
+  }
   let gNodes: any[] = $state([]);
   let gEdges: any[] = $state([]);
 
   async function buildMiniGraph() {
     try {
-      const r = await fetch(`/api/projects/${slug}/graph?source=pharma&limit=260`, { headers: _h() });
+      const r = await fetch(`/api/projects/${slug}/graph?source=pharma&limit=500`, { headers: _h() });
       if (!r.ok) return;
       const data = await r.json();
       const rawNodes = data?.nodes || [];
       const rawEdges = data?.edges || [];
       if (!rawNodes.length) return;
-
-      const idx = new Map<string, number>();
-      const N = rawNodes.map((n: any, i: number) => {
-        idx.set(n.id, i);
-        return {
-          x: 20 + Math.random() * (GW - 40),
-          y: 14 + Math.random() * (GH - 28),
-          vx: 0, vy: 0,
-          r: Math.max(2, 1.6 + Math.min(6, Math.sqrt(n.val || 1) * 1.0)),
-          color: n.color || '#7c9cff',
-        };
-      });
-      const E: number[][] = [];
-      for (const e of rawEdges) {
-        const a = idx.get(e.source), b = idx.get(e.target);
-        if (a != null && b != null) E.push([a, b]);
-      }
-
-      // force settle (plain numbers, no rendering) — spread the origin pile
-      const cx = GW / 2, cy = GH / 2;
-      for (let iter = 0; iter < 120; iter++) {
-        for (let i = 0; i < N.length; i++) { const p = N[i]; p.vx += (cx - p.x) * 0.002; p.vy += (cy - p.y) * 0.004; }
-        for (let i = 0; i < N.length; i++) {
-          for (let j = i + 1; j < N.length; j++) {
-            const a = N[i], b = N[j];
-            let dx = a.x - b.x, dy = a.y - b.y;
-            const d2 = dx * dx + dy * dy || 0.01;
-            if (d2 < 14000) { const f = 160 / d2; dx *= f; dy *= f; a.vx += dx; a.vy += dy; b.vx -= dx; b.vy -= dy; }
-          }
-        }
-        for (const [a, b] of E) {
-          const p = N[a], q = N[b];
-          const dx = q.x - p.x, dy = q.y - p.y;
-          p.vx += dx * 0.0010; p.vy += dy * 0.0010; q.vx -= dx * 0.0010; q.vy -= dy * 0.0010;
-        }
-        for (const p of N) {
-          p.x += Math.max(-5, Math.min(5, p.vx)); p.y += Math.max(-5, Math.min(5, p.vy));
-          p.vx *= 0.86; p.vy *= 0.86;
-          p.x = Math.max(8, Math.min(GW - 8, p.x)); p.y = Math.max(8, Math.min(GH - 8, p.y));
-        }
-      }
-
-      gEdges = E.map(([a, b]) => ({ x1: N[a].x, y1: N[a].y, x2: N[b].x, y2: N[b].y }));
-      gNodes = N;
+      const { nodes, edges } = settle(rawNodes, rawEdges, GW, GH, 120);
+      gNodes = nodes; gEdges = edges;
     } catch { /* fail-soft */ }
   }
+
+  // fullscreen — denser fetch + larger canvas + node labels
+  async function openGraph() {
+    showGraph = true;
+    hoverNode = null;
+    if (fgNodes.length) return;            // already built once
+    graphLoading = true;
+    try {
+      const r = await fetch(`/api/projects/${slug}/graph?source=pharma&limit=1200`, { headers: _h() });
+      if (r.ok) {
+        const data = await r.json();
+        const rawNodes = data?.nodes || [];
+        const rawEdges = data?.edges || [];
+        if (rawNodes.length) {
+          const { nodes, edges } = settle(rawNodes, rawEdges, FW, FH, 180);
+          fgNodes = nodes; fgEdges = edges;
+        }
+      }
+    } catch { /* fail-soft */ }
+    graphLoading = false;
+  }
+  function closeGraph() { showGraph = false; hoverNode = null; }
+  function onGraphKey(e: KeyboardEvent) { if (e.key === 'Escape') closeGraph(); }
 
   onMount(() => {
     load();
@@ -261,6 +297,8 @@
   ] : []);
   const brainMax = $derived(Math.max(1, ...brainBars.map((b) => b.v || 0)));
 </script>
+
+<svelte:window onkeydown={onGraphKey} />
 
 <div class="ov-root">
   <!-- header -->
@@ -462,8 +500,43 @@
       <div class="ov-graph-t">KNOWLEDGE GRAPH</div>
       <div class="ov-graph-s">Drug substitute web · {fmtN(chem?.drugs_with_substitutes)} drugs · live force-map</div>
     </div>
-    <button class="ov-graph-cta" onclick={() => goto(`${base}/project/${slug}/graph`)}>Explore ⛶</button>
+    <button class="ov-graph-cta" onclick={openGraph}>Explore ⛶</button>
   </div>
+
+  <!-- KNOWLEDGE GRAPH — fullscreen modal -->
+  {#if showGraph}
+    <div class="ov-gfs" role="dialog" aria-modal="true" aria-label="Knowledge graph fullscreen">
+      <div class="ov-gfs-bar">
+        <div class="ov-gfs-ttl">KNOWLEDGE GRAPH</div>
+        <div class="ov-gfs-sub">Drug substitute web · {fmtN(chem?.drugs_with_substitutes)} drugs · {fmtN(fgNodes.length)} nodes · {fmtN(fgEdges.length)} links · hover a node for its name</div>
+        <button class="ov-gfs-x" onclick={closeGraph} aria-label="Close">✕</button>
+      </div>
+      <div class="ov-gfs-stage">
+        {#if graphLoading}
+          <div class="ov-gfs-load">Building force-map…</div>
+        {:else if !fgNodes.length}
+          <div class="ov-gfs-load">No graph data yet — train the catalog to build the substitute web.</div>
+        {:else}
+          <svg class="ov-gfs-svg" viewBox="0 0 {FW} {FH}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Full drug substitute knowledge graph">
+            {#each fgEdges as e}
+              <line x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2} stroke="rgba(190,180,210,0.13)" stroke-width="0.6" />
+            {/each}
+            {#each fgNodes as n}
+              <circle cx={n.x} cy={n.y} r={n.r} fill={n.color}
+                      onmouseenter={() => (hoverNode = n)} onmouseleave={() => (hoverNode = null)}
+                      role="img" aria-label={n.label} />
+            {/each}
+            {#if hoverNode}
+              <g pointer-events="none">
+                <circle cx={hoverNode.x} cy={hoverNode.y} r={hoverNode.r + 3} fill="none" stroke="#fff" stroke-width="1.4" />
+                <text x={hoverNode.x + hoverNode.r + 6} y={hoverNode.y + 4} fill="#fff" font-size="16" font-weight="700">{hoverNode.label}</text>
+              </g>
+            {/if}
+          </svg>
+        {/if}
+      </div>
+    </div>
+  {/if}
 
   <!-- BRAIN WIKI launcher -->
   <button class="ov-wiki-card" onclick={() => goto(`${base}/project/${slug}/wiki`)}>
@@ -662,14 +735,26 @@
   .ov-chem-run:disabled { opacity: 0.5; cursor: default; }
   .ov-chem-foot { padding: 0 14px 12px; font-size: 10px; color: var(--color-on-surface-dim); font-style: italic; }
 
-  .ov-graph-card { position: relative; width: 100%; height: 240px; margin-bottom: 12px; padding: 0; background: #16131a; border: 1px solid #3a3346; cursor: pointer; text-align: left; overflow: hidden; display: block; }
+  .ov-graph-card { position: relative; width: 100%; height: 420px; margin-bottom: 12px; padding: 0; background: #16131a; border: 1px solid #3a3346; cursor: pointer; text-align: left; overflow: hidden; display: block; }
   .ov-graph-card:hover { border-color: #c96342; }
   .ov-graph-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
   .ov-graph-fade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(22,19,26,0.85) 0%, rgba(22,19,26,0.35) 26%, rgba(22,19,26,0) 50%); }
   .ov-graph-l { position: absolute; left: 20px; top: 18px; z-index: 2; pointer-events: none; }
   .ov-graph-t { font-size: 14px; font-weight: 900; letter-spacing: 0.05em; color: #fff; }
   .ov-graph-s { font-size: 11px; color: #b6aecb; margin-top: 4px; }
-  .ov-graph-cta { position: absolute; right: 18px; bottom: 16px; z-index: 2; font-size: 12px; font-weight: 700; color: #fff; background: #c96342; padding: 6px 12px; border-radius: 4px; }
+  .ov-graph-cta { position: absolute; right: 18px; bottom: 16px; z-index: 2; font-size: 12px; font-weight: 700; color: #fff; background: #c96342; padding: 6px 12px; border-radius: 4px; cursor: pointer; border: none; }
+
+  /* ---- fullscreen graph modal ---- */
+  .ov-gfs { position: fixed; inset: 0; z-index: 1000; background: #16131a; display: flex; flex-direction: column; }
+  .ov-gfs-bar { display: flex; align-items: center; gap: 14px; padding: 14px 22px; border-bottom: 1px solid #3a3346; flex: 0 0 auto; }
+  .ov-gfs-ttl { font-size: 15px; font-weight: 900; letter-spacing: 0.05em; color: #fff; }
+  .ov-gfs-sub { font-size: 12px; color: #b6aecb; flex: 1 1 auto; }
+  .ov-gfs-x { font-size: 16px; font-weight: 700; color: #fff; background: #2a2533; border: 1px solid #3a3346; width: 34px; height: 34px; border-radius: 6px; cursor: pointer; flex: 0 0 auto; }
+  .ov-gfs-x:hover { background: #c96342; border-color: #c96342; }
+  .ov-gfs-stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+  .ov-gfs-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .ov-gfs-svg circle { cursor: pointer; transition: opacity 0.1s; }
+  .ov-gfs-load { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #b6aecb; font-size: 14px; }
 
   .ov-wiki-card { width: 100%; display: flex; align-items: center; gap: 16px; margin-bottom: 12px; padding: 16px 18px; background: var(--color-surface-bright, var(--color-surface)); border: 1px solid var(--pw-border, #e5ddcf); cursor: pointer; text-align: left; }
   .ov-wiki-card:hover { border-color: var(--color-primary); }
