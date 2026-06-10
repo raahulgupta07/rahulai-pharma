@@ -103,10 +103,18 @@
   let fgEdges: any[] = $state([]);
   let showGraph = $state(false);
   let graphLoading = $state(false);
-  let hoverNode: any = $state(null);
+  let hoverIdx = $state(-1);
 
-  // shared force-settle — returns positioned nodes + edges for a given canvas
-  function settle(rawNodes: any[], rawEdges: any[], W: number, H: number, iters: number) {
+  let gNodes: any[] = $state([]);
+  let gEdges: any[] = $state([]);
+
+  // ---- live force simulation (perpetual gentle drift, rAF-driven) ----
+  // sim = { N:[{x,y,vx,vy,r,color,label}], E:[[i,j]], W, H }, non-reactive
+  let _inSim: any = null;     // inline mini-graph
+  let _fsSim: any = null;     // fullscreen modal
+  let _raf = 0;
+
+  function initSim(rawNodes: any[], rawEdges: any[], W: number, H: number) {
     const idx = new Map<string, number>();
     const N = rawNodes.map((n: any, i: number) => {
       idx.set(n.id, i);
@@ -124,36 +132,63 @@
       const a = idx.get(e.source), b = idx.get(e.target);
       if (a != null && b != null) E.push([a, b]);
     }
+    return { N, E, W, H, warm: 60 };   // warm = settle iterations before first paint
+  }
+
+  // one physics iteration — mutates velocities/positions in place.
+  // `live` adds tiny brownian jitter so the map never fully freezes.
+  function stepSim(sim: any, live: boolean) {
+    const { N, E, W, H } = sim;
     const cx = W / 2, cy = H / 2;
     const rep = W > 1000 ? 280 : 160;
     const farClip = W > 1000 ? 40000 : 14000;
     const cap = W > 1000 ? 8 : 5;
-    for (let iter = 0; iter < iters; iter++) {
-      for (let i = 0; i < N.length; i++) { const p = N[i]; p.vx += (cx - p.x) * 0.002; p.vy += (cy - p.y) * 0.004; }
-      for (let i = 0; i < N.length; i++) {
-        for (let j = i + 1; j < N.length; j++) {
-          const a = N[i], b = N[j];
-          let dx = a.x - b.x, dy = a.y - b.y;
-          const d2 = dx * dx + dy * dy || 0.01;
-          if (d2 < farClip) { const f = rep / d2; dx *= f; dy *= f; a.vx += dx; a.vy += dy; b.vx -= dx; b.vy -= dy; }
-        }
-      }
-      for (const [a, b] of E) {
-        const p = N[a], q = N[b];
-        const dx = q.x - p.x, dy = q.y - p.y;
-        p.vx += dx * 0.0010; p.vy += dy * 0.0010; q.vx -= dx * 0.0010; q.vy -= dy * 0.0010;
-      }
-      for (const p of N) {
-        p.x += Math.max(-cap, Math.min(cap, p.vx)); p.y += Math.max(-cap, Math.min(cap, p.vy));
-        p.vx *= 0.86; p.vy *= 0.86;
-        p.x = Math.max(8, Math.min(W - 8, p.x)); p.y = Math.max(8, Math.min(H - 8, p.y));
+    const jit = live ? (W > 1000 ? 0.22 : 0.14) : 0;
+    for (let i = 0; i < N.length; i++) { const p = N[i]; p.vx += (cx - p.x) * 0.002; p.vy += (cy - p.y) * 0.004; }
+    for (let i = 0; i < N.length; i++) {
+      for (let j = i + 1; j < N.length; j++) {
+        const a = N[i], b = N[j];
+        let dx = a.x - b.x, dy = a.y - b.y;
+        const d2 = dx * dx + dy * dy || 0.01;
+        if (d2 < farClip) { const f = rep / d2; dx *= f; dy *= f; a.vx += dx; a.vy += dy; b.vx -= dx; b.vy -= dy; }
       }
     }
-    const outE = E.map(([a, b]) => ({ x1: N[a].x, y1: N[a].y, x2: N[b].x, y2: N[b].y }));
-    return { nodes: N, edges: outE };
+    for (const [a, b] of E) {
+      const p = N[a], q = N[b];
+      const dx = q.x - p.x, dy = q.y - p.y;
+      p.vx += dx * 0.0010; p.vy += dy * 0.0010; q.vx -= dx * 0.0010; q.vy -= dy * 0.0010;
+    }
+    for (const p of N) {
+      if (jit) { p.vx += (Math.random() - 0.5) * jit; p.vy += (Math.random() - 0.5) * jit; }
+      p.x += Math.max(-cap, Math.min(cap, p.vx)); p.y += Math.max(-cap, Math.min(cap, p.vy));
+      p.vx *= 0.90; p.vy *= 0.90;
+      p.x = Math.max(8, Math.min(W - 8, p.x)); p.y = Math.max(8, Math.min(H - 8, p.y));
+    }
   }
-  let gNodes: any[] = $state([]);
-  let gEdges: any[] = $state([]);
+
+  function snapNodes(sim: any) {
+    return sim.N.map((p: any) => ({ x: p.x, y: p.y, r: p.r, color: p.color, label: p.label }));
+  }
+  function snapEdges(sim: any) {
+    return sim.E.map(([a, b]: number[]) => ({ x1: sim.N[a].x, y1: sim.N[a].y, x2: sim.N[b].x, y2: sim.N[b].y }));
+  }
+
+  // single rAF loop drives whichever sims are visible
+  function frame() {
+    if (_inSim) {
+      const warming = _inSim.warm > 0;
+      if (warming) { for (let k = 0; k < 6; k++) stepSim(_inSim, false); _inSim.warm -= 6; }
+      else stepSim(_inSim, true);
+      gNodes = snapNodes(_inSim); gEdges = snapEdges(_inSim);
+    }
+    if (showGraph && _fsSim) {
+      const warming = _fsSim.warm > 0;
+      if (warming) { for (let k = 0; k < 8; k++) stepSim(_fsSim, false); _fsSim.warm -= 8; }
+      else stepSim(_fsSim, true);
+      fgNodes = snapNodes(_fsSim); fgEdges = snapEdges(_fsSim);
+    }
+    _raf = requestAnimationFrame(frame);
+  }
 
   async function buildMiniGraph() {
     try {
@@ -163,16 +198,15 @@
       const rawNodes = data?.nodes || [];
       const rawEdges = data?.edges || [];
       if (!rawNodes.length) return;
-      const { nodes, edges } = settle(rawNodes, rawEdges, GW, GH, 120);
-      gNodes = nodes; gEdges = edges;
+      _inSim = initSim(rawNodes, rawEdges, GW, GH);
     } catch { /* fail-soft */ }
   }
 
   // fullscreen — denser fetch + larger canvas + node labels
   async function openGraph() {
     showGraph = true;
-    hoverNode = null;
-    if (fgNodes.length) return;            // already built once
+    hoverIdx = -1;
+    if (_fsSim) return;                    // already built once
     graphLoading = true;
     try {
       const r = await fetch(`/api/projects/${slug}/graph?source=pharma&limit=1200`, { headers: _h() });
@@ -181,23 +215,25 @@
         const rawNodes = data?.nodes || [];
         const rawEdges = data?.edges || [];
         if (rawNodes.length) {
-          const { nodes, edges } = settle(rawNodes, rawEdges, FW, FH, 180);
-          fgNodes = nodes; fgEdges = edges;
+          _fsSim = initSim(rawNodes, rawEdges, FW, FH);
+          fgNodes = snapNodes(_fsSim); fgEdges = snapEdges(_fsSim);
         }
       }
     } catch { /* fail-soft */ }
     graphLoading = false;
   }
-  function closeGraph() { showGraph = false; hoverNode = null; }
+  function closeGraph() { showGraph = false; hoverIdx = -1; }
   function onGraphKey(e: KeyboardEvent) { if (e.key === 'Escape') closeGraph(); }
 
   onMount(() => {
     load();
     buildMiniGraph();
     timer = setInterval(() => { if (auto) load(); }, 30000);
+    _raf = requestAnimationFrame(frame);
   });
   onDestroy(() => {
     if (timer) clearInterval(timer);
+    if (_raf) cancelAnimationFrame(_raf);
   });
 
   // ---- formatters ----
@@ -521,15 +557,17 @@
             {#each fgEdges as e}
               <line x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2} stroke="rgba(190,180,210,0.13)" stroke-width="0.6" />
             {/each}
-            {#each fgNodes as n}
+            {#each fgNodes as n, i}
               <circle cx={n.x} cy={n.y} r={n.r} fill={n.color}
-                      onmouseenter={() => (hoverNode = n)} onmouseleave={() => (hoverNode = null)}
+                      onmouseenter={() => (hoverIdx = i)} onmouseleave={() => (hoverIdx = -1)}
                       role="img" aria-label={n.label} />
             {/each}
-            {#if hoverNode}
+            {#if hoverIdx >= 0 && fgNodes[hoverIdx]}
+              {@const hn = fgNodes[hoverIdx]}
               <g pointer-events="none">
-                <circle cx={hoverNode.x} cy={hoverNode.y} r={hoverNode.r + 3} fill="none" stroke="#fff" stroke-width="1.4" />
-                <text x={hoverNode.x + hoverNode.r + 6} y={hoverNode.y + 4} fill="#fff" font-size="16" font-weight="700">{hoverNode.label}</text>
+                <circle cx={hn.x} cy={hn.y} r={hn.r + 3} fill="none" stroke="#fff" stroke-width="1.4" />
+                <rect x={hn.x + hn.r + 4} y={hn.y - 11} width={hn.label.length * 8.6 + 12} height="22" rx="3" fill="rgba(0,0,0,0.72)" />
+                <text x={hn.x + hn.r + 10} y={hn.y + 4} fill="#fff" font-size="16" font-weight="700">{hn.label}</text>
               </g>
             {/if}
           </svg>
