@@ -10925,6 +10925,12 @@ async def save_feedback(slug: str, request: Request):
     question = body.get("question", "")
     answer = body.get("answer", "")
     rating = body.get("rating", "up")  # "up" or "down"
+    # Optional "why" payload (correction capture). Lets a 👎 carry a real
+    # training signal instead of a bare negative.
+    comment = (body.get("comment") or "").strip()
+    _tags = body.get("tags") or []
+    tags = [str(t).strip() for t in _tags if str(t).strip()][:8] if isinstance(_tags, list) else []
+    correction = (body.get("correction") or "").strip()
 
     if not question or not answer:
         return {"status": "skip"}
@@ -10957,12 +10963,50 @@ async def save_feedback(slug: str, request: Request):
         except Exception:
             existing = []
 
-    existing.append({"question": question, "answer": answer[:500], "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+    # Enrich the negative example with WHY + the user's correction so the three
+    # downstream loops (instructions.py, auto_evolve, per-table Q&A gen) see the
+    # lesson, not just "this question was bad".
+    _entry = {"question": question, "answer": answer[:500],
+              "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    if comment:
+        _entry["comment"] = comment[:500]
+    if tags:
+        _entry["tags"] = tags
+    if correction:
+        _entry["correction"] = correction[:1000]
+    existing.append(_entry)
     # Keep last 50
     existing = existing[-50:]
 
     with open(filepath, "w") as f:
         json.dump(existing, f, indent=2)
+
+    # Persist the real user click to dash_feedback. Until now this endpoint only
+    # wrote JSON files, so genuine thumb-clicks never reached the table the admin
+    # Like/Dislike dashboard and analytics read — only synthetic training seeds
+    # did. This insert makes user feedback visible + reviewable.
+    feedback_id = None
+    try:
+        user = _get_user(request)
+        uid = (user or {}).get("id") or (user or {}).get("user_id")
+        sess = body.get("session_id") or body.get("session")
+        # A correction (or a 👎 with substantive comment) opens a review item.
+        corr_status = "pending" if correction else None
+        from db.session import get_write_engine as _gwe_fb
+        _eng = _gwe_fb()
+        with _eng.begin() as _c:
+            row = _c.execute(text(
+                "INSERT INTO public.dash_feedback "
+                "(user_id, project_slug, session_id, question, answer, sql_query, rating, "
+                " comment, comment_tags, correction, correction_status) "
+                "VALUES (:uid, :s, :sess, :q, :a, :sql, :r, :cm, :tg, :corr, :cs) RETURNING id"
+            ), {"uid": uid, "s": slug, "sess": sess, "q": question, "a": answer[:2000],
+                "sql": (body.get("sql") or "")[:4000], "r": rating, "cm": comment or None,
+                "tg": tags or None, "corr": correction or None, "cs": corr_status}).fetchone()
+            if row:
+                feedback_id = int(row[0])
+    except Exception as _fe:
+        logger.warning(f"dash_feedback insert failed: {_fe}")
 
     # Auto-promote 👍 to golden corpus if SQL present + not gated
     # Mirrors Dataherald's user-feedback → golden_sql lifecycle (Correction 1, Option B).
@@ -10989,7 +11033,9 @@ async def save_feedback(slug: str, request: Request):
     # Re-index
     _reload_project_knowledge(slug)
     return {"status": "ok", "saved": rating, "gated": gated,
+            "id": feedback_id,
             "promoted": promoted,
+            "correction_queued": bool(correction),
             "note": "answer didn't match pinned truth — saved as negative example, not promoted" if gated else None}
 
 

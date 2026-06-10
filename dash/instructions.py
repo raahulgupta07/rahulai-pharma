@@ -2226,9 +2226,10 @@ def _build_self_learning_context(project_slug: str, actual_user_id: int | None =
                     lines.append(f"**A:** {(g[1] or '')[:200]}")
                     lines.append("")
 
-            # Bad feedback (last 3)
+            # Bad feedback (last 3) — include the user's stated reason + correction
             bad = conn.execute(sa_text(
-                "SELECT question, answer FROM public.dash_feedback WHERE project_slug = :s AND rating = 'down' ORDER BY created_at DESC LIMIT 3"
+                "SELECT question, answer, comment, correction FROM public.dash_feedback "
+                "WHERE project_slug = :s AND rating = 'down' ORDER BY created_at DESC LIMIT 3"
             ), {"s": project_slug}).fetchall()
             if bad:
                 lines.append("## AVOID THESE PATTERNS\n")
@@ -2236,6 +2237,10 @@ def _build_self_learning_context(project_slug: str, actual_user_id: int | None =
                 for b in bad:
                     lines.append(f"**Bad Q:** {b[0]}")
                     lines.append(f"**Bad A:** {(b[1] or '')[:150]}")
+                    if len(b) > 2 and b[2]:
+                        lines.append(f"**Why wrong (user):** {str(b[2])[:200]}")
+                    if len(b) > 3 and b[3]:
+                        lines.append(f"**User says correct:** {str(b[3])[:200]}")
                     lines.append("")
 
             # Memories (project + global + personal, exclude archived)

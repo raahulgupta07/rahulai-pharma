@@ -21,6 +21,7 @@
  import DeepDeckPanel from '$lib/deep-deck-panel.svelte';
  import ArtifactPanel from '$lib/dashboards/ArtifactPanel.svelte';
  import ChatMessageList, { formatCell, generateChartCaption } from '$lib/chat/ChatMessageList.svelte';
+ import FeedbackModal from '$lib/chat/FeedbackModal.svelte';
  import ReasoningTrace from '$lib/ReasoningTrace.svelte';
  import TraceTimeline from '$lib/trace/TraceTimeline.svelte';
  import type { TraceItem } from '$lib/api';
@@ -2173,6 +2174,8 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  // Dashboard pin modal
  let showPinModal = $state(false);
  let pinModalData = $state<{msgIndex: number; tables: any[]; content: string} | null>(null);
+ let fbOpen = $state(false);
+ let fbPayload = $state<any>(null);
  let userDashboards = $state<any[]>([]);
  let selectedDashId = $state<number | null>(null);
  let newDashNameForPin = $state('');
@@ -2501,7 +2504,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
             onExportPdf={async (idx) => { const m = messages[idx]; if (!m) return; try { const res = await fetch("/api/export/pdf", { method: "POST", headers: { ..._headers(), "Content-Type": "application/json" }, body: JSON.stringify({ content: m.content, title: projectInfo?.agent_name || "Report" }) }); if (res.ok) { const blob = await res.blob(); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `dash-report-${Date.now()}.pdf`; a.click(); URL.revokeObjectURL(url); } } catch {} }}
             onPin={(idx, tables) => { const m = messages[idx]; if (!m) return; openPinModal(idx, tables, m.content); }}
             onSchedule={(idx) => openScheduleModal(idx)}
-            onFeedback={async (idx, rating) => { const m = messages[idx]; if (!m) return; const q = idx > 0 ? messages[idx-1]?.content : ""; const firstSql = Array.isArray(m.sqlQueries) && m.sqlQueries.length ? m.sqlQueries[0] : ""; const fbRes = await fetch(`/api/projects/${projectSlug}/feedback`, { method: "POST", headers: { ..._headers(), "Content-Type": "application/json" }, body: JSON.stringify({ question: q, answer: m.content, rating, sql: firstSql }) }); if (rating === "up" && m.sqlQueries?.length) { for (const sql of m.sqlQueries) { await fetch(`/api/projects/${projectSlug}/save-query-pattern`, { method: "POST", headers: { ..._headers(), "Content-Type": "application/json" }, body: JSON.stringify({ question: q, sql }) }); } } try { const fbd = await fbRes.json(); if (fbd?.promoted?.total_goldens) { console.log(`[golden] promoted to corpus (total: ${fbd.promoted.total_goldens})`); } } catch {} }}
+            onFeedback={(idx, rating) => { const m = messages[idx]; if (!m) return; const q = idx > 0 ? messages[idx-1]?.content : ""; const firstSql = Array.isArray(m.sqlQueries) && m.sqlQueries.length ? m.sqlQueries[0] : ""; fbPayload = { question: q, answer: m.content, rating, sql: firstSql, sqlQueries: Array.isArray(m.sqlQueries) ? m.sqlQueries : [] }; fbOpen = true; }}
           >
             {#snippet analysisExtras({ msg, index: i })}
               {#if Array.isArray((msg as any).trace) && (msg as any).trace.length}
@@ -3409,6 +3412,9 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
     </div>
   </div>
 {/if}
+
+<FeedbackModal bind:open={fbOpen} slug={projectSlug} payload={fbPayload} headers={_headers}
+  ondone={(d) => { if (d?.promoted?.total_goldens) console.log(`[golden] promoted (total: ${d.promoted.total_goldens})`); }} />
 
 <style>
 /* === Design A: starter cards 2x2 grid, ChatGPT-style === */

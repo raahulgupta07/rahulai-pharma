@@ -2,6 +2,24 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-10 (latest+54) — Feedback comment capture → correction → review/promote training loop (local)
+
+User: "when I click like and dislike I don't get any comment — how to train the agent?" A thumb was a bare rating; 👎 carried no reason and no fix. Built the full WHY-capture → review → train loop. Deployed (rebuild + `--force-recreate`) + verified end-to-end live. NOT pushed.
+
+**Discovery (root cause of bigger gap):** the user thumb endpoint `save_feedback` (`app/upload.py` `/projects/{slug}/feedback`) only wrote `feedback_good.json`/`feedback_bad.json` files — it **never INSERTed into `dash_feedback`**. So the admin Like/Dislike dashboard + analytics showed only synthetic *training-seed* rows (the 39/26), never real clicks. Real user feedback was invisible + unreviewable.
+
+**Capture (`lib/chat/FeedbackModal.svelte` NEW + both chat hosts).** Thumb click now opens a modal instead of firing silently. 👎 → quick-pick tag chips (`wrong number / wrong table / missing rows / bad format / too slow / off-topic / other`) + free-text "what was wrong" + optional **"correct answer or SQL"** box. 👍 → optional one-liner (still auto-promotes). Self-contained component does the POST; hosts just open it (`onFeedback` sets `fbPayload`+`fbOpen`). Wired in `routes/project/[slug]/+page.svelte` (main pharma chat) and `routes/chat/+page.svelte`. `Skip` submits a bare rating (old behavior).
+
+**Persist (`save_feedback` + migration 183).** Endpoint now accepts `comment`, `tags[]`, `correction` and — the fix — **INSERTs the real click into `dash_feedback`** (via `get_write_engine`, returns `id`). JSON bad-example entry enriched with comment+correction so the 3 training loops see the lesson. Migration **183** (`db/migrations/183_feedback_comments.sql`, applied live): `comment TEXT`, `comment_tags TEXT[]`, `correction TEXT`, `correction_status TEXT` + partial index on open corrections.
+
+**Train (consumers wired).** `dash/tools/auto_evolve.py` + `dash/instructions.py` bad-feedback queries now select `comment, correction` too and render them as "WHY WRONG (user): … / USER SAYS CORRECT: …" into the evolved-instructions prompt + the AVOID-THESE-PATTERNS system-prompt block. So a 👎 now teaches the reason + the fix, not just a negative.
+
+**Review (admin, `app/usage_api.py` + `UsagePanel.svelte`).** `/usage/feedback` disliked rows now return `comment/tags/correction/correction_status`. Learning tab cards render them + two action buttons on any pending correction: **▲ Promote correction → golden** (`POST /usage/feedback/{id}/promote` → `golden.promote(source="admin_correction")` + reindex + status='promoted') and **Dismiss** (status='dismissed'). **Trust rule baked in: a 👎 user-correction is an UNVERIFIED claim — never auto-promoted on click; admin reviews first.** Only verified 👍+SQL auto-promotes (unchanged).
+
+**Gotcha fixed mid-build:** `usage_api._exec` used the shared **read** engine (`get_sql_engine`) → pgbouncer routed it read-only → UPDATE failed silently ("Cannot write"). Switched `_exec` to `get_write_engine` (benefits budget-set too). Re-verified promote/dismiss persist.
+
+**Verified live:** authed 👎+correction → row 66 in `dash_feedback` w/ tags+correction+pending → analytics returns enriched card → promote → status=promoted + golden+1 → dismiss path → status=dismissed. Test rows cleaned. **GAP STILL OPEN:** per-model satisfaction (no model col on `dash_feedback`); migration 183 not yet in baseline seed (auto-applies via runner — fold into `migrations_seed` for cold-volume installs, same as 182).
+
 ### Session 2026-06-10 (latest+53) — Dashboard ops surface · 3 data screens · single robot · reindex fix · rate-limit fix · Usage analytics expansion (local)
 
 Big multi-feature session. All deployed (rebuild image + `--force-recreate`, never hot-copy) + verified live. NOT pushed.

@@ -57,8 +57,15 @@ def _rows(query: str, params: dict | None = None) -> list:
 
 
 def _exec(query: str, params: dict | None = None) -> bool:
+    # Writes must go through the write engine — the shared read engine routes to
+    # a read-only session via pgbouncer and rejects UPDATE/INSERT.
     try:
-        with _engine().begin() as conn:
+        from db.session import get_write_engine
+        eng = get_write_engine()
+    except Exception:
+        eng = _engine()
+    try:
+        with eng.begin() as conn:
             conn.execute(text(query), params or {})
         return True
     except Exception as e:
@@ -1456,8 +1463,11 @@ def feedback_analytics(request: Request,
                                  "COUNT(*) FILTER (WHERE rating='up'), COUNT(*) FILTER (WHERE rating='down') "
                                  "FROM public.dash_feedback " + win + " GROUP BY 1 ORDER BY 3 DESC LIMIT 20", p)]
     disliked = [{"id": int(r[0]), "project": r[1], "question": r[2], "answer": r[3],
-                 "sql": r[4], "ts": r[5].isoformat() if r[5] else None}
-                for r in _rows("SELECT id, project_slug, question, answer, sql_query, created_at "
+                 "sql": r[4], "ts": r[5].isoformat() if r[5] else None,
+                 "comment": r[6], "tags": list(r[7]) if r[7] else [],
+                 "correction": r[8], "correction_status": r[9]}
+                for r in _rows("SELECT id, project_slug, question, answer, sql_query, created_at, "
+                               "comment, comment_tags, correction, correction_status "
                                "FROM public.dash_feedback WHERE rating='down' AND created_at >= :start "
                                "AND created_at < :end ORDER BY created_at DESC LIMIT :lim",
                                {**p, "lim": max(1, min(200, limit))})]
@@ -1469,6 +1479,51 @@ def feedback_analytics(request: Request,
             "totals": {"up": up, "down": down, "total": total,
                        "satisfaction": round(100.0 * up / total, 1) if total else None},
             "series": series, "by_project": by_project, "disliked": disliked, "liked": liked}
+
+
+@router.post("/feedback/{fid}/promote")
+def feedback_promote(fid: int, request: Request, body: dict = Body(default={})):
+    """Admin promotes a 👎 row's user-supplied correction (or its SQL) to the
+    golden corpus. A user correction is an UNVERIFIED claim — never auto-promoted
+    on click; it lands here for human review first. Optional body.sql overrides
+    the stored correction (admin edited it)."""
+    _gate(request)
+    rows = _rows("SELECT project_slug, question, sql_query, correction "
+                 "FROM public.dash_feedback WHERE id = :id", {"id": fid})
+    if not rows:
+        raise HTTPException(404, "feedback not found")
+    slug, question, sql_query, correction = rows[0]
+    sql = (body.get("sql") or correction or sql_query or "").strip()
+    if not sql:
+        raise HTTPException(400, "no correction or SQL to promote")
+    try:
+        from dash.learning.golden import promote as _golden_promote
+        user = _get_user(request)
+        _p = _golden_promote(slug, question=question, sql=sql, source="admin_correction",
+                             promoted_by=user.get("username") if user else None)
+    except Exception as e:
+        raise HTTPException(500, f"promote failed: {e}")
+    if not _p.get("ok"):
+        raise HTTPException(400, _p.get("error", "promote rejected"))
+    _exec("UPDATE public.dash_feedback SET correction_status = 'promoted' WHERE id = :id", {"id": fid})
+    # Re-index so the new golden is retrievable immediately.
+    try:
+        from app.upload import _reload_project_knowledge
+        _reload_project_knowledge(slug)
+    except Exception:
+        pass
+    return {"ok": True, "total_goldens": _p.get("total_goldens"), "status": "promoted"}
+
+
+@router.post("/feedback/{fid}/dismiss")
+def feedback_dismiss(fid: int, request: Request):
+    """Admin rejects a correction (kept as a negative example, removed from the
+    review queue)."""
+    _gate(request)
+    ok = _exec("UPDATE public.dash_feedback SET correction_status = 'dismissed' WHERE id = :id", {"id": fid})
+    if not ok:
+        raise HTTPException(500, "dismiss failed")
+    return {"ok": True, "status": "dismissed"}
 
 
 @router.get("/tokens")

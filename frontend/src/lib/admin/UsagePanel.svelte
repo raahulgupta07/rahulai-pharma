@@ -51,6 +51,7 @@
   // analytics expansion
   let modelsData: any = $state(null), tokensData: any = $state(null);
   let embedsData: any = $state(null), feedbackData: any = $state(null);
+  let fbBusy: number = $state(0), fbActionMsg = $state('');
   let entUsers: any[] = $state([]), entStores: any[] = $state([]);
   let logins: any[] = $state([]);
   // people activity
@@ -103,6 +104,39 @@
     if (r.status === 429) throw new Error('Too many requests — please wait a moment and refresh.');
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.json();
+  }
+
+  async function jpost(url: string, bodyObj: any = {}): Promise<any> {
+    const r = await dashFetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(bodyObj),
+    });
+    if (!r.ok) {
+      let msg = `HTTP ${r.status}`;
+      try { const j = await r.json(); msg = j?.detail || j?.error || msg; } catch {}
+      throw new Error(msg);
+    }
+    return r.json();
+  }
+
+  async function promoteCorrection(d: any) {
+    fbBusy = d.id; fbActionMsg = '';
+    try {
+      const res = await jpost(`/api/admin/usage/feedback/${d.id}/promote`, {});
+      d.correction_status = 'promoted';
+      fbActionMsg = `Promoted to golden (${res?.total_goldens ?? '?'} total).`;
+    } catch (e: any) { fbActionMsg = `Promote failed: ${e.message}`; }
+    fbBusy = 0;
+  }
+  async function dismissCorrection(d: any) {
+    fbBusy = d.id; fbActionMsg = '';
+    try {
+      await jpost(`/api/admin/usage/feedback/${d.id}/dismiss`, {});
+      d.correction_status = 'dismissed';
+      fbActionMsg = 'Dismissed.';
+    } catch (e: any) { fbActionMsg = `Dismiss failed: ${e.message}`; }
+    fbBusy = 0;
   }
 
   async function loadTab(t: string, force = false) {
@@ -526,13 +560,33 @@
         </div>
         <div class="ua-card">
           <div class="ua-h">👎 Top disliked answers <span class="ua-sub">retrain candidates</span></div>
+          {#if fbActionMsg}<div class="ua-fbmsg">{fbActionMsg}</div>{/if}
           <div class="ua-disliked">
             {#each (feedbackData.disliked ?? []) as d}
               <div class="ua-dcard">
                 <div class="ua-dq">{d.question}</div>
                 {#if d.answer}<div class="ua-da">{d.answer}</div>{/if}
+                {#if (d.tags ?? []).length}
+                  <div class="ua-dtags">{#each d.tags as tg}<span class="ua-dtag">{tg}</span>{/each}</div>
+                {/if}
+                {#if d.comment}<div class="ua-dcmt"><b>Why wrong:</b> {d.comment}</div>{/if}
+                {#if d.correction}
+                  <div class="ua-dcorr"><b>User's correction</b><code>{d.correction}</code></div>
+                {/if}
                 {#if d.sql}<code class="ua-dsql">{d.sql}</code>{/if}
                 <div class="ua-dmeta">{d.project} · {d.ts ? new Date(d.ts).toLocaleString() : ''}</div>
+                {#if d.correction}
+                  {#if d.correction_status === 'promoted'}
+                    <div class="ua-dstat ok">✓ promoted to golden</div>
+                  {:else if d.correction_status === 'dismissed'}
+                    <div class="ua-dstat muted">dismissed</div>
+                  {:else}
+                    <div class="ua-dacts">
+                      <button class="ua-pbtn ok" disabled={fbBusy === d.id} onclick={() => promoteCorrection(d)}>{fbBusy === d.id ? '…' : '▲ Promote correction → golden'}</button>
+                      <button class="ua-pbtn" disabled={fbBusy === d.id} onclick={() => dismissCorrection(d)}>Dismiss</button>
+                    </div>
+                  {/if}
+                {/if}
               </div>
             {/each}
             {#if !(feedbackData.disliked ?? []).length}<div class="u-empty">no disliked answers 🎉</div>{/if}
@@ -1143,4 +1197,21 @@
   .ua-da { font-size: 11.5px; color: #4a4036; margin-top: .25rem; max-height: 60px; overflow: hidden; }
   .ua-dsql { display: block; font-size: 10.5px; font-family: ui-monospace, monospace; background: #f3ece1; color: #9a4a2f; padding: .3rem .45rem; border-radius: 5px; margin-top: .35rem; white-space: pre-wrap; word-break: break-word; }
   .ua-dmeta { font-size: 10px; color: #9a8f80; margin-top: .3rem; }
+  .ua-dtags { display: flex; flex-wrap: wrap; gap: .25rem; margin-top: .35rem; }
+  .ua-dtag { font-size: 9.5px; background: #efe2d6; color: #7a5c43; border-radius: 999px; padding: .1rem .5rem; }
+  .ua-dcmt { font-size: 11px; color: #5a4a3a; margin-top: .35rem; }
+  .ua-dcmt b { color: #9a4a2f; }
+  .ua-dcorr { margin-top: .4rem; }
+  .ua-dcorr b { display: block; font-size: 10px; color: #2f7a4a; text-transform: uppercase; letter-spacing: .04em; margin-bottom: .15rem; }
+  .ua-dcorr code { display: block; font-size: 10.5px; font-family: ui-monospace, monospace; background: #eef7f0; color: #2f7a4a; padding: .3rem .45rem; border-radius: 5px; white-space: pre-wrap; word-break: break-word; }
+  .ua-dacts { display: flex; gap: .4rem; margin-top: .5rem; flex-wrap: wrap; }
+  .ua-pbtn { font-size: 11px; font-weight: 600; border-radius: 6px; padding: .3rem .7rem; cursor: pointer; border: 1px solid #d8c8b8; background: #fff; color: #6b5a48; }
+  .ua-pbtn:hover:not(:disabled) { background: #f3ece4; }
+  .ua-pbtn.ok { background: #2f7a4a; border-color: #2f7a4a; color: #fff; }
+  .ua-pbtn.ok:hover:not(:disabled) { background: #266b3f; }
+  .ua-pbtn:disabled { opacity: .55; cursor: default; }
+  .ua-dstat { font-size: 10.5px; font-weight: 600; margin-top: .5rem; }
+  .ua-dstat.ok { color: #2f7a4a; }
+  .ua-dstat.muted { color: #9a8f80; }
+  .ua-fbmsg { font-size: 11px; color: #2f7a4a; background: #eef7f0; border-radius: 6px; padding: .35rem .6rem; margin-bottom: .5rem; }
 </style>

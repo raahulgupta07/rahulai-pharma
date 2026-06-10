@@ -15,6 +15,7 @@
  import TracePanel from '$lib/trace-panel.svelte';
  import { brand } from '$lib/stores/branding';
  import ChatMessageList, { formatCell, generateChartCaption } from '$lib/chat/ChatMessageList.svelte';
+ import FeedbackModal from '$lib/chat/FeedbackModal.svelte';
  import ReasoningTrace from '$lib/ReasoningTrace.svelte';
  import type { TraceItem } from '$lib/api';
 import { parseClarify } from '$lib/chat/tag-parsers';
@@ -75,6 +76,9 @@ import { parseClarify } from '$lib/chat/tag-parsers';
  let messagesEl: HTMLDivElement;
  let textareaEl: HTMLTextAreaElement;
  let copiedIndex = $state(-1);
+ let fbOpen = $state(false);
+ let fbPayload = $state<any>(null);
+ let fbSlug = $state('');
 
  // AbortController for session-load fetches (cancel on rapid switches)
  let openSessionAbort: AbortController | null = null;
@@ -1382,15 +1386,15 @@ import { parseClarify } from '$lib/chat/tag-parsers';
             onSend={(t) => send(t)}
             onAction={(act, arg) => handleAction(act, arg)}
             onCopy={(idx) => copyMessage(idx)}
-            onFeedback={async (idx, rating) => {
+            onFeedback={(idx, rating) => {
               const m = messages[idx]; if (!m) return;
               const rSlug = m.routing?.slug || (selectedMode !== "auto" ? selectedMode : projects[0]?.slug);
               if (!rSlug) return;
               const q = idx > 0 ? messages[idx-1]?.content : "";
               const firstSql = Array.isArray(m.sqlQueries) && m.sqlQueries.length ? m.sqlQueries[0] : "";
-              const fbRes = await fetch(`/api/projects/${rSlug}/feedback`, { method: "POST", headers: { ..._headers(), "Content-Type": "application/json" }, body: JSON.stringify({ question: q, answer: m.content, rating, sql: firstSql }) });
-              if (rating === "up" && m.sqlQueries?.length) { for (const sql of m.sqlQueries) { await fetch(`/api/projects/${rSlug}/save-query-pattern`, { method: "POST", headers: { ..._headers(), "Content-Type": "application/json" }, body: JSON.stringify({ question: q, sql }) }); } }
-              try { const fbd = await fbRes.json(); if (fbd?.promoted?.total_goldens) { console.log(`[golden] promoted to corpus (total: ${fbd.promoted.total_goldens})`); } } catch {}
+              fbSlug = rSlug;
+              fbPayload = { question: q, answer: m.content, rating, sql: firstSql, sqlQueries: Array.isArray(m.sqlQueries) ? m.sqlQueries : [] };
+              fbOpen = true;
             }}
             onSaveMemory={(idx) => {
               const m = messages[idx]; if (!m) return;
@@ -2034,6 +2038,9 @@ import { parseClarify } from '$lib/chat/tag-parsers';
 </div>
 {/if}
 </div>
+
+<FeedbackModal bind:open={fbOpen} slug={fbSlug} payload={fbPayload} headers={_headers}
+  ondone={(d) => { if (d?.promoted?.total_goldens) console.log(`[golden] promoted (total: ${d.promoted.total_goldens})`); }} />
 
 <style>
 @media print {
