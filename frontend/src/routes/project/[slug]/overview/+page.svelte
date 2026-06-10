@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { page } from '$app/state';
   import TrainingFlow from '$lib/TrainingFlow.svelte';
   import { goto } from '$app/navigation';
@@ -94,167 +94,153 @@
     evalRunning = false;
   }
 
-  // ---- inline mini graph — declarative SVG (always paints; no canvas/WebGL) ----
-  // Fixed viewBox so SVG scales to the card regardless of pixel size — no clientWidth race.
-  const GW = 900, GH = 420;
-  // fullscreen canvas — bigger viewBox, denser fetch
-  const FW = 1600, FH = 900;
-  let fgNodes: any[] = $state([]);
-  let fgEdges: any[] = $state([]);
+  // ---- knowledge graph — real force-graph (d3-force + canvas), Obsidian-style ----
   let showGraph = $state(false);
   let graphLoading = $state(false);
-  let hoverIdx = $state(-1);
+  let nodeCount = $state(0);
+  let linkCount = $state(0);
   // selection / focus (fullscreen)
-  let selIdx = $state(-1);
-  let neighbor = $state<Set<number>>(new Set());
+  let selNode: any = $state(null);
+  let neighborIds = $state<Set<string>>(new Set());
   let selDetail = $state<any>(null);
   let selLoading = $state(false);
 
-  let gNodes: any[] = $state([]);
-  let gEdges: any[] = $state([]);
+  let inlineEl = $state<HTMLDivElement | null>(null);   // mini-graph host
+  let fullEl = $state<HTMLDivElement | null>(null);     // fullscreen host
+  let _ForceGraph: any = null;
+  let _forceCollide: any = null;
+  let _fgInline: any = null;
+  let _fgFull: any = null;
+  let _inlineData: any = null;
+  let _fullData: any = null;
+  let _onResize: any = null;
 
-  // ---- live force simulation (perpetual gentle drift, rAF-driven) ----
-  // sim = { N:[{x,y,vx,vy,r,color,label}], E:[[i,j]], W, H }, non-reactive
-  let _inSim: any = null;     // inline mini-graph
-  let _fsSim: any = null;     // fullscreen modal
-  let _raf = 0;
+  function _toData(raw: any) {
+    const nodes = (raw?.nodes || []).map((n: any) => ({
+      id: n.id, label: n.label || n.id, color: n.color || '#7c9cff', val: n.val || 1,
+    }));
+    const ids = new Set(nodes.map((n: any) => n.id));
+    const links = (raw?.edges || [])
+      .filter((e: any) => ids.has(e.source) && ids.has(e.target))
+      .map((e: any) => ({ source: e.source, target: e.target }));
+    return { nodes, links };
+  }
+  const _lid = (l: any, end: string) => (typeof l[end] === 'object' ? l[end].id : l[end]);
 
-  function initSim(rawNodes: any[], rawEdges: any[], W: number, H: number) {
-    const idx = new Map<string, number>();
-    const N = rawNodes.map((n: any, i: number) => {
-      idx.set(n.id, i);
-      return {
-        x: 20 + Math.random() * (W - 40),
-        y: 14 + Math.random() * (H - 28),
-        vx: 0, vy: 0,
-        r: Math.max(2, 1.6 + Math.min(W > 1000 ? 11 : 6, Math.sqrt(n.val || 1) * (W > 1000 ? 1.7 : 1.0))),
-        color: n.color || '#7c9cff',
-        label: n.label || n.id,
-      };
-    });
-    const E: number[][] = [];
-    for (const e of rawEdges) {
-      const a = idx.get(e.source), b = idx.get(e.target);
-      if (a != null && b != null) E.push([a, b]);
-    }
-    return { N, E, W, H, alpha: 1 };   // alpha = simulated-annealing temperature → settles then freezes
+  // shared style: faint grey edges, small dots, Obsidian forces; highlight respects selection.
+  function _style(fg: any) {
+    fg.backgroundColor('#16131a')
+      .nodeRelSize(3.2)
+      .nodeVal('val')
+      .nodeColor((n: any) => {
+        if (!selNode) return n.color;
+        if (n.id === selNode.id) return '#ffffff';
+        if (neighborIds.has(n.id)) return n.color;
+        return 'rgba(120,120,140,0.13)';
+      })
+      .linkColor((l: any) => {
+        if (!selNode) return 'rgba(176,170,200,0.10)';
+        return (_lid(l, 'source') === selNode.id || _lid(l, 'target') === selNode.id)
+          ? 'rgba(201,99,66,0.75)' : 'rgba(176,170,200,0.03)';
+      })
+      .linkWidth((l: any) => (selNode && (_lid(l, 'source') === selNode.id || _lid(l, 'target') === selNode.id)) ? 1.4 : 0.4);
+    // Obsidian-like spacing: strong charge, fixed link distance, collision (no walls)
+    fg.d3Force('charge')?.strength(-95).distanceMax(620);
+    fg.d3Force('link')?.distance(36);
+    fg.d3Force('center')?.strength(0.04);
+    if (_forceCollide) fg.d3Force('collide', _forceCollide(5));
+    return fg;
   }
 
-  const SIM_MIN = 0.012;   // below this the layout is "at rest" — stop stepping (Obsidian-style freeze)
-
-  // one physics iteration — forces scaled by sim.alpha which decays to rest.
-  // NO random jitter: motion is purposeful (clusters form) then the map freezes.
-  function stepSim(sim: any) {
-    const { N, E, W, H } = sim;
-    const a0 = sim.alpha;
-    const cx = W / 2, cy = H / 2;
-    const rep = W > 1000 ? 280 : 160;
-    const farClip = W > 1000 ? 40000 : 14000;
-    const cap = W > 1000 ? 8 : 5;
-    for (let i = 0; i < N.length; i++) { const p = N[i]; p.vx += (cx - p.x) * 0.002 * a0; p.vy += (cy - p.y) * 0.004 * a0; }
-    for (let i = 0; i < N.length; i++) {
-      for (let j = i + 1; j < N.length; j++) {
-        const a = N[i], b = N[j];
-        let dx = a.x - b.x, dy = a.y - b.y;
-        const d2 = dx * dx + dy * dy || 0.01;
-        if (d2 < farClip) { const f = (rep / d2) * a0; dx *= f; dy *= f; a.vx += dx; a.vy += dy; b.vx -= dx; b.vy -= dy; }
-      }
-    }
-    for (const [a, b] of E) {
-      const p = N[a], q = N[b];
-      const dx = q.x - p.x, dy = q.y - p.y;
-      p.vx += dx * 0.0010 * a0; p.vy += dy * 0.0010 * a0; q.vx -= dx * 0.0010 * a0; q.vy -= dy * 0.0010 * a0;
-    }
-    for (const p of N) {
-      p.x += Math.max(-cap, Math.min(cap, p.vx)); p.y += Math.max(-cap, Math.min(cap, p.vy));
-      p.vx *= 0.86; p.vy *= 0.86;
-      p.x = Math.max(8, Math.min(W - 8, p.x)); p.y = Math.max(8, Math.min(H - 8, p.y));
-    }
-    sim.alpha *= 0.985;   // cool down → eventually < SIM_MIN → freeze
-  }
-
-  function snapNodes(sim: any) {
-    return sim.N.map((p: any) => ({ x: p.x, y: p.y, r: p.r, color: p.color, label: p.label }));
-  }
-  function snapEdges(sim: any) {
-    return sim.E.map(([a, b]: number[]) => ({ a, b, x1: sim.N[a].x, y1: sim.N[a].y, x2: sim.N[b].x, y2: sim.N[b].y }));
-  }
-
-  // single rAF loop — steps each sim only while it's still cooling, then leaves it frozen.
-  function frame() {
-    if (_inSim && _inSim.alpha > SIM_MIN) {
-      stepSim(_inSim);
-      gNodes = snapNodes(_inSim); gEdges = snapEdges(_inSim);
-    }
-    if (showGraph && _fsSim && _fsSim.alpha > SIM_MIN) {
-      stepSim(_fsSim);
-      fgNodes = snapNodes(_fsSim); fgEdges = snapEdges(_fsSim);
-    }
-    _raf = requestAnimationFrame(frame);
+  async function buildMiniGraph() {
+    if (!_ForceGraph || !inlineEl) return;
+    try {
+      const r = await fetch(`/api/projects/${slug}/graph?source=pharma&limit=500`, { headers: _h() });
+      if (!r.ok) return;
+      _inlineData = _toData(await r.json());
+      if (!_inlineData.nodes.length) return;
+      _fgInline = _ForceGraph()(inlineEl)
+        .width(inlineEl.clientWidth || 900).height(inlineEl.clientHeight || 420)
+        .graphData(_inlineData)
+        .enableZoomInteraction(false).enablePanInteraction(false).enableNodeDrag(false)
+        .nodeLabel('label')
+        .cooldownTime(4000);          // settle then freeze
+      _style(_fgInline);
+      _fgInline.onEngineStop(() => _fgInline && _fgInline.zoomToFit(0, 24));
+    } catch { /* fail-soft */ }
   }
 
   // ---- node selection → highlight neighbors + fetch rich detail ----
-  async function selectNode(i: number) {
-    if (!_fsSim) return;
-    selIdx = i;
-    const ns = new Set<number>();
-    for (const [a, b] of _fsSim.E) { if (a === i) ns.add(b); else if (b === i) ns.add(a); }
-    neighbor = ns;
+  async function selectNode(node: any) {
+    if (!node) return;
+    selNode = node;
+    const ns = new Set<string>();
+    for (const l of (_fullData?.links || [])) {
+      const s = _lid(l, 'source'), t = _lid(l, 'target');
+      if (s === node.id) ns.add(t); else if (t === node.id) ns.add(s);
+    }
+    neighborIds = ns;
+    if (_fgFull) { _fgFull.centerAt(node.x, node.y, 600); _fgFull.zoom(Math.max(_fgFull.zoom(), 2.4), 600); }
     selDetail = null; selLoading = true;
-    const label = _fsSim.N[i]?.label || '';
     try {
-      const r = await fetch(`/api/projects/${slug}/graph/node?id=${encodeURIComponent(label)}`, { headers: _h() });
+      const r = await fetch(`/api/projects/${slug}/graph/node?id=${encodeURIComponent(node.label || node.id)}`, { headers: _h() });
       if (r.ok) selDetail = await r.json();
     } catch { /* fail-soft */ }
     selLoading = false;
   }
-  function deselect() { selIdx = -1; selDetail = null; selLoading = false; neighbor = new Set(); }
+  function deselect() { selNode = null; selDetail = null; selLoading = false; neighborIds = new Set(); }
 
-  async function buildMiniGraph() {
-    try {
-      const r = await fetch(`/api/projects/${slug}/graph?source=pharma&limit=500`, { headers: _h() });
-      if (!r.ok) return;
-      const data = await r.json();
-      const rawNodes = data?.nodes || [];
-      const rawEdges = data?.edges || [];
-      if (!rawNodes.length) return;
-      _inSim = initSim(rawNodes, rawEdges, GW, GH);
-    } catch { /* fail-soft */ }
-  }
-
-  // fullscreen — denser fetch + larger canvas + node labels
   async function openGraph() {
     showGraph = true;
-    hoverIdx = -1;
     deselect();
-    if (_fsSim) { _fsSim.alpha = Math.max(_fsSim.alpha, 0.25); return; }  // gentle re-settle on reopen
+    if (_fgFull) { setTimeout(() => _fgFull && _fgFull.zoomToFit(500, 40), 60); return; }
+    if (!_ForceGraph) return;
     graphLoading = true;
     try {
       const r = await fetch(`/api/projects/${slug}/graph?source=pharma&limit=1200`, { headers: _h() });
       if (r.ok) {
-        const data = await r.json();
-        const rawNodes = data?.nodes || [];
-        const rawEdges = data?.edges || [];
-        if (rawNodes.length) {
-          _fsSim = initSim(rawNodes, rawEdges, FW, FH);
-          fgNodes = snapNodes(_fsSim); fgEdges = snapEdges(_fsSim);
-        }
+        _fullData = _toData(await r.json());
+        nodeCount = _fullData.nodes.length; linkCount = _fullData.links.length;
       }
     } catch { /* fail-soft */ }
     graphLoading = false;
+    await tick();   // wait for fullEl to mount inside {#if showGraph}
+    if (_fullData?.nodes?.length && fullEl) {
+      _fgFull = _ForceGraph()(fullEl)
+        .width(fullEl.clientWidth).height(fullEl.clientHeight)
+        .graphData(_fullData)
+        .autoPauseRedraw(false)        // keep repainting so selection visuals update live
+        .nodeLabel('label')
+        .onNodeClick((n: any) => selectNode(n))
+        .onBackgroundClick(() => deselect())
+        .cooldownTime(6000);
+      _style(_fgFull);
+      _fgFull.onEngineStop(() => _fgFull && _fgFull.zoomToFit(600, 40));
+      _onResize = () => { if (_fgFull && fullEl) _fgFull.width(fullEl.clientWidth).height(fullEl.clientHeight); };
+      window.addEventListener('resize', _onResize);
+    }
   }
-  function closeGraph() { showGraph = false; hoverIdx = -1; deselect(); }
+  function closeGraph() { showGraph = false; deselect(); }
   function onGraphKey(e: KeyboardEvent) { if (e.key === 'Escape') closeGraph(); }
 
   onMount(() => {
     load();
-    buildMiniGraph();
     timer = setInterval(() => { if (auto) load(); }, 30000);
-    _raf = requestAnimationFrame(frame);
+    // load force-graph + d3-force client-side, then build the inline mini-graph
+    (async () => {
+      try {
+        const [fgMod, d3Mod] = await Promise.all([import('force-graph'), import('d3-force')]);
+        _ForceGraph = fgMod.default;
+        _forceCollide = d3Mod.forceCollide;
+        await buildMiniGraph();
+      } catch { /* fail-soft */ }
+    })();
   });
   onDestroy(() => {
     if (timer) clearInterval(timer);
-    if (_raf) cancelAnimationFrame(_raf);
+    if (_onResize) window.removeEventListener('resize', _onResize);
+    try { _fgInline && _fgInline._destructor && _fgInline._destructor(); } catch { /* noop */ }
+    try { _fgFull && _fgFull._destructor && _fgFull._destructor(); } catch { /* noop */ }
   });
 
   // ---- formatters ----
@@ -542,20 +528,13 @@
     </div>
   {/if}
 
-  <!-- KNOWLEDGE GRAPH — live inline force-map -->
+  <!-- KNOWLEDGE GRAPH — real force-graph (d3-force + canvas) -->
   <div class="ov-graph-card">
-    <svg class="ov-graph-canvas" viewBox="0 0 {GW} {GH}" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Drug substitute knowledge graph">
-      {#each gEdges as e}
-        <line x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2} stroke="rgba(190,180,210,0.16)" stroke-width="0.5" />
-      {/each}
-      {#each gNodes as n}
-        <circle cx={n.x} cy={n.y} r={n.r} fill={n.color} />
-      {/each}
-    </svg>
+    <div class="ov-graph-host" bind:this={inlineEl}></div>
     <div class="ov-graph-fade"></div>
     <div class="ov-graph-l">
       <div class="ov-graph-t">KNOWLEDGE GRAPH</div>
-      <div class="ov-graph-s">Drug substitute web · {fmtN(chem?.drugs_with_substitutes)} drugs · live force-map</div>
+      <div class="ov-graph-s">Drug substitute web · {fmtN(chem?.drugs_with_substitutes)} drugs · force-directed</div>
     </div>
     <button class="ov-graph-cta" onclick={openGraph}>Explore ⛶</button>
   </div>
@@ -565,46 +544,21 @@
     <div class="ov-gfs" role="dialog" aria-modal="true" aria-label="Knowledge graph fullscreen">
       <div class="ov-gfs-bar">
         <div class="ov-gfs-ttl">KNOWLEDGE GRAPH</div>
-        <div class="ov-gfs-sub">Drug substitute web · {fmtN(chem?.drugs_with_substitutes)} drugs · {fmtN(fgNodes.length)} nodes · {fmtN(fgEdges.length)} links · click a drug for its relationships &amp; details</div>
+        <div class="ov-gfs-sub">Drug substitute web · {fmtN(chem?.drugs_with_substitutes)} drugs · {fmtN(nodeCount)} nodes · {fmtN(linkCount)} links · scroll to zoom · drag to pan · click a drug for details</div>
         <button class="ov-gfs-x" onclick={closeGraph} aria-label="Close">✕</button>
       </div>
       <div class="ov-gfs-stage">
+        <div class="ov-gfs-host" bind:this={fullEl}></div>
         {#if graphLoading}
           <div class="ov-gfs-load">Building force-map…</div>
-        {:else if !fgNodes.length}
+        {:else if !nodeCount}
           <div class="ov-gfs-load">No graph data yet — train the catalog to build the substitute web.</div>
-        {:else}
-          <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-          <svg class="ov-gfs-svg" class:focused={selIdx >= 0} viewBox="0 0 {FW} {FH}" preserveAspectRatio="xMidYMid meet"
-               onclick={deselect} role="img" aria-label="Full drug substitute knowledge graph">
-            {#each fgEdges as e}
-              {@const on = selIdx < 0 || e.a === selIdx || e.b === selIdx}
-              <line x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2}
-                    stroke={on ? 'rgba(201,99,66,0.55)' : 'rgba(190,180,210,0.06)'} stroke-width={on && selIdx >= 0 ? 1.1 : 0.6} />
-            {/each}
-            {#each fgNodes as n, i}
-              {@const dim = selIdx >= 0 && i !== selIdx && !neighbor.has(i)}
-              <circle cx={n.x} cy={n.y} r={i === selIdx ? n.r + 2 : n.r} fill={n.color}
-                      opacity={dim ? 0.1 : 1}
-                      stroke={i === selIdx ? '#fff' : 'none'} stroke-width={i === selIdx ? 2 : 0}
-                      onmouseenter={() => (hoverIdx = i)} onmouseleave={() => (hoverIdx = -1)}
-                      onclick={(ev) => { ev.stopPropagation(); selectNode(i); }}
-                      style="cursor:pointer" role="img" aria-label={n.label} />
-            {/each}
-            {#if hoverIdx >= 0 && fgNodes[hoverIdx] && hoverIdx !== selIdx}
-              {@const hn = fgNodes[hoverIdx]}
-              <g pointer-events="none">
-                <circle cx={hn.x} cy={hn.y} r={hn.r + 3} fill="none" stroke="#fff" stroke-width="1.4" />
-                <rect x={hn.x + hn.r + 4} y={hn.y - 11} width={hn.label.length * 8.6 + 12} height="22" rx="3" fill="rgba(0,0,0,0.72)" />
-                <text x={hn.x + hn.r + 10} y={hn.y + 4} fill="#fff" font-size="16" font-weight="700">{hn.label}</text>
-              </g>
-            {/if}
-          </svg>
+        {/if}
 
-          {#if selIdx >= 0}
+          {#if selNode}
             <aside class="ov-gfs-panel">
               <button class="ov-gfs-pclose" onclick={deselect} aria-label="Deselect">✕</button>
-              <div class="ov-gfs-pname">{fgNodes[selIdx]?.label}</div>
+              <div class="ov-gfs-pname">{selNode.label}</div>
               {#if selLoading}
                 <div class="ov-gfs-pmuted">Loading details…</div>
               {:else if selDetail}
@@ -617,7 +571,7 @@
                 </div>
                 <div class="ov-gfs-psec">RELATIONSHIPS</div>
                 <div class="ov-gfs-prow"><span>Substitutes (same salt)</span><b>{(selDetail.substitutes || []).length}</b></div>
-                <div class="ov-gfs-prow"><span>Linked nodes in view</span><b>{neighbor.size}</b></div>
+                <div class="ov-gfs-prow"><span>Linked nodes in view</span><b>{neighborIds.size}</b></div>
                 {#if stk && (stk.total != null)}
                   <div class="ov-gfs-psec">AVAILABILITY</div>
                   <div class="ov-gfs-prow"><span>Total stock</span><b>{fmtN(stk.total)}</b></div>
@@ -639,7 +593,6 @@
               {/if}
             </aside>
           {/if}
-        {/if}
       </div>
     </div>
   {/if}
@@ -843,7 +796,7 @@
 
   .ov-graph-card { position: relative; width: 100%; height: 420px; margin-bottom: 12px; padding: 0; background: #16131a; border: 1px solid #3a3346; cursor: pointer; text-align: left; overflow: hidden; display: block; }
   .ov-graph-card:hover { border-color: #c96342; }
-  .ov-graph-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  .ov-graph-host { position: absolute; inset: 0; width: 100%; height: 100%; }
   .ov-graph-fade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(22,19,26,0.85) 0%, rgba(22,19,26,0.35) 26%, rgba(22,19,26,0) 50%); }
   .ov-graph-l { position: absolute; left: 20px; top: 18px; z-index: 2; pointer-events: none; }
   .ov-graph-t { font-size: 14px; font-weight: 900; letter-spacing: 0.05em; color: #fff; }
@@ -858,9 +811,8 @@
   .ov-gfs-x { font-size: 16px; font-weight: 700; color: #fff; background: #2a2533; border: 1px solid #3a3346; width: 34px; height: 34px; border-radius: 6px; cursor: pointer; flex: 0 0 auto; }
   .ov-gfs-x:hover { background: #c96342; border-color: #c96342; }
   .ov-gfs-stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
-  .ov-gfs-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-  .ov-gfs-svg circle { cursor: pointer; transition: opacity 0.1s; }
-  .ov-gfs-load { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #b6aecb; font-size: 14px; }
+  .ov-gfs-host { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .ov-gfs-load { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #b6aecb; font-size: 14px; pointer-events: none; }
 
   /* selection detail panel (Obsidian-style, right) */
   .ov-gfs-panel { position: absolute; top: 14px; right: 14px; bottom: 14px; width: 320px; background: #1d1926; border: 1px solid #3a3346; border-radius: 8px; padding: 16px 16px 14px; overflow-y: auto; box-shadow: 0 8px 30px rgba(0,0,0,0.5); }
@@ -880,7 +832,6 @@
   .ov-gfs-pitem { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: #d6cfe2; padding: 3px 0; border-bottom: 1px solid #272232; }
   .ov-gfs-pitem b { color: #56d364; font-weight: 700; white-space: nowrap; }
   .ov-gfs-pitem b.zero { color: #8b8499; }
-  .ov-gfs-svg.focused circle { transition: opacity 0.12s; }
 
   .ov-wiki-card { width: 100%; display: flex; align-items: center; gap: 16px; margin-bottom: 12px; padding: 16px 18px; background: var(--color-surface-bright, var(--color-surface)); border: 1px solid var(--pw-border, #e5ddcf); cursor: pointer; text-align: left; }
   .ov-wiki-card:hover { border-color: var(--color-primary); }
