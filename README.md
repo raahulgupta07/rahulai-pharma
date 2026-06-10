@@ -82,6 +82,16 @@ Benchmarked all Gemini models on EN+Burmese (generic Burmese tasks + paired EN/M
 - **No ML step / no "ML Models" badge** — AutoML was removed; the agent answers are LLM-native, no model training.
 - **Data-quality:** a re-upload with bad joins is visible, not silent — orphan stock (code with stock but no catalog row) lands in `shop_flat` as `linked=false`, never as a false "out of stock".
 
+### Engineer semantic layer — materialized views (2026-06-10, flag `ENGINEER_SEMANTIC_LAYER`)
+During training an **Agno "Engineer" agent** designs Postgres **materialized views** over the trained tables (pre-joined / pre-aggregated reads). It has READ-ONLY tools only (inspect schema · relationships · sample rows · `EXPLAIN` dry-run) and returns a *structured plan* — it never executes SQL. Trusted Python (`dash/training/semantic_layer.py`) whitelist-validates every proposal (single pure `SELECT`, project schema only, no DDL/comments/cross-schema, mandatory unique index), rebuilds the DDL from the struct, `EXPLAIN`s it, then creates it in one transaction and registers it (`dash_table_metadata.semantic_layer=true`). Matviews are excluded from training and refreshed (`REFRESH … CONCURRENTLY`) after each run. A real run built `article_stock_summary`, `site_inventory_metrics`, `category_performance_stats`. View them at **Data Source → Semantic Layer** (`GET /api/projects/{slug}/semantic-layer`). Derived matviews are consumed **by name** — they are deliberately invisible to the generic table resolver so they can't hijack catalog/stock resolution.
+
+### Catalog enrichment — fill missing fields with the LLM (2026-06-10, flag `CATALOG_ENRICH`)
+Missing catalog fields (e.g. ~1,566 rows with no `generic_name`) can be **suggested** by `gemini-3-flash`, grounded on the rows that already have those fields. **Suggestion-only and human-gated — the source table is never mutated.**
+- Suggestions land in `citypharma.catalog_enrichment` as `pending` (`app/catalog_enrich.py`); `"unknown"` is allowed and skipped (a blank beats a fabricated value).
+- **Low-risk** fields (`category`, `indication`) can auto-approve above a confidence threshold; **clinical** fields (`generic_name`, `composition`) and med-risk (`dosage`, `side_effect`) **always** require human approval — the model is overconfident (≈1.0 even when wrong), so don't trust the number.
+- Approvals go live via the **`articles_enriched` view** = `COALESCE(source, approved suggestion)` + an `is_enriched` flag (`app/catalog_apply.py`). Rejecting or re-uploading instantly reverts; `shop_flat` reads the enriched view so filled names flow downstream.
+- Review at **Data Source → Catalog Gaps** (`/api/projects/{slug}/catalog-enrich/{gaps,run,suggestions,decide}`). `CATALOG_ENRICH=0` by default (the LLM gap-fill costs); the view and manual approvals work regardless.
+
 ---
 
 ## API Gateway — OpenAI-compatible (`/api/v1`)
