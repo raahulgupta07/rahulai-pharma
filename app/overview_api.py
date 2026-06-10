@@ -172,16 +172,14 @@ def graph_view(slug: str, request: Request, source: str = "pharma",
     # to derive SUBSTITUTE_OF). Computed live from articles_list — no AGE
     # dependency, survives the cp-db AGE durability landmine.
     schema = _schema_for(slug)
-    nodes = {}
-    edges = []
-    cat_color: dict = {}
-    palette = ["#7c9cff", "#c96342", "#3ec9a7", "#e0a458", "#b06dff",
-               "#5fb0d6", "#d65f9e", "#8bc34a", "#ff8a65", "#9aa0b5"]
+    nodes: dict = {}
+    edges: list = []
+    # leaf grey · generic yellow hub · category red hub · indication blue bridge
+    LEAF, GEN, CAT, IND = "#6b6f82", "#e0c341", "#c96342", "#5fb0d6"
 
-    def color_for(cat):
-        if cat not in cat_color:
-            cat_color[cat] = palette[len(cat_color) % len(palette)]
-        return cat_color[cat]
+    def _add(nid, label, group, color):
+        if nid not in nodes:
+            nodes[nid] = {"label": label, "group": group, "color": color}
 
     try:
         with _engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
@@ -190,37 +188,45 @@ def graph_view(slug: str, request: Request, source: str = "pharma",
                 return {"source": "pharma", "focus": focus or None, **_pack(nodes, edges)}
             tq = _q(schema) + "." + _q(atbl)
             has_cat = _has_col(conn, schema, atbl, "category")
-            cat_a = "a.category" if has_cat else "NULL"
+            has_ind = _has_col(conn, schema, atbl, "indication")
+            cat_sel = "category" if has_cat else "NULL"
+            ind_sel = "indication" if has_ind else "NULL"
+            where = "brand_name IS NOT NULL AND brand_name <> ''"
+            params: dict = {"n": limit}
             if focus:
-                # ego: every drug sharing focus drug's generic
-                rows = conn.execute(text(
-                    f"SELECT a.brand_name, {cat_a}, b.brand_name "
-                    f"FROM {tq} a JOIN {tq} b "
-                    f"ON a.generic_name = b.generic_name AND a.brand_name < b.brand_name "
-                    f"WHERE a.generic_name IS NOT NULL AND a.generic_name <> '' "
-                    f"AND a.generic_name = (SELECT generic_name FROM {tq} "
-                    f"WHERE brand_name = :f LIMIT 1) LIMIT :n"
-                ), {"f": focus, "n": limit}).fetchall()
-            else:
-                rows = conn.execute(text(
-                    f"SELECT a.brand_name, {cat_a}, b.brand_name "
-                    f"FROM {tq} a JOIN {tq} b "
-                    f"ON a.generic_name = b.generic_name AND a.brand_name < b.brand_name "
-                    f"WHERE a.generic_name IS NOT NULL AND a.generic_name <> '' LIMIT :n"
-                ), {"n": limit}).fetchall()
-            for an, ac, bn in rows:
-                a = (an or "").strip()
+                # ego: brands sharing the focus drug's generic, plus their hubs
+                where += (" AND generic_name = (SELECT generic_name FROM " + tq +
+                          " WHERE brand_name = :f LIMIT 1)")
+                params["f"] = focus
+            rows = conn.execute(text(
+                f"SELECT DISTINCT brand_name, generic_name, {cat_sel}, {ind_sel} "
+                f"FROM {tq} WHERE {where} LIMIT :n"
+            ), params).fetchall()
+            for bn, gn, ct, ind in rows:
                 b = (bn or "").strip()
-                if not a or not b:
+                if not b:
                     continue
-                cat = (ac or "—") if has_cat else "—"
-                nodes.setdefault(a, {"label": a, "group": cat, "color": color_for(cat)})
-                nodes.setdefault(b, {"label": b, "group": cat, "color": color_for(cat)})
-                edges.append((a, b, "substitute"))
+                bid = "b:" + b
+                _add(bid, b, "Brand", LEAF)
+                g = (gn or "").strip()
+                if g:
+                    gid = "g:" + g
+                    _add(gid, g, "Generic", GEN)
+                    edges.append((bid, gid, "is"))
+                    c = (ct or "").strip() if has_cat else ""
+                    if c and c not in ("—", "-"):
+                        cid = "c:" + c
+                        _add(cid, c, "Category", CAT)
+                        edges.append((gid, cid, "class"))
+                iv = (ind or "").strip() if has_ind else ""
+                if iv and iv not in ("—", "-"):
+                    iid = "i:" + iv
+                    _add(iid, iv, "Indication", IND)
+                    edges.append((bid, iid, "treats"))
     except Exception:
         logger.exception("pharma graph %s", slug)
 
-    # color override from per-node category (override _pack default)
+    # apply per-node type color (override _pack group default)
     packed = _pack(nodes, edges)
     for nd in packed["nodes"]:
         src = nodes.get(nd["id"])
@@ -325,6 +331,120 @@ def graph_node(slug: str, request: Request, id: str = ""):
                 } for s in subs]
     except Exception:
         logger.exception("graph_node %s %s", slug, brand)
+    return out
+
+
+@router.get("/{slug}/graph/hub")
+def graph_hub(slug: str, request: Request, type: str = "", id: str = ""):
+    """Aggregate detail for a HUB node (generic / category / indication) in the
+    pharma web. Rolls up its member drugs: counts, stock summary, member list
+    (top by stock), shared clinical (generic), spanned categories / molecules.
+    Stock joined article_code ::text both sides (see graph_node / DEVLOG R4)."""
+    user = _get_user(request)
+    _check_access(user, slug)
+    htype = (type or "").strip().lower()
+    val = (id or "").strip()
+    keymap = {"generic": "generic_name", "category": "category", "indication": "indication"}
+    if htype not in keymap:
+        raise HTTPException(400, "type must be generic|category|indication")
+    keycol = keymap[htype]
+    schema = _schema_for(slug)
+    out: dict = {"type": htype, "id": val,
+                 "title": val or ("(unnamed molecule)" if htype == "generic" else "—"),
+                 "overview": {}, "members": [], "categories": [], "molecules": [],
+                 "clinical": {}}
+    try:
+        with _engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            atbl = _find_table(conn, schema, "generic_name")
+            if not atbl or not _has_col(conn, schema, atbl, "brand_name") \
+                    or not _has_col(conn, schema, atbl, keycol):
+                return out
+            aq = _q(schema) + "." + _q(atbl)
+            has_cat = _has_col(conn, schema, atbl, "category")
+            has_code = _has_col(conn, schema, atbl, "article_code")
+            has_gen = _has_col(conn, schema, atbl, "generic_name")
+            has_comp = _has_col(conn, schema, atbl, "composition")
+            has_ind = _has_col(conn, schema, atbl, "indication")
+
+            sel = ["brand_name"]
+            if has_code:
+                sel.append("article_code")
+            if has_cat:
+                sel.append("category")
+            if has_gen:
+                sel.append("generic_name")
+            rows = conn.execute(text(
+                f"SELECT DISTINCT {', '.join(_q(c) for c in sel)} FROM {aq} "
+                f"WHERE {_q(keycol)} = :v"
+            ), {"v": val}).mappings().fetchall()
+            if not rows:
+                return out
+
+            brands = {(r["brand_name"] or "").strip() for r in rows if (r["brand_name"] or "").strip()}
+            cats = sorted({(r.get("category") or "").strip() for r in rows
+                           if has_cat and (r.get("category") or "").strip()})
+            mols = sorted({(r.get("generic_name") or "").strip() for r in rows
+                           if has_gen and (r.get("generic_name") or "").strip()})
+
+            # stock rollup across all member article_codes
+            code_qty: dict = {}
+            total_stock = stores = 0
+            avg_cost = None
+            stk = _find_table(conn, schema, "stock_qty")
+            if stk and has_code and _has_col(conn, schema, stk, "article_code"):
+                sq = _q(schema) + "." + _q(stk)
+                has_site = _has_col(conn, schema, stk, "site_code")
+                has_cost = _has_col(conn, schema, stk, "weighted_cost_price")
+                codes = [str(r["article_code"]) for r in rows if r.get("article_code") is not None]
+                if codes:
+                    cost_sel = "AVG(NULLIF(weighted_cost_price,0))" if has_cost else "NULL"
+                    agg = conn.execute(text(
+                        f"SELECT COALESCE(SUM(stock_qty),0) total, "
+                        f"COUNT(DISTINCT {'site_code' if has_site else 'id'}) stores, "
+                        f"{cost_sel} avg_cost FROM {sq} WHERE article_code::text = ANY(:c)"
+                    ), {"c": codes}).mappings().fetchone()
+                    total_stock = int(agg["total"] or 0)
+                    stores = int(agg["stores"] or 0)
+                    avg_cost = round(float(agg["avg_cost"]), 0) if agg["avg_cost"] is not None else None
+                    qr = conn.execute(text(
+                        f"SELECT article_code::text c, COALESCE(SUM(stock_qty),0) q "
+                        f"FROM {sq} WHERE article_code::text = ANY(:c) GROUP BY 1"
+                    ), {"c": codes}).fetchall()
+                    code_qty = {r[0]: int(r[1] or 0) for r in qr}
+
+            # member list (dedup by brand, keep best stock) → top 30 by qty
+            by_brand: dict = {}
+            for r in rows:
+                b = (r["brand_name"] or "").strip()
+                if not b:
+                    continue
+                q = code_qty.get(str(r.get("article_code")), None) if has_code else None
+                prev = by_brand.get(b)
+                if prev is None or (q or -1) > (prev.get("qty") or -1):
+                    by_brand[b] = {"brand": b, "qty": q, "category": r.get("category") if has_cat else None}
+            members = sorted(by_brand.values(), key=lambda m: (m["qty"] is None, -(m["qty"] or 0)))[:30]
+
+            # shared clinical for a molecule (most common indication + composition)
+            if htype == "generic" and (has_ind or has_comp):
+                ind_sel = "mode() WITHIN GROUP (ORDER BY indication)" if has_ind else "NULL"
+                comp_sel = "mode() WITHIN GROUP (ORDER BY composition)" if has_comp else "NULL"
+                cl = conn.execute(text(
+                    f"SELECT {ind_sel} ind, {comp_sel} comp FROM {aq} WHERE {_q(keycol)} = :v"
+                ), {"v": val}).mappings().fetchone()
+                out["clinical"] = {"indication": cl["ind"], "composition": cl["comp"]}
+
+            ov: dict = {"brands": len(brands), "stock": total_stock,
+                        "stores": stores, "avg_cost": avg_cost}
+            if htype == "category":
+                ov["molecules"] = len(mols)
+            if htype == "indication":
+                ov["categories"] = len(cats)
+            out["overview"] = ov
+            out["members"] = members
+            out["categories"] = cats[:24]
+            out["molecules"] = mols[:40]
+    except Exception:
+        logger.exception("graph_hub %s %s %s", slug, htype, val)
     return out
 
 

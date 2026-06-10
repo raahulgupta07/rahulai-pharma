@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount, onDestroy, tick } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
+  import KnowledgeGraph from '$lib/KnowledgeGraph.svelte';
   import { page } from '$app/state';
   import TrainingFlow from '$lib/TrainingFlow.svelte';
   import { goto } from '$app/navigation';
@@ -94,153 +95,13 @@
     evalRunning = false;
   }
 
-  // ---- knowledge graph — real force-graph (d3-force + canvas), Obsidian-style ----
-  let showGraph = $state(false);
-  let graphLoading = $state(false);
-  let nodeCount = $state(0);
-  let linkCount = $state(0);
-  // selection / focus (fullscreen)
-  let selNode: any = $state(null);
-  let neighborIds = $state<Set<string>>(new Set());
-  let selDetail = $state<any>(null);
-  let selLoading = $state(false);
-
-  let inlineEl = $state<HTMLDivElement | null>(null);   // mini-graph host
-  let fullEl = $state<HTMLDivElement | null>(null);     // fullscreen host
-  let _ForceGraph: any = null;
-  let _forceCollide: any = null;
-  let _fgInline: any = null;
-  let _fgFull: any = null;
-  let _inlineData: any = null;
-  let _fullData: any = null;
-  let _onResize: any = null;
-
-  function _toData(raw: any) {
-    const nodes = (raw?.nodes || []).map((n: any) => ({
-      id: n.id, label: n.label || n.id, color: n.color || '#7c9cff', val: n.val || 1,
-    }));
-    const ids = new Set(nodes.map((n: any) => n.id));
-    const links = (raw?.edges || [])
-      .filter((e: any) => ids.has(e.source) && ids.has(e.target))
-      .map((e: any) => ({ source: e.source, target: e.target }));
-    return { nodes, links };
-  }
-  const _lid = (l: any, end: string) => (typeof l[end] === 'object' ? l[end].id : l[end]);
-
-  // shared style: faint grey edges, small dots, Obsidian forces; highlight respects selection.
-  function _style(fg: any) {
-    fg.backgroundColor('#16131a')
-      .nodeRelSize(3.2)
-      .nodeVal('val')
-      .nodeColor((n: any) => {
-        if (!selNode) return n.color;
-        if (n.id === selNode.id) return '#ffffff';
-        if (neighborIds.has(n.id)) return n.color;
-        return 'rgba(120,120,140,0.13)';
-      })
-      .linkColor((l: any) => {
-        if (!selNode) return 'rgba(176,170,200,0.10)';
-        return (_lid(l, 'source') === selNode.id || _lid(l, 'target') === selNode.id)
-          ? 'rgba(201,99,66,0.75)' : 'rgba(176,170,200,0.03)';
-      })
-      .linkWidth((l: any) => (selNode && (_lid(l, 'source') === selNode.id || _lid(l, 'target') === selNode.id)) ? 1.4 : 0.4);
-    // Obsidian-like spacing: strong charge, fixed link distance, collision (no walls)
-    fg.d3Force('charge')?.strength(-95).distanceMax(620);
-    fg.d3Force('link')?.distance(36);
-    fg.d3Force('center')?.strength(0.04);
-    if (_forceCollide) fg.d3Force('collide', _forceCollide(5));
-    return fg;
-  }
-
-  async function buildMiniGraph() {
-    if (!_ForceGraph || !inlineEl) return;
-    try {
-      const r = await fetch(`/api/projects/${slug}/graph?source=pharma&limit=500`, { headers: _h() });
-      if (!r.ok) return;
-      _inlineData = _toData(await r.json());
-      if (!_inlineData.nodes.length) return;
-      _fgInline = _ForceGraph()(inlineEl)
-        .width(inlineEl.clientWidth || 900).height(inlineEl.clientHeight || 420)
-        .graphData(_inlineData)
-        .enableZoomInteraction(false).enablePanInteraction(false).enableNodeDrag(false)
-        .nodeLabel('label')
-        .cooldownTime(4000);          // settle then freeze
-      _style(_fgInline);
-      _fgInline.onEngineStop(() => _fgInline && _fgInline.zoomToFit(0, 24));
-    } catch { /* fail-soft */ }
-  }
-
-  // ---- node selection → highlight neighbors + fetch rich detail ----
-  async function selectNode(node: any) {
-    if (!node) return;
-    selNode = node;
-    const ns = new Set<string>();
-    for (const l of (_fullData?.links || [])) {
-      const s = _lid(l, 'source'), t = _lid(l, 'target');
-      if (s === node.id) ns.add(t); else if (t === node.id) ns.add(s);
-    }
-    neighborIds = ns;
-    if (_fgFull) { _fgFull.centerAt(node.x, node.y, 600); _fgFull.zoom(Math.max(_fgFull.zoom(), 2.4), 600); }
-    selDetail = null; selLoading = true;
-    try {
-      const r = await fetch(`/api/projects/${slug}/graph/node?id=${encodeURIComponent(node.label || node.id)}`, { headers: _h() });
-      if (r.ok) selDetail = await r.json();
-    } catch { /* fail-soft */ }
-    selLoading = false;
-  }
-  function deselect() { selNode = null; selDetail = null; selLoading = false; neighborIds = new Set(); }
-
-  async function openGraph() {
-    showGraph = true;
-    deselect();
-    if (_fgFull) { setTimeout(() => _fgFull && _fgFull.zoomToFit(500, 40), 60); return; }
-    if (!_ForceGraph) return;
-    graphLoading = true;
-    try {
-      const r = await fetch(`/api/projects/${slug}/graph?source=pharma&limit=1200`, { headers: _h() });
-      if (r.ok) {
-        _fullData = _toData(await r.json());
-        nodeCount = _fullData.nodes.length; linkCount = _fullData.links.length;
-      }
-    } catch { /* fail-soft */ }
-    graphLoading = false;
-    await tick();   // wait for fullEl to mount inside {#if showGraph}
-    if (_fullData?.nodes?.length && fullEl) {
-      _fgFull = _ForceGraph()(fullEl)
-        .width(fullEl.clientWidth).height(fullEl.clientHeight)
-        .graphData(_fullData)
-        .autoPauseRedraw(false)        // keep repainting so selection visuals update live
-        .nodeLabel('label')
-        .onNodeClick((n: any) => selectNode(n))
-        .onBackgroundClick(() => deselect())
-        .cooldownTime(6000);
-      _style(_fgFull);
-      _fgFull.onEngineStop(() => _fgFull && _fgFull.zoomToFit(600, 40));
-      _onResize = () => { if (_fgFull && fullEl) _fgFull.width(fullEl.clientWidth).height(fullEl.clientHeight); };
-      window.addEventListener('resize', _onResize);
-    }
-  }
-  function closeGraph() { showGraph = false; deselect(); }
-  function onGraphKey(e: KeyboardEvent) { if (e.key === 'Escape') closeGraph(); }
 
   onMount(() => {
     load();
     timer = setInterval(() => { if (auto) load(); }, 30000);
-    // load force-graph + d3-force client-side, then build the inline mini-graph
-    (async () => {
-      try {
-        const [fgMod, d3Mod] = await Promise.all([import('force-graph'), import('d3-force')]);
-        _ForceGraph = fgMod.default;
-        _forceCollide = d3Mod.forceCollide;
-        await buildMiniGraph();
-      } catch { /* fail-soft */ }
-    })();
   });
   onDestroy(() => {
     if (timer) clearInterval(timer);
-    if (_onResize) window.removeEventListener('resize', _onResize);
-    try { _fgInline && _fgInline._destructor && _fgInline._destructor(); } catch { /* noop */ }
-    try { _fgFull && _fgFull._destructor && _fgFull._destructor(); } catch { /* noop */ }
   });
 
   // ---- formatters ----
@@ -341,7 +202,6 @@
   const brainMax = $derived(Math.max(1, ...brainBars.map((b) => b.v || 0)));
 </script>
 
-<svelte:window onkeydown={onGraphKey} />
 
 <div class="ov-root">
   <!-- header -->
@@ -528,74 +388,15 @@
     </div>
   {/if}
 
-  <!-- KNOWLEDGE GRAPH — real force-graph (d3-force + canvas) -->
-  <div class="ov-graph-card">
-    <div class="ov-graph-host" bind:this={inlineEl}></div>
-    <div class="ov-graph-fade"></div>
-    <div class="ov-graph-l">
-      <div class="ov-graph-t">KNOWLEDGE GRAPH</div>
-      <div class="ov-graph-s">Drug substitute web · {fmtN(chem?.drugs_with_substitutes)} drugs · force-directed</div>
+
+  <!-- KNOWLEDGE GRAPH — embedded sigma explorer (shared with /graph page) -->
+  <div class="ov-kg-card">
+    <div class="ov-kg-head">
+      <div class="ov-kg-t">KNOWLEDGE GRAPH</div>
+      <div class="ov-kg-s">Drug web · brands · generics · categories · indications — hover/click to explore, ⛶ for full screen</div>
     </div>
-    <button class="ov-graph-cta" onclick={openGraph}>Explore ⛶</button>
+    <KnowledgeGraph {slug} embedded height="520px" />
   </div>
-
-  <!-- KNOWLEDGE GRAPH — fullscreen modal -->
-  {#if showGraph}
-    <div class="ov-gfs" role="dialog" aria-modal="true" aria-label="Knowledge graph fullscreen">
-      <div class="ov-gfs-bar">
-        <div class="ov-gfs-ttl">KNOWLEDGE GRAPH</div>
-        <div class="ov-gfs-sub">Drug substitute web · {fmtN(chem?.drugs_with_substitutes)} drugs · {fmtN(nodeCount)} nodes · {fmtN(linkCount)} links · scroll to zoom · drag to pan · click a drug for details</div>
-        <button class="ov-gfs-x" onclick={closeGraph} aria-label="Close">✕</button>
-      </div>
-      <div class="ov-gfs-stage">
-        <div class="ov-gfs-host" bind:this={fullEl}></div>
-        {#if graphLoading}
-          <div class="ov-gfs-load">Building force-map…</div>
-        {:else if !nodeCount}
-          <div class="ov-gfs-load">No graph data yet — train the catalog to build the substitute web.</div>
-        {/if}
-
-          {#if selNode}
-            <aside class="ov-gfs-panel">
-              <button class="ov-gfs-pclose" onclick={deselect} aria-label="Deselect">✕</button>
-              <div class="ov-gfs-pname">{selNode.label}</div>
-              {#if selLoading}
-                <div class="ov-gfs-pmuted">Loading details…</div>
-              {:else if selDetail}
-                {@const idn = selDetail.identity || {}}
-                {@const cli = selDetail.clinical || {}}
-                {@const stk = selDetail.stock || {}}
-                <div class="ov-gfs-pmeta">
-                  {#if idn.generic}<span class="ov-gfs-tag">{idn.generic}</span>{/if}
-                  {#if idn.category}<span class="ov-gfs-tag alt">{idn.category}</span>{/if}
-                </div>
-                <div class="ov-gfs-psec">RELATIONSHIPS</div>
-                <div class="ov-gfs-prow"><span>Substitutes (same salt)</span><b>{(selDetail.substitutes || []).length}</b></div>
-                <div class="ov-gfs-prow"><span>Linked nodes in view</span><b>{neighborIds.size}</b></div>
-                {#if stk && (stk.total != null)}
-                  <div class="ov-gfs-psec">AVAILABILITY</div>
-                  <div class="ov-gfs-prow"><span>Total stock</span><b>{fmtN(stk.total)}</b></div>
-                  <div class="ov-gfs-prow"><span>Stores carrying</span><b>{fmtN(stk.stores)}</b></div>
-                  {#if stk.avg_cost != null}<div class="ov-gfs-prow"><span>Avg cost (MMK)</span><b>{fmtN(stk.avg_cost)}</b></div>{/if}
-                {/if}
-                {#if cli.indication}<div class="ov-gfs-psec">CLINICAL</div><div class="ov-gfs-pfree"><i>Indication:</i> {cli.indication}</div>{/if}
-                {#if cli.dosage}<div class="ov-gfs-pfree"><i>Dosage:</i> {cli.dosage}</div>{/if}
-                {#if (selDetail.substitutes || []).length}
-                  <div class="ov-gfs-psec">SUBSTITUTES</div>
-                  <div class="ov-gfs-plist">
-                    {#each (selDetail.substitutes || []).slice(0, 30) as s}
-                      <div class="ov-gfs-pitem"><span>{s.brand}</span>{#if s.qty != null}<b class:zero={!s.qty}>{fmtN(s.qty)} in stock</b>{/if}</div>
-                    {/each}
-                  </div>
-                {/if}
-              {:else}
-                <div class="ov-gfs-pmuted">No detail available for this node.</div>
-              {/if}
-            </aside>
-          {/if}
-      </div>
-    </div>
-  {/if}
 
   <!-- BRAIN WIKI launcher -->
   <button class="ov-wiki-card" onclick={() => goto(`${base}/project/${slug}/wiki`)}>
@@ -794,44 +595,10 @@
   .ov-chem-run:disabled { opacity: 0.5; cursor: default; }
   .ov-chem-foot { padding: 0 14px 12px; font-size: 10px; color: var(--color-on-surface-dim); font-style: italic; }
 
-  .ov-graph-card { position: relative; width: 100%; height: 420px; margin-bottom: 12px; padding: 0; background: #16131a; border: 1px solid #3a3346; cursor: pointer; text-align: left; overflow: hidden; display: block; }
-  .ov-graph-card:hover { border-color: #c96342; }
-  .ov-graph-host { position: absolute; inset: 0; width: 100%; height: 100%; }
-  .ov-graph-fade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(22,19,26,0.85) 0%, rgba(22,19,26,0.35) 26%, rgba(22,19,26,0) 50%); }
-  .ov-graph-l { position: absolute; left: 20px; top: 18px; z-index: 2; pointer-events: none; }
-  .ov-graph-t { font-size: 14px; font-weight: 900; letter-spacing: 0.05em; color: #fff; }
-  .ov-graph-s { font-size: 11px; color: #b6aecb; margin-top: 4px; }
-  .ov-graph-cta { position: absolute; right: 18px; bottom: 16px; z-index: 2; font-size: 12px; font-weight: 700; color: #fff; background: #c96342; padding: 6px 12px; border-radius: 4px; cursor: pointer; border: none; }
-
-  /* ---- fullscreen graph modal ---- */
-  .ov-gfs { position: fixed; inset: 0; z-index: 1000; background: #16131a; display: flex; flex-direction: column; }
-  .ov-gfs-bar { display: flex; align-items: center; gap: 14px; padding: 14px 22px; border-bottom: 1px solid #3a3346; flex: 0 0 auto; }
-  .ov-gfs-ttl { font-size: 15px; font-weight: 900; letter-spacing: 0.05em; color: #fff; }
-  .ov-gfs-sub { font-size: 12px; color: #b6aecb; flex: 1 1 auto; }
-  .ov-gfs-x { font-size: 16px; font-weight: 700; color: #fff; background: #2a2533; border: 1px solid #3a3346; width: 34px; height: 34px; border-radius: 6px; cursor: pointer; flex: 0 0 auto; }
-  .ov-gfs-x:hover { background: #c96342; border-color: #c96342; }
-  .ov-gfs-stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
-  .ov-gfs-host { position: absolute; inset: 0; width: 100%; height: 100%; }
-  .ov-gfs-load { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #b6aecb; font-size: 14px; pointer-events: none; }
-
-  /* selection detail panel (Obsidian-style, right) */
-  .ov-gfs-panel { position: absolute; top: 14px; right: 14px; bottom: 14px; width: 320px; background: #1d1926; border: 1px solid #3a3346; border-radius: 8px; padding: 16px 16px 14px; overflow-y: auto; box-shadow: 0 8px 30px rgba(0,0,0,0.5); }
-  .ov-gfs-pclose { position: absolute; top: 10px; right: 10px; font-size: 13px; color: #b6aecb; background: transparent; border: none; cursor: pointer; }
-  .ov-gfs-pclose:hover { color: #fff; }
-  .ov-gfs-pname { font-size: 15px; font-weight: 800; color: #fff; padding-right: 22px; line-height: 1.3; margin-bottom: 8px; }
-  .ov-gfs-pmuted { color: #8b8499; font-size: 12px; margin-top: 6px; }
-  .ov-gfs-pmeta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
-  .ov-gfs-tag { font-size: 11px; font-weight: 700; color: #fff; background: #c96342; padding: 3px 8px; border-radius: 10px; }
-  .ov-gfs-tag.alt { background: #3a3346; color: #cdbfe0; }
-  .ov-gfs-psec { font-size: 10px; font-weight: 800; letter-spacing: 0.08em; color: #8b8499; margin: 14px 0 6px; }
-  .ov-gfs-prow { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; color: #d6cfe2; padding: 3px 0; border-bottom: 1px solid #272232; }
-  .ov-gfs-prow b { color: #fff; font-weight: 700; }
-  .ov-gfs-pfree { font-size: 12px; color: #cdc6da; line-height: 1.45; margin: 4px 0; }
-  .ov-gfs-pfree i { color: #8b8499; font-style: normal; font-weight: 700; }
-  .ov-gfs-plist { display: flex; flex-direction: column; gap: 2px; }
-  .ov-gfs-pitem { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: #d6cfe2; padding: 3px 0; border-bottom: 1px solid #272232; }
-  .ov-gfs-pitem b { color: #56d364; font-weight: 700; white-space: nowrap; }
-  .ov-gfs-pitem b.zero { color: #8b8499; }
+  .ov-kg-card { width: 100%; margin-bottom: 12px; background: #16131a; border: 1px solid #3a3346; border-radius: 4px; overflow: hidden; }
+  .ov-kg-head { padding: 14px 18px 0; }
+  .ov-kg-t { font-size: 14px; font-weight: 900; letter-spacing: 0.05em; color: #fff; }
+  .ov-kg-s { font-size: 11px; color: #b6aecb; margin-top: 4px; }
 
   .ov-wiki-card { width: 100%; display: flex; align-items: center; gap: 16px; margin-bottom: 12px; padding: 16px 18px; background: var(--color-surface-bright, var(--color-surface)); border: 1px solid var(--pw-border, #e5ddcf); cursor: pointer; text-align: left; }
   .ov-wiki-card:hover { border-color: var(--color-primary); }
