@@ -27,8 +27,10 @@ import ColumnCard from '$lib/components/ColumnCard.svelte';
  if (!h || h === 'cockpit') return 'datasets';
  // RLS + Visibility merged into Embed/Sharing — redirect legacy hashes
  if (h === 'rls' || h === 'visibility') return 'embed';
- // Data Source sub-views share the upload page
- if (h === 'eda' || h === 'quality') return 'upload';
+ // Exploratory + Data Quality are their own screens now (legacy #quality → data-quality)
+ if (h === 'eda') return 'eda';
+ if (h === 'quality' || h === 'data-quality') return 'data-quality';
+ if (h === 'upload-new') return 'upload';
  return h;
  })());
 
@@ -1457,7 +1459,16 @@ $effect(() => {
  // Actions
  function dqReupload() { activeTab = 'upload'; dsView = 'overview'; dsUploadOpen = true;
  if (typeof document !== 'undefined') setTimeout(() => document.querySelector('.dsx-drop')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 100); }
- function dqOpenEda(it: DqIssue) { dsGoView('eda'); loadEda(it.table); if (it.column) edaCol = it.column; }
+ // open the EXPLORATORY screen focused on a column (cross-link from a DQ issue)
+ function dqOpenEda(it: DqIssue) {
+ activeTab = 'eda';
+ if (!Object.keys(edaAll).length && !edaAllLoading) loadEdaAll();
+ edaColKey = it.column ? `${it.table}::${it.column}` : null;
+ if (typeof document !== 'undefined') setTimeout(() => document.getElementById(`eda-t-${it.table}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 200);
+ }
+ // open the DATA SOURCE screen with a table row expanded (cross-link from a DQ issue)
+ function dqOpenTable(tname: string) { activeTab = 'upload'; dsView = 'overview'; dsExpanded = tname; loadDataSource();
+ if (typeof document !== 'undefined') setTimeout(() => document.querySelector('.set-content')?.scrollTo?.({ top: 0 }), 80); }
 
  function openDataQualityForTable(tname: string) {
  activeTab = 'upload';
@@ -4878,6 +4889,8 @@ function signUserJWT($user) {
  const tabs = [
  { id: 'datasets', label: 'COCKPIT' },
  { id: 'upload', label: 'DATA SOURCE' },
+ { id: 'eda', label: 'EXPLORATORY' },
+ { id: 'data-quality', label: 'DATA QUALITY' },
  { id: 'brain-definitions', label: 'DEFINITIONS' },
  { id: 'brain-glossary', label: 'GLOSSARY' },
  { id: 'brain-patterns', label: 'PATTERNS' },
@@ -4917,6 +4930,7 @@ function signUserJWT($user) {
  switch (id) {
  case 'cockpit': return registryOverall ? `${registryOverall}%` : '—';
  case 'datasets': return String(detail.tables?.length || 0);
+ case 'eda': return String(detail?.tables?.length || dsData?.tables?.length || 0) || '○';
  case 'data-quality': return dqData?.issue_count ? String(dqData.issue_count) : '○';
  case 'knowledge': return String(detail.knowledge_vectors || 0);
  case 'training': return String((training?.learnings || 0) + (training?.training_qa?.length || 0) + brainFeedback.length + brainPatterns.length + brainMemories.length);
@@ -5000,8 +5014,9 @@ function signUserJWT($user) {
 
  onMount(async () => {
  // Top-nav Upload link changes the hash while already on this page — switch tab.
- const _onHash = () => { let h = window.location.hash.slice(1); if (!h || h === 'cockpit') h = 'datasets'; if (h === 'eda' || h === 'quality') { dsGoView(h as 'eda'|'quality'); h = 'upload'; } else if (h === 'upload') { dsView = 'overview'; } if (h !== activeTab) activeTab = h; };
+ const _onHash = () => { let h = window.location.hash.slice(1); if (!h || h === 'cockpit') h = 'datasets'; if (h === 'upload-new') { dsView = 'overview'; dsUploadOpen = true; h = 'upload'; } else if (h === 'eda') { if (!Object.keys(edaAll).length && !edaAllLoading) loadEdaAll(); } else if (h === 'quality' || h === 'data-quality') { h = 'data-quality'; if (!dqLoaded) loadDataQuality(false); } else if (h === 'upload') { dsView = 'overview'; } if (h !== activeTab) activeTab = h; };
  window.addEventListener('hashchange', _onHash);
+ _onHash();  // process initial hash on fresh load (e.g. #upload-new from Dashboard)
  // Restore Data Source sub-view data when landing directly on #eda / #quality.
  if (activeTab === 'upload' && dsView !== 'overview') dsGoView(dsView);
  // Critical: wait only for project detail so shell + tabs render fast.
@@ -5521,6 +5536,65 @@ function signUserJWT($user) {
    if (v === 'eda' && !edaData) loadEda(edaTable);
    if (v === 'quality') { dqLoadMuted(); if (!dqLoaded) loadDataQuality(false); }
  }
+ // EDA column-role tally for one table's payload (id / measure / dimension / null cols)
+ function edaRoleCountsFor(ed: any): { id: number; num: number; dim: number; nullcols: number } {
+   const cols = (ed?.columns || []) as any[];
+   const rows = ed?.rows || 0;
+   let id = 0, num = 0, dim = 0, nullcols = 0;
+   for (const c of cols) {
+     const isUnique = rows > 0 && c.distinct >= (rows > 50000 ? 20000 : rows);
+     if (c.mean !== null && c.mean !== undefined) num++;
+     else if (isUnique) id++;
+     else dim++;
+     if ((c.null_pct || 0) > 0) nullcols++;
+   }
+   return { id, num, dim, nullcols };
+ }
+
+ // ── EXPLORATORY: all tables profiled at once (no dropdown) ──
+ let edaAll = $state<Record<string, any>>({});
+ let edaAllLoading = $state(false);
+ let edaColKey = $state<string | null>(null);   // `${table}::${col}` expanded row
+ function edaAllNames(): string[] {
+   const fromData = Object.keys(edaAll);
+   if (fromData.length) return fromData;
+   // ordering hint before fetch completes
+   if (dsData?.tables?.length) return dsData.tables.map((t: any) => t.name);
+   if (detail?.tables?.length) return (detail.tables as any[]).map((t: any) => t.name);
+   return [];
+ }
+ async function loadEdaAll() {
+   edaAllLoading = true;
+   try {
+     let names: string[] = [];
+     if (dsData?.tables?.length) names = dsData.tables.map((t: any) => t.name);
+     else if (detail?.tables?.length) names = (detail.tables as any[]).map((t: any) => t.name);
+     if (!names.length) {
+       try {
+         const r0 = await fetch(`/api/projects/${slug}/eda`, { headers: _h() });
+         if (r0.ok) { const d0 = await r0.json(); names = d0?.tables || []; }
+       } catch {}
+     }
+     const results = await Promise.all(names.map(async (n) => {
+       try {
+         const r = await fetch(`/api/projects/${slug}/eda?table=${encodeURIComponent(n)}`, { headers: _h() });
+         return [n, r.ok ? await r.json() : null] as [string, any];
+       } catch { return [n, null] as [string, any]; }
+     }));
+     const map: Record<string, any> = {};
+     for (const [n, d] of results) if (d) map[n] = d;
+     edaAll = map;
+   } catch {} finally { edaAllLoading = false; }
+ }
+ const edaAgg = $derived.by(() => {
+   const tbls = Object.values(edaAll) as any[];
+   let rows = 0, cols = 0, dup = 0, dim = 0, num = 0, id = 0, nullcols = 0;
+   for (const e of tbls) {
+     rows += e.rows || 0; dup += e.dup_rows || 0; cols += (e.columns || []).length;
+     const rc = edaRoleCountsFor(e); dim += rc.dim; num += rc.num; id += rc.id; nullcols += rc.nullcols;
+   }
+   return { tables: tbls.length, rows, cols, dup, dim, num, id, nullcols };
+ });
  // Quality roll-up across all tables (derived from dsData)
  const qualityRollup = $derived.by(() => {
    const tables = (dsData?.tables || []) as any[];
@@ -6632,6 +6706,8 @@ function signUserJWT($user) {
       { label: 'Workspace', icon: 'workspace', items: [
         { id: 'datasets', label: 'Cockpit' },
         { id: 'upload', label: 'Data Source' },
+        { id: 'eda', label: 'Exploratory' },
+        { id: 'data-quality', label: 'Data Quality' },
         { id: 'training', label: 'Training' },
         { id: 'docs', label: 'Docs' },
         { id: 'queries', label: 'Queries' },
@@ -6670,7 +6746,7 @@ function signUserJWT($user) {
         <div class="set-rail-group">
           <div class="set-rail-grouplabel">{g.label}</div>
           {#each visibleItems as it}
-            <button data-tab={it.id} class:active={activeTab === it.id} onclick={(e) => { activeTab = it.id; logTabSwitch(it.id); if (it.id === 'lineage' && detail?.tables) { for (const t of detail.tables) loadTableDetail(t.name); } if (it.id === 'fed-health') loadFedHealth(); if (it.id === 'rls' && !rlsConfig) { loadRlsConfig(); loadRlsSchemaHints(); } /* agent-template API removed (single-agent): loadAgentTpl() dropped — its panel is gated on agentTplStatus?.applied (stays null), so skipping avoids 3 dead /agent-template 404s on Cockpit open */ if (it.id === 'upload') { loadDataSource(); if (!dqLoaded) loadDataQuality(false); if (!edaData && !edaLoading) loadEda(); } if (it.id === 'pipeline') { loadTrainingSteps(); loadTrainingRuns(); } if (it.id === 'datasets') { try { inspectsBatchLoaded = false; } catch {} if (!detail) { loadDetail()?.catch?.(()=>{}); } if (!extractionPlansLoaded) loadExtractionPlans(); } try { (e.currentTarget as HTMLElement)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch {} }}>
+            <button data-tab={it.id} class:active={activeTab === it.id} onclick={(e) => { activeTab = it.id; logTabSwitch(it.id); if (it.id === 'eda') { if (!Object.keys(edaAll).length && !edaAllLoading) loadEdaAll(); } if (it.id === 'data-quality') { if (!dqLoaded) loadDataQuality(false); } if (it.id === 'lineage' && detail?.tables) { for (const t of detail.tables) loadTableDetail(t.name); } if (it.id === 'fed-health') loadFedHealth(); if (it.id === 'rls' && !rlsConfig) { loadRlsConfig(); loadRlsSchemaHints(); } /* agent-template API removed (single-agent): loadAgentTpl() dropped — its panel is gated on agentTplStatus?.applied (stays null), so skipping avoids 3 dead /agent-template 404s on Cockpit open */ if (it.id === 'upload') { loadDataSource(); if (!dqLoaded) loadDataQuality(false); if (!edaData && !edaLoading) loadEda(); } if (it.id === 'pipeline') { loadTrainingSteps(); loadTrainingRuns(); } if (it.id === 'datasets') { try { inspectsBatchLoaded = false; } catch {} if (!detail) { loadDetail()?.catch?.(()=>{}); } if (!extractionPlansLoaded) loadExtractionPlans(); } try { (e.currentTarget as HTMLElement)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch {} }}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 {#if it.id === 'cockpit'}<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2" fill="currentColor"/>
                 {:else if it.id === 'brain-definitions'}<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
@@ -6685,6 +6761,7 @@ function signUserJWT($user) {
                 {:else if it.id.startsWith('brain-')}<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><line x1="7.5" y1="7.5" x2="10.5" y2="16"/><line x1="16.5" y1="7.5" x2="13.5" y2="16"/><line x1="8.5" y1="6" x2="15.5" y2="6"/>
                 {:else if it.id === 'datasets'}<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
                 {:else if it.id === 'upload'}<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>
+                {:else if it.id === 'eda'}<path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6"/><rect x="12" y="7" width="3" height="10"/><rect x="17" y="13" width="3" height="4"/>
                 {:else if it.id === 'data-quality'}<path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="9"/>
                 {:else if it.id === 'knowledge'}<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
                 {:else if it.id === 'rules'}<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
@@ -7349,7 +7426,7 @@ function signUserJWT($user) {
     </section>
 
   <!-- ═══ DATASETS (merged with Cockpit) ═══ -->
-  {:else if activeTab === 'datasets' || activeTab === 'upload'}
+  {:else if activeTab === 'datasets' || activeTab === 'upload' || activeTab === 'eda' || activeTab === 'data-quality'}
     {@const _totalTables = detail?.tables?.length || 0}
     {@const _totalDocs = docs.length}
     {@const _totalRows = (detail?.tables || []).reduce((s: number, t: any) => s + (t.rows || 0), 0)}
@@ -7713,67 +7790,131 @@ function signUserJWT($user) {
     </div>
     {/if}
 
-    <div class="dsx-sechead dsx-sechead-gap">EDA</div>
-    <!-- ═══ EDA — per-column profiling (live SQL scan) ═══ -->
+    {/if}<!-- end DATA SOURCE (upload) tab -->
+
+    {#if activeTab === 'eda'}
+    <!-- ═══════════ EXPLORATORY (EDA) SCREEN — all tables at once ═══════════ -->
+    {@const _names = edaAllNames()}
     <div class="dsx-eda-head">
-      <span class="dsx-eda-title">Exploratory analysis</span>
-      <select class="dsx-sortsel" value={edaTable} onchange={(e) => loadEda((e.target as HTMLSelectElement).value)}>
-        {#each (edaData?.tables || (dsData?.tables || []).map((t:any)=>t.name)) as tn}
-          <option value={tn}>{tn}</option>
-        {/each}
-      </select>
-      <button class="dsx-btn" onclick={() => loadEda(edaTable)}>↻ rescan</button>
+      <div class="dsx-sechead" style="margin:0;border:none;padding:0;">EXPLORATORY ANALYSIS</div>
       <div class="dsx-tb-sp"></div>
-      {#if edaData}<span class="dsx-eda-meta">{(edaData.rows||0).toLocaleString()} rows · {(edaData.columns||[]).length} cols{#if edaData.dup_rows} · {edaData.dup_rows.toLocaleString()} dup rows{/if}{#if edaData.rows > 50000} · <i title="profiled over a 20k-row sample">sampled 20k</i>{/if}</span>{/if}
+      <button class="dsx-btn" disabled={edaAllLoading} onclick={loadEdaAll}>{edaAllLoading ? '◐ scanning…' : '↻ rescan all'}</button>
     </div>
 
-    {#if edaLoading}<div class="dsx-empty">scanning columns…</div>
-    {:else if !edaData || !(edaData.columns||[]).length}<div class="dsx-empty">no column data</div>
-    {:else}
-      <div class="dsx-rows">
-        <div class="dsx-row dsx-edahead">
-          <span>COLUMN</span><span>TYPE</span><span>NULL%</span><span>DISTINCT</span><span>PROFILE</span>
-        </div>
-        {#each edaData.columns as c}
-          {@const isUnique = c.distinct >= (edaData.rows > 50000 ? 20000 : edaData.rows) && edaData.rows > 0}
-          <div class="dsx-row dsx-edarow dsx-rowclk" onclick={() => edaCol = edaCol === c.name ? null : c.name}>
-            <span class="dsx-tname">{edaCol === c.name ? '▾' : '▸'} {c.name}</span>
-            <span class="dsx-edatype">{c.type}</span>
-            <span><span class="dsx-nullbadge" class:hi={(c.null_pct||0) >= 10}>{(c.null_pct ?? 0)}%</span></span>
-            <span>{(c.distinct ?? 0).toLocaleString()}</span>
-            <span class="dsx-edaprofile">
-              {#if isUnique}<i class="dsx-uniq">▕ unique</i>
-              {:else if c.mean !== null && c.mean !== undefined}μ {Number(c.mean).toLocaleString()} · {c.min ?? '—'} … {c.max ?? '—'}
-              {:else if c.top && c.top.length}top: {c.top[0].val} ({c.top[0].pct}%)
-              {:else if c.avg_len}avg len {c.avg_len}{/if}
-            </span>
-          </div>
-          {#if edaCol === c.name}
-            <div class="dsx-detail">
-              <div class="dsx-dsec"><b>STATS</b>
-                type {c.type} · {(c.distinct ?? 0).toLocaleString()} distinct · {(c.null_pct ?? 0)}% null
-                {#if c.mean !== null && c.mean !== undefined} · mean {Number(c.mean).toLocaleString()} · min {c.min ?? '—'} · max {c.max ?? '—'}{/if}
-                {#if c.avg_len} · avg length {c.avg_len} chars{/if}
-              </div>
-              {#if c.top && c.top.length}
-                <div class="dsx-dsec"><b>TOP VALUES</b>
-                  <div class="dsx-qbars">
-                    {#each c.top as tv}
-                      <div class="dsx-qbar"><span title={tv.val}>{tv.val}</span><div class="dsx-qtrk"><div class="dsx-qfill" style="width:{Math.min(100, tv.pct)}%"></div></div><i>{tv.pct}%</i></div>
-                    {/each}
-                  </div>
-                </div>
-              {/if}
-            </div>
-          {/if}
+    {@const _agg = edaAgg}
+    <div class="eda-ov">
+      <div class="eda-ov-k"><b>{_agg.tables}</b><span>tables</span></div>
+      <div class="eda-ov-k"><b>{_agg.rows.toLocaleString()}</b><span>total rows</span></div>
+      <div class="eda-ov-k"><b>{_agg.cols}</b><span>columns</span></div>
+      <div class="eda-ov-k" class:eda-ov-warn={_agg.dup>0}><b>{_agg.dup.toLocaleString()}</b><span>duplicate rows</span></div>
+      <div class="eda-ov-k"><b>{_agg.dim}</b><span>▦ dimensions</span></div>
+      <div class="eda-ov-k"><b>{_agg.num}</b><span>∑ measures</span></div>
+      <div class="eda-ov-k"><b>{_agg.id}</b><span># identifiers</span></div>
+      <div class="eda-ov-k" class:eda-ov-warn={_agg.nullcols>0}><b>{_agg.nullcols}</b><span>⚠ cols w/ nulls</span></div>
+    </div>
+
+    {#if _names.length}
+      <div class="eda-jump">
+        <span class="eda-jump-l">jump:</span>
+        {#each _names as tn}
+          <button class="eda-jump-c" onclick={() => document.getElementById(`eda-t-${tn}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' })}>{tn}</button>
         {/each}
       </div>
     {/if}
 
-    <div class="dsx-sechead dsx-sechead-gap">QUALITY</div>
-    <!-- ═══ QUALITY — detailed error scanner (rich dqData) ═══ -->
+    {#if edaAllLoading && !_names.length}
+      <div class="dsx-empty">scanning all tables…</div>
+    {:else if !_names.length}
+      <div class="dsx-empty">no tables to profile — upload data first</div>
+    {:else}
+      {#each _names as tn (tn)}
+        {@const ed = edaAll[tn]}
+        {@const _rc = edaRoleCountsFor(ed)}
+        <div id={`eda-t-${tn}`} class="eda-sect">
+          <div class="eda-sect-h">
+            <span class="eda-sect-name">⛁ {tn}</span>
+            <span class="eda-sect-meta">{(ed?.rows||0).toLocaleString()} rows · {(ed?.columns||[]).length} cols{#if ed?.dup_rows} · {ed.dup_rows.toLocaleString()} dup{/if} · ▦{_rc.dim} ∑{_rc.num} #{_rc.id}{#if (ed?.rows||0) > 50000} · <i title="profiled over a 20k-row sample">sampled 20k</i>{/if}</span>
+          </div>
+          {#if !ed || !(ed.columns||[]).length}
+            <div class="dsx-empty">no column data</div>
+          {:else}
+            <div class="dsx-rows">
+              <div class="dsx-row dsx-edahead">
+                <span>COLUMN</span><span>TYPE</span><span>NULL%</span><span>DISTINCT</span><span>PROFILE</span>
+              </div>
+              {#each ed.columns as c}
+                {@const _key = `${tn}::${c.name}`}
+                {@const isUnique = c.distinct >= (ed.rows > 50000 ? 20000 : ed.rows) && ed.rows > 0}
+                <div class="dsx-row dsx-edarow dsx-rowclk" onclick={() => edaColKey = edaColKey === _key ? null : _key}>
+                  <span class="dsx-tname">{edaColKey === _key ? '▾' : '▸'} {c.name}</span>
+                  <span class="dsx-edatype">{c.type}</span>
+                  <span><span class="dsx-nullbadge" class:hi={(c.null_pct||0) >= 10}>{(c.null_pct ?? 0)}%</span></span>
+                  <span>{(c.distinct ?? 0).toLocaleString()}</span>
+                  <span class="dsx-edaprofile">
+                    {#if isUnique}<i class="dsx-uniq">▕ unique</i>
+                    {:else if c.mean !== null && c.mean !== undefined}μ {Number(c.mean).toLocaleString()} · {c.min ?? '—'} … {c.max ?? '—'}
+                    {:else if c.top && c.top.length}top: {c.top[0].val} ({c.top[0].pct}%)
+                    {:else if c.avg_len}avg len {c.avg_len}{/if}
+                  </span>
+                </div>
+                {#if edaColKey === _key}
+                  <div class="dsx-detail">
+                    <div class="dsx-dsec"><b>STATS</b>
+                      type {c.type} · {(c.distinct ?? 0).toLocaleString()} distinct · {(c.null_pct ?? 0)}% null
+                      {#if c.mean !== null && c.mean !== undefined} · mean {Number(c.mean).toLocaleString()} · min {c.min ?? '—'} · max {c.max ?? '—'}{/if}
+                      {#if c.avg_len} · avg length {c.avg_len} chars{/if}
+                    </div>
+                    {#if c.top && c.top.length}
+                      <div class="dsx-dsec"><b>TOP VALUES</b>
+                        <div class="dsx-qbars">
+                          {#each c.top as tv}
+                            <div class="dsx-qbar"><span title={tv.val}>{tv.val}</span><div class="dsx-qtrk"><div class="dsx-qfill" style="width:{Math.min(100, tv.pct)}%"></div></div><i>{tv.pct}%</i></div>
+                          {/each}
+                        </div>
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
+              {/each}
+            </div>
+          {/if}
+        </div>
+      {/each}
+    {/if}
+
+    {/if}<!-- end EXPLORATORY tab -->
+
+    {#if activeTab === 'data-quality'}
+    <!-- ═══════════ DATA QUALITY SCREEN ═══════════ -->
+    <div class="dsx-sechead">DATA QUALITY</div>
+    {#if dqData && (dqData.by_type || dqData.by_table)}
+    {@const _btMax = Math.max(1, ...Object.values(dqData.by_table || {}).map((n:any)=>Number(n)||0))}
+    {@const _tyMax = Math.max(1, ...Object.values(dqData.by_type || {}).map((n:any)=>Number(n)||0))}
+    <div class="dqx-breakdowns">
+      <div class="dqx-panel">
+        <div class="dqx-panel-h">BY TABLE</div>
+        {#each Object.entries(dqData.by_table || {}).sort((a:any,b:any)=>b[1]-a[1]) as [tn, n]}
+          <button class="dqx-bar" onclick={() => dqTableFilter = (dqTableFilter === tn ? '' : tn)} class:on={dqTableFilter===tn}>
+            <span class="dqx-bar-l" title={tn}>{tn}</span>
+            <span class="dqx-bar-trk"><span class="dqx-bar-fill" style="width:{Math.round(100*Number(n)/_btMax)}%"></span></span>
+            <span class="dqx-bar-n">{n}</span>
+          </button>
+        {/each}
+      </div>
+      <div class="dqx-panel">
+        <div class="dqx-panel-h">BY TYPE</div>
+        {#each Object.entries(dqData.by_type || {}).sort((a:any,b:any)=>b[1]-a[1]) as [ty, n]}
+          <div class="dqx-bar">
+            <span class="dqx-bar-l" title={ty}>{dqTypeLabel(ty).toLowerCase()}</span>
+            <span class="dqx-bar-trk"><span class="dqx-bar-fill dqx-bar-fill-ty" style="width:{Math.round(100*Number(n)/_tyMax)}%"></span></span>
+            <span class="dqx-bar-n">{n}</span>
+          </div>
+        {/each}
+      </div>
+    </div>
+    {/if}
     <div id="dq-section" class="dsx-eda-head">
-      <span class="dsx-eda-title">Data quality</span>
+      <span class="dsx-eda-title">Issues</span>
       <div class="dsx-tb-sp"></div>
       {#if dqData?.last_scanned}<span class="dsx-eda-meta">last scan {new Date(dqData.last_scanned).toLocaleTimeString()}</span>{/if}
       <button class="dsx-btn" disabled={dqRescanning} onclick={rescanDataQuality}>{dqRescanning ? '◐ scanning…' : '⟳ rescan'}</button>
@@ -7828,7 +7969,7 @@ function signUserJWT($user) {
             <div class="dq-grphead"><span class="dq-grpdot">{dqSeverityIcon(grp.sev)}</span> {grp.sev.toUpperCase()} <span class="dq-grpn">{grp.items.length}</span></div>
             {#each grp.items as it (dqIssueKey(it))}
               {@const _k = dqIssueKey(it)}
-              {@const _open = !!dqExpanded[_k]}
+              {@const _open = dqExpanded[_k] !== false}
               {@const _muted = dqIsMuted(it)}
               <div class="dq-card dq-card-{it.severity}" class:muted={_muted}>
                 <button class="dq-cardhead" onclick={() => dqExpanded = {...dqExpanded, [_k]: !_open}}>
@@ -7863,8 +8004,12 @@ function signUserJWT($user) {
                       <div class="dq-row dq-fix"><span class="dq-rk">⮑ FIX</span><span>{it.suggestion}</span></div>
                     {/if}
                     <div class="dq-acts">
+                      {#if it.type === 'low_codex_confidence' || it.type === 'opaque_columns'}
+                        <button class="dsx-btn dsx-btn-fix" disabled={isTraining} onclick={() => { if (!isTraining) dsTrainAll(); }}>▶ {isTraining ? 'training…' : 'Train all (fix)'}</button>
+                      {/if}
+                      <button class="dsx-btn" onclick={() => dqOpenTable(it.table)}>open table →</button>
+                      {#if it.column}<button class="dsx-btn" onclick={() => dqOpenEda(it)}>open in Exploratory</button>{/if}
                       <button class="dsx-btn" onclick={dqReupload}>{it.recoverable === false ? '↑ upload re-exported file' : '↑ re-upload'}</button>
-                      {#if it.column}<button class="dsx-btn" onclick={() => dqOpenEda(it)}>open in EDA</button>{/if}
                       <button class="dsx-btn" onclick={() => dqToggleMute(it)}>{_muted ? 'unmute' : 'mute'}</button>
                     </div>
                   </div>
@@ -7885,7 +8030,7 @@ function signUserJWT($user) {
       <div class="dsx-empty">no scan yet — press ⟳ rescan</div>
     {/if}
 
-    {/if}<!-- end upload tab -->
+    {/if}<!-- end DATA QUALITY tab -->
   <!-- ═══ BRAIN (unified hub, shared with /ui/brain) — rail item drives the category ═══ -->
   {:else if activeTab.startsWith('brain-')}
     <BrainHub embedded item={activeTab.slice(6)} />
@@ -18415,6 +18560,40 @@ function signUserJWT($user) {
 .gap-ok:hover { background:#d3ead9; } .gap-no:hover { background:#f0d4cd; }
 .dsx-eda-head { display:flex; align-items:center; gap:10px; margin:0 0 12px; }
 .dsx-eda-title { font-size:14px; font-weight:700; color:var(--pw-ink,#2c2620); }
+
+/* ── EXPLORATORY overview card ── */
+.eda-ov { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin:4px 0 18px; }
+.eda-ov-k { background:var(--pw-surface-2,#faf7f2); border:1px solid var(--pw-border,#e7e0d6); border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; gap:3px; }
+.eda-ov-k b { font-size:22px; font-weight:800; color:var(--pw-ink,#2c2620); font-variant-numeric:tabular-nums; line-height:1; }
+.eda-ov-k span { font-size:10.5px; font-weight:600; letter-spacing:0.03em; color:var(--pw-muted,#877f74); }
+.eda-ov-warn b { color:#c96342; }
+
+/* ── EXPLORATORY: sticky jump nav + per-table sections ── */
+.eda-jump { position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:8px 0; margin:0 0 6px; background:var(--pw-surface,#fff); border-bottom:1px solid var(--pw-border-soft,#eee6da); }
+.eda-jump-l { font-size:10px; font-weight:700; letter-spacing:0.06em; color:var(--pw-muted,#877f74); margin-right:2px; }
+.eda-jump-c { font-size:11px; font-weight:600; padding:3px 10px; border-radius:14px; border:1px solid var(--pw-border,#e7e0d6); background:var(--pw-surface-2,#faf7f2); color:var(--pw-ink,#2c2620); cursor:pointer; font-family:ui-monospace,monospace; }
+.eda-jump-c:hover { border-color:#c96342; color:#c96342; }
+.eda-sect { margin:0 0 22px; }
+.eda-sect-h { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; padding:8px 0 8px; border-bottom:2px solid var(--pw-border,#e7e0d6); margin-bottom:8px; }
+.eda-sect-name { font-size:15px; font-weight:800; color:var(--pw-ink,#2c2620); font-family:ui-monospace,monospace; }
+.eda-sect-meta { font-size:11.5px; color:var(--pw-muted,#877f74); }
+.eda-sect-meta i { font-style:italic; color:#a06000; }
+
+/* ── DATA QUALITY breakdown panels ── */
+.dqx-breakdowns { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:4px 0 18px; }
+@media (max-width:760px){ .dqx-breakdowns { grid-template-columns:1fr; } }
+.dqx-panel { background:var(--pw-surface-2,#faf7f2); border:1px solid var(--pw-border,#e7e0d6); border-radius:10px; padding:12px 14px; }
+.dqx-panel-h { font-size:10px; font-weight:800; letter-spacing:0.08em; color:var(--pw-muted,#877f74); margin-bottom:9px; }
+.dqx-bar { display:grid; grid-template-columns:130px 1fr 34px; align-items:center; gap:8px; width:100%; background:none; border:none; padding:3px 4px; cursor:pointer; border-radius:6px; text-align:left; }
+.dqx-bar:hover { background:rgba(201,99,66,0.06); }
+.dqx-bar.on { background:rgba(201,99,66,0.12); }
+.dqx-bar-l { font-size:11.5px; color:var(--pw-ink,#2c2620); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dqx-bar-trk { height:8px; background:var(--pw-border-soft,#eee6da); border-radius:4px; overflow:hidden; }
+.dqx-bar-fill { height:100%; background:#c96342; border-radius:4px; }
+.dqx-bar-fill-ty { background:#d4930e; }
+.dqx-bar-n { font-size:11.5px; font-weight:700; text-align:right; color:var(--pw-ink,#2c2620); font-variant-numeric:tabular-nums; }
+.dsx-btn-fix { border-color:#c96342 !important; color:#c96342 !important; font-weight:700; }
+.dsx-btn-fix:hover:not(:disabled) { background:#c96342 !important; color:#fff !important; }
 .dsx-eda-meta { font-size:12px; color:var(--pw-muted,#6b6052); }
 .dsx-eda-meta i { font-style:italic; color:#a06000; }
 .dsx-edahead { grid-template-columns:1fr 110px 70px 100px 2fr !important; font-size:10.5px !important; letter-spacing:0.06em; color:var(--pw-muted,#6b6052); font-weight:700; }

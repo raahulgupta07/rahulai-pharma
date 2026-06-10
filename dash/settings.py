@@ -533,6 +533,24 @@ def _compute_cost(model: str, usage: dict) -> float:
     return (pin * rates[0] + pout * rates[1]) / 1_000_000
 
 
+def _usage_token_details(usage: dict) -> tuple[int, int]:
+    """Pull (cached_tokens, reasoning_tokens) from an OpenRouter usage object.
+    OpenRouter returns these under usage.prompt_tokens_details.cached_tokens and
+    usage.completion_tokens_details.reasoning_tokens when the model supports
+    prompt caching / reasoning. Absent → 0 (back-compat)."""
+    if not usage:
+        return 0, 0
+    cached = 0
+    reasoning = 0
+    ptd = usage.get("prompt_tokens_details")
+    if isinstance(ptd, dict):
+        cached = int(ptd.get("cached_tokens", 0) or 0)
+    ctd = usage.get("completion_tokens_details")
+    if isinstance(ctd, dict):
+        reasoning = int(ctd.get("reasoning_tokens", 0) or 0)
+    return cached, reasoning
+
+
 def _emit_llm_stats(stats: dict):
     # Persist to per-call cost ledger when a project is bound to this thread.
     slug = get_llm_project()
@@ -543,8 +561,8 @@ def _emit_llm_stats(stats: dict):
             with _gse().connect() as conn:
                 conn.execute(_text(
                     "INSERT INTO public.dash_llm_costs "
-                    "(project_slug, task, model, cost_usd, tokens_in, tokens_out, ok, actor) "
-                    "VALUES (:s, :t, :m, :c, :ti, :to, :ok, :actor)"
+                    "(project_slug, task, model, cost_usd, tokens_in, tokens_out, cached_tokens, reasoning_tokens, ok, actor) "
+                    "VALUES (:s, :t, :m, :c, :ti, :to, :cached, :reason, :ok, :actor)"
                 ), {
                     "s": slug,
                     "t": stats.get("task"),
@@ -552,6 +570,8 @@ def _emit_llm_stats(stats: dict):
                     "c": float(stats.get("cost_usd", 0.0) or 0.0),
                     "ti": int(stats.get("tokens_in", 0) or 0),
                     "to": int(stats.get("tokens_out", 0) or 0),
+                    "cached": int(stats.get("cached_tokens", 0) or 0),
+                    "reason": int(stats.get("reasoning_tokens", 0) or 0),
                     "ok": bool(stats.get("ok", True)),
                     "actor": get_llm_actor(),
                 })
@@ -639,9 +659,11 @@ def training_llm_call(prompt: str, task: str = "extraction", model: str | None =
         content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
         actual_model = result.get("model", model)
         cost = _compute_cost(actual_model, usage)
+        _cached, _reason = _usage_token_details(usage)
         _emit_llm_stats({
             "task": task, "model": actual_model, "latency_s": latency_s,
             "tokens_in": usage.get("prompt_tokens", 0), "tokens_out": usage.get("completion_tokens", 0),
+            "cached_tokens": _cached, "reasoning_tokens": _reason,
             "cost_usd": round(cost, 6), "ok": bool(content),
             "fallback_used": actual_model != model,
         })
@@ -752,9 +774,11 @@ def training_vision_call(prompt: str, images: list[dict], task: str = "vision") 
         usage = result.get("usage") or {}
         content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
         cost = _compute_cost(model, usage)
+        _cached, _reason = _usage_token_details(usage)
         _emit_llm_stats({
             "task": task, "model": model, "latency_s": latency_s,
             "tokens_in": usage.get("prompt_tokens", 0), "tokens_out": usage.get("completion_tokens", 0),
+            "cached_tokens": _cached, "reasoning_tokens": _reason,
             "cost_usd": round(cost, 6), "ok": bool(content), "vision": True, "n_images": len(images),
         })
         return content

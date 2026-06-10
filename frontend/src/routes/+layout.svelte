@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte';
-  import RobotPanel from '$lib/RobotPanel.svelte';
+  import FloatingRobot from '$lib/FloatingRobot.svelte';
  import '../app.css';
  import { page } from '$app/state';
  import { onMount } from 'svelte';
@@ -110,6 +110,10 @@
  const isChatActive = $derived(page.url.pathname.endsWith('/chat'));
  // Chat screens (project conversation / /chat) hide the floating robot — it clutters the chat surface.
  const isChatScreen = $derived(page.url.pathname.includes('/project/') || page.url.pathname.endsWith('/chat'));
+ // bare conversation page (/project/{slug}) — no trailing sub-route
+ const isBareChat = $derived(/\/project\/[^/]+\/?$/.test(page.url.pathname));
+ // SINGLE auto-train robot — shown ONLY on the Dashboard + Integration (gateway/embed) screens
+ const showRobot = $derived(!isLogin && singleAgent && !!lockedSlug && (page.url.pathname.includes('/overview') || routeMatches('/gateway') || routeMatches('/embed')));
  const isBuildActive = $derived(
  page.url.pathname.includes('/dashboard') ||
  page.url.pathname.includes('/presentations') ||
@@ -1694,16 +1698,9 @@
   </div>
 {/if}
 
-<!-- ── Floating Robot Panel (logged in, hidden on chat screens) ── -->
-{#if !isLogin && !isChatScreen}
-  <RobotPanel
-    logs={cliLogs}
-    isTraining={srvTraining || cliTraining}
-    trainStatus={cliTraining ? 'training' : (cliLogs.some(l => /✓ COMPLETE|DONE/i.test((l as any).text || '')) ? 'done' : 'idle')}
-    trainStep={cliLogs.slice().reverse().find(l => /step \d/i.test((l as any).text || ''))?.text || ''}
-    trainProgress={(() => { const m = cliLogs.slice().reverse().find(l => /step (\d+)\/14/i.test((l as any).text || '')); if (!m) return 0; const mt = ((m as any).text || '').match(/step (\d+)\/14/i); return mt ? parseInt(mt[1]) : 0; })()}
-    autoTrainStatus="watching"
-  />
+<!-- ── ONE auto-train robot — Dashboard + Integration screens only ── -->
+{#if showRobot && lockedSlug}
+  <FloatingRobot slug={lockedSlug} />
 {/if}
 
 <style>

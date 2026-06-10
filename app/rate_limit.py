@@ -68,6 +68,11 @@ _DEFAULT_LIMITS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^/api/projects/[^/]+/chat(?:/|$)"), os.environ.get("RATE_LIMIT_CHAT", "60/minute")),
     (re.compile(r"^/api/chat(?:/|$)"), os.environ.get("RATE_LIMIT_CHAT", "60/minute")),
     (re.compile(r"^/api/embed/chat(?:/|$)"), os.environ.get("RATE_LIMIT_CHAT", "60/minute")),
+    # Read-only admin analytics — the Usage & Cost dashboard fans out many
+    # GET calls per tab/filter and auto-refreshes; it's super-admin-only DB
+    # reads (not an abuse vector), so it gets a generous ceiling of its own
+    # instead of sharing the chatty per-user __default__ bucket. 2026-06-10.
+    (re.compile(r"^/api/admin/usage(?:[/?]|$)"), os.environ.get("RATE_LIMIT_ADMIN", "600/minute")),
 ]
 
 _WHITELIST_PATHS = {
@@ -356,7 +361,11 @@ def _lookup_limit(path: str) -> tuple[str, int, int] | None:
         if pat.match(path):
             n, win = _parse_limit(spec)
             return pat.pattern, n, win
-    n, win = _parse_limit(os.environ.get("RATE_LIMIT_DEFAULT", "120/minute"))
+    # 120/min was too tight: the authenticated Dashboard + Workspace pages
+    # load ~14 endpoints each, auto-refresh every 30s, and the floating robot
+    # polls — all sharing this one per-user bucket. 300/min gives normal admin
+    # browsing headroom while still capping abuse. 2026-06-10.
+    n, win = _parse_limit(os.environ.get("RATE_LIMIT_DEFAULT", "300/minute"))
     return "__default__", n, win
 
 

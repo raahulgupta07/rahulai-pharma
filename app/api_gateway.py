@@ -267,7 +267,8 @@ def _apigw_cost(model: str, p_toks: int, c_toks: int) -> float:
 def _log_usage(user: dict, model: str, p_toks: int, c_toks: int,
                streamed: bool, request_type: str = "chat",
                status: str = "ok", session_id: str | None = None,
-               latency_ms: int | None = None) -> None:
+               latency_ms: int | None = None, input_preview: str | None = None,
+               cached_tokens: int = 0, reasoning_tokens: int = 0) -> None:
     """Best-effort INSERT into public.dash_apigw_usage. Opens its own short
     connection via get_write_engine (platform writes to public.dash_* need the
     write engine per project rules). NEVER raises — metering can't break the
@@ -293,9 +294,10 @@ def _log_usage(user: dict, model: str, p_toks: int, c_toks: int,
                 "INSERT INTO public.dash_apigw_usage "
                 "(key_id, service_account, store_id, scope_mode, model, engine_model, "
                 " prompt_tokens, completion_tokens, total_tokens, streamed, "
-                " cost_usd, request_type, status, session_id, latency_ms) "
+                " cost_usd, request_type, status, session_id, latency_ms, "
+                " cached_tokens, reasoning_tokens, input_preview) "
                 "VALUES (:kid, :svc, :sid, :sm, :model, :emodel, :p, :c, :t, :streamed, "
-                "        :cost, :rt, :st, :sess, :lat)"
+                "        :cost, :rt, :st, :sess, :lat, :cached, :reason, :inprev)"
             ), {
                 "kid": _user_key_id(user),
                 "svc": (user or {}).get("username"),
@@ -312,6 +314,9 @@ def _log_usage(user: dict, model: str, p_toks: int, c_toks: int,
                 "st": status or "ok",
                 "sess": session_id,
                 "lat": int(latency_ms) if latency_ms is not None else None,
+                "cached": int(cached_tokens or 0),
+                "reason": int(reasoning_tokens or 0),
+                "inprev": (input_preview[:280] if input_preview else None),
             })
             conn.commit()
     except Exception:

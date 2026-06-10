@@ -1344,3 +1344,167 @@ def gateway_tools(request: Request, range: str = "7d"):
         return {"tools": tools, "total": sum(t["count"] for t in tools)}
     except Exception as e:
         return {"tools": [], "total": 0, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ANALYTICS EXPANSION (2026-06-10) — model monitoring · embeddings-with-text ·
+# like/dislike learning · token-type + caching breakdown.
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get("/models")
+def models_analytics(request: Request,
+                     frm: str | None = Query(None, alias="from"),
+                     to: str | None = None, src: str | None = None):
+    """Per-model monitoring: stacked spend/volume over time + a trending panel
+    (this period vs the immediately-preceding equal window). Reads v_usage_unified."""
+    _gate(request)
+    start, end = _window(frm, to)
+    span = end - start
+    prev_start = start - span
+    frag, fp = _filters(src, None, None, None, None)
+    base = "FROM public.v_usage_unified WHERE ts >= :start AND ts < :end" + frag
+    p = {**fp, "start": start, "end": end}
+    series = [
+        {"bucket": r[0].isoformat() if r[0] else None, "model": r[1], "cost": float(r[2]),
+         "requests": int(r[3]), "tokens": int(r[4])}
+        for r in _rows("SELECT date_trunc('day', ts) b, COALESCE(model,'(none)') m, "
+                       "COALESCE(SUM(cost_usd),0), COUNT(*), COALESCE(SUM(tokens_in+tokens_out),0) "
+                       + base + " GROUP BY b, m ORDER BY b", p)
+    ]
+    by_model = [
+        {"model": r[0], "requests": int(r[1]), "tokens": int(r[2]), "cost": float(r[3])}
+        for r in _rows("SELECT COALESCE(model,'(none)') m, COUNT(*), "
+                       "COALESCE(SUM(tokens_in+tokens_out),0), COALESCE(SUM(cost_usd),0) "
+                       + base + " GROUP BY m ORDER BY 4 DESC LIMIT 30", p)
+    ]
+    cur = {r[0]: float(r[1]) for r in _rows(
+        "SELECT COALESCE(model,'(none)'), COALESCE(SUM(cost_usd),0) " + base + " GROUP BY 1", p)}
+    pv = {r[0]: float(r[1]) for r in _rows(
+        "SELECT COALESCE(model,'(none)'), COALESCE(SUM(cost_usd),0) "
+        "FROM public.v_usage_unified WHERE ts >= :pstart AND ts < :start" + frag + " GROUP BY 1",
+        {**fp, "pstart": prev_start, "start": start})}
+    trending = []
+    for m, c in cur.items():
+        prev = pv.get(m, 0.0)
+        is_new = prev <= 0 and c > 0
+        pct = None if prev <= 0 else round(100.0 * (c - prev) / prev)
+        trending.append({"model": m, "cost": round(c, 4), "prev": round(prev, 4),
+                         "pct": pct, "is_new": is_new})
+    trending.sort(key=lambda x: x["cost"], reverse=True)
+    return {"window": {"from": start.isoformat(), "to": end.isoformat()},
+            "series": series, "by_model": by_model, "trending": trending[:12]}
+
+
+@router.get("/embeddings")
+def embeddings_analytics(request: Request,
+                         frm: str | None = Query(None, alias="from"),
+                         to: str | None = None, limit: int = 100):
+    """Embedding-call detail: totals, daily series, by-model, and the recent
+    calls WITH the embedded text preview (when EMBED_LOG_INPUT=1)."""
+    _gate(request)
+    start, end = _window(frm, to)
+    p = {"start": start, "end": end}
+    base = "FROM public.dash_apigw_usage WHERE request_type='embedding' AND ts >= :start AND ts < :end"
+    s = _rows("SELECT COUNT(*), COALESCE(SUM(prompt_tokens),0), COALESCE(SUM(cost_usd),0), "
+              "COUNT(DISTINCT COALESCE(NULLIF(engine_model,''),model)), "
+              "COALESCE(AVG(NULLIF(latency_ms,0)),0) " + base, p)
+    summary = ({"calls": int(s[0][0]), "tokens": int(s[0][1]), "cost": float(s[0][2]),
+                "models": int(s[0][3]), "avg_latency_ms": round(float(s[0][4]))} if s
+               else {"calls": 0, "tokens": 0, "cost": 0.0, "models": 0, "avg_latency_ms": 0})
+    series = [{"bucket": r[0].isoformat() if r[0] else None, "calls": int(r[1]),
+               "tokens": int(r[2]), "cost": float(r[3])}
+              for r in _rows("SELECT date_trunc('day',ts) b, COUNT(*), COALESCE(SUM(prompt_tokens),0), "
+                             "COALESCE(SUM(cost_usd),0) " + base + " GROUP BY b ORDER BY b", p)]
+    by_model = [{"model": r[0] or "(none)", "calls": int(r[1]), "tokens": int(r[2]), "cost": float(r[3])}
+                for r in _rows("SELECT COALESCE(NULLIF(engine_model,''),model), COUNT(*), "
+                               "COALESCE(SUM(prompt_tokens),0), COALESCE(SUM(cost_usd),0) "
+                               + base + " GROUP BY 1 ORDER BY 4 DESC LIMIT 20", p)]
+    recent = [{"ts": r[0].isoformat() if r[0] else None, "model": r[1] or "(none)",
+               "tokens": int(r[2] or 0), "cost": float(r[3] or 0),
+               "actor": r[4] or "—", "latency_ms": int(r[5]) if r[5] is not None else None,
+               "text": r[6]}
+              for r in _rows("SELECT ts, COALESCE(NULLIF(engine_model,''),model), prompt_tokens, "
+                             "cost_usd, service_account, latency_ms, input_preview " + base
+                             + " ORDER BY ts DESC LIMIT :lim", {**p, "lim": max(1, min(500, limit))})]
+    import os as _os
+    return {"window": {"from": start.isoformat(), "to": end.isoformat()},
+            "summary": summary, "series": series, "by_model": by_model, "recent": recent,
+            "text_logging": _os.getenv("EMBED_LOG_INPUT", "0").lower() in ("1", "true", "yes", "on")}
+
+
+@router.get("/feedback")
+def feedback_analytics(request: Request,
+                       frm: str | None = Query(None, alias="from"),
+                       to: str | None = None, limit: int = 50):
+    """Like/dislike learning analytics from dash_feedback: totals, 👍/👎 over
+    time, by-project satisfaction, and the most recent disliked answers."""
+    _gate(request)
+    start, end = _window(frm, to)
+    p = {"start": start, "end": end}
+    win = "WHERE created_at >= :start AND created_at < :end"
+    tot = {r[0]: int(r[1]) for r in _rows(
+        "SELECT rating, COUNT(*) FROM public.dash_feedback " + win + " GROUP BY rating", p)}
+    up, down = tot.get("up", 0), tot.get("down", 0)
+    total = up + down
+    series = [{"bucket": r[0].isoformat() if r[0] else None, "up": int(r[1]), "down": int(r[2])}
+              for r in _rows("SELECT date_trunc('day',created_at) b, "
+                             "COUNT(*) FILTER (WHERE rating='up'), COUNT(*) FILTER (WHERE rating='down') "
+                             "FROM public.dash_feedback " + win + " GROUP BY b ORDER BY b", p)]
+    by_project = [{"project": r[0], "up": int(r[1]), "down": int(r[2]),
+                   "satisfaction": round(100.0 * int(r[1]) / (int(r[1]) + int(r[2])), 1) if (int(r[1]) + int(r[2])) else None}
+                  for r in _rows("SELECT COALESCE(project_slug,'(none)'), "
+                                 "COUNT(*) FILTER (WHERE rating='up'), COUNT(*) FILTER (WHERE rating='down') "
+                                 "FROM public.dash_feedback " + win + " GROUP BY 1 ORDER BY 3 DESC LIMIT 20", p)]
+    disliked = [{"id": int(r[0]), "project": r[1], "question": r[2], "answer": r[3],
+                 "sql": r[4], "ts": r[5].isoformat() if r[5] else None}
+                for r in _rows("SELECT id, project_slug, question, answer, sql_query, created_at "
+                               "FROM public.dash_feedback WHERE rating='down' AND created_at >= :start "
+                               "AND created_at < :end ORDER BY created_at DESC LIMIT :lim",
+                               {**p, "lim": max(1, min(200, limit))})]
+    liked = [{"id": int(r[0]), "project": r[1], "question": r[2], "ts": r[3].isoformat() if r[3] else None}
+             for r in _rows("SELECT id, project_slug, question, created_at FROM public.dash_feedback "
+                            "WHERE rating='up' AND created_at >= :start AND created_at < :end "
+                            "ORDER BY created_at DESC LIMIT 15", p)]
+    return {"window": {"from": start.isoformat(), "to": end.isoformat()},
+            "totals": {"up": up, "down": down, "total": total,
+                       "satisfaction": round(100.0 * up / total, 1) if total else None},
+            "series": series, "by_project": by_project, "disliked": disliked, "liked": liked}
+
+
+@router.get("/tokens")
+def tokens_analytics(request: Request,
+                     frm: str | None = Query(None, alias="from"),
+                     to: str | None = None):
+    """Token-type breakdown (prompt / completion / reasoning) + prompt caching
+    (cached vs uncached) + cache-hit-rate, combined across the LLM ledger and
+    the gateway ledger."""
+    _gate(request)
+    start, end = _window(frm, to)
+    p = {"start": start, "end": end}
+    llm = _rows("SELECT COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0), "
+                "COALESCE(SUM(reasoning_tokens),0), COALESCE(SUM(cached_tokens),0) "
+                "FROM public.dash_llm_costs WHERE ts >= :start AND ts < :end", p)
+    gw = _rows("SELECT COALESCE(SUM(prompt_tokens),0), COALESCE(SUM(completion_tokens),0), "
+               "COALESCE(SUM(reasoning_tokens),0), COALESCE(SUM(cached_tokens),0) "
+               "FROM public.dash_apigw_usage WHERE ts >= :start AND ts < :end", p)
+    l = llm[0] if llm else (0, 0, 0, 0)
+    g = gw[0] if gw else (0, 0, 0, 0)
+    prompt = int(l[0]) + int(g[0])
+    completion = int(l[1]) + int(g[1])
+    reasoning = int(l[2]) + int(g[2])
+    cached = int(l[3]) + int(g[3])
+    cache_rate = round(100.0 * cached / prompt, 1) if prompt else 0.0
+    series = [{"bucket": r[0].isoformat() if r[0] else None, "prompt": int(r[1]),
+               "completion": int(r[2]), "reasoning": int(r[3]), "cached": int(r[4])}
+              for r in _rows(
+                  "SELECT b, SUM(pp), SUM(cc), SUM(rr), SUM(ca) FROM ("
+                  "  SELECT date_trunc('day',ts) b, tokens_in pp, tokens_out cc, reasoning_tokens rr, cached_tokens ca "
+                  "  FROM public.dash_llm_costs WHERE ts >= :start AND ts < :end "
+                  "  UNION ALL "
+                  "  SELECT date_trunc('day',ts) b, prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens "
+                  "  FROM public.dash_apigw_usage WHERE ts >= :start AND ts < :end"
+                  ") x GROUP BY b ORDER BY b", p)]
+    return {"window": {"from": start.isoformat(), "to": end.isoformat()},
+            "prompt": prompt, "completion": completion, "reasoning": reasoning,
+            "cached": cached, "uncached": max(0, prompt - cached),
+            "cache_hit_rate": cache_rate, "series": series}

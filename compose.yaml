@@ -180,6 +180,9 @@ services:
       # Embed widget chat-body logging → dash_embed_calls.message_text/response_text
       # (powers the Monitoring QUESTION/ANSWER panels). PII: consumer chat — consent only.
       - EMBED_LOG_BODIES=${EMBED_LOG_BODIES:-1}
+      # Embedding-call input text → dash_apigw_usage.input_preview (powers the
+      # Usage → Embeddings drill-down "with the question"). Privacy opt-in.
+      - EMBED_LOG_INPUT=${EMBED_LOG_INPUT:-1}
       # DEV: caching OFF for real fresh test/eval behaviour. PROD: APIGW_CACHE_TTL=90,
       # drop METRIC_SHORTCUT_DISABLED (cache hides the 70-220s repeat-question latency).
       - APIGW_CACHE_TTL=${APIGW_CACHE_TTL:-90}

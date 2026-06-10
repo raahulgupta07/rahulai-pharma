@@ -7,6 +7,8 @@
   // ---- left-rail nav (grouped, admin-Overview style) ----
   const NAV = [
     { label: 'Overview', items: [['overview', 'Overview', 'grid'], ['performance', 'Performance', 'gauge'], ['errors', 'Errors', 'alert']] },
+    { label: 'Models & Tokens', items: [['models', 'Models', 'cube'], ['tokens', 'Tokens', 'coins'], ['embeddings', 'Embeddings', 'vector']] },
+    { label: 'Learning', items: [['learning', 'Like / Dislike', 'thumb']] },
     { label: 'People', items: [['people', 'People', 'people2']] },
     { label: 'Analytics', items: [['tools', 'Tools', 'wrench'], ['security', 'Security', 'shield'], ['entities', 'Entities', 'users']] },
     { label: 'Billing', items: [['billing', 'Billing', 'receipt'], ['live', 'Live', 'bolt']] },
@@ -21,6 +23,10 @@
     receipt: '<path d="M5 3v18l2-1 2 1 2-1 2 1 2-1 2 1V3l-2 1-2-1-2 1-2-1-2 1z"/><path d="M9 8h6M9 12h6"/>',
     bolt: '<path d="M13 2 4 14h6l-1 8 9-12h-6z"/>',
     people2: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+    cube: '<path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/>',
+    coins: '<ellipse cx="9" cy="6" rx="6" ry="3"/><path d="M3 6v6c0 1.7 2.7 3 6 3s6-1.3 6-3V6"/><path d="M15 12c2.8.2 6 1.3 6 3v0c0 1.7-2.7 3-6 3-1 0-2-.1-3-.3"/>',
+    vector: '<circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M6.7 7.3 10.5 16M17.3 7.3 13.5 16M7 6h10"/>',
+    thumb: '<path d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z"/><path d="M7 11l4-8a2 2 0 0 1 2 2v3h5a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 16.8 20H7"/>',
   };
   let tab = $state('overview');
   let loaded: Record<string, boolean> = $state({});
@@ -42,6 +48,9 @@
   let ov: any = $state(null), perf: any = $state(null), errs: any = $state(null);
   let tools: any = $state(null), sec: any = $state(null), live: any = $state(null);
   let budget: any = $state(null), invoice: any = $state(null);
+  // analytics expansion
+  let modelsData: any = $state(null), tokensData: any = $state(null);
+  let embedsData: any = $state(null), feedbackData: any = $state(null);
   let entUsers: any[] = $state([]), entStores: any[] = $state([]);
   let logins: any[] = $state([]);
   // people activity
@@ -83,8 +92,15 @@
     for (const k in extra) q.set(k, extra[k]);
     return q.toString();
   }
-  async function jget(url: string) {
+  async function jget(url: string, _retry = 0): Promise<any> {
     const r = await dashFetch(url, { headers: { Accept: 'application/json' } });
+    if (r.status === 429 && _retry < 2) {
+      // rate limited — honour Retry-After (capped) then retry once or twice
+      const ra = Math.min(5, Math.max(1, parseInt(r.headers.get('Retry-After') || '1') || 1));
+      await new Promise((res) => setTimeout(res, ra * 1000));
+      return jget(url, _retry + 1);
+    }
+    if (r.status === 429) throw new Error('Too many requests — please wait a moment and refresh.');
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.json();
   }
@@ -97,6 +113,10 @@
         const [a, b] = await Promise.all([jget(`/api/admin/usage?${qs({ group_by: groupBy })}`), jget(`/api/admin/usage/logins?${qs()}`)]);
         ov = a; logins = b?.logins ?? []; if (a?.error) error = a.error;
       } else if (t === 'performance') perf = await jget(`/api/admin/usage/performance?${qs()}`);
+      else if (t === 'models') modelsData = await jget(`/api/admin/usage/models?${qs()}`);
+      else if (t === 'tokens') tokensData = await jget(`/api/admin/usage/tokens?${qs()}`);
+      else if (t === 'embeddings') embedsData = await jget(`/api/admin/usage/embeddings?${qs()}`);
+      else if (t === 'learning') feedbackData = await jget(`/api/admin/usage/feedback?${qs()}`);
       else if (t === 'errors') errs = await jget(`/api/admin/usage/errors?${qs()}`);
       else if (t === 'tools') tools = await jget(`/api/admin/usage/tools?${qs()}`);
       else if (t === 'security') sec = await jget(`/api/admin/usage/security?${qs()}`);
@@ -370,6 +390,154 @@
         <table class="u-tbl"><thead><tr><th>time</th><th>src</th><th>actor</th><th>store</th><th>model</th><th>tok</th><th>cost</th><th>lat</th><th>status</th></tr></thead><tbody>
           {#each ov.activity as a}<tr><td class="dim">{shortTs(a.ts)}</td><td><span class="u-tag {a.src}">{srcLabel(a.src)}</span></td><td class="mono">{a.actor ?? '—'}</td><td class="mono">{a.store_id ?? '—'}</td><td class="mono dim">{a.model ?? '—'}</td><td>{compact(a.tokens)}</td><td class="num">{usd(a.cost)}</td><td class="dim">{ms(a.latency_ms)}</td><td><span class="u-st {a.status}">{a.status}</span></td></tr>{/each}
         </tbody></table>
+      </div>
+    </section>
+  {/if}
+
+  <!-- ============ MODELS ============ -->
+  {#if tab === 'models' && modelsData}
+    {@const bm = (modelsData.by_model ?? []) as any[]}
+    {@const maxCost = Math.max(0.0001, ...bm.map((r) => r.cost || 0))}
+    <section class="ua">
+      <div class="ua-grid2">
+        <div class="ua-card">
+          <div class="ua-h">Spend by model</div>
+          <table class="ua-tbl">
+            <thead><tr><th>Model</th><th class="r">Requests</th><th class="r">Tokens</th><th class="r">Cost</th><th></th></tr></thead>
+            <tbody>
+              {#each bm as r}
+                <tr><td class="mono">{r.model}</td><td class="r">{compact(r.requests)}</td><td class="r">{compact(r.tokens)}</td><td class="r">{usd(r.cost)}</td>
+                  <td class="barcell"><span class="bar" style="width:{Math.round(100*(r.cost||0)/maxCost)}%"></span></td></tr>
+              {/each}
+              {#if !bm.length}<tr><td colspan="5" class="u-empty">no model usage in this window</td></tr>{/if}
+            </tbody>
+          </table>
+        </div>
+        <div class="ua-card">
+          <div class="ua-h">Trending <span class="ua-sub">vs previous {preset}</span></div>
+          <div class="ua-trend">
+            {#each (modelsData.trending ?? []) as t}
+              <div class="ua-trow">
+                <span class="ua-tmodel mono" title={t.model}>{t.model}</span>
+                <span class="ua-tcost">{usd(t.cost)}</span>
+                {#if t.is_new}<span class="ua-tnew">▲ New</span>
+                {:else if t.pct == null}<span class="ua-tflat">—</span>
+                {:else if t.pct >= 0}<span class="ua-tup">↑ {t.pct}%</span>
+                {:else}<span class="ua-tdown">↓ {Math.abs(t.pct)}%</span>{/if}
+              </div>
+            {/each}
+            {#if !(modelsData.trending ?? []).length}<div class="u-empty">no trend data</div>{/if}
+          </div>
+        </div>
+      </div>
+    </section>
+  {/if}
+
+  <!-- ============ TOKENS ============ -->
+  {#if tab === 'tokens' && tokensData}
+    {@const td = tokensData}
+    {@const totTok = (td.prompt||0)+(td.completion||0)+(td.reasoning||0)}
+    {@const _p = totTok || 1}
+    {@const _q = (td.prompt||1)}
+    <section class="ua">
+      <div class="ua-kpis">
+        <div class="ua-kpi"><div class="ua-kn">{compact(td.prompt)}</div><div class="ua-kl">Prompt tokens</div></div>
+        <div class="ua-kpi"><div class="ua-kn">{compact(td.completion)}</div><div class="ua-kl">Completion</div></div>
+        <div class="ua-kpi"><div class="ua-kn">{compact(td.reasoning)}</div><div class="ua-kl">⚙ Reasoning</div></div>
+        <div class="ua-kpi"><div class="ua-kn">{compact(td.cached)}</div><div class="ua-kl">⚡ Cached</div></div>
+        <div class="ua-kpi ua-kpi-accent"><div class="ua-kn">{td.cache_hit_rate}%</div><div class="ua-kl">Cache hit rate</div></div>
+      </div>
+      <div class="ua-card">
+        <div class="ua-h">Token breakdown</div>
+        <div class="ua-stack">
+          <span class="seg s-prompt" style="width:{Math.round(100*(td.prompt||0)/_p)}%" title="prompt {compact(td.prompt)}"></span>
+          <span class="seg s-compl" style="width:{Math.round(100*(td.completion||0)/_p)}%" title="completion {compact(td.completion)}"></span>
+          <span class="seg s-reason" style="width:{Math.round(100*(td.reasoning||0)/_p)}%" title="reasoning {compact(td.reasoning)}"></span>
+        </div>
+        <div class="ua-legend"><span><i class="dot s-prompt"></i>prompt</span><span><i class="dot s-compl"></i>completion</span><span><i class="dot s-reason"></i>reasoning</span></div>
+      </div>
+      <div class="ua-card">
+        <div class="ua-h">Prompt caching <span class="ua-sub">{compact(td.cached)} cached · {compact(td.uncached)} uncached</span></div>
+        <div class="ua-stack">
+          <span class="seg s-cached" style="width:{Math.round(100*(td.cached||0)/_q)}%"></span>
+          <span class="seg s-uncached" style="width:{Math.round(100*(td.uncached||0)/_q)}%"></span>
+        </div>
+        <div class="ua-legend"><span><i class="dot s-cached"></i>cached (free/cheap)</span><span><i class="dot s-uncached"></i>uncached</span></div>
+      </div>
+      <p class="ua-note">Reasoning + cached counts populate from new traffic (OpenRouter usage details). Historical rows show 0.</p>
+    </section>
+  {/if}
+
+  <!-- ============ EMBEDDINGS ============ -->
+  {#if tab === 'embeddings' && embedsData}
+    {@const s = embedsData.summary ?? {}}
+    {@const bm = (embedsData.by_model ?? []) as any[]}
+    <section class="ua">
+      <div class="ua-kpis">
+        <div class="ua-kpi"><div class="ua-kn">{compact(s.calls)}</div><div class="ua-kl">Embedding calls</div></div>
+        <div class="ua-kpi"><div class="ua-kn">{compact(s.tokens)}</div><div class="ua-kl">Tokens</div></div>
+        <div class="ua-kpi"><div class="ua-kn">{usd(s.cost)}</div><div class="ua-kl">Cost</div></div>
+        <div class="ua-kpi"><div class="ua-kn">{s.models}</div><div class="ua-kl">Models</div></div>
+        <div class="ua-kpi"><div class="ua-kn">{ms(s.avg_latency_ms)}</div><div class="ua-kl">Avg latency</div></div>
+      </div>
+      <div class="ua-card">
+        <div class="ua-h">Recent embedding calls <span class="ua-sub">with the embedded text</span></div>
+        {#if !embedsData.text_logging}
+          <div class="ua-warn">Text capture is OFF — set <code>EMBED_LOG_INPUT=1</code> to record the embedded text (privacy opt-in). Tokens/cost/model still tracked.</div>
+        {/if}
+        <table class="ua-tbl">
+          <thead><tr><th>When</th><th>Model</th><th>Text / question</th><th class="r">Tokens</th><th class="r">Cost</th><th class="r">Latency</th><th>Actor</th></tr></thead>
+          <tbody>
+            {#each (embedsData.recent ?? []) as r}
+              <tr><td class="nowrap">{r.ts ? new Date(r.ts).toLocaleString() : '—'}</td><td class="mono">{r.model}</td>
+                <td class="ua-text">{r.text ?? '—'}</td><td class="r">{compact(r.tokens)}</td><td class="r">{usd(r.cost)}</td>
+                <td class="r">{r.latency_ms != null ? ms(r.latency_ms) : '—'}</td><td class="mono">{r.actor}</td></tr>
+            {/each}
+            {#if !(embedsData.recent ?? []).length}<tr><td colspan="7" class="u-empty">no embedding calls in this window</td></tr>{/if}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {/if}
+
+  <!-- ============ LEARNING (like / dislike) ============ -->
+  {#if tab === 'learning' && feedbackData}
+    {@const t = feedbackData.totals ?? {}}
+    <section class="ua">
+      <div class="ua-kpis">
+        <div class="ua-kpi ua-kpi-good"><div class="ua-kn">👍 {compact(t.up)}</div><div class="ua-kl">Liked</div></div>
+        <div class="ua-kpi ua-kpi-bad"><div class="ua-kn">👎 {compact(t.down)}</div><div class="ua-kl">Disliked</div></div>
+        <div class="ua-kpi"><div class="ua-kn">{compact(t.total)}</div><div class="ua-kl">Total rated</div></div>
+        <div class="ua-kpi ua-kpi-accent"><div class="ua-kn">{t.satisfaction != null ? t.satisfaction + '%' : '—'}</div><div class="ua-kl">Satisfaction</div></div>
+      </div>
+      <div class="ua-grid2">
+        <div class="ua-card">
+          <div class="ua-h">Satisfaction by project</div>
+          <table class="ua-tbl">
+            <thead><tr><th>Project</th><th class="r">👍</th><th class="r">👎</th><th class="r">Sat.</th></tr></thead>
+            <tbody>
+              {#each (feedbackData.by_project ?? []) as r}
+                <tr><td class="mono">{r.project}</td><td class="r">{r.up}</td><td class="r">{r.down}</td>
+                  <td class="r" class:ua-lo={r.satisfaction != null && r.satisfaction < 60}>{r.satisfaction != null ? r.satisfaction + '%' : '—'}</td></tr>
+              {/each}
+              {#if !(feedbackData.by_project ?? []).length}<tr><td colspan="4" class="u-empty">no feedback in this window</td></tr>{/if}
+            </tbody>
+          </table>
+        </div>
+        <div class="ua-card">
+          <div class="ua-h">👎 Top disliked answers <span class="ua-sub">retrain candidates</span></div>
+          <div class="ua-disliked">
+            {#each (feedbackData.disliked ?? []) as d}
+              <div class="ua-dcard">
+                <div class="ua-dq">{d.question}</div>
+                {#if d.answer}<div class="ua-da">{d.answer}</div>{/if}
+                {#if d.sql}<code class="ua-dsql">{d.sql}</code>{/if}
+                <div class="ua-dmeta">{d.project} · {d.ts ? new Date(d.ts).toLocaleString() : ''}</div>
+              </div>
+            {/each}
+            {#if !(feedbackData.disliked ?? []).length}<div class="u-empty">no disliked answers 🎉</div>{/if}
+          </div>
+        </div>
       </div>
     </section>
   {/if}
@@ -929,4 +1097,50 @@
   .emc-q { font-size: 12px; color: #2c2620; font-weight: 600; margin-bottom: .3rem; white-space: pre-wrap; }
   .emc-a { font-size: 11.5px; color: #6b6052; white-space: pre-wrap; }
   .emc-q.dim, .emc-a.dim { font-weight: 400; color: #b8ad9c; font-style: italic; }
+  /* ── analytics expansion (models / tokens / embeddings / learning) ── */
+  .ua { display: flex; flex-direction: column; gap: 1rem; }
+  .ua-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 820px) { .ua-grid2 { grid-template-columns: 1fr; } }
+  .ua-card { background: #fff; border: 1px solid #ece2d4; border-radius: 10px; padding: .85rem 1rem; }
+  .ua-h { font-size: 13px; font-weight: 700; color: #2c2620; margin-bottom: .6rem; }
+  .ua-sub { font-size: 11px; font-weight: 500; color: #9a8f80; margin-left: .35rem; }
+  .ua-note { font-size: 11px; color: #9a8f80; font-style: italic; }
+  .ua-warn { font-size: 11.5px; color: #8a5a00; background: #fdf3e0; border: 1px solid #f0dcb8; border-radius: 8px; padding: .5rem .7rem; margin-bottom: .6rem; }
+  .ua-warn code { background: #f3ece1; padding: 1px 5px; border-radius: 4px; color: #9a4a2f; }
+  .ua-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: .8rem; }
+  .ua-kpi { background: #faf6f0; border: 1px solid #ece2d4; border-radius: 10px; padding: .75rem .9rem; }
+  .ua-kn { font-size: 1.5rem; font-weight: 800; color: #2c2620; line-height: 1; }
+  .ua-kl { font-size: 10.5px; letter-spacing: .04em; color: #9a8f80; text-transform: uppercase; margin-top: .3rem; }
+  .ua-kpi-accent { border-color: #e3b8a8; background: #fbeee8; } .ua-kpi-accent .ua-kn { color: #c96342; }
+  .ua-kpi-good { border-color: #bfe0c8; background: #eef8f0; } .ua-kpi-good .ua-kn { color: #2d8a4e; }
+  .ua-kpi-bad { border-color: #ecc4bd; background: #fdeeeb; } .ua-kpi-bad .ua-kn { color: #c0392b; }
+  .ua-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .ua-tbl th { text-align: left; font-weight: 600; color: #9a8f80; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; padding: .3rem .45rem; border-bottom: 1px solid #ece2d4; }
+  .ua-tbl th.r, .ua-tbl td.r { text-align: right; font-variant-numeric: tabular-nums; }
+  .ua-tbl td { padding: .35rem .45rem; border-bottom: 1px solid #f5efe7; vertical-align: top; }
+  .ua-tbl .mono { font-family: ui-monospace, monospace; font-size: 11px; }
+  .ua-tbl .nowrap { white-space: nowrap; color: #9a8f80; font-size: 11px; }
+  .ua-text { max-width: 360px; color: #4a4036; }
+  .ua-lo { color: #c0392b; font-weight: 700; }
+  .barcell { width: 90px; } .barcell .bar { display: block; height: 8px; background: #c96342; border-radius: 4px; }
+  .ua-trend { display: flex; flex-direction: column; gap: .15rem; }
+  .ua-trow { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: .6rem; padding: .35rem .4rem; border-bottom: 1px solid #f5efe7; }
+  .ua-tmodel { font-family: ui-monospace, monospace; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ua-tcost { font-variant-numeric: tabular-nums; font-size: 12px; color: #4a4036; }
+  .ua-tnew { font-size: 11px; font-weight: 700; color: #2d8a4e; } .ua-tup { font-size: 11px; font-weight: 700; color: #2d8a4e; }
+  .ua-tdown { font-size: 11px; font-weight: 700; color: #c0392b; } .ua-tflat { color: #b8ab98; }
+  .ua-stack { display: flex; height: 22px; border-radius: 6px; overflow: hidden; background: #f0e9df; }
+  .ua-stack .seg { height: 100%; }
+  .seg.s-prompt { background: #4f86d6; } .seg.s-compl { background: #7c3aed; } .seg.s-reason { background: #e05a4a; }
+  .seg.s-cached { background: #d4930e; } .seg.s-uncached { background: #b8ab98; }
+  .ua-legend { display: flex; gap: 1rem; margin-top: .5rem; font-size: 11px; color: #6b6052; }
+  .ua-legend i.dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+  i.dot.s-prompt { background: #4f86d6; } i.dot.s-compl { background: #7c3aed; } i.dot.s-reason { background: #e05a4a; }
+  i.dot.s-cached { background: #d4930e; } i.dot.s-uncached { background: #b8ab98; }
+  .ua-disliked { display: flex; flex-direction: column; gap: .55rem; max-height: 420px; overflow-y: auto; }
+  .ua-dcard { border: 1px solid #ecc4bd; background: #fdf6f4; border-radius: 8px; padding: .55rem .7rem; }
+  .ua-dq { font-size: 12.5px; font-weight: 700; color: #2c2620; }
+  .ua-da { font-size: 11.5px; color: #4a4036; margin-top: .25rem; max-height: 60px; overflow: hidden; }
+  .ua-dsql { display: block; font-size: 10.5px; font-family: ui-monospace, monospace; background: #f3ece1; color: #9a4a2f; padding: .3rem .45rem; border-radius: 5px; margin-top: .35rem; white-space: pre-wrap; word-break: break-word; }
+  .ua-dmeta { font-size: 10px; color: #9a8f80; margin-top: .3rem; }
 </style>

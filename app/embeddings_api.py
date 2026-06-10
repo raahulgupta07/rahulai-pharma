@@ -152,11 +152,19 @@ async def openai_embeddings(request: Request):
     logger.info("embeddings: user=%s n=%d model=%s tokens=%d",
                 user.get("user_id"), len(texts), model, prompt_tokens)
     # Meter into the unified usage ledger (request_type='embedding'). Fail-soft.
+    # input_preview = the FIRST embedded text (truncated), captured only when
+    # EMBED_LOG_INPUT=1 (privacy + size opt-in, mirrors EMBED_LOG_BODIES). This
+    # powers the "Embeddings — usage with the question" admin drill-down.
     try:
+        import os as _os
         from app.api_gateway import _log_usage
+        _prev = None
+        if _os.getenv("EMBED_LOG_INPUT", "0").lower() in ("1", "true", "yes", "on"):
+            _first = texts[0] if texts else ""
+            _prev = (_first[:280] + (f"  …(+{len(texts)-1} more)" if len(texts) > 1 else "")) if _first else None
         _log_usage(user, real_model or "text-embedding-3-small",
                    int(prompt_tokens or 0), 0, streamed=False,
-                   request_type="embedding")
+                   request_type="embedding", input_preview=_prev)
     except Exception:
         logger.debug("embeddings: usage meter failed (ignored)", exc_info=True)
     return {

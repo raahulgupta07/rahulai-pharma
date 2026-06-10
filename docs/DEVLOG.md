@@ -2,6 +2,29 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-10 (latest+53) — Dashboard ops surface · 3 data screens · single robot · reindex fix · rate-limit fix · Usage analytics expansion (local)
+
+Big multi-feature session. All deployed (rebuild image + `--force-recreate`, never hot-copy) + verified live. NOT pushed.
+
+**Dashboard (`overview/+page.svelte`).** Added header **⬆ Upload data** (→ `settings#upload-new`, opens uploader) + **🔄 Sync** (POST `data-quality/rescan` then reload stats; no retrain). Added a **DATA TABLES** card — every uploaded table (name · rows · cols · trained ✓/○ · health pill · per-row `train`) with filter + sort + **Train all**; row click → Data Source. Data from `/datasource?quality=true` (was fetched then discarded). Removed the inline robot card (now floating).
+
+**Workspace — 3 distinct full screens (was buried scroll).** Promoted **Exploratory** + **Data Quality** out of the Data-Source stacked scroll into their own top-level rail tabs (real `activeTab` branches; outer condition `datasets||upload||eda||data-quality`; hash `#eda` / legacy `#quality`→`data-quality`). Data Source now focused (rings · table list inline-expand · Semantic Layer · Catalog Gaps).
+- **Exploratory** — dropped the table `<select>`; shows **ALL tables at once** (`loadEdaAll` fetches `/eda?table=` per table in parallel). Aggregate overview card + **sticky jump-chip nav** + one always-open section per table with dense column-profile table (expand → stats + top-value bars, keyed `table::column`).
+- **Data Quality** — added **BY TABLE / BY TYPE** bar panels (BY-TABLE click-to-filter) + issue cards with **contextual fix buttons** (`▶ Train all` · `open table →` · `open in Exploratory` · re-upload · mute), **auto-expand all** by default.
+
+**Single auto-train robot (`lib/FloatingRobot.svelte` NEW, `+layout.svelte`).** Was TWO (old `RobotPanel` CLI + new). Dropped `RobotPanel`; ONE `FloatingRobot` — fixed bottom-right bubble → expands to a **live CLI log console** (`/auto-train/log?since=` cursor poll 3s, colorized, auto-scroll), compact header (status · last-train · ⚡auto indicator · small `▶ train`), **auto-expands on training start**. Gated **Dashboard + Integration (gateway/embed) only** (`showRobot = /overview || gateway || embed`).
+
+**Training reindex FIX (`app/upload.py`).** "knowledge indexing timed out — skipped": `_reload_project_knowledge` re-embeds the WHOLE project but ran **per table** inside `_run_auto_training`, and the retrain loop runs 4 tables in `ThreadPoolExecutor(max_workers=4)` → 4 concurrent whole-project re-embeds; timeout sized by THIS table's rows (`240 if >50K else 60`) so a 10-row table got 60s but had to embed everything → timed out. Moved reindex OUT to ONE pass after the parallel loop (all files written), timeout scaled by file count (`max(180,min(600,n*15))`). ("persona enrichment skipped — invalid response" = benign Gemini variance, left.)
+
+**Rate-limit FIX (`app/rate_limit.py`).** Usage showed `⚠ HTTP 429` — `/api/admin/usage/*` shared the `__default__` per-user bucket (120/min) with the chatty Dashboard + 30s refresh + robot poll. Added dedicated `/api/admin/usage` limit (`600/min`) + raised default `120→300/min`. Frontend `UsagePanel.jget` honors `Retry-After`, retries 2×.
+
+**Usage & Cost ANALYTICS EXPANSION** (gap vs OpenRouter + asks). New rail groups **Models & Tokens** + **Learning**, 4 endpoints in `app/usage_api.py`:
+- `/usage/models` — spend-by-model + **Trending** (this vs prev window: ▲New/↑%/↓%). From `v_usage_unified`.
+- `/usage/tokens` — prompt/completion/**reasoning**/**cached** + **cache-hit-rate**. New cols `reasoning_tokens`/`cached_tokens` on `dash_llm_costs`+`dash_apigw_usage` (migration 182); captured in `dash/settings.py` (`_usage_token_details` reads OpenRouter `*_tokens_details`) + `_log_usage`. Forward-filling.
+- `/usage/embeddings` — calls/tokens/cost/models/latency + recent calls **WITH embedded text** (new `input_preview` col, gated `EMBED_LOG_INPUT=1` in `.env`+compose).
+- `/usage/feedback` — 👍/👎 + **satisfaction %**, by-project, **top-disliked answers** (q+a+SQL). From `dash_feedback` (live 39/26).
+- **Migration 182** `db/migrations/182_usage_analytics.sql` (applied live; additive). KNOWN GAPS: per-model satisfaction needs model col on `dash_feedback` (not added); reasoning/cached + embed-text forward-only; 182 not in baseline seed (auto-applies via runner on boot — fold into `migrations_seed` for cold installs).
+
 ### Session 2026-06-10 (latest+52) — Knowledge-graph rebuilt: relational HUB web + sigma explorer shared on /graph + dashboard (local)
 
 The Dashboard KNOWLEDGE GRAPH card was an orange hairball / scattered flowers — the data graph was 1,042 sealed same-generic cliques with NO bridges, so no force tuning could ever make it look like Obsidian. Root-caused and rebuilt the whole thing.

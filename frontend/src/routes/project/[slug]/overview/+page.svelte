@@ -43,6 +43,72 @@
     } catch { return null; }
   }
 
+  // Upload → jump to Workspace Data Source with the uploader open
+  function gotoUpload() { goto(`${base}/project/${slug}/settings#upload-new`); }
+  // Sync → rescan data-quality then refresh dashboard stats (no retrain)
+  let syncing = $state(false);
+  let syncMsg = $state('');
+  async function syncNow() {
+    if (syncing) return;
+    syncing = true; syncMsg = '';
+    try {
+      await fetch(`/api/projects/${slug}/data-quality/rescan`, { method: 'POST', headers: _h() });
+      await load();
+      syncMsg = 'synced';
+    } catch { syncMsg = 'sync failed'; }
+    finally { syncing = false; setTimeout(() => { syncMsg = ''; }, 4000); }
+  }
+
+  // ── DATA TABLES + TRAIN + AUTO-TRAIN ROBOT ──
+  let dsTables = $state<any[]>([]);
+  let tFilter = $state('');
+  let tSort = $state<'health' | 'rows' | 'name' | 'trained'>('rows');
+  let training = $state(false);
+  let trainingNames = $state<Record<string, boolean>>({});
+  let atStatus = $state<any>(null);
+  let _atPoll: any = null;
+
+  async function loadTables() {
+    const d = await _j(`/api/projects/${slug}/datasource?quality=true&preview=false`);
+    if (d?.tables) dsTables = d.tables;
+  }
+  async function loadAutoTrain() {
+    atStatus = await _j(`/api/projects/${slug}/auto-train/status`);
+    const live = !!atStatus?.is_training;
+    if (live && !_atPoll) { _atPoll = setInterval(loadAutoTrain, 5000); }
+    if (!live && _atPoll) { clearInterval(_atPoll); _atPoll = null; training = false; trainingNames = {}; loadTables(); load(); }
+  }
+  async function trainTables(names: string[]) {
+    if (!names.length || training) return;
+    training = true;
+    for (const n of names) trainingNames[n] = true;
+    trainingNames = { ...trainingNames };
+    try {
+      await fetch(`/api/projects/${slug}/retrain?force=1`, {
+        method: 'POST', headers: { ..._h(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table_names: names, force: true }),
+      });
+    } catch {}
+    setTimeout(loadAutoTrain, 1500);
+    if (!_atPoll) _atPoll = setInterval(loadAutoTrain, 5000);
+  }
+  function trainAll() { trainTables(dsTables.map((t) => t.name)); }
+  function openTable(name: string) { goto(`${base}/project/${slug}/settings#upload`); }
+
+  const tablesView = $derived.by(() => {
+    let ts = [...dsTables];
+    const f = tFilter.trim().toLowerCase();
+    if (f) ts = ts.filter((t) => (t.name || '').toLowerCase().includes(f));
+    ts.sort((a, b) => {
+      if (tSort === 'rows') return (b.rows || 0) - (a.rows || 0);
+      if (tSort === 'name') return (a.name || '').localeCompare(b.name || '');
+      if (tSort === 'trained') return (b.trained ? 1 : 0) - (a.trained ? 1 : 0);
+      return (a.quality?.score ?? 100) - (b.quality?.score ?? 100);
+    });
+    return ts;
+  });
+  const tablesRows = $derived(dsTables.reduce((s, t) => s + (t.rows || 0), 0));
+
   async function load() {
     const s = slug;
     const [h, dm, o, d, q, ins, th, tr, lg, gw, ch, eh] = await Promise.all([
@@ -78,6 +144,9 @@
     filesN = fl?.files?.length ?? 0;
     lastUpdate = new Date().toLocaleTimeString();
     loading = false;
+    // background: full table list (w/ quality+trained) + auto-train robot status
+    loadTables();
+    loadAutoTrain();
   }
 
   // ---- clinical golden eval (P3) ----
@@ -102,6 +171,7 @@
   });
   onDestroy(() => {
     if (timer) clearInterval(timer);
+    if (_atPoll) clearInterval(_atPoll);
   });
 
   // ---- formatters ----
@@ -211,7 +281,9 @@
       <div class="ov-sub">{slug}{ov?.schema ? ' · ' + ov.schema : ''}</div>
     </div>
     <div class="ov-head-actions">
-      <span class="ov-upd">{loading ? 'loading…' : (lastUpdate ? 'updated ' + lastUpdate : '')}</span>
+      <span class="ov-upd">{syncMsg ? syncMsg : (loading ? 'loading…' : (lastUpdate ? 'updated ' + lastUpdate : ''))}</span>
+      <button class="ov-btn ov-btn-up" onclick={gotoUpload}>⬆ Upload data</button>
+      <button class="ov-btn" onclick={syncNow} disabled={syncing}>{syncing ? '⟳ syncing…' : '🔄 Sync'}</button>
       <button class="ov-btn" class:on={auto} onclick={() => (auto = !auto)}>{auto ? '⟳ auto 30s' : '⏸ paused'}</button>
       <button class="ov-btn" onclick={() => load()}>↻ refresh</button>
       <button class="ov-btn ov-btn-primary" onclick={() => goto(`${base}/project/${slug}`)}>Open chat →</button>
@@ -278,6 +350,45 @@
   <!-- TRAINING PIPELINE — live boiler schematic + 60-step detail -->
   <div class="ov-card ov-tflow">
     {#if slug}<TrainingFlow {slug} />{/if}
+  </div>
+
+  <!-- DATA TABLES — all uploaded data + per-row + bulk train -->
+  <div class="ov-card ov-tables">
+    <div class="ov-tab-head">
+      <div class="ov-card-h">DATA TABLES <span class="ov-card-hx">{dsTables.length} tables · {fmtN(tablesRows)} rows</span></div>
+      <div class="ov-tab-tools">
+        <input class="ov-tab-filter" placeholder="filter tables…" bind:value={tFilter} />
+        <select class="ov-tab-sort" bind:value={tSort}>
+          <option value="rows">sort: rows</option>
+          <option value="health">sort: health</option>
+          <option value="trained">sort: trained</option>
+          <option value="name">sort: name</option>
+        </select>
+        <button class="ov-btn ov-btn-primary" disabled={training || !dsTables.length} onclick={trainAll}>{training ? '⟳ training…' : '↻ Train all'}</button>
+      </div>
+    </div>
+    {#if !dsTables.length}
+      <div class="ov-empty">No data tables yet — <button class="ov-link" onclick={gotoUpload}>upload data →</button></div>
+    {:else}
+      <div class="ov-tab-grid ov-tab-grid-h">
+        <span>TABLE</span><span class="ov-tab-r">ROWS</span><span class="ov-tab-r">COLS</span><span class="ov-tab-c">TRAINED</span><span class="ov-tab-c">HEALTH</span><span class="ov-tab-c">ACTION</span>
+      </div>
+      <div class="ov-tab-body">
+        {#each tablesView as t (t.name)}
+          {@const q = t.quality?.score}
+          <div class="ov-tab-grid ov-tab-row" role="button" tabindex="0" onclick={() => openTable(t.name)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTable(t.name); } }} title="open in Data Source">
+            <span class="ov-tab-name">{t.name}</span>
+            <span class="ov-tab-r">{fmtN(t.rows)}</span>
+            <span class="ov-tab-r ov-tab-dim">{t.cols ?? (t.columns?.length ?? '—')}</span>
+            <span class="ov-tab-c">{#if t.trained}<span class="ov-yes">✓</span>{:else}<span class="ov-no">○</span>{/if}</span>
+            <span class="ov-tab-c">{#if q != null}<span class="ov-hpill" class:hp-good={q >= 85} class:hp-mid={q >= 60 && q < 85} class:hp-bad={q < 60}>{q}</span>{:else}<span class="ov-tab-dim">—</span>{/if}</span>
+            <span class="ov-tab-c">
+              <button class="ov-tab-train" disabled={training || trainingNames[t.name]} onclick={(e) => { e.stopPropagation(); trainTables([t.name]); }}>{trainingNames[t.name] ? '…' : 'train'}</button>
+            </span>
+          </div>
+        {/each}
+      </div>
+    {/if}
   </div>
 
   <!-- ROW: HEALTH | QUALITY -->
@@ -502,6 +613,9 @@
   .ov-btn { font-size: 11px; padding: 5px 11px; border: 1px solid var(--pw-border, #e5ddcf); background: var(--color-surface); color: var(--color-on-surface); cursor: pointer; font-weight: 700; }
   .ov-btn.on { border-color: var(--color-primary); color: var(--color-primary); }
   .ov-btn-primary { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+  .ov-btn-up { border-color: var(--color-primary); color: var(--color-primary); }
+  .ov-btn-up:hover { background: var(--color-primary); color: #fff; }
+  .ov-btn:disabled { opacity: 0.55; cursor: default; }
   .ov-loading { padding: 60px; text-align: center; color: var(--color-on-surface-dim); font-size: 13px; }
 
   .ov-kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 14px; }
@@ -535,6 +649,32 @@
 
   .ov-tflow { margin-bottom: 12px; }
   .ov-tflow :global(.tf) { padding: 14px; }
+
+  /* data tables card */
+  .ov-tables { margin-bottom: 12px; padding: 14px; }
+  .ov-tab-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+  .ov-tab-tools { display: flex; align-items: center; gap: 8px; }
+  .ov-tab-filter { font-size: 11px; padding: 4px 9px; border: 1px solid var(--pw-border, #e5ddcf); background: var(--color-surface); color: var(--color-on-surface); width: 150px; }
+  .ov-tab-sort { font-size: 11px; padding: 4px 6px; border: 1px solid var(--pw-border, #e5ddcf); background: var(--color-surface); color: var(--color-on-surface); }
+  .ov-tab-grid { display: grid; grid-template-columns: 2fr 90px 64px 80px 80px 80px; align-items: center; gap: 8px; padding: 7px 8px; }
+  .ov-tab-grid-h { font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--pw-muted, #877f74); border-bottom: 1px solid var(--pw-border, #e5ddcf); }
+  .ov-tab-body { max-height: 360px; overflow-y: auto; }
+  .ov-tab-row { font-size: 12px; border-bottom: 1px solid var(--pw-border-soft, #eee6da); cursor: pointer; }
+  .ov-tab-row:hover { background: rgba(201, 99, 66, 0.05); }
+  .ov-tab-name { font-weight: 600; color: var(--color-on-surface); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ov-tab-r { text-align: right; font-variant-numeric: tabular-nums; }
+  .ov-tab-c { text-align: center; }
+  .ov-tab-dim { color: var(--pw-muted, #877f74); }
+  .ov-yes { color: #2d8a4e; font-weight: 700; }
+  .ov-no { color: var(--pw-muted, #b8ab98); }
+  .ov-hpill { display: inline-block; min-width: 26px; padding: 1px 6px; border-radius: 9px; font-size: 11px; font-weight: 700; }
+  .hp-good { background: rgba(45, 138, 78, 0.14); color: #2d8a4e; }
+  .hp-mid { background: rgba(204, 122, 0, 0.16); color: #b06c00; }
+  .hp-bad { background: rgba(201, 99, 66, 0.16); color: #c96342; }
+  .ov-tab-train { font-size: 10.5px; padding: 3px 10px; border: 1px solid var(--color-primary); background: transparent; color: var(--color-primary); cursor: pointer; font-weight: 700; }
+  .ov-tab-train:hover:not(:disabled) { background: var(--color-primary); color: #fff; }
+  .ov-tab-train:disabled { opacity: 0.5; cursor: default; }
+  .ov-link { background: none; border: none; color: var(--color-primary); cursor: pointer; font-weight: 700; font-size: 11px; text-decoration: underline; }
   @media (max-width: 900px) {
     .ov-glance { grid-template-columns: 1fr; }
     .ov-chip-row { grid-template-columns: repeat(3, 1fr); }

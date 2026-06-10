@@ -4144,18 +4144,16 @@ Return ONLY valid JSON (no markdown):
 
     _log("✓ relationships discovered")
 
-    # Step 9: Re-index knowledge (with timeout — training completes even if this fails)
+    # Step 9: knowledge re-index MOVED to batch level (runs ONCE after ALL
+    # tables finish — see the retrain ThreadPoolExecutor loop). Previously each
+    # table re-embedded the ENTIRE project here, so with max_workers=4 up to 4
+    # whole-project re-embeds ran concurrently; a 10-row table got a 60s budget
+    # (sized by its own row count) yet had to index the full project and lost
+    # the race → "knowledge indexing timed out". Doing it once, after every
+    # table's files are on disk, with a timeout sized by total file count, is
+    # both correct and far cheaper. 2026-06-10.
     if _cancelled():
         _update_run("failed", "cancelled"); _log("⊘ training cancelled by user"); return
-    _update_run("running", "reindex")
-    # Dynamic timeout based on row count — 60s for ≤50K, 240s for larger
-    _idx_timeout = 240 if num_rows > 50000 else 60
-    _log(f"indexing knowledge base ({_idx_timeout}s timeout)...")
-    indexed = _reload_project_knowledge(project_slug, timeout_sec=_idx_timeout)
-    if indexed:
-        _log("✓ knowledge indexed")
-    else:
-        _log("⚠ knowledge indexing timed out — skipped (training still complete)")
 
     # ═══ AUTO-FILL BRAIN — Make agent smart from data loading ═══
     if _cancelled():
@@ -12439,6 +12437,30 @@ async def retrain_project(slug: str, request: Request):
                         _trained_tbls.append(_tn)
                 elif _st == "skipped":
                     skipped += 1
+
+        # ── Knowledge re-index — ONCE for the whole batch ──
+        # Was per-table inside _run_auto_training, which re-embedded the entire
+        # project up to 4× in parallel and let small tables' 60s budgets time
+        # out. Every table's knowledge files are on disk now, so a single pass
+        # indexes everything. Timeout scales with the project's knowledge-file
+        # count (not one table's rows): ~15s/file, floor 180s, cap 600s.
+        # Training is still "complete" even if this times out. 2026-06-10.
+        if not _training_cancel_flags.get(slug):
+            try:
+                _kfiles = 0
+                _proj_dir = KNOWLEDGE_DIR / slug
+                for _sd in ("tables", "queries", "business", "rules", "training"):
+                    _p = _proj_dir / _sd
+                    if _p.exists():
+                        _kfiles += sum(1 for _f in _p.iterdir() if _f.is_file() and not _f.name.startswith("."))
+                _idx_to = max(180, min(600, _kfiles * 15))
+                _master_log(f"indexing knowledge base — {_kfiles} files ({_idx_to}s timeout)…", "", total_tables)
+                if _reload_project_knowledge(slug, timeout_sec=_idx_to):
+                    _master_log("✓ knowledge indexed", "", total_tables)
+                else:
+                    _master_log("⚠ knowledge indexing timed out — skipped (training still complete)", "", total_tables)
+            except Exception as _ie:
+                _master_log(f"⚠ knowledge indexing error: {str(_ie)[:80]}", "", total_tables)
 
         # Kick off LLM column enrichment for ALL project tables (fire-and-forget,
         # fail-soft, runs in background). Auto-fills dash_column_meta so the
