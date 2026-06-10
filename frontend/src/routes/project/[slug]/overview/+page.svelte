@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/state';
+  import TrainingFlow from '$lib/TrainingFlow.svelte';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
 
@@ -242,6 +243,12 @@
     {/each}
   </div>
 
+  <!-- TRAINING PIPELINE — live boiler schematic + 60-step detail -->
+  <div class="ov-card ov-tflow">
+    <div class="ov-card-h">TRAINING PIPELINE</div>
+    {#if slug}<TrainingFlow {slug} />{/if}
+  </div>
+
   <!-- ROW: HEALTH | QUALITY -->
   <div class="ov-grid2">
     <div class="ov-card">
@@ -480,6 +487,8 @@
   .ov-kpi-v { font-size: 26px; font-weight: 900; color: var(--color-on-surface); line-height: 1.1; margin: 4px 0 2px; }
   .ov-kpi-s { font-size: 10px; color: var(--color-on-surface-dim); }
 
+  .ov-tflow { margin-bottom: 12px; }
+  .ov-tflow :global(.tf) { padding: 14px; }
   .ov-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
   .ov-card { border: 1px solid var(--pw-border, #e5ddcf); background: var(--pw-surface, #fff); padding: 0; overflow: hidden; }
   .ov-card-h { background: var(--pw-bg-alt, #f6f2ea); color: var(--pw-accent, #c96342); border-bottom: 1px solid var(--pw-border, #e5ddcf); padding: 8px 14px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; }
