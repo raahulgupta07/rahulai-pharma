@@ -332,6 +332,33 @@
       transition: background 0.15s ease, color 0.15s ease;
     }
     .chip:hover { background: ${t.accent}; color: #fff; }
+    .followups { padding-top: 8px; }
+
+    /* like / dislike on a bot answer */
+    .fb-bar { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+    .fb-btn {
+      background: transparent; border: none; cursor: pointer; font-size: 14px;
+      opacity: 0.45; padding: 2px 4px; border-radius: 6px; line-height: 1;
+      transition: opacity 0.12s ease, background 0.12s ease;
+    }
+    .fb-btn:hover { opacity: 1; background: rgba(0,0,0,0.05); }
+    .fb-thanks { font-size: 11px; color: #6b7280; }
+    .fb-box { display: flex; flex-direction: column; gap: 6px; width: 100%; margin-top: 4px; }
+    .fb-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .fb-chip {
+      background: transparent; color: #6b7280; border: 1px solid #d8d2ca;
+      border-radius: 12px; padding: 3px 9px; font-size: 11px; cursor: pointer;
+      font-family: inherit; transition: all 0.12s ease;
+    }
+    .fb-chip.on { background: ${t.accent}; border-color: ${t.accent}; color: #fff; }
+    .fb-ta {
+      width: 100%; box-sizing: border-box; resize: vertical; font-family: inherit;
+      font-size: 12px; border: 1px solid #d8d2ca; border-radius: 8px; padding: 6px 8px;
+    }
+    .fb-send {
+      align-self: flex-end; background: ${t.accent}; color: #fff; border: none;
+      border-radius: 8px; padding: 5px 14px; font-size: 12px; cursor: pointer; font-family: inherit;
+    }
 
     .input-row {
       padding: 10px 12px; border-top: 1px solid ${t.border};
@@ -718,6 +745,9 @@
       div.innerHTML = renderAnswer(content);
       row.appendChild(div);
       msgList.appendChild(row);
+      msgList.scrollTop = msgList.scrollHeight;
+      messages.push({ role: role, content: content });
+      return div;
     }
     msgList.scrollTop = msgList.scrollHeight;
     messages.push({ role: role, content: content });
@@ -783,6 +813,85 @@
     });
     msgList.appendChild(wrap);
     msgList.scrollTop = msgList.scrollHeight;
+  }
+
+  // ── Per-answer follow-up chips (from the stream `done` payload) ────────
+  function renderFollowups(list, bubbleRow) {
+    if (!list || !list.length) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'chips followups';
+    list.slice(0, 3).forEach(function (q) {
+      var btn = document.createElement('button');
+      btn.className = 'chip';
+      btn.type = 'button';
+      btn.textContent = q;
+      btn.addEventListener('click', function () {
+        inputEl.value = q;
+        wrap.parentNode && wrap.parentNode.removeChild(wrap);
+        submit();
+      });
+      wrap.appendChild(btn);
+    });
+    (bubbleRow || msgList).appendChild(wrap);
+    msgList.scrollTop = msgList.scrollHeight;
+  }
+
+  // ── Like / dislike on a bot answer ────────────────────────────────────
+  var DOWN_TAGS = ['wrong info', 'not helpful', 'too long', 'confusing', 'other'];
+  function postFeedback(question, answer, rating, comment, tags) {
+    if (!sessionToken) return Promise.resolve();
+    return fetch(apiOrigin + '/api/embed/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_token: sessionToken, question: question || '', answer: answer || '',
+        rating: rating, comment: comment || '', tags: tags || [],
+      }),
+      credentials: 'omit',
+    }).catch(function () {});
+  }
+  function attachFeedback(host, question, answer) {
+    var bar = document.createElement('div');
+    bar.className = 'fb-bar';
+    var up = document.createElement('button');
+    up.className = 'fb-btn'; up.type = 'button'; up.title = 'Helpful'; up.innerHTML = '👍';
+    var down = document.createElement('button');
+    down.className = 'fb-btn'; down.type = 'button'; down.title = 'Not helpful'; down.innerHTML = '👎';
+    bar.appendChild(up); bar.appendChild(down);
+    host.appendChild(bar);
+
+    function thanks() { bar.innerHTML = '<span class="fb-thanks">Thanks for the feedback ✓</span>'; }
+
+    up.addEventListener('click', function () {
+      postFeedback(question, answer, 'up'); thanks();
+    });
+    down.addEventListener('click', function () {
+      // inline comment box: tag chips + free text
+      bar.innerHTML = '';
+      var box = document.createElement('div'); box.className = 'fb-box';
+      var chips = document.createElement('div'); chips.className = 'fb-chips';
+      var picked = {};
+      DOWN_TAGS.forEach(function (t) {
+        var c = document.createElement('button');
+        c.className = 'fb-chip'; c.type = 'button'; c.textContent = t;
+        c.addEventListener('click', function () {
+          if (picked[t]) { delete picked[t]; c.classList.remove('on'); }
+          else { picked[t] = 1; c.classList.add('on'); }
+        });
+        chips.appendChild(c);
+      });
+      var ta = document.createElement('textarea');
+      ta.className = 'fb-ta'; ta.rows = 2; ta.placeholder = 'What went wrong? (optional)';
+      var send = document.createElement('button');
+      send.className = 'fb-send'; send.type = 'button'; send.textContent = 'Send';
+      send.addEventListener('click', function () {
+        postFeedback(question, answer, 'down', ta.value.trim(), Object.keys(picked));
+        thanks();
+      });
+      box.appendChild(chips); box.appendChild(ta); box.appendChild(send);
+      bar.appendChild(box);
+      ta.focus();
+    });
   }
 
   // ── Open / close ─────────────────────────────────────────────────────
@@ -951,11 +1060,14 @@
           return r.json();
         })
         .then(function (d) {
-          pushMsg('bot', d.content || '(empty response)');
-          if (!firstReplyReceived) {
-            firstReplyReceived = true;
+          var botDiv = pushMsg('bot', d.content || '(empty response)');
+          if (botDiv) attachFeedback(botDiv, msg, d.content || '');
+          if (d && d.followups && d.followups.length) {
+            renderFollowups(d.followups);
+          } else if (!firstReplyReceived) {
             loadSuggestions();
           }
+          firstReplyReceived = true;
         });
     }
 
@@ -1030,14 +1142,17 @@
             div.innerHTML = renderMd(assembled) + '<span class="load-dots"><i></i><i></i><i></i></span>';
             msgList.scrollTop = msgList.scrollHeight;
           },
-          function onDone(_payload) {
+          function onDone(payload) {
             collapseStrip();
             div.innerHTML = renderAnswer(assembled || '(empty response)');
             messages.push({ role: 'bot', content: assembled });
-            if (!firstReplyReceived) {
-              firstReplyReceived = true;
+            attachFeedback(div, msg, assembled);
+            if (payload && payload.followups && payload.followups.length) {
+              renderFollowups(payload.followups);
+            } else if (!firstReplyReceived) {
               loadSuggestions();
             }
+            firstReplyReceived = true;
           },
           function onError(err) {
             streamErrored = true;

@@ -81,12 +81,72 @@ _AGENT_PREFIX_RE = _re.compile(
     _re.MULTILINE,
 )
 _ROUTING_LINE_RE = _re.compile(r"^\s*(?:\[ROUTING|FAST mode|DEEP mode).*$", _re.MULTILINE | _re.IGNORECASE)
+# A trailing price fragment whose value was masked for the consumer, e.g.
+# "… (1.16kg) — [banded] MMK" / ": [banded] Ks". Showing a banded price is pure
+# noise to an end-user — strip the dangling "— [banded] <currency>" tail so the
+# product line reads cleanly. Keeps everything before the separator.
+_BANDED_PRICE_TAIL_RE = _re.compile(
+    r"\s*[—–\-:]\s*\[banded\]\s*(?:MMK|Ks?|Kyats?|USD|\$)?\s*$",
+    _re.IGNORECASE | _re.MULTILINE,
+)
+# A bare dangling list marker left after truncation ("* …" / "- " / "1.").
+_DANGLING_BULLET_RE = _re.compile(r"(?:\n|^)\s*(?:[-*•]|\d+[.)])\s*[…]*\s*$")
+
+
+def _smart_truncate(out: str, max_chars: int) -> tuple[str, bool]:
+    """Truncate on a line/sentence boundary so we never cut mid-bullet and
+    never leave a dangling list marker. Returns (text, was_truncated)."""
+    if not max_chars or len(out) <= max_chars:
+        return out, False
+    window = out[:max_chars]
+    # Prefer the last full line; fall back to last sentence end.
+    cut = window.rfind("\n")
+    if cut < int(max_chars * 0.5):
+        m = list(_re.finditer(r"[.!?။]\s", window))
+        cut = m[-1].end() if m else -1
+    trimmed = (window[:cut] if cut > 0 else window).rstrip()
+    trimmed = _DANGLING_BULLET_RE.sub("", trimmed).rstrip()
+    return (trimmed + " …"), True
+
+
+def _consumer_followups(question: str, answer: str, max_n: int = 3) -> list[str]:
+    """Cheap, no-LLM contextual follow-up suggestions for the embed widget.
+    Heuristic on the question/answer shape — keeps latency at zero."""
+    q = (question or "").lower()
+    a = (answer or "").lower()
+    out: list[str] = []
+    listy = bool(_re.search(r"(?m)^\s*(?:[-*•]|\d+[.)])\s+", answer or "")) or "top " in q
+    if any(w in q for w in ("expensive", "cheapest", "price", "cost", "top ")) and listy:
+        out += ["Which of these are in stock?",
+                "Show me cheaper alternatives",
+                "What are substitutes for the first one?"]
+    elif any(w in q for w in ("stock", "available", "inventory", "shelf")):
+        out += ["Which branch has the most?",
+                "Show me what's running low",
+                "Suggest substitutes for out-of-stock items"]
+    elif any(w in q for w in ("substitute", "alternative", "instead of")):
+        out += ["Which substitutes are in stock?",
+                "Compare their prices",
+                "What is this used for?"]
+    elif any(w in (q + a) for w in ("indication", "symptom", "used for", "treat", "fever", "pain")):
+        out += ["What are the alternatives?",
+                "Any interactions to watch for?",
+                "Which of these do you stock?"]
+    else:
+        out += ["Show me the top products in this category",
+                "What's in stock right now?",
+                "Find substitutes for a product"]
+    # de-dupe, cap
+    seen: set[str] = set()
+    uniq = [x for x in out if not (x in seen or seen.add(x))]
+    return uniq[:max_n]
 
 
 def sanitize_consumer_response(text: str, max_chars: int = 600) -> str:
     """Strip developer-facing artifacts from an agent reply destined for an
     end-user widget. Removes structured tags, code blocks, agent-routing chatter,
-    markdown-table separators, and truncates to max_chars."""
+    markdown-table separators, banded-price tails, and truncates to max_chars on
+    a clean boundary."""
     if not text:
         return ""
     out = text
@@ -108,6 +168,9 @@ def sanitize_consumer_response(text: str, max_chars: int = 600) -> str:
     #    survive; only the separator is noisy.
     out = _MD_TABLE_SEP_RE.sub("", out)
 
+    # 5b. Banded-price tails ("— [banded] MMK") — noise to the end-user.
+    out = _BANDED_PRICE_TAIL_RE.sub("", out)
+
     # 6. Collapse runs of blank lines + strip leading/trailing whitespace lines.
     lines = [ln.rstrip() for ln in out.splitlines()]
     cleaned: list[str] = []
@@ -120,9 +183,8 @@ def sanitize_consumer_response(text: str, max_chars: int = 600) -> str:
         prev_blank = is_blank
     out = "\n".join(cleaned).strip()
 
-    # 7. Cap length.
-    if max_chars and len(out) > max_chars:
-        out = out[: max(0, max_chars - 1)].rstrip() + "…"
+    # 7. Cap length on a clean boundary (never mid-bullet).
+    out, _ = _smart_truncate(out, max_chars)
     return out
 
 
@@ -1106,6 +1168,62 @@ def _rate_limit_check(embed_id: str, limit_per_min: int) -> bool:
         return True
 
 
+@router.post("/feedback")
+async def embed_feedback(req: Request):
+    """Record a 👍/👎 (with optional comment + tags) from an embed widget
+    visitor. Anonymous (no user_id); session_token identifies the visitor.
+    Flows into the same dash_feedback review + training loop as app chat —
+    so embed feedback shows in the admin Like/Dislike dashboard."""
+    try:
+        body = await req.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON body")
+    token = (body or {}).get("session_token")
+    rating = (body.get("rating") or "up").lower()
+    if rating not in ("up", "down"):
+        rating = "up"
+    question = (body.get("question") or "").strip()
+    answer = (body.get("answer") or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="session_token required")
+    if not question and not answer:
+        return {"status": "skip"}
+
+    from dash.embed.session import validate_session
+    sess = validate_session(token)
+    if not sess:
+        raise HTTPException(status_code=401, detail="session expired or invalid")
+    embed_id = sess["embed_id"]
+
+    from dash.embed import _get_engine
+    from sqlalchemy import text as _sa_t
+    with _get_engine().connect() as conn:
+        row = conn.execute(_sa_t(
+            "SELECT project_slug FROM public.dash_agent_embeds WHERE embed_id = :e AND enabled = TRUE"
+        ), {"e": embed_id}).first()
+    if not row:
+        raise HTTPException(status_code=403, detail="embed disabled")
+    project_slug = row[0]
+
+    comment = (body.get("comment") or "").strip()
+    _tags = body.get("tags") or []
+    tags = [str(t).strip() for t in _tags if str(t).strip()][:8] if isinstance(_tags, list) else []
+
+    try:
+        from db.session import get_write_engine
+        with get_write_engine().begin() as conn:
+            conn.execute(_sa_t(
+                "INSERT INTO public.dash_feedback "
+                "(user_id, project_slug, session_id, question, answer, rating, comment, comment_tags) "
+                "VALUES (NULL, :s, :sess, :q, :a, :r, :cm, :tg)"
+            ), {"s": project_slug, "sess": f"embed:{embed_id}", "q": question or "(embed answer)",
+                "a": answer[:2000], "r": rating, "cm": comment or None, "tg": tags or None})
+    except Exception as e:
+        logger.warning(f"embed feedback insert failed: {e}")
+        raise HTTPException(status_code=500, detail="could not save feedback")
+    return {"status": "ok", "saved": rating}
+
+
 @router.post("/chat")
 async def embed_chat(req: Request):
     """Run a chat turn for an embed session.
@@ -1361,10 +1479,13 @@ async def embed_chat(req: Request):
         # Consumer-mode embeds: strip developer-facing tags/code/routing chatter
         # and cap reply length so the widget renders friendly, marketing-grade text.
         if response_style == "consumer":
+            _had_banded = "[banded]" in content
             try:
                 content = sanitize_consumer_response(content, max_chars=max_reply_chars)
             except Exception:
                 logger.exception("sanitize_consumer_response failed")
+            if _had_banded and content and "price" not in content.lower():
+                content = content.rstrip() + "\n\n_Prices are hidden in this view — items are ranked highest to lowest._"
     except Exception as e:
         logger.exception("embed chat error")
         success = False
@@ -1450,6 +1571,11 @@ async def embed_chat(req: Request):
         "latency_ms": latency_ms,
         "cache_hit": False,
     }
+    if response_style == "consumer":
+        try:
+            _response["followups"] = _consumer_followups(message, content)
+        except Exception:
+            _response["followups"] = []
 
     # ── Redis cache store (fail-soft) ──────────────────────────────────────
     if _ck:
@@ -1717,6 +1843,9 @@ async def embed_chat_stream(req: Request):
         buffer_bytes = 0
         capped = False
         last_step_label = ""
+        _reasoning_shown = False
+        _shown_steps = 0
+        _MAX_CONSUMER_STEPS = 6
 
         # meta event first.
         yield _sse_format("meta", {
@@ -1836,13 +1965,29 @@ async def embed_chat_stream(req: Request):
                 # Forward a COMPACT activity step for tool / reasoning events
                 # so the widget can show "what the agent is doing". Final
                 # answer still streams via token events below.
+                _is_reasoning = "Reasoning" in event_name
                 if event_name in (
                     "ToolCallStarted", "TeamToolCallStarted",
                     "ReasoningStep", "TeamReasoningStep", "ReasoningStarted",
                 ):
+                    # Consumer mode: NEVER stream the model's raw reasoning-step
+                    # titles — they are unsanitized model text and leak garbage
+                    # (e.g. a hallucinated "music" title) into the end-user strip.
+                    # Collapse all reasoning to ONE generic "Thinking…" and only
+                    # show friendly whitelisted tool labels.
+                    if consumer_mode and _is_reasoning:
+                        if not _reasoning_shown:
+                            _reasoning_shown = True
+                            yield _sse_format("step", {"label": "Thinking", "icon": "🧠"})
+                        continue
                     label, icon = _step_label(event_name, data)
+                    # Consumer mode: cap visible distinct steps so a 27-step run
+                    # doesn't flood the bubble.
+                    if consumer_mode and _shown_steps >= _MAX_CONSUMER_STEPS:
+                        continue
                     if label and label != last_step_label:
                         last_step_label = label
+                        _shown_steps += 1
                         yield _sse_format("step", {"label": label, "icon": icon})
                     continue
 
@@ -1893,6 +2038,7 @@ async def embed_chat_stream(req: Request):
 
             # Consumer-mode: sanitize the full buffer, then emit it as ONE
             # token so masking/banding is never bypassed mid-stream.
+            final_for_followups = ""
             if consumer_mode:
                 final = "".join(full_buffer)
                 try:
@@ -1901,10 +2047,16 @@ async def embed_chat_stream(req: Request):
                         final = sanitize_narrative(final, project_slug, bound_intent)
                 except Exception:
                     pass
+                # Note once if prices were masked (so the ranked list reads as
+                # intentional, not broken) — detected before the tail-strip.
+                _had_banded = "[banded]" in final
                 try:
                     final = sanitize_consumer_response(final, max_chars=max_reply_chars)
                 except Exception:
                     logger.exception("sanitize_consumer_response (stream) failed")
+                if _had_banded and final and "price" not in final.lower():
+                    final = final.rstrip() + "\n\n_Prices are hidden in this view — items are ranked highest to lowest._"
+                final_for_followups = final
                 if final:
                     yield _sse_format("token", {"delta": final})
 
@@ -1916,6 +2068,11 @@ async def embed_chat_stream(req: Request):
             }
             if capped:
                 done_payload["truncated"] = True
+            # Per-answer follow-up suggestions (zero-latency heuristic).
+            try:
+                done_payload["followups"] = _consumer_followups(message, final_for_followups)
+            except Exception:
+                done_payload["followups"] = []
             yield _sse_format("done", done_payload)
 
         except Exception as exc:

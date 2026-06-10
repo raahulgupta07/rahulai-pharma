@@ -2,6 +2,24 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-10 (latest+55) — Embed widget overhaul: kill "music", clean answer, thinking UX, like/dislike, follow-ups (local)
+
+User on the consumer embed: "why embedding answer so long, what is music?" + "improve embedding output + thinking + like/dislike + follow-up questions". Diagnosed + built all 5. Deployed (rebuild + `--force-recreate`) + verified live. NOT pushed.
+
+**Diagnosis.** (1) "music ×9" = the model's RAW reasoning-step *titles* leaking into the consumer activity strip — `embed_public.py` forwarded every `ReasoningStep`/`TeamReasoningStep` and printed `data.get("title")` verbatim as a step label; model emitted junk ("music") titles. (2) Long/ugly answer = 10-item list, every line `— [banded] MMK` (consumer can't see prices = noise), then the 600-char cap truncated **mid-bullet** → dangling `*…`.
+
+**1. Kill music / clean thinking strip (`embed_public.py`).** Consumer mode now NEVER streams reasoning titles — collapses ALL reasoning to ONE generic `🧠 Thinking`; only friendly whitelisted tool labels stream; unknown → `⚙️ Working`. Caps visible distinct steps at `_MAX_CONSUMER_STEPS=6` so a 27-step run doesn't flood. (`_reasoning_shown`/`_shown_steps` guards.)
+
+**2. Better answer (`sanitize_consumer_response`).** New `_BANDED_PRICE_TAIL_RE` strips `— [banded] MMK` tails → clean ranked list (banding=rank-only per user). New `_smart_truncate` cuts on line/sentence boundary + kills dangling list markers (`_DANGLING_BULLET_RE`) — no more `*…`. Adds a one-line `_Prices are hidden in this view — ranked highest to lowest._` note when banding was applied. Applied in BOTH stream + non-stream paths.
+
+**3. Thinking UX (`widget.js`).** Strip already collapses to `✓ done · Ns`; backend cap keeps it short + meaningful.
+
+**4. Like/dislike in embed (NEW `POST /api/embed/feedback` + `widget.js`).** Thumbs under every bot bubble. 👎 → inline tag chips (`wrong info/not helpful/too long/confusing/other`) + optional comment → POST. Anonymous (user_id NULL), `session_id='embed:{embed_id}'`. **Writes into the SAME `dash_feedback` table as app chat → shows in admin Like/Dislike dashboard + feeds the training loop** (latest+54). LANDMINE fixed: new public path must be added to `main.py` `SKIP_PATHS` (`/api/embed/feedback`) or the global auth middleware 401s it ("Not authenticated") even though the endpoint does its own session-token auth.
+
+**5. Per-answer follow-ups (`_consumer_followups` + `widget.js`).** Zero-latency heuristic (no LLM) returns 2–3 contextual next questions in the stream `done` payload (+ non-stream response). Widget renders tappable chips under the answer (reuses chip UI). Generic suggestions only shown when no follow-ups.
+
+**Verified live:** sanitizer → clean numbered list, no `[banded]`, no dangling marker; follow-ups contextual ("Which of these are in stock?"); widget.js served with fb-bar/renderFollowups/attachFeedback; embed feedback POST → `dash_feedback` row (rating=down, session_id=embed:…, comment+tags). Test data cleaned, embed `allowed_origins` restored to `{}`.
+
 ### Session 2026-06-10 (latest+54) — Feedback comment capture → correction → review/promote training loop (local)
 
 User: "when I click like and dislike I don't get any comment — how to train the agent?" A thumb was a bare rating; 👎 carried no reason and no fix. Built the full WHY-capture → review → train loop. Deployed (rebuild + `--force-recreate`) + verified end-to-end live. NOT pushed.
