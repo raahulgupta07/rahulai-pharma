@@ -3214,6 +3214,20 @@ def semantic_layer(slug: str):
     return {"project_slug": slug, "enabled": enabled, "matviews": mvs}
 
 
+@router.get("/{slug}/training-flow")
+def training_flow(slug: str, request: Request):
+    """Read-only aggregate that feeds the training-flow visualization.
+    Returns layers (static + live status), kpis, stores, flags."""
+    user = _get_user(request)
+    _check_access(user, slug)
+    try:
+        from db import db_url as _du
+        from dash.training.flow_map import derive_flow
+    except Exception as exc:
+        raise HTTPException(500, f"flow_map import failed: {exc}")
+    return derive_flow(slug, _du)
+
+
 @router.get("/{slug}/catalog-enrich/gaps")
 def catalog_enrich_gaps(slug: str):
     """Per-field gap counts in the catalog + pending/approved suggestion counts.

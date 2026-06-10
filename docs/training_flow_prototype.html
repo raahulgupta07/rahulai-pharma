@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>CityPharma — Full Training Pipeline (prototype)</title>
+<style>
+  :root{
+    --pw-bg:#fff; --pw-bg-alt:#f7f6f3; --pw-surface-warm:#f4f3ee;
+    --pw-ink:#2c2c2c; --pw-ink-soft:#4a4a48; --pw-muted:#6f6e69; --pw-dim:#97968f;
+    --pw-border:#e8e6dd; --pw-border-strong:#d8d5cb; --pw-border-soft:#efeee6;
+    --pw-accent:#c96342; --pw-accent-strong:#b8553a; --pw-accent-ink:#b04f30;
+    --pw-accent-soft:#fdebe1; --pw-accent-wash:rgba(201,99,66,.10);
+    --pw-success:#2d6a4f; --pw-success-soft:#d8e4dd; --pw-error:#a83232;
+    --pw-sans:'Inter',system-ui,-apple-system,Arial,sans-serif;
+    --pw-mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+    --flash:#9a4fb0; --deep:#3a63b0; --lite:#b07e2f; --embed:#2f8a9a; --sql:#7d756a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--pw-bg-alt);color:var(--pw-ink);font-family:var(--pw-sans);font-size:13px;padding:20px;}
+  .wrap{max-width:1280px;margin:0 auto;background:var(--pw-bg);border:1px solid var(--pw-border);box-shadow:0 8px 24px rgba(0,0,0,.06);}
+  .hd{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--pw-border);}
+  .hd h1{font-size:14px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin:0;}
+  .live{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--pw-accent-ink);background:var(--pw-accent-soft);padding:3px 9px;border:1px solid var(--pw-accent);}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--pw-accent);animation:blink 1.1s infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+  .hd .sp{flex:1}.meta{font-size:11px;color:var(--pw-muted);font-family:var(--pw-mono)}.meta b{color:var(--pw-ink)}
+  .kpi{display:flex;border-bottom:1px solid var(--pw-border)}
+  .k{flex:1;padding:12px 16px;border-right:1px solid var(--pw-border-soft)}.k:last-child{border-right:none}
+  .k .n{font-size:21px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+  .k .l{font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--pw-muted);margin-top:5px}
+  .band{display:flex;height:5px;background:var(--pw-border-soft)}
+  .band .stg{background:var(--pw-accent);width:0;transition:width .4s}.band .trn{background:var(--pw-success);width:0;transition:width .4s}
+  /* boiler-style pipeline schematic (matches RequestFlow.svelte rf-* house style) */
+  .schemwrap{padding:14px 18px 16px;border-bottom:1px solid var(--pw-border);background:var(--pw-surface-warm)}
+  .schemh{font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--pw-muted);margin:0 0 11px;display:flex;align-items:center;gap:8px}
+  .schemh .hint{font-size:9px;font-weight:500;color:var(--pw-dim);text-transform:none;letter-spacing:0}
+  .schem{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding-bottom:4px}
+  .scard{flex:0 0 138px;background:#fff;border:1px solid var(--pw-border);border-top:3px solid var(--c);padding:9px 11px;cursor:pointer;transition:.2s;min-height:84px;display:flex;flex-direction:column;gap:3px}
+  .scard:hover{box-shadow:0 4px 12px rgba(0,0,0,.09);transform:translateY(-2px)}
+  .scard.on{box-shadow:0 0 0 2px var(--c)}
+  .scard.done{background:#fbfaf7}
+  .scard .st{font-size:8px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--pw-dim);display:flex;justify-content:space-between}
+  .scard .st .ck{color:var(--pw-success)}
+  .scard .sl{font-size:11.5px;font-weight:800;color:var(--ci)}
+  .scard .sd{font-size:9px;color:#4a4438;font-family:var(--pw-mono);line-height:1.4}
+  .scard .sf{font-size:8.5px;color:var(--pw-dim);margin-top:auto;font-family:var(--pw-mono)}
+  .sconn{flex:0 0 30px;position:relative;align-self:center;height:24px}
+  .sconn::before{content:'';position:absolute;top:50%;left:0;right:8px;height:2px;transform:translateY(-50%);background-image:repeating-linear-gradient(90deg,var(--c) 0 6px,transparent 6px 11px);background-size:22px 2px;opacity:.5}
+  .sconn.flow::before{animation:sdash 1.3s linear infinite;opacity:1}
+  .sconn.dn::before{opacity:1}
+  .sconn::after{content:'';position:absolute;top:50%;right:0;transform:translateY(-50%);width:0;height:0;border-left:6px solid var(--c);border-top:4px solid transparent;border-bottom:4px solid transparent;opacity:.5}
+  .sconn.flow::after,.sconn.dn::after{opacity:1}
+  .sptcl{position:absolute;top:50%;width:5px;height:5px;border-radius:50%;margin-top:-2.5px;background:var(--c);filter:drop-shadow(0 0 3px var(--c));opacity:0}
+  .sconn.flow .sptcl{animation:strav 1.3s linear infinite}
+  @keyframes sdash{to{background-position:22px 0}}
+  @keyframes strav{0%{left:0;opacity:0}15%{opacity:1}85%{opacity:1}100%{left:calc(100% - 8px);opacity:0}}
+  .body{display:grid;grid-template-columns:1fr 290px}
+  .flow{padding:8px 0;max-height:560px;overflow:auto;border-right:1px solid var(--pw-border)}
+  .layer{padding:10px 18px;border-bottom:1px solid var(--pw-border-soft)}
+  .layer.on{background:linear-gradient(90deg,var(--pw-accent-wash),transparent)}
+  .ltitle{font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--pw-muted);margin-bottom:8px;display:flex;align-items:center;gap:8px}
+  .ltitle .lp{font-size:9px;color:var(--pw-dim);font-family:var(--pw-mono)}
+  .step{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px;color:var(--pw-dim)}
+  .step .g{width:14px;text-align:center;flex:none}
+  .step .nm{color:var(--pw-ink-soft);min-width:175px}
+  .step .badge{font-size:8px;font-weight:800;padding:1px 4px;color:#fff;flex:none}
+  .step .dt{font-size:10px;color:var(--pw-muted);font-family:var(--pw-mono);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .step .wr{font-size:9px;color:var(--pw-dim);font-family:var(--pw-mono);flex:none}
+  .step.done .nm{color:var(--pw-ink);font-weight:600}.step.done .g{color:var(--pw-success)}
+  .step.run{color:var(--pw-accent-ink)}.step.run .nm{color:var(--pw-accent-ink);font-weight:700}.step.run .g{color:var(--pw-accent)}
+  .step.run{animation:rowglow 1.2s infinite}
+  @keyframes rowglow{0%,100%{background:transparent}50%{background:var(--pw-accent-wash)}}
+  .step.gated{opacity:.4}.step.gated .nm{text-decoration:line-through}
+  .spin{display:inline-block;animation:sp .8s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
+  /* right rail */
+  .rail{display:flex;flex-direction:column}
+  .stores{padding:14px 16px;border-bottom:1px solid var(--pw-border)}
+  .rh{font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--pw-muted);margin:0 0 10px}
+  .store{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--pw-border);margin-bottom:6px;transition:.25s;background:var(--pw-bg)}
+  .store .si{font-size:13px;width:18px;text-align:center}
+  .store .sn{font-size:11px;font-weight:600;flex:1}
+  .store .sc{font-size:11px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--pw-muted)}
+  .store.hit{border-color:var(--pw-accent);background:var(--pw-accent-soft);transform:translateX(-2px)}
+  .store.has .sc{color:var(--pw-success)}
+  .log{flex:1;padding:12px 14px;background:#1c1a18;color:#d8d2c8;font-family:var(--pw-mono);font-size:11px;overflow:auto;max-height:240px;line-height:1.65}
+  .log .ts{color:#6a655c;margin-right:6px}.log .ok{color:#7fc99a}.log .run{color:#e0a25a}.log .info{color:#9a9389}
+  .ctl{padding:12px 20px;border-top:1px solid var(--pw-border);display:flex;gap:10px;align-items:center}
+  button{font-family:var(--pw-sans);font-size:12px;font-weight:600;border:1.5px solid var(--pw-ink);background:var(--pw-bg);color:var(--pw-ink);padding:7px 16px;cursor:pointer}
+  button.pri{background:var(--pw-accent);border-color:var(--pw-accent);color:#fff}button:hover{opacity:.85}
+  .note{font-size:10px;color:var(--pw-dim)}
+  .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:9px;color:var(--pw-muted);padding:0 20px 14px}.legend b{color:#fff;padding:1px 5px;font-size:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hd">
+    <h1>Full Training Pipeline</h1>
+    <span class="live" id="live"><span class="dot"></span>LIVE</span>
+    <span class="sp"></span>
+    <span class="meta">run <b id="runid">#11</b> · <b id="layer">layer 0/10</b> · elapsed <b id="elapsed">00:00</b> · ETA <b id="eta">—</b> · <b id="rps">0</b> rows/s</span>
+  </div>
+  <div class="kpi">
+    <div class="k"><div class="n" data-cnt="3">0</div><div class="l">tables</div></div>
+    <div class="k"><div class="n" data-cnt="111214">0</div><div class="l">rows</div></div>
+    <div class="k"><div class="n" data-cnt="134">0</div><div class="l">Q&amp;A</div></div>
+    <div class="k"><div class="n" data-cnt="7">0</div><div class="l">links</div></div>
+    <div class="k"><div class="n" data-cnt="3">0</div><div class="l">◆ matviews</div></div>
+    <div class="k"><div class="n" data-cnt="9">0</div><div class="l">gaps</div></div>
+    <div class="k"><div class="n" data-suffix="%" data-cnt="86.7">0</div><div class="l">eval</div></div>
+  </div>
+  <div class="band"><div class="stg" id="bandStg"></div><div class="trn" id="bandTrn"></div></div>
+  <div class="schemwrap">
+    <p class="schemh">Pipeline schematic <span class="hint">— click any stage to drill into its steps below</span></p>
+    <div class="schem" id="schem"></div>
+  </div>
+  <div class="body">
+    <div class="flow" id="flow"></div>
+    <div class="rail">
+      <div class="stores" id="stores"><p class="rh">data stores (writes)</p></div>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+  <div class="legend">
+    states: ◉ running · ✓ done · · idle · ⊘ gated &nbsp; models:
+    <span><b style="background:var(--flash)">FLASH</b></span><span><b style="background:var(--deep)">DEEP</b></span>
+    <span><b style="background:var(--lite)">LITE</b></span><span><b style="background:var(--embed)">EMBED</b></span><span><b style="background:var(--sql)">SQL</b></span>
+  </div>
+  <div class="ctl">
+    <button class="pri" id="play">▸ Play full run</button>
+    <button id="reset">↻ Reset</button>
+    <label class="note"><input type="checkbox" id="enrichTog"> CATALOG_ENRICH</label>
+    <span class="note">prototype — 55 steps · 10 layers · simulated realtime (prod binds /auto-train/status + /auto-train/log)</span>
+  </div>
+</div>
+
+<script>
+const STORES = [
+  {k:'STAGE', i:'📥', n:'staging + manifest'},
+  {k:'CONTRACT', i:'📋', n:'dataset contracts'},
+  {k:'PG', i:'🗄️', n:'Postgres tables'},
+  {k:'QA', i:'❓', n:'dash_training_qa'},
+  {k:'META', i:'🏷️', n:'dash_table_metadata'},
+  {k:'REL', i:'🔗', n:'dash_relationships'},
+  {k:'VEC', i:'🔢', n:'PgVector'},
+  {k:'AGE', i:'🕸️', n:'Apache AGE graph'},
+  {k:'MV', i:'◆', n:'matviews'},
+  {k:'ENR', i:'💊', n:'catalog_enrichment'},
+  {k:'EVAL', i:'✅', n:'dash_eval_runs'},
+];
+// [name, model, detail, store, gate]
+const L = [
+ ['LAYER 0 · STAGING','s','dash/ingest — review before DB',[
+   ['POST /upload/stage','','receive file(s), batch_id','STAGE',null],
+   ['sheet split','','xlsx → per-sheet entry','STAGE',null],
+   ['content_hash','','sha of bytes (dedup key)','STAGE',null],
+   ['quality scan','','empty/broken → quarantine','STAGE',null],
+   ['write_manifest','','status=staged, hashes','STAGE',null],
+ ]],
+ ['LAYER 1 · DRY-RUN','s','preview, no DB write',[
+   ['infer_contract','','types + load-key','CONTRACT',null],
+   ['check_against_contract','','schema-drift vs prior','CONTRACT',null],
+   ['detect_load_key','','PK / composite key','CONTRACT',null],
+ ]],
+ ['LAYER 2 · PROMOTE → INGEST','s','staged → Postgres',[
+   ['drift gate','','drift → quarantine','STAGE',null],
+   ['file_hash_seen','','skip loaded (dedup)','PG',null],
+   ['delete_where_period','','clean reload','PG',null],
+   ['_is_id_colname → TEXT','','code cols stay text','PG',null],
+   ['copy_csv / stream_xlsx','','streaming COPY (no OOM)','PG',null],
+   ['stamp_lineage','','source/period/batch/hash','PG',null],
+ ]],
+ ['LAYER 3 · PER-TABLE LOOP','t','×N tables · derived excluded',[
+   ['drift detect','SQL','fingerprint skip','META',null],
+   ['profile_v2','SQL','types·roles·pg_stats','META',null],
+   ['dimension_catalog','SQL','top-20 vals/col','META',null],
+   ['deep_analysis','DEEP','narrative analysis','PG',null],
+   ['qa_generation','FLASH','Q→SQL pairs','QA',null],
+   ['persona','FLASH','agent persona','PG',null],
+   ['synthesis','FLASH','table summary','PG',null],
+   ['workflows','FLASH','multi-step flows','PG',null],
+   ['knowledge index','embed','chunk+embed','VEC',null],
+   ['brain fill','','company-brain facts','PG',null],
+   ['domain_knowledge','DEEP','rules+glossary','PG',null],
+   ['persona enrich','FLASH','lenient JSON','PG',null],
+ ]],
+ ['LAYER 4 · RELATIONSHIPS','t','cross-table',[
+   ['_discover_relationships','FLASH','LLM FK candidates','REL',null],
+   ['verify (SQL containment)','SQL','overlap%, timeout 30s','REL',null],
+   ['_seed_cross_table_qa','FLASH','JOIN Q→SQL','QA',null],
+ ]],
+ ['LAYER 5 · ◆ SEMANTIC LAYER','t','Engineer designs matviews',[
+   ['Engineer.inspect_schema','DEEP','READ-ONLY cols+roles','',  'ENG'],
+   ['Engineer.get_relationships','DEEP','READ-ONLY join keys','','ENG'],
+   ['Engineer.sample_rows','DEEP','READ-ONLY 5 rows','','ENG'],
+   ['Engineer.dry_run_sql','DEEP','EXPLAIN, iterate','','ENG'],
+   ['→ SemanticLayerPlan','','═ TRUST BOUNDARY ═','','ENG'],
+   ['validate_matview_spec','','whitelist gate','','ENG'],
+   ['EXPLAIN dry-run (server)','SQL','reject on error','','ENG'],
+   ['build_ddl + CREATE (1 txn)','SQL','DROP→CREATE→idx','MV','ENG'],
+   ['register','','semantic_layer=true','META','ENG'],
+ ]],
+ ['LAYER 6 · GRAPH + BACKFILL','t','',[
+   ['knowledge_graph','','entities+edges','AGE',null],
+   ['subagent_synthesis','FLASH','needs KG','PG',null],
+   ['vector_backfill','embed','missing vectors','VEC',null],
+   ['codex_code_enrich','','pipeline_logic','META',null],
+ ]],
+ ['LAYER 7 · TAIL (concurrent)','t','',[
+   ['scope','','feature scope','META',null],
+   ['goals','','learning_goals.md','PG',null],
+   ['ml','','NO-OP (removed)','',null],
+   ['evals (gen+run)','FLASH','golden→run→score','EVAL',null],
+   ['auto_configure','','vertical detect','META',null],
+ ]],
+ ['LAYER 8 · POST-HOOKS','t','sequential — order matters',[
+   ['bilingual twins','FLASH','53 Burmese twins','QA',null],
+   ['catalog vectors','embed','hybrid search','VEC',null],
+   ['◆ articles_enriched view','SQL','ALWAYS: COALESCE+flag','PG',null],
+   ['◆ detect_gaps','SQL','blank counts','ENR','ENR'],
+   ['◆ retrieve_examples','SQL','ground few-shot','ENR','ENR'],
+   ['◆ run_enrichment','FLASH','suggest → pending','ENR','ENR'],
+   ['◆ auto_apply_low_risk','','cat/indic ≥0.9; clinical NEVER','ENR','ENR'],
+   ['◆ rebuild enriched view','SQL','reflect approvals','PG','ENR'],
+   ['shop_flat build','SQL','reads enriched·_norm·orphans','PG',null],
+   ['◆ matview refresh','SQL','REFRESH CONCURRENTLY','MV','ENG'],
+ ]],
+ ['LAYER 9 · DONE','t','',[
+   ['status finalizing→done','','flip after post-hooks','EVAL',null],
+   ['watchdog clear','','_reap_stale_runs','EVAL',null],
+   ['UI panels live','','Semantic+Gaps+flow','',null],
+ ]],
+];
+const MC={FLASH:'var(--flash)',DEEP:'var(--deep)',LITE:'var(--lite)',embed:'var(--embed)',SQL:'var(--sql)'};
+// per-layer schematic accent (boiler colors): staging=amber, training=coral, ◆feature layers=cyan
+const LCOLOR=['#d4930e','#d4930e','#d4930e','#c96342','#c96342','#0ca6b0','#c96342','#c96342','#0ca6b0','#2d6a4f'];
+let ENRICH=false;
+const flow=document.getElementById('flow'),log=document.getElementById('log'),storesBox=document.getElementById('stores'),schem=document.getElementById('schem');
+
+function buildSchem(){
+  schem.innerHTML='';
+  L.forEach((ly,li)=>{
+    const [title,seg,note,steps]=ly;
+    const short=title.replace(/^LAYER \d+ · /,'');
+    const c=LCOLOR[li], ci=(c==='#d4930e'?'#a8740b':c);
+    const live=steps.filter(s=>!gated(s[4])).length;
+    const stores=[...new Set(steps.map(s=>s[3]).filter(Boolean))];
+    const card=document.createElement('div');card.className='scard';card.id='sc-'+li;
+    card.style.setProperty('--c',c);card.style.setProperty('--ci',ci);
+    card.innerHTML=`<div class="st"><span>L${li}</span><span class="ck" id="sck-${li}"></span></div>
+      <div class="sl">${short.split(' ').slice(0,2).join(' ')}</div>
+      <div class="sd">${steps[0][0]}${steps.length>1?'<br>'+steps[1][0]:''}</div>
+      <div class="sf">${live} steps · → ${stores.slice(0,2).join(',')||'—'}</div>`;
+    card.onclick=()=>drill(li);
+    schem.appendChild(card);
+    if(li<L.length-1){const cn=document.createElement('div');cn.className='sconn';cn.id='cn-'+li;
+      cn.style.setProperty('--c',c);cn.innerHTML='<span class="sptcl"></span>';schem.appendChild(cn);}
+  });
+}
+function drill(li){
+  document.querySelectorAll('.scard').forEach(c=>c.classList.remove('on'));
+  document.getElementById('sc-'+li).classList.add('on');
+  const sec=document.getElementById('ly-'+li);
+  sec.scrollIntoView({block:'center',behavior:'smooth'});
+  sec.style.outline='2px solid var(--pw-accent)';setTimeout(()=>sec.style.outline='',900);
+}
+const storeEl={};
+STORES.forEach(s=>{const d=document.createElement('div');d.className='store';d.id='store-'+s.k;
+  d.innerHTML=`<span class="si">${s.i}</span><span class="sn">${s.n}</span><span class="sc">0</span>`;storesBox.appendChild(d);storeEl[s.k]={el:d,n:0};});
+
+function gated(g){return g==='ENG'&&false || (g==='ENR'&&!ENRICH);}  // ENG always on in proto
+function build(){
+  flow.innerHTML='';
+  L.forEach((ly,li)=>{
+    const [title,seg,note,steps]=ly;
+    const sec=document.createElement('div');sec.className='layer';sec.id='ly-'+li;
+    sec.innerHTML=`<div class="ltitle">${title}<span class="lp">${note||''}</span></div>`;
+    steps.forEach((st,si)=>{
+      const [nm,model,dt,store,gate]=st;const g=gated(gate);
+      const row=document.createElement('div');row.className='step'+(g?' gated':'');row.id=`st-${li}-${si}`;
+      row.innerHTML=`<span class="g">${g?'⊘':'·'}</span><span class="nm">${nm}</span>`+
+        (model?`<span class="badge" style="background:${MC[model]}">${model}</span>`:'')+
+        `<span class="dt">${dt}</span>`+(store?`<span class="wr">→ ${store}</span>`:'');
+      sec.appendChild(row);
+    });
+    flow.appendChild(sec);
+  });
+}
+function fmt(s){const m=Math.floor(s/60),x=Math.floor(s%60);return `${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`}
+function addLog(c,ts,m){const d=document.createElement('div');d.innerHTML=`<span class="ts">${ts}</span><span class="${c}">${m}</span>`;log.appendChild(d);log.scrollTop=log.scrollHeight;}
+function countUp(){document.querySelectorAll('.k .n').forEach(el=>{const t=parseFloat(el.dataset.cnt),suf=el.dataset.suffix||'',fr=t%1!==0;let c=0,s=t/45;const iv=setInterval(()=>{c+=s;if(c>=t){c=t;clearInterval(iv);}el.textContent=(fr?c.toFixed(1):Math.floor(c).toLocaleString())+suf;},22);});}
+function hitStore(k){if(!k||!storeEl[k])return;const o=storeEl[k];o.n++;o.el.classList.add('hit','has');o.el.querySelector('.sc').textContent=o.n;setTimeout(()=>o.el.classList.remove('hit'),350);}
+
+let t0,idx,li,si,running=false;
+function reset(keep){running=false;idx=0;li=0;si=0;log.innerHTML='';
+  Object.values(storeEl).forEach(o=>{o.n=0;o.el.classList.remove('hit','has');o.el.querySelector('.sc').textContent='0';});
+  document.querySelectorAll('.k .n').forEach(e=>e.textContent='0');
+  document.getElementById('bandStg').style.width='0';document.getElementById('bandTrn').style.width='0';
+  const lv=document.getElementById('live');lv.innerHTML='<span class="dot"></span>LIVE';lv.style.color='';lv.style.background='';
+  document.getElementById('layer').textContent='layer 0/10';if(!keep)document.getElementById('elapsed').textContent='00:00';
+  build();buildSchem();
+}
+const FLAT=[]; // flatten for sequencing
+function flatten(){FLAT.length=0;L.forEach((ly,LI)=>ly[3].forEach((st,SI)=>FLAT.push({LI,SI,st})));}
+function play(){
+  if(running)return;running=true;reset(true);flatten();t0=Date.now();countUp();
+  const sTot=L.filter(x=>x[1]==='s').length, tTot=L.length-sTot;
+  const tick=setInterval(()=>{const s=(Date.now()-t0)/1000;document.getElementById('elapsed').textContent=fmt(s);
+    document.getElementById('rps').textContent=Math.round(111214/Math.max(s,1)).toLocaleString();
+    document.getElementById('eta').textContent=fmt(Math.max(0,(FLAT.length-k)*0.34));},200);
+  let k=0,curLayer=-1;
+  const step=()=>{
+    if(k>0){const p=FLAT[k-1];const pr=document.getElementById(`st-${p.LI}-${p.SI}`);if(pr&&!pr.classList.contains('gated')){pr.className='step done';pr.querySelector('.g').textContent='✓';hitStore(p.st[3]);}}
+    // skip gated
+    while(k<FLAT.length){const f=FLAT[k];if(gated(f.st[4])){k++;continue;}break;}
+    if(k>=FLAT.length){clearInterval(tick);running=false;
+      const lv=document.getElementById('live');lv.innerHTML='✓ DONE';lv.style.color='var(--pw-success)';lv.style.background='var(--pw-success-soft)';
+      document.getElementById('layer').textContent='layer 10/10';
+      addLog('ok',fmt((Date.now()-t0)/1000),'✓ pipeline complete · 3 matviews · eval 86.7%');return;}
+    const f=FLAT[k];
+    if(f.LI!==curLayer){
+      if(curLayer>=0){document.getElementById('ly-'+curLayer).classList.remove('on');
+        const psc=document.getElementById('sc-'+curLayer);psc.classList.remove('on');psc.classList.add('done');
+        const psck=document.getElementById('sck-'+curLayer);if(psck)psck.textContent='✓';
+        const pcn=document.getElementById('cn-'+curLayer);if(pcn){pcn.classList.remove('flow');pcn.classList.add('dn');}}
+      curLayer=f.LI;const sec=document.getElementById('ly-'+curLayer);sec.classList.add('on');sec.scrollIntoView({block:'center',behavior:'smooth'});
+      const sc=document.getElementById('sc-'+curLayer);if(sc){sc.classList.add('on');sc.scrollIntoView({inline:'center',block:'nearest',behavior:'smooth'});}
+      const cn=document.getElementById('cn-'+curLayer);if(cn)cn.classList.add('flow');
+      document.getElementById('layer').textContent='layer '+(curLayer+1)+'/10';
+      addLog('info',fmt((Date.now()-t0)/1000),'▸ '+L[curLayer][0]);
+      const sDone=Math.min(curLayer+1,sTot),tDone=Math.max(0,curLayer+1-sTot);
+      document.getElementById('bandStg').style.width=(sDone/sTot*35)+'%';
+      document.getElementById('bandTrn').style.width=(tDone/tTot*65)+'%';
+    }
+    const r=document.getElementById(`st-${f.LI}-${f.SI}`);r.className='step run';r.querySelector('.g').innerHTML='<span class="spin">⣾</span>';
+    k++;setTimeout(step, ENRICH?160:200);
+  };
+  step();
+}
+document.getElementById('play').onclick=play;
+document.getElementById('reset').onclick=()=>reset(false);
+document.getElementById('enrichTog').onchange=e=>{ENRICH=e.target.checked;reset(false);};
+reset(false);
+</script>
+</body>
+</html>

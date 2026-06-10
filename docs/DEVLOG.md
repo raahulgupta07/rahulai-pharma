@@ -2,6 +2,20 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-10 (latest+51) — Live training-flow visualization in dashboard (commit 487316d, local)
+
+Replaced the flat `dsx-pipe` 7-dot strip in the Data Source page with a live, boiler-style training pipeline viz. Built in 3 waves (Wave 1 = 3 parallel agents on non-overlapping new files; Wave 2 = stitch component solo; Wave 3 = mount + deploy).
+
+**Backend.** `dash/training/flow_map.py` — `LAYERS` (10 layers / 60 steps, ported verbatim from `scripts/show_training_workflow.py` `phases()`), `STORES` (11 chips: STAGE/PG/META/QA/VEC/BRAIN/REL/MV/AGE/ENR/EVAL), `derive_flow(slug, db_url)`. Layer status derived from `dash_training_runs.status` + `current_step`/`current_progress.step` KEYWORD map — **NOT** `dash_training_steps` (that table is sparse/unreliable, only ever ~2 rows). Real counts via fail-soft SQL (every count try/except→0/null, `to_regclass` guards, 10s statement_timeout). `app/learning.py`: `GET /api/projects/{slug}/training-flow` next to semantic-layer endpoint (same auth).
+
+**Frontend.** `trainingFlowSpec.ts` (typed static spec, TOTAL_STEPS=60). `TrainingSchematic.svelte` (boiler schematic, `ts-` prefix sibling of `RequestFlow.svelte`: 3px-border cards + animated dashed connectors + traveling particle + status pills idle/running/done/skipped/error + `onpick` callback drill). `TrainingFlow.svelte` (the composite: schematic + KPI strip + 11-chip store rail w/ flash-on-change + 60-step layer detail w/ model badges + dark live-log console). Polls `/training-flow` every 2s while running, drops to 15s idle, auto-resumes on new run, `onDestroy` cleanup. Log tail via `/auto-train/log?since=N` cursor (response `{events:[{i,ts,msg,table}],total}`). Click schematic card → expand+scroll that layer; gate badges show `· OFF` when flag off. Mounted in `settings/+page.svelte` replacing dsx-pipe (import next to AgentFlow). `pipeStageIdx` now dead code (left in place, harmless).
+
+**Gotchas.** eval_score is a 1-5 rating NOT a % (dropped the `%` suffix + `pct` KPI flag). Schematic wants a real CSS color but spec colors are keywords → `CHEX` map (amber #d4930e / cyan #0ecad4 / coral #c96342). `bind:this` ref needs `$state` under runes (svelte-check error). Auth in component = local `_h()` reading `localStorage.dash_token` (mirror settings page).
+
+**Verified.** svelte-check 0 errors (3 new files + page), `bun run build` clean, image rebuilt + `--force-recreate`, healthy, endpoint returns live data (run #10 done, flags engineer=ON enrich=OFF, 4 tables / 212,653 rows / 134 Q&A / 7 rels / 3 matviews / 1,566 gaps / eval 4.5, AGE=0 graph empty, all 10 layers done, L3=12 steps), component shipped in served `/app/frontend/build/_app` bundle. SUPER_ADMIN=demo / demo@2026.
+
+---
+
 ### Session 2026-06-10 (latest+50) — Engineer semantic-layer matviews + LLM catalog enrichment (both gated, deployed, eval-verified)
 
 Two new training features, both flag-gated, built behind a strict safety boundary, deployed, and verified with no eval regression (golden eval 80%→86.7% pass, 4.4→4.5 avg — unchanged-or-better). Commits `45eb722` + `f44a34d` (local only, NOT pushed, ahead 6).

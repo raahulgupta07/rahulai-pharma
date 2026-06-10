@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte';
   import AgentFlow from '$lib/AgentFlow.svelte';
+import TrainingFlow from '$lib/TrainingFlow.svelte';
    import { onMount, onDestroy } from 'svelte';
  import { page } from '$app/state';
  import { base } from '$app/paths';
@@ -7576,25 +7577,10 @@ function signUserJWT($user) {
       {#if dsUploadMsg}<div class="dsx-upmsg" class:dsx-upmsg-err={dsUploadMsg.startsWith('✗')}>{dsUploadMsg}</div>{/if}
     {/if}
 
-    <!-- ═══ PIPELINE STRIP — per-step ✓ green / ● pulse / ○ idle ═══ -->
-    {#if true}
-    {@const _ds2 = dsData?.summary || {}}
-    {@const _live = _ds2.is_training || isTraining || Object.values(dsTrainingTables).some(Boolean)}
-    {@const _trained = (_ds2.trained_tables ?? 0) > 0}
-    {@const _curStep = _ds2.active_run?.current_step || ''}
-    {@const _aIdx = _live ? pipeStageIdx(_curStep) : (_trained ? 7 : -1)}
-    <div class="dsx-pipe">
-      {#each ['UPLOAD','PROFILE','TRAIN','Q&A','VECTORS','GRAPH','LIVE'] as st, i}
-        {@const _isDone = _aIdx === 7 || i < _aIdx}
-        {@const _isOn = _live && i === _aIdx}
-        <div class="dsx-pst" class:done={_isDone} class:on={_isOn} class:idle={!_isDone && !_isOn}>
-          <span class="dsx-pdot">{#if _isDone}✓{/if}</span><span class="dsx-plbl">{st}</span>
-        </div>
-        {#if i < 6}<span class="dsx-pline" class:done={_isDone}></span>{/if}
-      {/each}
-      <span class="dsx-pstat">{_live ? (_curStep || 'training…') : (_trained ? '✓ done' : 'idle')}</span>
+    <!-- ═══ TRAINING PIPELINE — live boiler schematic + 60-step detail ═══ -->
+    <div class="dsx-tflow">
+      <TrainingFlow {slug} />
     </div>
-    {/if}
 
     <!-- ═══ TABLE LIST ═══ -->
     <div class="dsx-tb">
