@@ -245,7 +245,6 @@
 
   <!-- TRAINING PIPELINE — live boiler schematic + 60-step detail -->
   <div class="ov-card ov-tflow">
-    <div class="ov-card-h">TRAINING PIPELINE</div>
     {#if slug}<TrainingFlow {slug} />{/if}
   </div>
 
