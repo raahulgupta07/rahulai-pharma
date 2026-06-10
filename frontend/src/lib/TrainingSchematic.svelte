@@ -163,7 +163,7 @@
   /* ── Stage ───────────────────────────────────────────────────── */
   .ts-stage {
     flex: 1 1 0;
-    min-width: 150px;
+    min-width: 92px;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -185,7 +185,7 @@
     background: var(--pw-bg, #fff);
     border: 1px solid var(--pw-border, #e5ddcf);
     border-top: 3px solid var(--ts-color, #c96342);
-    padding: 11px 13px;
+    padding: 9px 9px;
     min-height: 96px;
     display: flex;
     flex-direction: column;
@@ -196,12 +196,12 @@
   }
   .ts-card-top {
     display: flex;
+    flex-direction: column;
     align-items: flex-start;
-    justify-content: space-between;
-    gap: 6px;
+    gap: 5px;
   }
   .ts-card-title {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 800;
     letter-spacing: 0.02em;
     color: var(--ts-color, #c96342);
@@ -299,7 +299,7 @@
   /* ── Connectors ──────────────────────────────────────────────── */
   .ts-conn {
     position: relative;
-    flex: 0 0 38px;
+    flex: 0 0 22px;
     align-self: center;
     height: 26px;
     margin-top: 16px;

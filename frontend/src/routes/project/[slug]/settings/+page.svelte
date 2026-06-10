@@ -1,7 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte';
   import AgentFlow from '$lib/AgentFlow.svelte';
-import TrainingFlow from '$lib/TrainingFlow.svelte';
    import { onMount, onDestroy } from 'svelte';
  import { page } from '$app/state';
  import { base } from '$app/paths';
@@ -7577,10 +7576,8 @@ function signUserJWT($user) {
       {#if dsUploadMsg}<div class="dsx-upmsg" class:dsx-upmsg-err={dsUploadMsg.startsWith('✗')}>{dsUploadMsg}</div>{/if}
     {/if}
 
-    <!-- ═══ TRAINING PIPELINE — live boiler schematic + 60-step detail ═══ -->
-    <div class="dsx-tflow">
-      <TrainingFlow {slug} />
-    </div>
+    <!-- TRAINING PIPELINE moved to the Dashboard (overview) — see project/[slug]/overview -->
+    {#if isTraining}<div class="dsx-trainmsg">⟳ training… — live pipeline on the Dashboard</div>{/if}
 
     <!-- ═══ TABLE LIST ═══ -->
     <div class="dsx-tb">
