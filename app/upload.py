@@ -12974,6 +12974,35 @@ async def retrain_project(slug: str, request: Request):
             _l.getLogger(__name__).warning(f"catalog vectors skipped for {slug}: {_cve}")
             _master_log(f"⚠ catalog vectors skipped: {str(_cve)[:80]}", "", total_tables)
 
+        # ─── Catalog gap-fill (LLM) + articles_enriched view. The view always
+        # (re)builds — cheap, and reflects any suggestions a human approved in the
+        # UI. The LLM gap-fill + low-risk auto-apply only run when CATALOG_ENRICH
+        # is on (cost). Source articles_clean is NEVER mutated; approvals surface
+        # via the COALESCE view, which shop_flat below then reads. Fail-soft.
+        try:
+            from app.catalog_apply import build_articles_enriched_view
+            build_articles_enriched_view(db_url, log=lambda m: _master_log(m, "", total_tables))
+        except Exception as _ave:
+            import logging as _l
+            _l.getLogger(__name__).warning(f"articles_enriched view skipped for {slug}: {_ave}")
+        if os.environ.get("CATALOG_ENRICH") in ("1", "true", "True"):
+            try:
+                from app.catalog_enrich import run_enrichment, auto_apply_low_risk
+                from app.catalog_apply import build_articles_enriched_view as _bev
+                _cap = int(os.environ.get("CATALOG_ENRICH_LIMIT", "200") or 200)
+                _er = run_enrichment(db_url, limit=_cap,
+                                     log=lambda m: _master_log(m, "", total_tables))
+                _aa = auto_apply_low_risk(db_url,
+                                          log=lambda m: _master_log(m, "", total_tables))
+                _bev(db_url, log=lambda m: _master_log(m, "", total_tables))
+                _master_log(
+                    f"✓ catalog enrich: {_er.get('suggested',0)} suggested, "
+                    f"{_aa.get('approved',0)} low-risk auto-approved", "", total_tables)
+            except Exception as _cee:
+                import logging as _l
+                _l.getLogger(__name__).warning(f"catalog enrich skipped for {slug}: {_cee}")
+                _master_log(f"⚠ catalog enrich skipped: {str(_cee)[:80]}", "", total_tables)
+
         # ─── Denormalized shop_flat stock table — pre-joined catalog+stock for
         # fast branch lookups. Idempotent rebuild. Fail-soft so a build failure
         # never breaks training; tools fall back to the live joined tables.

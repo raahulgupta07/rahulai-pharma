@@ -189,6 +189,10 @@ services:
       - APIGW_AUTO_PROVISION=${APIGW_AUTO_PROVISION:-0}
       # Engineer semantic-layer matview builder during training. 0 = off. 2026-06-09.
       - ENGINEER_SEMANTIC_LAYER=${ENGINEER_SEMANTIC_LAYER:-0}
+      # Catalog LLM gap-fill + low-risk auto-apply during training. 0 = off
+      # (articles_enriched view still rebuilds for manual approvals). 2026-06-10.
+      - CATALOG_ENRICH=${CATALOG_ENRICH:-0}
+      - CATALOG_ENRICH_LIMIT=${CATALOG_ENRICH_LIMIT:-200}
       # Concurrent agent runs for the chat tier (embed + chat share this async
       # semaphore). 20 = true 20-store-parallel embed load; raise for more.
       - LLM_PARALLEL_CAP_CHAT=${LLM_PARALLEL_CAP_CHAT:-20}

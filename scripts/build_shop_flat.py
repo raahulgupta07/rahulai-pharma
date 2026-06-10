@@ -67,6 +67,16 @@ def run() -> dict:
     try:
         art = latest_table(cur, SCHEMA, CATALOG_COLS) or "articles_list_07052026"
         stock = latest_table(cur, SCHEMA, STOCK_COLS) or "balance_stock_07052026"
+        # Prefer the enriched view (COALESCE source, approved suggestions) as the
+        # catalog source so approved gap-fills (e.g. a missing generic_name) flow
+        # into shop_flat. The view is read-only over `art`; if it doesn't exist
+        # yet (enrichment never wired) fall back to the raw resolved table.
+        try:
+            cur.execute("SELECT to_regclass(%s)", (f"{SCHEMA}.articles_enriched",))
+            if cur.fetchone()[0] is not None:
+                art = "articles_enriched"
+        except Exception:
+            pass
         ART = f'"{SCHEMA}"."{art}"'
         STOCK = f'"{SCHEMA}"."{stock}"'
 

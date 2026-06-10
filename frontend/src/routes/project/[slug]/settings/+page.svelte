@@ -5570,6 +5570,47 @@ function signUserJWT($user) {
    } catch {}
  }
 
+ // ═══ Catalog Gaps (LLM enrichment — suggestion-only, human-gated) ═══
+ let gapData = $state<any>(null);
+ let gapSugs = $state<any[]>([]);
+ let gapBusy = $state(false);
+ let gapMsg = $state('');
+ async function loadGaps() {
+   try {
+     const r = await fetch(`/api/projects/${slug}/catalog-enrich/gaps`, { headers: _h() });
+     if (r.ok) gapData = await r.json();
+   } catch {}
+ }
+ async function loadGapSugs() {
+   try {
+     const r = await fetch(`/api/projects/${slug}/catalog-enrich/suggestions?status=pending&limit=300`, { headers: _h() });
+     if (r.ok) gapSugs = (await r.json()).suggestions || [];
+   } catch {}
+ }
+ async function gapRun(limit: number) {
+   if (gapBusy) return;
+   gapBusy = true; gapMsg = 'generating suggestions…';
+   try {
+     const r = await fetch(`/api/projects/${slug}/catalog-enrich/run?limit=${limit}`, { method: 'POST', headers: _h() });
+     const d = await r.json();
+     gapMsg = d.ok ? `✓ ${d.suggested} suggestions from ${d.processed} articles` : `✗ ${d.error || 'failed'}`;
+     await loadGaps(); await loadGapSugs();
+   } catch (e:any) { gapMsg = `✗ ${e?.message || 'error'}`; }
+   gapBusy = false;
+ }
+ async function gapDecide(ids: number[], decision: string) {
+   if (!ids.length) return;
+   try {
+     await fetch(`/api/projects/${slug}/catalog-enrich/decide`, {
+       method: 'POST', headers: { ..._h(), 'Content-Type': 'application/json' },
+       body: JSON.stringify({ ids, decision }),
+     });
+     gapSugs = gapSugs.filter(s => !ids.includes(s.id));
+     await loadGaps();
+   } catch {}
+ }
+ const CLINICAL = ['generic_name','composition'];
+
  async function loadDataSource() {
    if (dsLoading) return;
    dsLoading = true;
@@ -5604,6 +5645,7 @@ function signUserJWT($user) {
      // Overview/EDA/Quality now stack in one view → eagerly load EDA too.
      try { if (!edaData && !edaLoading) loadEda(); } catch {}
      try { if (!slData) loadSemanticLayer(); } catch {}
+     try { if (!gapData) { loadGaps(); loadGapSugs(); } } catch {}
    }
  });
 
@@ -7643,6 +7685,48 @@ function signUserJWT($user) {
         {/if}
       {/each}
       {#if !(slData.matviews || []).length}<div class="dsx-empty">{slData.enabled ? 'no matviews yet — train to let the Engineer design them' : 'Engineer disabled (set ENGINEER_SEMANTIC_LAYER=1)'}</div>{/if}
+    </div>
+    {/if}
+
+    <!-- ═══ CATALOG GAPS — LLM enrichment (suggestion-only, human-gated) ═══ -->
+    {#if gapData}
+    <div class="dsx-sechead dsx-sechead-gap">CATALOG GAPS
+      {#if gapData.suggestion_counts?.pending}<span class="sl-tag sl-tag-on">{gapData.suggestion_counts.pending} pending review</span>{/if}
+    </div>
+    <div class="sl-hint">Missing catalog fields the LLM can suggest (gemini-flash, grounded on filled rows). <b>Suggestions only</b> — source never changes; you approve before anything goes live. Clinical fields (generic_name, composition) always need approval.</div>
+    <div class="gap-rings">
+      {#each Object.entries(gapData.gaps || {}) as [f, n]}
+        <div class="gap-ring" class:gap-clin={CLINICAL.includes(f)}>
+          <div class="gap-ring-n">{Number(n).toLocaleString()}</div>
+          <div class="gap-ring-l">{f}{#if CLINICAL.includes(f)} ⚕{/if}</div>
+        </div>
+      {/each}
+    </div>
+    {#if canEdit}
+    <div class="dsx-tb">
+      <button class="dsx-btn" disabled={gapBusy} onclick={() => gapRun(50)}>⚙ suggest 50</button>
+      <button class="dsx-btn" disabled={gapBusy} onclick={() => gapRun(200)}>⚙ suggest 200</button>
+      <div class="dsx-tb-sp"></div>
+      {#if gapMsg}<span class="gap-msg">{gapMsg}</span>{/if}
+    </div>
+    {/if}
+    <div class="dsx-rows">
+      <div class="dsx-row sl-head dsx-rowhead gap-head">
+        <span>ARTICLE</span><span>FIELD</span><span>SUGGESTED</span><span>CONF</span><span>ACTION</span>
+      </div>
+      {#each gapSugs as s (s.id)}
+        <div class="dsx-row gap-row">
+          <span class="dsx-tname">{s.article_code}</span>
+          <span>{s.field}{#if CLINICAL.includes(s.field)}<span class="gap-clin-tag">⚕ clinical</span>{/if}</span>
+          <span class="gap-sug" title={s.reason || ''}>{s.suggested_value}</span>
+          <span><span class="gap-conf" class:gap-conf-lo={(s.confidence??0)<0.6}>{Math.round((s.confidence??0)*100)}%</span></span>
+          <span class="gap-acts">
+            <button class="gap-ok" onclick={() => gapDecide([s.id],'approved')}>✓</button>
+            <button class="gap-no" onclick={() => gapDecide([s.id],'rejected')}>✕</button>
+          </span>
+        </div>
+      {/each}
+      {#if !gapSugs.length}<div class="dsx-empty">no pending suggestions — run ⚙ suggest to generate</div>{/if}
     </div>
     {/if}
 
@@ -18329,6 +18413,23 @@ function signUserJWT($user) {
 .sl-head span:nth-child(3), .sl-head span:nth-child(4) { color:var(--pw-ink-soft); }
 .sl-mvtag { font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:#9a4a2f; background:#f3ece1; border-radius:6px; padding:1px 5px; margin-left:4px; }
 .sl-grain, .sl-src { font-size:11px; color:var(--pw-ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.gap-rings { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 12px; }
+.gap-ring { min-width:78px; padding:8px 12px; background:var(--pw-bg-alt,#f6f1e8); border:1px solid var(--pw-border,#e7e0d6); border-radius:8px; text-align:center; }
+.gap-ring.gap-clin { border-color:#e0c2b6; background:#fbf0eb; }
+.gap-ring-n { font-size:18px; font-weight:800; color:var(--pw-ink,#3a3128); }
+.gap-ring-l { font-size:9px; text-transform:uppercase; letter-spacing:0.03em; color:var(--pw-ink-soft,#8a7f70); margin-top:2px; }
+.gap-msg { font-size:11px; color:var(--pw-ink-soft); }
+.gap-head { grid-template-columns:1fr 1fr 2fr 0.6fr 0.8fr !important; }
+.gap-row { grid-template-columns:1fr 1fr 2fr 0.6fr 0.8fr !important; align-items:center; }
+.gap-sug { font-size:12px; color:#2f7d49; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.gap-clin-tag { font-size:8px; font-weight:700; color:#9a4a2f; background:#f3ece1; border-radius:5px; padding:1px 4px; margin-left:5px; }
+.gap-conf { font-size:11px; font-weight:700; color:#2f7d49; }
+.gap-conf-lo { color:#b06a1f; }
+.gap-acts { display:flex; gap:4px; }
+.gap-ok, .gap-no { border:none; border-radius:5px; width:24px; height:22px; cursor:pointer; font-size:12px; font-weight:700; }
+.gap-ok { background:#e6f3ea; color:#2f7d49; }
+.gap-no { background:#f7e6e2; color:#b3422a; }
+.gap-ok:hover { background:#d3ead9; } .gap-no:hover { background:#f0d4cd; }
 .dsx-eda-head { display:flex; align-items:center; gap:10px; margin:0 0 12px; }
 .dsx-eda-title { font-size:14px; font-weight:700; color:var(--pw-ink,#2c2620); }
 .dsx-eda-meta { font-size:12px; color:var(--pw-muted,#6b6052); }

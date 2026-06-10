@@ -52,6 +52,18 @@ CLINICAL_FIELDS = frozenset({"generic_name", "composition"})
 #: store these — a blank gap is safer than a fabricated value.
 UNKNOWN = "unknown"
 
+#: Low-risk fields whose suggestions are safe to auto-approve without a human in
+#: the loop: a wrong category / indication tag is an inconvenience, not a
+#: patient-safety event. Everything NOT in here (med-risk dosage/side_effect and
+#: the clinical generic_name/composition) stays ``pending`` for human review.
+#: INVARIANT: must be disjoint from ``CLINICAL_FIELDS`` — see
+#: ``_resolve_autoapply_fields``, which also enforces it defensively at runtime.
+LOW_RISK_FIELDS = frozenset({"category", "indication"})
+
+#: Minimum model confidence (0..1) for an auto-approval. Below this a low-risk
+#: suggestion still waits for a human. Conservative by default.
+AUTOAPPLY_MIN_CONF = 0.9
+
 
 # --------------------------------------------------------------------------- #
 # Engine helper
@@ -494,3 +506,111 @@ def run_enrichment(
         f"suggested={suggested} skipped={skipped}"
     )
     return {"processed": processed, "suggested": suggested, "skipped": skipped}
+
+
+# --------------------------------------------------------------------------- #
+# Auto-apply (low-risk only)
+# --------------------------------------------------------------------------- #
+
+def _resolve_autoapply_fields(fields: Optional[Iterable[str]] = None) -> List[str]:
+    """Return the SAFE subset of fields eligible for auto-approval.
+
+    Pure function (no I/O) so the safety guard is unit-testable without a DB.
+
+    Rules:
+      * ``None`` → every field in ``LOW_RISK_FIELDS``.
+      * otherwise → the requested fields intersected with ``LOW_RISK_FIELDS``.
+        Anything outside (med-risk ``dosage``/``side_effect``, clinical
+        ``generic_name``/``composition``, or junk) is DROPPED.
+      * HARD GUARD: ``CLINICAL_FIELDS`` are removed unconditionally, even if a
+        caller somehow listed them in ``LOW_RISK_FIELDS`` — clinical values
+        NEVER auto-approve. (Belt-and-braces against a future edit that breaks
+        the disjointness invariant.)
+
+    Output is sorted+deduplicated for deterministic SQL and tests.
+    """
+    if fields is None:
+        requested = set(LOW_RISK_FIELDS)
+    else:
+        requested = {str(f).strip() for f in fields if str(f).strip()}
+        requested &= set(LOW_RISK_FIELDS)
+    # Defensive: never let a clinical field through regardless of the above.
+    requested -= set(CLINICAL_FIELDS)
+    return sorted(requested)
+
+
+def auto_apply_low_risk(
+    db_url: str,
+    min_conf: float = AUTOAPPLY_MIN_CONF,
+    fields: Optional[Iterable[str]] = None,
+    log: Callable[..., None] = print,
+) -> Dict[str, Any]:
+    """Auto-approve high-confidence, low-risk pending suggestions.
+
+    Flips ``catalog_enrichment.status`` from ``'pending'`` to ``'approved'`` for
+    every row where:
+
+      * ``field`` is in the resolved low-risk set (see
+        ``_resolve_autoapply_fields`` — clinical + med-risk fields can never be
+        selected), AND
+      * ``confidence >= min_conf``, AND
+      * ``status = 'pending'``.
+
+    Writes ONLY ``catalog_enrichment.status`` — the source table
+    (``articles_clean``) is NEVER touched here. Promoting an approved suggestion
+    into the source table is a separate, human-reviewable step.
+
+    Single parameterized UPDATE. Returns ``{"approved": n, "considered": n,
+    "fields": [...]}`` where ``considered`` is how many pending low-risk rows
+    matched the field filter (regardless of confidence) — a denominator for the
+    auto-approval rate. Fail-soft: logs and returns zeros on any error.
+    """
+    safe_fields = _resolve_autoapply_fields(fields)
+    if not safe_fields:
+        log("[catalog_enrich] auto-apply: no eligible low-risk fields")
+        return {"approved": 0, "considered": 0, "fields": []}
+
+    try:
+        conf = max(0.0, min(1.0, float(min_conf)))
+    except (TypeError, ValueError):
+        conf = AUTOAPPLY_MIN_CONF
+
+    try:
+        eng = _engine(db_url)
+        with eng.begin() as conn:
+            considered = int(
+                conn.execute(
+                    text(
+                        f"""
+                        SELECT count(*)
+                        FROM {SCHEMA}.{ENRICH_TABLE}
+                        WHERE status = 'pending'
+                          AND field = ANY(:fields)
+                        """
+                    ),
+                    {"fields": safe_fields},
+                ).scalar()
+                or 0
+            )
+            approved = conn.execute(
+                text(
+                    f"""
+                    UPDATE {SCHEMA}.{ENRICH_TABLE}
+                    SET status = 'approved'
+                    WHERE status = 'pending'
+                      AND field = ANY(:fields)
+                      AND confidence >= :conf
+                    """
+                ),
+                {"fields": safe_fields, "conf": conf},
+            ).rowcount
+    except Exception as exc:  # fail-soft — never crash the pipeline tail
+        log(f"[catalog_enrich] auto-apply failed: {exc}")
+        return {"approved": 0, "considered": 0, "fields": safe_fields}
+
+    approved = int(approved or 0)
+    log(
+        f"[catalog_enrich] auto-apply: approved={approved} "
+        f"considered={considered} fields={safe_fields} min_conf={conf}"
+    )
+    return {"approved": approved, "considered": considered, "fields": safe_fields}

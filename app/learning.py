@@ -13,7 +13,7 @@ import re
 import time
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Body
 from sqlalchemy import create_engine as _sa_create_engine, text
 from sqlalchemy.pool import NullPool
 
@@ -3212,6 +3212,99 @@ def semantic_layer(slug: str):
         except Exception:
             m["rows"] = None
     return {"project_slug": slug, "enabled": enabled, "matviews": mvs}
+
+
+@router.get("/{slug}/catalog-enrich/gaps")
+def catalog_enrich_gaps(slug: str):
+    """Per-field gap counts in the catalog + pending/approved suggestion counts.
+    Feeds the Data Source -> Catalog Gaps UI tab."""
+    try:
+        from db import db_url as _du
+        from app.catalog_enrich import detect_gaps, ensure_enrichment_table, CLINICAL_FIELDS
+    except Exception as e:
+        return {"project_slug": slug, "gaps": {}, "error": str(e)[:120]}
+    gaps = detect_gaps(_du)
+    counts = {"pending": 0, "approved": 0, "rejected": 0}
+    try:
+        ensure_enrichment_table(_du)
+        with _engine.connect() as conn:
+            for r in conn.execute(text(
+                "SELECT status, COUNT(*) FROM citypharma.catalog_enrichment GROUP BY status"
+            )).fetchall():
+                counts[str(r[0])] = int(r[1])
+    except Exception:
+        pass
+    return {"project_slug": slug, "gaps": gaps, "clinical_fields": sorted(CLINICAL_FIELDS),
+            "suggestion_counts": counts}
+
+
+@router.post("/{slug}/catalog-enrich/run")
+def catalog_enrich_run(slug: str, limit: int = 50, fields: str = ""):
+    """Generate suggestions for up to `limit` articles (suggestion-only — writes
+    pending rows, never mutates the source catalog). `fields` = comma list or ''."""
+    try:
+        from db import db_url as _du
+        from app.catalog_enrich import run_enrichment
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:160]}
+    flds = [f.strip() for f in fields.split(",") if f.strip()] or None
+    try:
+        res = run_enrichment(_du, limit=int(limit), fields=flds)
+        return {"ok": True, **res}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+@router.get("/{slug}/catalog-enrich/suggestions")
+def catalog_enrich_suggestions(slug: str, status: str = "pending", field: str = "", limit: int = 200):
+    """List enrichment suggestions for review."""
+    try:
+        from app.catalog_enrich import ensure_enrichment_table
+        from db import db_url as _du
+        ensure_enrichment_table(_du)
+    except Exception:
+        pass
+    where = ["status = :st"]
+    params = {"st": status, "lim": int(limit)}
+    if field:
+        where.append("field = :fld")
+        params["fld"] = field
+    rows = []
+    try:
+        with _engine.connect() as conn:
+            rows = [dict(r) for r in conn.execute(text(
+                "SELECT id, article_code, field, original_value, suggested_value, "
+                "confidence, model, status, reason, created_at "
+                "FROM citypharma.catalog_enrichment "
+                f"WHERE {' AND '.join(where)} "
+                "ORDER BY field, confidence DESC NULLS LAST, id LIMIT :lim"
+            ), params).mappings().all()]
+    except Exception as e:
+        return {"suggestions": [], "error": str(e)[:120]}
+    return {"suggestions": rows, "status": status}
+
+
+@router.post("/{slug}/catalog-enrich/decide")
+def catalog_enrich_decide(slug: str, payload: dict = Body(...)):
+    """Approve or reject suggestions. payload = {ids:[int], decision:'approved'|'rejected'}.
+    Approval only flips status here — it does NOT write the source table; the live
+    read happens via the articles_enriched view (COALESCE source, approved)."""
+    ids = payload.get("ids") or []
+    decision = payload.get("decision")
+    if decision not in ("approved", "rejected") or not isinstance(ids, list) or not ids:
+        return {"ok": False, "error": "need ids[] and decision in approved/rejected"}
+    try:
+        ids = [int(i) for i in ids]
+    except Exception:
+        return {"ok": False, "error": "ids must be integers"}
+    try:
+        with _engine.begin() as conn:
+            conn.execute(text(
+                "UPDATE citypharma.catalog_enrichment SET status = :d WHERE id = ANY(:ids)"
+            ), {"d": decision, "ids": ids})
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:160]}
+    return {"ok": True, "updated": len(ids), "decision": decision}
 
 
 @router.get("/{slug}/refine-tools/{tool_name}/failures")
