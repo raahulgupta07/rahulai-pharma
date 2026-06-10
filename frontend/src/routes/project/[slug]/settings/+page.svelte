@@ -1597,10 +1597,15 @@ $effect(() => {
  agentTplToggling = null;
  }
 
+ function _parseUtc(s: string): number {
+ const norm = (s || '').replace(' ', 'T');
+ return new Date(norm + (/(Z|[+-]\d\d:?\d\d)$/.test(norm) ? '' : 'Z')).getTime();
+ }
+
  function formatRelTime(iso: string | null): string {
  if (!iso) return 'never';
  try {
- const ts = new Date(iso).getTime();
+ const ts = _parseUtc(iso);
  const diff = Date.now() - ts;
  const m = Math.floor(diff / 60000);
  if (m < 1) return 'just now';
@@ -3372,7 +3377,7 @@ function signUserJWT($user) {
 
  function relTime(iso: string | null | undefined): string {
  if (!iso) return '—';
- const t = new Date(iso).getTime();
+ const t = _parseUtc(iso);
  if (isNaN(t)) return '—';
  const s = Math.floor((Date.now() - t) / 1000);
  if (s < 60) return `${s}s ago`;
@@ -5078,7 +5083,19 @@ function signUserJWT($user) {
  }
  });
 
- onDestroy(() => { if (trainPollTimer) { clearInterval(trainPollTimer); trainPollTimer = null; } stopTrainingStepsPoll(); });
+ // Re-sync training state when the tab regains focus — a backgrounded tab pauses
+ // timers, which left the pipeline + "Training…" button frozen in a stale state.
+ function _onFocusHeal() { if (typeof document !== 'undefined' && !document.hidden) { try { loadDataSource(); } catch {} try { loadTrainingSteps(); } catch {} } }
+ onMount(() => {
+   if (typeof document !== 'undefined') document.addEventListener('visibilitychange', _onFocusHeal);
+   if (typeof window !== 'undefined') window.addEventListener('focus', _onFocusHeal);
+ });
+ onDestroy(() => {
+   if (trainPollTimer) { clearInterval(trainPollTimer); trainPollTimer = null; }
+   stopTrainingStepsPoll();
+   if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', _onFocusHeal);
+   if (typeof window !== 'undefined') window.removeEventListener('focus', _onFocusHeal);
+ });
 
  async function loadDetail() {
  try {
@@ -5114,14 +5131,14 @@ function signUserJWT($user) {
  function memoRelTime(iso: string): string {
  if (!iso) return '—';
  try {
- const t = new Date(iso).getTime();
+ const t = _parseUtc(iso);
  const diff = Date.now() - t;
  const s = Math.floor(diff / 1000);
  if (s < 60) return `${s}s ago`;
  const m = Math.floor(s / 60); if (m < 60) return `${m}m ago`;
  const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`;
  const d = Math.floor(h / 24); if (d < 30) return `${d}d ago`;
- return new Date(iso).toLocaleDateString();
+ return new Date(_parseUtc(iso)).toLocaleDateString();
  } catch { return iso; }
  }
  function viewInvestmentMemo(id: string | number) {
@@ -6073,7 +6090,7 @@ function signUserJWT($user) {
     } else if (d.recent_runs?.[0]?.status === 'done') {
       const lastRun = d.recent_runs[0];
       if (lastRun.finished_at) {
-        const diff = Date.now() - new Date(lastRun.finished_at).getTime();
+        const diff = Date.now() - _parseUtc(lastRun.finished_at);
         const mins = Math.round(diff / 60000);
         autoTrainLastTrained = mins < 60 ? `${mins}m ago` : `${Math.round(mins/60)}h ago`;
       }
@@ -6870,39 +6887,8 @@ function signUserJWT($user) {
     </div>
   </div>
 
-  {#if (activeTab === 'cockpit' || activeTab === 'datasets') && (isTraining || trainStepsRunStatus === 'running' || trainSteps.some(s => s.status === 'done'))}
-  <div style="margin-bottom: 12px; padding: 10px 14px; border: 2px solid var(--pw-ink); background: var(--pw-surface); font-family: var(--pw-font-body);">
-    <div style="display: flex; align-items: center; gap: 10px;">
-      <div style="flex: 1; height: 4px; background: var(--pw-bg-alt); border: 1px solid var(--pw-muted);">
-        <div style="height: 100%; background: var(--pw-accent); width: {trainSteps.length > 0 ? (trainTotalTables > 0 ? Math.min(100, Math.round((((trainTableIndex - 1) * trainSteps.length + trainSteps.filter(s => s.status === 'done').length) / (trainTotalTables * trainSteps.length)) * 100)) : Math.round((trainSteps.filter(s => s.status === 'done').length / trainSteps.length) * 100)) : 0}%; transition: width 0.5s ease;"></div>
-      </div>
-      <span style="font-size: 10px; font-weight: 900;">{trainSteps.length > 0 ? (trainTotalTables > 0 ? Math.min(100, Math.round((((trainTableIndex - 1) * trainSteps.length + trainSteps.filter(s => s.status === 'done').length) / (trainTotalTables * trainSteps.length)) * 100)) : Math.round((trainSteps.filter(s => s.status === 'done').length / trainSteps.length) * 100)) : 0}%</span>
-      {#if trainSteps.find(s => s.status === 'active')}
-        <span style="font-size: 11px; color: #cc7a00; font-weight: 900;">● {trainTotalTables > 0 ? `Table ${trainTableIndex}/${trainTotalTables}: ${trainCurrentTable} · ` : ''}{trainSteps.find(s => s.status === 'active')?.name}</span>
-      {/if}
-    </div>
-    <!-- Live step pills (wrap) — full pipeline, light up left→right as training advances -->
-    <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;">
-      {#each pipelinePills as st, pi (st.name + '_' + pi)}
-        <span
-          class="train-pill train-pill-{st.status}"
-          style="display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 0; font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap;
-            {st.status === 'done'
-              ? 'background: var(--pw-success, #1a9c50); color: #fff; border: 1px solid var(--pw-success, #1a9c50);'
-              : st.status === 'active'
-                ? 'background: rgba(204,122,0,0.12); color: #cc7a00; border: 1px solid #cc7a00;'
-                : st.status === 'skipped'
-                  ? 'background: var(--pw-bg-alt, #f3f1ea); color: var(--pw-muted); border: 1px solid var(--pw-border, #d8d4ca);'
-                  : st.status === 'error'
-                    ? 'background: rgba(192,57,43,0.10); color: #c0392b; border: 1px solid #c0392b;'
-                    : 'background: transparent; color: var(--pw-muted); border: 1px solid var(--pw-border, #d8d4ca);'}">
-          <span>{st.status === 'done' ? '✓' : st.status === 'active' ? '●' : st.status === 'skipped' ? '⊘' : st.status === 'error' ? '✗' : '○'}</span>
-          {st.name}
-        </span>
-      {/each}
-    </div>
-  </div>
-  {/if}
+  <!-- Training progress strip removed from Cockpit — the floating robot + Dashboard
+       pipeline already show live training; no need to duplicate it here. -->
 
 {#if loading}
   <div style="text-align: center; padding: 40px; font-size: 11px; text-transform: uppercase; color: var(--pw-muted);">Loading...</div>
@@ -8513,7 +8499,7 @@ function signUserJWT($user) {
             </span>
             <span class="cli-output">{run.started_at?.slice(0, 16)} · {run.tables} table{run.tables !== 1 ? 's' : ''} · {run.status}</span>
             {#if run.finished_at && run.started_at}
-              <span class="cli-dim" style="margin-left: auto;">{((new Date(run.finished_at).getTime() - new Date(run.started_at).getTime()) / 1000).toFixed(1)}s</span>
+              <span class="cli-dim" style="margin-left: auto;">{((_parseUtc(run.finished_at) - _parseUtc(run.started_at)) / 1000).toFixed(1)}s</span>
             {/if}
           </div>
           {#if run.error}
@@ -15850,7 +15836,7 @@ function signUserJWT($user) {
         <div style="padding:8px 14px; font-size:11px; font-weight:900; letter-spacing:0.06em; border-bottom:1px solid var(--pw-border);">RECENT RUNS <span style="font-weight:400; color:var(--pw-muted); text-transform:none; letter-spacing:0;">— click a run to inspect its steps</span></div>
         <div style="padding:6px 8px;">
           {#each trainingRuns.slice(0, 6) as run}
-            {@const dur = (run.finished_at && run.started_at) ? ((new Date(run.finished_at).getTime() - new Date(run.started_at).getTime())/1000).toFixed(1)+'s' : '—'}
+            {@const dur = (run.finished_at && run.started_at) ? ((_parseUtc(run.finished_at) - _parseUtc(run.started_at))/1000).toFixed(1)+'s' : '—'}
             {@const rc = run.status === 'done' ? 'var(--pw-success)' : run.status === 'failed' ? 'var(--pw-error)' : '#cc7a00'}
             {@const isSel = (inspectRun?.id) === run.id}
             <button onclick={() => inspectRunId = run.id}

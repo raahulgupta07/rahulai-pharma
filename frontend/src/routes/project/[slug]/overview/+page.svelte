@@ -78,17 +78,20 @@
     if (live && !_atPoll) { _atPoll = setInterval(loadAutoTrain, 5000); }
     if (!live && _atPoll) { clearInterval(_atPoll); _atPoll = null; training = false; trainingNames = {}; loadTables(); load(); }
   }
+  let trainErr = $state('');
   async function trainTables(names: string[]) {
-    if (!names.length || training) return;
+    if (!names.length || training || atStatus?.is_training) return;
+    trainErr = '';
     training = true;
     for (const n of names) trainingNames[n] = true;
     trainingNames = { ...trainingNames };
     try {
-      await fetch(`/api/projects/${slug}/retrain?force=1`, {
+      const r = await fetch(`/api/projects/${slug}/retrain?force=1`, {
         method: 'POST', headers: { ..._h(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ table_names: names, force: true }),
       });
-    } catch {}
+      if (!r.ok) { training = false; trainingNames = {}; trainErr = `train failed (${r.status})`; return; }
+    } catch { training = false; trainingNames = {}; trainErr = 'unreachable — is the server up?'; return; }
     setTimeout(loadAutoTrain, 1500);
     if (!_atPoll) _atPoll = setInterval(loadAutoTrain, 5000);
   }
@@ -165,13 +168,21 @@
   }
 
 
+  // Re-sync training status when the tab regains focus — a backgrounded tab's
+  // timers are throttled/paused by the browser, which left the pipeline frozen
+  // in a stale "training" state. On focus we re-fetch the real run status.
+  function _onFocus() { if (typeof document !== 'undefined' && !document.hidden) loadAutoTrain(); }
   onMount(() => {
     load();
     timer = setInterval(() => { if (auto) load(); }, 30000);
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', _onFocus);
+    if (typeof window !== 'undefined') window.addEventListener('focus', _onFocus);
   });
   onDestroy(() => {
     if (timer) clearInterval(timer);
     if (_atPoll) clearInterval(_atPoll);
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', _onFocus);
+    if (typeof window !== 'undefined') window.removeEventListener('focus', _onFocus);
   });
 
   // ---- formatters ----
@@ -188,9 +199,13 @@
     if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
     return String(Math.round(n));
   }
+  function _parseUtc(s: string): number {
+    const norm = (s || '').replace(' ', 'T');
+    return new Date(norm + (/(Z|[+-]\d\d:?\d\d)$/.test(norm) ? '' : 'Z')).getTime();
+  }
   function ago(ts: any): string {
     if (!ts) return '';
-    const t = typeof ts === 'number' ? ts : new Date(ts).getTime();
+    const t = typeof ts === 'number' ? ts : _parseUtc(String(ts));
     if (!isFinite(t)) return '';
     const diff = Date.now() - t;
     if (diff < 0) return 'now';
@@ -364,9 +379,10 @@
           <option value="trained">sort: trained</option>
           <option value="name">sort: name</option>
         </select>
-        <button class="ov-btn ov-btn-primary" disabled={training || !dsTables.length} onclick={trainAll}>{training ? '⟳ training…' : '↻ Train all'}</button>
+        <button class="ov-btn ov-btn-primary" disabled={training || atStatus?.is_training || !dsTables.length} onclick={trainAll}>{(training || atStatus?.is_training) ? '⟳ training…' : '↻ Train all'}</button>
       </div>
     </div>
+    {#if trainErr}<div class="ov-empty" style="color:#c0392b">⚠ {trainErr}</div>{/if}
     {#if !dsTables.length}
       <div class="ov-empty">No data tables yet — <button class="ov-link" onclick={gotoUpload}>upload data →</button></div>
     {:else}
@@ -456,7 +472,7 @@
           <div class="ov-r"><span class="dot" style="background:#a06000"></span>Partial<span class="ov-r-x">{ev.partial}</span></div>
           <div class="ov-r"><span class="dot" style="background:#b3261e"></span>Fail<span class="ov-r-x">{ev.failed}</span></div>
           <div class="ov-r">Avg score<span class="ov-r-x">{(ev.average_score ?? 0).toFixed(1)} / 5</span></div>
-          <div class="ov-r">Last run<span class="ov-r-x">{ev.run_at ? new Date(ev.run_at).toLocaleDateString() : '—'}</span></div>
+          <div class="ov-r">Last run<span class="ov-r-x">{ev.run_at ? new Date(_parseUtc(ev.run_at)).toLocaleDateString() : '—'}</span></div>
         </div>
       {:else}
         <div class="ov-empty">No eval runs yet</div>

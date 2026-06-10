@@ -25,6 +25,36 @@ _engine = _sa_create_engine(db_url, poolclass=NullPool)
 logger = logging.getLogger(__name__)
 
 
+def _iso_utc(v):
+    """Serialize a DB timestamp as ISO-8601 UTC ending in 'Z'.
+
+    The DB stores NAIVE UTC; the frontend parses bare 'YYYY-MM-DD HH:MM:SS'
+    strings as LOCAL time → phantom elapsed. Always emit an explicit 'Z'/offset.
+    Handles None / datetime / str. Never throws. (Mirrors
+    dash.training.flow_map._iso_utc — kept local to avoid import coupling.)"""
+    if v is None:
+        return None
+    try:
+        iso = getattr(v, "isoformat", None)
+        s = v.isoformat() if callable(iso) else str(v)
+        s = s.strip()
+        if not s:
+            return None
+        s = s.replace(" ", "T", 1)
+        if s.endswith("Z"):
+            return s
+        t_idx = s.find("T")
+        time_part = s[t_idx + 1:] if t_idx >= 0 else s
+        if "+" in time_part or "-" in time_part:
+            return s
+        return s + "Z"
+    except Exception:
+        try:
+            return str(v) if v is not None else None
+        except Exception:
+            return None
+
+
 def _get_user(request: Request) -> dict:
     user = getattr(getattr(request, 'state', None), 'user', None)
     if not user:
@@ -621,8 +651,8 @@ def get_auto_train_status(slug: str, request: Request):
                 "ORDER BY started_at DESC LIMIT 5"
             ), {"s": slug}).fetchall()
         recent_runs = [{"id": r[0], "status": r[1],
-                        "started_at": str(r[2]) if r[2] else None,
-                        "finished_at": str(r[3]) if r[3] else None,
+                        "started_at": _iso_utc(r[2]),
+                        "finished_at": _iso_utc(r[3]),
                         "duration_sec": round(r[4]) if r[4] else None}
                        for r in runs]
     except Exception:
@@ -632,19 +662,34 @@ def get_auto_train_status(slug: str, request: Request):
     try:
         with _engine.connect() as conn:
             row = conn.execute(text(
-                "SELECT id, status, started_at FROM public.dash_training_runs "
+                "SELECT id, status, started_at, current_step FROM public.dash_training_runs "
                 "WHERE project_slug = :s AND status IN ('running','queued','finalizing') "
                 "ORDER BY started_at DESC LIMIT 1"
             ), {"s": slug}).fetchone()
-        active_run = {"id": row[0], "status": row[1], "started_at": str(row[2])} if row else None
+        active_run = {"id": row[0], "status": row[1], "started_at": _iso_utc(row[2]),
+                      "current_step": row[3] or ""} if row else None
     except Exception:
         active_run = None
+
+    # Friendly one-line summary for the floating robot callout: what it's doing now,
+    # or when it last trained + why (status + duration).
+    if active_run:
+        callout = f"Training · {active_run['current_step'] or 'working'}"
+    elif recent_runs:
+        lr = recent_runs[0]
+        _dur = f" · {lr['duration_sec']}s" if lr.get("duration_sec") else ""
+        callout = f"Last trained{_dur} · {lr.get('status') or 'done'}"
+    else:
+        callout = "Watching for new data"
 
     return {
         "daemon": daemon,
         "active_run": active_run,
         "recent_runs": recent_runs,
         "is_training": active_run is not None,
+        "current_step": active_run["current_step"] if active_run else "",
+        "last_run": recent_runs[0] if recent_runs else None,
+        "callout": callout,
     }
 
 

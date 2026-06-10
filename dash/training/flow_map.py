@@ -14,6 +14,46 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
+
+def _iso_utc(v) -> Optional[str]:
+    """Serialize a DB timestamp value as ISO-8601 UTC ending in 'Z'.
+
+    The DB stores NAIVE UTC (db TIMEZONE=Etc/UTC). The frontend parses bare
+    'YYYY-MM-DD HH:MM:SS' strings as LOCAL time → phantom elapsed when the
+    browser is offset from UTC. So we ALWAYS emit an explicit 'Z'/offset.
+
+    Handles None / datetime / str. Never throws.
+    """
+    if v is None:
+        return None
+    try:
+        # datetime-like (has isoformat)
+        iso = getattr(v, "isoformat", None)
+        if callable(iso):
+            s = v.isoformat()
+        else:
+            s = str(v)
+        s = s.strip()
+        if not s:
+            return None
+        # naive "YYYY-MM-DD HH:MM:SS[.ffffff]" → ISO 'T'
+        s = s.replace(" ", "T", 1)
+        if s.endswith("Z"):
+            return s
+        # Already tz-aware? An offset (+HH:MM / -HH:MM) lives in the TIME portion
+        # (after the 'T'); the date portion before it also contains '-' so only
+        # inspect the part after 'T'.
+        t_idx = s.find("T")
+        time_part = s[t_idx + 1:] if t_idx >= 0 else s
+        if "+" in time_part or "-" in time_part:
+            return s  # explicit offset present — leave as-is
+        return s + "Z"
+    except Exception:
+        try:
+            return str(v) if v is not None else None
+        except Exception:
+            return None
+
 # ---------------------------------------------------------------------------
 # LAYERS — ported verbatim from scripts/show_training_workflow.py phases()
 # Each step: (label, model, detail, writes_to, gate)
@@ -336,17 +376,47 @@ def _mask_flow(result: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Layer status keyword mapping (edit here to tune)
+# Layer-progress keyword mapping (edit here to tune)
+#
+# Used to derive a MONOTONIC `done_through_layer` from the run's ordered log
+# stream + current_step. Every layer 0..9 has at least one keyword so a forward
+# scan can map any progress signal to the LAYER it belongs to. We always pick
+# the EARLIEST layer a token matches (so an ambiguous token marks earlier work
+# done, never later — the contract's forward-only rule).
 # ---------------------------------------------------------------------------
 
-KEYWORDS: dict[int, list[str]] = {
-    3: ["qa_generation", "profile", "deep_analysis", "persona", "knowledge"],
-    4: ["relationship"],
-    5: ["semantic", "engineer", "matview"],
-    6: ["knowledge_graph", "vector_backfill"],
-    8: ["catalog", "enrich", "shop_flat", "bilingual"],
-    9: ["finalizing", "done"],
-}
+# Ordered (layer_idx, [keywords]). Internal real labels — matched BEFORE masking.
+_LAYER_KEYWORDS: list[tuple[int, list[str]]] = [
+    (0, ["upload", "stage", "staging", "manifest", "intake", "content_hash", "quality scan", "receive"]),
+    (1, ["infer_contract", "contract", "dry-run", "dry run", "preflight", "detect_load_key", "load key"]),
+    (2, ["promote", "ingest", "copy_csv", "stream_xlsx", "stream load", "loading", "delete_where", "stamp_lineage", "load table", "loaded"]),
+    (3, ["training table", "profile", "deep_analysis", "qa_generation", "qa generation",
+         "persona", "synthesis", "workflows", "knowledge index", "knowledge indexed",
+         "indexing knowledge", "brain fill", "domain_knowledge", "per-table", "table training"]),
+    (4, ["relationship", "discover_relationship", "verify (sql", "cross_table_qa", "join candidate", "cross-table"]),
+    (5, ["semantic layer", "engineer", "matview", "materialized view", "semantic_layer", "designing semantic"]),
+    (6, ["knowledge_graph", "knowledge graph", "subagent_synthesis", "cross-source", "vector_backfill",
+         "vector backfill", "codex_code_enrich", "pipeline code", "pipeline logic", "graph"]),
+    (7, ["scope", "guardrail", "goals", "learning_goals", "learning goals", "evals", "eval", "auto_configure",
+         "auto-detect", "vertical"]),
+    (8, ["catalog", "enrich", "shop_flat", "shop flat", "bilingual", "twins", "articles_enriched",
+         "detect_gaps", "matview refresh", "post-hook", "post hook"]),
+    (9, ["finalizing", "finalize", "training done", "watchdog", "panels live", "complete", "done"]),
+]
+
+# Backwards-compat alias (some callers/tests referenced KEYWORDS).
+KEYWORDS: dict[int, list[str]] = {idx: kws for idx, kws in _LAYER_KEYWORDS}
+
+
+def _layer_for_text(s: str) -> Optional[int]:
+    """Map a lowercased progress string to the EARLIEST layer whose keyword it
+    matches (forward order). Returns None if nothing matches."""
+    if not s:
+        return None
+    for idx, kws in _LAYER_KEYWORDS:
+        if any(k in s for k in kws):
+            return idx
+    return None
 
 # ---------------------------------------------------------------------------
 # derive_flow
@@ -385,12 +455,27 @@ def derive_flow(slug: str, db_url: str) -> dict:
                 LIMIT 1
             """), {"slug": slug}).mappings().fetchone()
             if row:
+                _status = row["status"]
+                _cstep = (row["current_step"] or "")
+                # phase ∈ {running, finalizing, done, idle, failed}
+                if _status == "done":
+                    _phase = "done"
+                elif _status == "failed":
+                    _phase = "failed"
+                elif _status in ("running", "queued", "finalizing"):
+                    if _status == "finalizing" or _cstep.strip().lower() == "finalizing":
+                        _phase = "finalizing"
+                    else:
+                        _phase = "running"
+                else:
+                    _phase = "idle"
                 run = {
                     "id": row["id"],
-                    "status": row["status"],
+                    "status": _status,
+                    "phase": _phase,
                     "current_step": row["current_step"],
-                    "started_at": str(row["started_at"]) if row["started_at"] else None,
-                    "finished_at": str(row["finished_at"]) if row["finished_at"] else None,
+                    "started_at": _iso_utc(row["started_at"]),
+                    "finished_at": _iso_utc(row["finished_at"]),
                     "stage_progress": row["stage_progress"],
                     "progress": row["current_progress"] if row["current_progress"] else {},
                 }
@@ -510,39 +595,74 @@ def derive_flow(slug: str, db_url: str) -> dict:
     except Exception as exc:
         logger.debug("flow_map: AGE graph query failed (expected if AGE off): %s", exc)
 
-    # ---- per-layer status ------------------------------------------------------
+    # ---- ordered progress signal ----------------------------------------------
+    # Replace keyword-matching the CURRENT step (which could mark a late layer
+    # done while an earlier one is blank) with a MONOTONIC "how far did we get"
+    # index. We forward-scan the run's ordered log stream (most reliable — every
+    # step appends a log line), mapping each line to the earliest layer it names,
+    # and take the MAX layer reached. current_step + progress.step are folded in
+    # as a final signal. By construction `current_layer` only ever advances.
+    r_status = (run.get("status") if run else "") or ""
+    current_step_txt = (run.get("current_step") or "").lower() if run else ""
+    progress_step_txt = ""
+    if run:
+        _prog = run.get("progress") or {}
+        if isinstance(_prog, dict):
+            progress_step_txt = (_prog.get("step") or "").lower()
+
+    # max layer reached so far (the "current"/in-progress layer for a live run)
+    current_layer = -1
+    if run is not None:
+        for ev in run_logs:
+            try:
+                _li = _layer_for_text(str(ev.get("msg", "")).lower())
+            except Exception:
+                _li = None
+            if _li is not None and _li > current_layer:
+                current_layer = _li
+        for _txt in (progress_step_txt, current_step_txt):
+            _li = _layer_for_text(_txt)
+            if _li is not None and _li > current_layer:
+                current_layer = _li
+        # A live run is always at least staging.
+        if current_layer < 0 and r_status in ("running", "queued", "finalizing"):
+            current_layer = 0
+        # finalizing → we've reached the DONE layer's lead-in.
+        if r_status == "finalizing" and current_layer < 9:
+            current_layer = 9
+
     def _layer_status(idx: int) -> str:
+        # Gated layers first (independent of run progress).
         if idx == 5 and not engineer_flag:
             return "skipped"
         if run is None:
             return "idle"
-        r_status = run.get("status", "")
-        current = (run.get("current_step") or "").lower()
-        progress_step = ""
-        prog = run.get("progress") or {}
-        if isinstance(prog, dict):
-            progress_step = (prog.get("step") or "").lower()
 
-        active_hint = current + " " + progress_step
-
+        # Terminal: a finished run → every (non-gated) layer is done.
         if r_status == "done":
-            # ENGINEER layer → 'done' only if flag was on (else already 'skipped')
             if idx == 5:
                 return "done" if engineer_flag else "skipped"
             return "done"
 
-        if r_status in ("running", "finalizing"):
-            kws = KEYWORDS.get(idx, [])
-            if kws and any(k in active_hint for k in kws):
-                return "running"
-            # layers before the active one are done
-            for check_idx, check_kws in KEYWORDS.items():
-                if check_idx > idx:
-                    continue
-                if check_kws and any(k in active_hint for k in check_kws):
-                    return "done"
+        # Failed: layers up to where we got = done, the layer we died on = error,
+        # the rest = idle. Monotonic by construction.
+        if r_status == "failed":
+            if idx < current_layer:
+                return "done"
+            if idx == current_layer:
+                return "error"
             return "idle"
 
+        # Live (running/queued/finalizing): contiguous prefix done, exactly one
+        # 'running' at current_layer, the rest idle.
+        if r_status in ("running", "queued", "finalizing"):
+            if idx < current_layer:
+                return "done"
+            if idx == current_layer:
+                return "running"
+            return "idle"
+
+        # Unknown/non-terminal status → idle (never invents progress).
         return "idle"
 
     # ---- per-step live state from logs + dash_training_steps -------------------

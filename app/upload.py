@@ -1963,11 +1963,31 @@ def _sql_profile_columns(project_slug: str, table_name: str, engine=None) -> lis
                     else:
                         p["type"] = "text"
 
-                    # Classify: dimension vs measure vs id
-                    if p["unique_count"] <= 500 and p["type"] != "datetime":
+                    # Classify: id / measure / dimension / text.
+                    # ORDER MATTERS. The old logic put "distinct <= 500 -> dimension"
+                    # FIRST, which stole numeric measures with few distinct values
+                    # (e.g. base_price) and unique text keys (article_code) before
+                    # they could be measure/id. New priority:
+                    #   1. id-like NAME that's mostly unique  -> id
+                    #   2. high-cardinality unique column       -> id (primary key)
+                    #   3. numeric & not a key & not a 2-value flag -> measure
+                    #   4. low-cardinality                       -> dimension
+                    #   5. remaining numeric                     -> measure
+                    #   6. else                                  -> text
+                    name_lc = col_name.lower()
+                    uniq = p["unique_count"]
+                    uniq_ratio = (uniq / total_rows) if total_rows else 0.0
+                    _is_id_name = name_lc in ("id", "code", "sku", "barcode", "uuid", "guid") \
+                        or name_lc.endswith(("_id", "_code", "_key", "_no", "_num", "_sku"))
+
+                    if _is_id_name and uniq_ratio >= 0.5:
+                        p["classification"] = "id"                      # code/key that's mostly unique
+                    elif uniq_ratio >= 0.9 and total_rows > 10 and p["type"] != "datetime":
+                        p["classification"] = "id"                      # high-cardinality primary key
+                    elif p["type"] == "numeric" and not _is_id_name and uniq > 2:
+                        p["classification"] = "measure"                 # price/qty/score/amount — any non-key numeric
+                    elif uniq <= 500 and p["type"] != "datetime":
                         p["classification"] = "dimension"
-                    elif p["unique_count"] >= total_rows * 0.9 and total_rows > 10:
-                        p["classification"] = "id"
                     elif p["type"] == "numeric":
                         p["classification"] = "measure"
                     else:

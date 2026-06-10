@@ -10,6 +10,7 @@
   let logs = $state<{ i: number; ts: string; msg: string; table?: string }[]>([]);
   let logCursor = $state(-1);
   let _poll: any = null;
+  let _pollMs = 0;
   let _logPoll: any = null;
   let _prevLive = false;
   let _userClosed = false;
@@ -35,35 +36,50 @@
     }
   }
 
+  let trainErr = $state('');
+  // Adaptive heartbeat — fast while training, slow while idle. Always runs so a
+  // backgrounded tab self-heals on the next tick (no more frozen "training" state).
+  function schedulePoll(live: boolean) {
+    const ms = live ? 6000 : 20000;
+    if (_poll && _pollMs === ms) return;
+    if (_poll) clearInterval(_poll);
+    _pollMs = ms;
+    _poll = setInterval(loadStatus, ms);
+  }
+
   async function loadStatus() {
     atStatus = await _j(`/api/projects/${slug}/auto-train/status`);
     const live = !!atStatus?.is_training;
+    // self-heal: backend is the source of truth — never let the local flag stick.
+    if (!live) training = false;
     if (live) {
       if (!_logPoll) _logPoll = setInterval(streamLogs, 3000);
       streamLogs();
       // auto-expand on training start (unless the user explicitly closed it this run)
       if (!_prevLive && !open && !_userClosed) open = true;
     } else {
-      training = false;
       _userClosed = false;
       if (_logPoll && !open) { clearInterval(_logPoll); _logPoll = null; }
     }
     _prevLive = live;
+    schedulePoll(live);
   }
 
   async function trainNow() {
-    if (training) return;
+    if (training || atStatus?.is_training) return;
+    trainErr = '';
     training = true;
     const d = await _j(`/api/projects/${slug}/datasource?quality=false&preview=false`);
     const names = (d?.tables || []).map((t: any) => t.name);
-    if (!names.length) { training = false; return; }
+    if (!names.length) { training = false; trainErr = 'no tables to train'; return; }
     if (!open) open = true;
     try {
-      await fetch(`/api/projects/${slug}/retrain?force=1`, {
+      const r = await fetch(`/api/projects/${slug}/retrain?force=1`, {
         method: 'POST', headers: { ..._h(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ table_names: names, force: true }),
       });
-    } catch {}
+      if (!r.ok) { training = false; trainErr = `start failed (${r.status})`; }
+    } catch { training = false; trainErr = 'unreachable'; }
     setTimeout(loadStatus, 1200);
     if (!_logPoll) _logPoll = setInterval(streamLogs, 3000);
   }
@@ -91,6 +107,31 @@
       : 'watching'
   );
   const lastTrained = $derived.by(() => { const r = atStatus?.recent_runs?.[0]; return r?.finished_at ? rel(r.finished_at) : ''; });
+  // live elapsed for the "what it's doing" callout
+  let nowTs = $state(Date.now());
+  const liveElapsed = $derived.by(() => {
+    const s = atStatus?.active_run?.started_at;
+    if (!s) return '';
+    try {
+      const t = new Date(s.replace(' ', 'T') + (/(Z|[+-]\d\d:?\d\d)$/.test(s) ? '' : 'Z')).getTime();
+      const sec = Math.max(0, Math.round((nowTs - t) / 1000));
+      const m = Math.floor(sec / 60), x = sec % 60;
+      return m ? `${m}m ${x}s` : `${x}s`;
+    } catch { return ''; }
+  });
+  // one-line callout next to the bubble — "what it's doing" / "trained when"
+  const callout = $derived.by(() => {
+    if (training || atStatus?.is_training) {
+      const step = atStatus?.current_step || atStatus?.active_run?.current_step || 'working';
+      return liveElapsed ? `${step} · ${liveElapsed}` : String(step);
+    }
+    const lr = atStatus?.last_run || atStatus?.recent_runs?.[0];
+    if (lr?.finished_at) {
+      const why = (lr.status && lr.status !== 'done') ? `${lr.status} ` : '';
+      return `${why}trained ${rel(lr.finished_at)}`;
+    }
+    return 'Watching for new data';
+  });
   const autoOn = $derived(atStatus?.daemon?.enabled !== false);
   const runMeta = $derived.by(() => {
     const st = atStatus?.is_training ? 'running' : (atStatus?.recent_runs?.[0]?.status || 'idle');
@@ -107,8 +148,22 @@
     return 'l-dim';
   }
 
-  onMount(() => { loadStatus(); _poll = setInterval(loadStatus, 30000); });
-  onDestroy(() => { if (_poll) clearInterval(_poll); if (_logPoll) clearInterval(_logPoll); });
+  function _onVis() { if (typeof document !== 'undefined' && !document.hidden) loadStatus(); }
+  let _tick: any = null;
+  onMount(() => {
+    loadStatus();
+    schedulePoll(false);
+    _tick = setInterval(() => { nowTs = Date.now(); }, 1000); // live elapsed clock
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', _onVis);
+    if (typeof window !== 'undefined') window.addEventListener('focus', _onVis);
+  });
+  onDestroy(() => {
+    if (_poll) clearInterval(_poll);
+    if (_logPoll) clearInterval(_logPoll);
+    if (_tick) clearInterval(_tick);
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', _onVis);
+    if (typeof window !== 'undefined') window.removeEventListener('focus', _onVis);
+  });
 </script>
 
 <div class="fr-wrap">
@@ -135,9 +190,10 @@
       <div class="fr-meta">
         LIVE LOG
         {#if runMeta.id}· run #{runMeta.id}{/if}
-        {#if atStatus?.is_training && atStatus?.current_step}· step {atStatus.current_step}/{atStatus.total || '?'}{/if}
+        {#if atStatus?.is_training && atStatus?.current_step}· {atStatus.current_step}{/if}
         <span class="fr-meta-st st-{runMeta.st}">● {runMeta.st}</span>
       </div>
+      {#if trainErr}<div class="fr-trainerr">⚠ {trainErr}</div>{/if}
 
       <!-- dark console -->
       <div class="fr-console" bind:this={consoleEl}>
@@ -153,7 +209,15 @@
     </div>
   {/if}
 
-  <button class="fr-bubble status-{status}" onclick={toggleOpen} title="Auto-train robot — {status}">
+  {#if !open}
+    <button class="fr-callout co-{status}" onclick={toggleOpen} title="Open training console">
+      <span class="co-dot" style="background:{dotColor}" class:co-pulse={status === 'training'}></span>
+      <span class="co-lbl">{status === 'training' ? 'Training' : status === 'disabled' ? 'Paused' : 'CityAgent'}</span>
+      <span class="co-txt">{callout}</span>
+    </button>
+  {/if}
+
+  <button class="fr-bubble status-{status}" onclick={toggleOpen} title="Auto-train robot — {callout}">
     <svg viewBox="0 0 64 64" width="40" height="40" class="fr-svg">
       <rect x="14" y="14" width="36" height="26" rx="6" fill="#c96342" />
       <rect x="22" y="22" width="6" height="6" rx="1.5" fill="#1a1414" />
@@ -178,6 +242,16 @@
   .fr-svg { display: block; }
   .fr-dot { position: absolute; top: 4px; right: 4px; width: 11px; height: 11px; border-radius: 50%; border: 2px solid #fff; }
   .fr-dot-pulse { animation: fr-pulse 1s ease-in-out infinite; }
+
+  /* always-on callout pill — "what the robot is doing" */
+  .fr-callout { display: inline-flex; align-items: center; gap: 7px; max-width: 320px; padding: 7px 12px 7px 10px; border-radius: 16px; background: #fff; border: 1px solid var(--pw-border, #ece6d9); box-shadow: 0 3px 14px rgba(0,0,0,0.12); cursor: pointer; font-family: var(--pw-font-body, system-ui); transition: transform 0.15s, box-shadow 0.15s; animation: fr-rise 0.16s ease; }
+  .fr-callout:hover { transform: translateY(-1px); box-shadow: 0 5px 18px rgba(201,99,66,0.22); }
+  .fr-callout.co-training { border-color: #c96342; }
+  .co-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .co-pulse { animation: fr-pulse 1s ease-in-out infinite; }
+  .co-lbl { font-size: 11px; font-weight: 800; letter-spacing: 0.02em; color: var(--pw-ink, #3a352c); flex-shrink: 0; }
+  .co-txt { font-size: 11px; color: var(--pw-muted, #8a8275); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fr-trainerr { padding: 5px 11px; font-size: 10.5px; color: #ff8b7e; background: #1a1622; border-bottom: 1px solid #2c2638; }
 
   /* expanded console popover */
   .fr-pop { width: 440px; max-width: calc(100vw - 36px); background: #1d1926; border: 1px solid #3a3346; border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.4); overflow: hidden; animation: fr-rise 0.16s ease; }

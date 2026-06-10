@@ -28,12 +28,25 @@
   };
 
   type FlowResp = {
-    run: { id: number; status: string; current_step: string; started_at?: string; finished_at?: string; stage_progress?: number } | null;
+    run: { id: number; status: string; phase?: string; current_step: string; started_at?: string; finished_at?: string; stage_progress?: number } | null;
     layers: { idx: number; title: string; color: string; gate: string | null; status: string }[];
     stores: Record<string, number | null>;
     kpis: Record<string, number | null>;
     flags: { engineer: boolean; enrich: boolean };
   };
+
+  // ── UTC-safe timestamp parser ─────────────────────────────────
+  // If the string has no timezone marker (no Z, no +hh:mm / -hh:mm),
+  // treat it as UTC by appending Z (and converting space separator to T).
+  function _ts(s?: string): number {
+    if (!s) return NaN;
+    let v = s.trim();
+    // Convert "2026-06-10 15:46:39" → "2026-06-10T15:46:39"
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(v)) v = v.replace(' ', 'T');
+    // If no timezone marker present, append Z to force UTC interpretation
+    if (!/[Zz]$/.test(v) && !/[+-]\d{2}:\d{2}$/.test(v)) v = v + 'Z';
+    return Date.parse(v);
+  }
 
   let flow = $state<FlowResp | null>(null);
   let drilled = $state<number>(-1);
@@ -43,6 +56,15 @@
   let nowTs = $state(Date.now());
 
   const status = $derived(flow?.run?.status || 'idle');
+  // phase: prefer the explicit field from the backend; fall back to deriving from status
+  const phase = $derived(
+    flow?.run?.phase ||
+    (status === 'done' ? 'done'
+      : status === 'finalizing' ? 'finalizing'
+      : status === 'failed' || status === 'error' ? 'failed'
+      : ['running', 'queued'].includes(status) ? 'running'
+      : 'idle')
+  );
   const running = $derived(['running', 'queued', 'finalizing'].includes(status));
   const done = $derived(status === 'done');
 
@@ -78,9 +100,11 @@
   const doneLayers = $derived(flow?.layers?.filter((l) => l.status === 'done').length ?? 0);
   const layerLabel = $derived(`layer ${doneLayers}/10`);
   const elapsedSec = $derived.by(() => {
-    const s = flow?.run?.started_at ? Date.parse(flow.run.started_at) : NaN;
+    const s = _ts(flow?.run?.started_at);
     if (Number.isNaN(s)) return 0;
-    const e = flow?.run?.finished_at ? Date.parse(flow.run.finished_at) : nowTs;
+    const e = phase === 'done' || phase === 'failed'
+      ? (_ts(flow?.run?.finished_at) || nowTs)
+      : nowTs;
     return Math.max(0, Math.floor((e - s) / 1000));
   });
   function fmtClock(sec: number): string {
@@ -89,7 +113,8 @@
   }
   const rps = $derived.by(() => {
     const rows = flow?.kpis?.rows;
-    if (!running || rows == null || elapsedSec < 1) return '—';
+    // Only show rows/s while actively ingesting (not during finalizing/done/idle)
+    if (phase !== 'running' || rows == null || elapsedSec < 1) return '—';
     return Math.round(rows / elapsedSec).toLocaleString();
   });
   // band: staging layers 0-2, training 3-9
@@ -244,16 +269,25 @@
   <!-- header -->
   <div class="tf-hd">
     <h1>Full Training Pipeline</h1>
-    {#if done}
+    {#if phase === 'done'}
       <span class="tf-badge tf-badge-done">✓ DONE</span>
-    {:else if running}
+    {:else if phase === 'finalizing'}
+      <span class="tf-badge tf-badge-fin"><span class="tf-blink-fin"></span>FINISHING</span>
+    {:else if phase === 'running'}
       <span class="tf-badge tf-badge-live"><span class="tf-blink"></span>LIVE</span>
+    {:else if phase === 'failed'}
+      <span class="tf-badge tf-badge-fail">✗ FAILED</span>
     {:else}
       <span class="tf-badge tf-badge-idle">IDLE</span>
     {/if}
     <span class="tf-sp"></span>
     <span class="tf-meta">
-      run <b>#{flow?.run?.id ?? '—'}</b> · <b>{layerLabel}</b> · elapsed <b>{fmtClock(elapsedSec)}</b> · ETA <b>—</b> · <b>{rps}</b> rows/s
+      run <b>#{flow?.run?.id ?? '—'}</b> · <b>{layerLabel}</b> · elapsed <b>{fmtClock(elapsedSec)}</b>
+      {#if phase === 'running'}
+        · ETA <b>—</b> · <b>{rps}</b> rows/s
+      {:else if phase === 'finalizing'}
+        · <span class="tf-fin-hint">indexing knowledge base…</span>
+      {/if}
     </span>
   </div>
 
@@ -407,8 +441,12 @@
   .tf-badge-live { color: var(--pw-accent-ink); background: var(--pw-accent-soft); border-color: var(--pw-accent); }
   .tf-badge-done { color: var(--pw-success); background: var(--pw-success-soft); border-color: var(--pw-success); }
   .tf-badge-idle { color: #9a8e80; background: #f0ebe2; }
+  .tf-badge-fin { color: #3a63b0; background: #e8eef9; border-color: #3a63b0; }
+  .tf-badge-fail { color: #c0392b; background: #fdecea; border-color: #c0392b; }
   .tf-blink { width: 8px; height: 8px; border-radius: 50%; background: var(--pw-accent); animation: tf-blink 1.1s infinite; }
+  .tf-blink-fin { width: 8px; height: 8px; border-radius: 50%; background: #3a63b0; animation: tf-blink 1.1s infinite; }
   @keyframes tf-blink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+  .tf-fin-hint { color: #3a63b0; font-style: italic; }
 
   /* KPI */
   .tf-kpi { display: flex; border: 1px solid var(--pw-border); }

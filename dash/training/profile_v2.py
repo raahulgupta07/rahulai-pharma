@@ -464,7 +464,11 @@ def _classify_role(
     pg_type_lc = (pg_type or "").lower()
     nd_ratio = (n_distinct / total_rows) if total_rows > 0 else 0.0
 
-    if name_lc.endswith("_id") and nd_ratio >= 0.95:
+    # id-like NAME (id/code/key/sku…) that's mostly unique → id. Checked BEFORE
+    # measure so a numeric code isn't mistaken for a metric. Covers article_code.
+    if (name_lc in ("id", "code", "sku", "barcode", "uuid", "guid")
+            or name_lc.endswith(("_id", "_code", "_key", "_no", "_num", "_sku"))) \
+            and nd_ratio >= 0.5:
         return "id"
     if pg_type_lc in TEMPORAL_PG_TYPES:
         return "temporal"

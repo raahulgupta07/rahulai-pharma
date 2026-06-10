@@ -112,8 +112,8 @@
  const isChatScreen = $derived(page.url.pathname.includes('/project/') || page.url.pathname.endsWith('/chat'));
  // bare conversation page (/project/{slug}) — no trailing sub-route
  const isBareChat = $derived(/\/project\/[^/]+\/?$/.test(page.url.pathname));
- // SINGLE auto-train robot — shown ONLY on the Dashboard + Integration (gateway/embed) screens
- const showRobot = $derived(!isLogin && singleAgent && !!lockedSlug && (page.url.pathname.includes('/overview') || routeMatches('/gateway') || routeMatches('/embed')));
+ // SINGLE auto-train robot — shown on every screen except chat.
+ const showRobot = $derived(!isLogin && singleAgent && !!lockedSlug && !page.url.pathname.endsWith('/chat') && !isBareChat);
  const isBuildActive = $derived(
  page.url.pathname.includes('/dashboard') ||
  page.url.pathname.includes('/presentations') ||
