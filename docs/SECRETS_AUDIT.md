@@ -44,16 +44,16 @@ Stack vendor key (third-party) entries are flagged separately from internal app 
 
 | where | file:line |
 |---|---|
-| `.env:6` | `SUPER_ADMIN_PASS=demo@2026` |
+| `.env:6` | `SUPER_ADMIN_PASS=<SUPER_ADMIN_PASS>` |
 | `.env.bak:6` | identical value |
 
 - **Classification:** REAL — this is the actual super-admin login password used by the demo account. The username `demo` is shipped as the default admin (`SUPER_ADMIN=demo`).
-- **Cross-refs:** `README.md:977,1009,1363` document this password publicly. `scripts/test_sim_integration.sh:22` defaults the smoke-test password to `demo@2026`. `docs/DASH_VS_A2.md:155` documents it. `CLAUDE.md:1425,3024` references it for live-test scripts.
+- **Cross-refs:** `README.md:977,1009,1363` document this password publicly. `scripts/test_sim_integration.sh:22` defaults the smoke-test password to `<SUPER_ADMIN_PASS>`. `docs/DASH_VS_A2.md:155` documents it. `CLAUDE.md:1425,3024` references it for live-test scripts.
 - **Blast radius:** super-admin == platform owner. Grants access to Command Center (cross-project access, all chat logs, all data sources, all integrations, RLS bypass).
 - **Recommended migration path:**
-  1. Treat `demo@2026` as a **DEV/DEMO-ONLY** credential, never a production credential. Confirm prod deployments override `SUPER_ADMIN_PASS` from a vault.
+  1. Treat `<SUPER_ADMIN_PASS>` as a **DEV/DEMO-ONLY** credential, never a production credential. Confirm prod deployments override `SUPER_ADMIN_PASS` from a vault.
   2. Production: `AWS SM` / `Doppler` / `k8s Secret` (same matrix as #1).
-  3. Add a startup-time refusal in `app/main.py` lifespan: if `RUNTIME_ENV=prd` AND `SUPER_ADMIN_PASS` is `demo@2026` or `admin` → log critical + refuse to start. (NOT shipped this session — recommendation only.)
+  3. Add a startup-time refusal in `app/main.py` lifespan: if `RUNTIME_ENV=prd` AND `SUPER_ADMIN_PASS` is `<SUPER_ADMIN_PASS>` or `admin` → log critical + refuse to start. (NOT shipped this session — recommendation only.)
 
 ### 3. `PEXELS_API_KEY` — **REAL**
 
@@ -167,7 +167,7 @@ Stack vendor key (third-party) entries are flagged separately from internal app 
 2. **Migrate** the 4 REAL secrets to the vault. Order of priority: `OPENROUTER_API_KEY` (financial liability) → `CONNECTION_ENCRYPTION_KEY` (re-encrypt migration) → `SUPER_ADMIN_PASS` (immediately rotate AFTER vault is wired) → `PEXELS_API_KEY` (low priority).
 3. **Rotate** the four REAL keys post-migration (each was on disk and possibly checked into a backup before `.gitignore` landed — assume compromised).
 4. **Harden `compose.yaml`**: replace `${DB_PASS:-ai}` with `${DB_PASS:?DB_PASS env var is required}`.
-5. **Harden `app/main.py` lifespan**: refuse to start if `RUNTIME_ENV=prd` AND `SUPER_ADMIN_PASS in ("demo@2026", "admin")` OR `JWT_SECRET == "dev-insecure-jwt-secret"`.
-6. **Strip secrets from docs**: `README.md:977,1009,1363`, `docs/DASH_VS_A2.md:155`, `scripts/test_sim_integration.sh:22`, `CLAUDE.md:1425,3024` all reference `demo / demo@2026` literally. Replace with `$DASH_TEST_PASS` env var pattern.
+5. **Harden `app/main.py` lifespan**: refuse to start if `RUNTIME_ENV=prd` AND `SUPER_ADMIN_PASS in ("<SUPER_ADMIN_PASS>", "admin")` OR `JWT_SECRET == "dev-insecure-jwt-secret"`.
+6. **Strip secrets from docs**: `README.md:977,1009,1363`, `docs/DASH_VS_A2.md:155`, `scripts/test_sim_integration.sh:22`, `CLAUDE.md:1425,3024` all reference `demo / <SUPER_ADMIN_PASS>` literally. Replace with `$DASH_TEST_PASS` env var pattern.
 
 This audit was deliberately read-only. The user makes the rotation/migration call after reviewing.

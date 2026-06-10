@@ -152,7 +152,7 @@ Plus federation layer, central Brain, knowledge graph, agent team (30 agents acr
 
 ```
 1. docker compose up -d                                            ← 4 containers
-2. open localhost:8001  ·  login demo / demo@2026
+2. open localhost:8001  ·  login demo / <SUPER_ADMIN_PASS>
 3. create project "Sales Analytics"
 4. DATASETS tab → POSTGRES icon → connect (test-postgres)
 5. pick all tables → CONNECT + SYNC                                ← 30s

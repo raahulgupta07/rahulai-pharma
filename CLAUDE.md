@@ -29,7 +29,7 @@ On user request "remove all data". Backup-first, then wipe. KEEP: `public.dash_p
 ### Infra (cp-* containers, NOT dash-*)
 - Containers: `cp-db cp-pgbouncer cp-api cp-redis cp-caddy cp-ml cp-mcp cp-backup`. Compose **service names kept** (`dash-db`, `dash-api` — internal DNS), only `container_name` renamed to `cp-*` (global, avoids clash with a live Dash on the same host).
 - Ports: cp-api `127.0.0.1:8011:8000`; caddy `8090:80` / `8453:443`. (A separate citymart-geo runs on :8000.)
-- Login: `demo` / `demo@2026` (super-admin). Login response field is `token` (not `access_token`); frontend stores `localStorage.dash_token`. **Login accepts EMAIL or USERNAME** (2026-06-09): `app/auth.py login` matches `username = :u OR LOWER(email) = LOWER(:u)` (exact-username preferred on tie) — the form labels the field "email", so either works.
+- Login: `demo` / `<SUPER_ADMIN_PASS>` (super-admin). Login response field is `token` (not `access_token`); frontend stores `localStorage.dash_token`. **Login accepts EMAIL or USERNAME** (2026-06-09): `app/auth.py login` matches `username = :u OR LOWER(email) = LOWER(:u)` (exact-username preferred on tie) — the form labels the field "email", so either works.
 - Reload: gunicorn `app.main:app`. Workers default to `cpu_count` (~14) — `WORKERS=2` in .env is NOT wired into `scripts/gunicorn_conf.py` default → slow 30-60s cold boot.
 
 ### Deploy = hot-copy (image is stale)

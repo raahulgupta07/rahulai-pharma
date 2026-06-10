@@ -34,7 +34,7 @@ Agent framework = **Agno**. LLMs via **OpenRouter** (Gemini 3 flash / GPT-5.4-mi
 - Containers: `cp-db cp-pgbouncer cp-api cp-redis cp-caddy cp-ml cp-mcp cp-backup`.
 - Compose **service names kept** (`dash-db`, `dash-api` = internal DNS); only `container_name` renamed `cp-*` (avoids clash with a live Dash on same host).
 - Ports: cp-api `127.0.0.1:8011:8000`; caddy `8090:80` / `8453:443`. (Separate citymart-geo on :8000.)
-- Login: `demo` / `demo@2026` (super-admin). Login response field is **`token`** (NOT `access_token`); frontend stores `localStorage.dash_token`.
+- Login: `demo` / `<SUPER_ADMIN_PASS>` (super-admin). Login response field is **`token`** (NOT `access_token`); frontend stores `localStorage.dash_token`.
 - `DB_HOST=dash-pgbouncer` (never direct to db); all engines `poolclass=NullPool`; search_path via `SET LOCAL` in begin events (pgbouncer txn-safe); `AUTH_TYPE=scram-sha-256`.
 - Workers default to `cpu_count` (~14); `WORKERS=2` in .env is **NOT** wired into `scripts/gunicorn_conf.py` default → slow 30–60s cold boot.
 - Daemon dedup: only `WORKER_RANK=0` worker spawns daemons (`gunicorn_conf.py post_fork` stamps `WORKER_RANK=worker.age`). Master kill: `DAEMONS_DISABLED=1`.

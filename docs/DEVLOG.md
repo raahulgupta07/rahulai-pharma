@@ -86,7 +86,7 @@ Replaced the flat `dsx-pipe` 7-dot strip in the Data Source page with a live, bo
 
 **Gotchas.** eval_score is a 1-5 rating NOT a % (dropped the `%` suffix + `pct` KPI flag). Schematic wants a real CSS color but spec colors are keywords → `CHEX` map (amber #d4930e / cyan #0ecad4 / coral #c96342). `bind:this` ref needs `$state` under runes (svelte-check error). Auth in component = local `_h()` reading `localStorage.dash_token` (mirror settings page).
 
-**Verified.** svelte-check 0 errors (3 new files + page), `bun run build` clean, image rebuilt + `--force-recreate`, healthy, endpoint returns live data (run #10 done, flags engineer=ON enrich=OFF, 4 tables / 212,653 rows / 134 Q&A / 7 rels / 3 matviews / 1,566 gaps / eval 4.5, AGE=0 graph empty, all 10 layers done, L3=12 steps), component shipped in served `/app/frontend/build/_app` bundle. SUPER_ADMIN=demo / demo@2026.
+**Verified.** svelte-check 0 errors (3 new files + page), `bun run build` clean, image rebuilt + `--force-recreate`, healthy, endpoint returns live data (run #10 done, flags engineer=ON enrich=OFF, 4 tables / 212,653 rows / 134 Q&A / 7 rels / 3 matviews / 1,566 gaps / eval 4.5, AGE=0 graph empty, all 10 layers done, L3=12 steps), component shipped in served `/app/frontend/build/_app` bundle. SUPER_ADMIN=demo / <SUPER_ADMIN_PASS>.
 
 **RELOCATED (commits d34b882 + 7560099).** The card belongs on the **Dashboard** (`project/[slug]/overview`, below the KPI strip), NOT the Data Source/settings page — first mount was on the wrong page. Removed `<TrainingFlow/>` + import from `settings/+page.svelte` (settings now shows only a slim "live pipeline on the Dashboard" hint while `isTraining`). Mounted on overview as a full-width `.ov-card` (`.ov-tflow`, `:global(.tf)` padding). Also fixed the schematic clipping stages 7-9 (TAIL/POST-HOOKS/DONE) past GRAPH: `.ts-stage` min-width 150→92px, `.ts-conn` flex 38→22px, stacked card title over status pill, tighter padding → all 10 stages fit edge-to-edge, no scroll.
 
@@ -229,7 +229,7 @@ Cleanup + single-tenant-polish session. Six independent changes, each rebuilt + 
 
 **5. Removed Usage Analytics from Embed console (front + back).** `ANALYTICS → Usage` was a strict subset of `Monitoring` (Monitoring `/api/admin/usage/embed-overview` already carries calls/tokens/sessions/latency PLUS errors/cost/time-series/per-store/drill-down). Removed: backend `embed_usage` endpoint (`GET /api/projects/{slug}/embeds/{id}/usage`, `app/embed.py`); frontend rail item + `view==='usage'` block + `loadUsage`/`usageDays`/`usageEmbed`/`usageData`/`usageErr` state + onMount branch + `_validViews` entry (`EmbedPanel.svelte`). Embed ANALYTICS rail now = Monitoring only. Monitoring + its `/admin/usage/*` endpoints + shared `.emp-empty-state` CSS untouched. OpenAPI confirms `/embeds/{id}/usage` gone, `embed-overview` stays.
 
-**6. Login id/pw (reference):** `demo` / `demo@2026` (`SUPER_ADMIN`/`SUPER_ADMIN_PASS` in `.env`; login accepts username or email). `svc:*` `dash_users` rows = API gateway service keys, not human logins.
+**6. Login id/pw (reference):** `demo` / `<SUPER_ADMIN_PASS>` (`SUPER_ADMIN`/`SUPER_ADMIN_PASS` in `.env`; login accepts username or email). `svc:*` `dash_users` rows = API gateway service keys, not human logins.
 
 ---
 
@@ -8437,7 +8437,7 @@ cd frontend && npm run build
 docker cp frontend/build dash-api:/app/frontend/
 docker exec dash-api kill -HUP 1
 ```
-Dash on **:8001**, citymart-geo on :8000. Login: `SUPER_ADMIN=demo`, `SUPER_ADMIN_PASS=demo@2026`, response field is `token` (not `access_token`). Frontend stores `localStorage.dash_token`.
+Dash on **:8001**, citymart-geo on :8000. Login: `SUPER_ADMIN=demo`, `SUPER_ADMIN_PASS=<SUPER_ADMIN_PASS>`, response field is `token` (not `access_token`). Frontend stores `localStorage.dash_token`.
 
 ### Caveat: prior-phase modules not in image
 `ModuleNotFoundError: app.accuracy_api` etc. — earlier files only `docker cp`'d, not baked. Container restart cleared them. Either rebuild image, or re-cp before HUP. Affects: `accuracy_api`, `actions_api`, `metricflow_api`, `research_api`, `golden_api`, `mdl_editor_api`, `diff_api`, `scope_audit_api`, `action_tools`, `deep_research`, `research_pdf`, `metricflow_loader`.

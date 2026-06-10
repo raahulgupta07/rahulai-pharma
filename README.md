@@ -385,7 +385,7 @@ Or chown in place without dropping: `docker run --rm -v <project>_knowledge_data
 | API (cp-api) | `127.0.0.1:8011` → 8000 |
 | Caddy | `8090:80`, `8453:443` |
 
-**Login**: `demo` / `demo@2026` (super-admin). You can sign in with **either your username or your email** (2026-06-09 — the field is labelled "email"). API login response field is `token` (not `access_token`); frontend stores `localStorage.dash_token`.
+**Login**: `demo` / `<SUPER_ADMIN_PASS>` (super-admin). You can sign in with **either your username or your email** (2026-06-09 — the field is labelled "email"). API login response field is `token` (not `access_token`); frontend stores `localStorage.dash_token`.
 
 Open: `http://localhost:8011/ui`
 

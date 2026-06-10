@@ -19,7 +19,7 @@ set -e
 
 HOST="${HOST:-http://localhost:8001}"
 USER="${2:-demo}"
-PASS="${3:-demo@2026}"
+PASS="${3:-<SUPER_ADMIN_PASS>}"
 SLUG="${1:-}"
 
 R='\033[0;31m'  # red
