@@ -104,6 +104,11 @@
   let showGraph = $state(false);
   let graphLoading = $state(false);
   let hoverIdx = $state(-1);
+  // selection / focus (fullscreen)
+  let selIdx = $state(-1);
+  let neighbor = $state<Set<number>>(new Set());
+  let selDetail = $state<any>(null);
+  let selLoading = $state(false);
 
   let gNodes: any[] = $state([]);
   let gEdges: any[] = $state([]);
@@ -132,63 +137,78 @@
       const a = idx.get(e.source), b = idx.get(e.target);
       if (a != null && b != null) E.push([a, b]);
     }
-    return { N, E, W, H, warm: 60 };   // warm = settle iterations before first paint
+    return { N, E, W, H, alpha: 1 };   // alpha = simulated-annealing temperature → settles then freezes
   }
 
-  // one physics iteration — mutates velocities/positions in place.
-  // `live` adds tiny brownian jitter so the map never fully freezes.
-  function stepSim(sim: any, live: boolean) {
+  const SIM_MIN = 0.012;   // below this the layout is "at rest" — stop stepping (Obsidian-style freeze)
+
+  // one physics iteration — forces scaled by sim.alpha which decays to rest.
+  // NO random jitter: motion is purposeful (clusters form) then the map freezes.
+  function stepSim(sim: any) {
     const { N, E, W, H } = sim;
+    const a0 = sim.alpha;
     const cx = W / 2, cy = H / 2;
     const rep = W > 1000 ? 280 : 160;
     const farClip = W > 1000 ? 40000 : 14000;
     const cap = W > 1000 ? 8 : 5;
-    const jit = live ? (W > 1000 ? 0.22 : 0.14) : 0;
-    for (let i = 0; i < N.length; i++) { const p = N[i]; p.vx += (cx - p.x) * 0.002; p.vy += (cy - p.y) * 0.004; }
+    for (let i = 0; i < N.length; i++) { const p = N[i]; p.vx += (cx - p.x) * 0.002 * a0; p.vy += (cy - p.y) * 0.004 * a0; }
     for (let i = 0; i < N.length; i++) {
       for (let j = i + 1; j < N.length; j++) {
         const a = N[i], b = N[j];
         let dx = a.x - b.x, dy = a.y - b.y;
         const d2 = dx * dx + dy * dy || 0.01;
-        if (d2 < farClip) { const f = rep / d2; dx *= f; dy *= f; a.vx += dx; a.vy += dy; b.vx -= dx; b.vy -= dy; }
+        if (d2 < farClip) { const f = (rep / d2) * a0; dx *= f; dy *= f; a.vx += dx; a.vy += dy; b.vx -= dx; b.vy -= dy; }
       }
     }
     for (const [a, b] of E) {
       const p = N[a], q = N[b];
       const dx = q.x - p.x, dy = q.y - p.y;
-      p.vx += dx * 0.0010; p.vy += dy * 0.0010; q.vx -= dx * 0.0010; q.vy -= dy * 0.0010;
+      p.vx += dx * 0.0010 * a0; p.vy += dy * 0.0010 * a0; q.vx -= dx * 0.0010 * a0; q.vy -= dy * 0.0010 * a0;
     }
     for (const p of N) {
-      if (jit) { p.vx += (Math.random() - 0.5) * jit; p.vy += (Math.random() - 0.5) * jit; }
       p.x += Math.max(-cap, Math.min(cap, p.vx)); p.y += Math.max(-cap, Math.min(cap, p.vy));
-      p.vx *= 0.90; p.vy *= 0.90;
+      p.vx *= 0.86; p.vy *= 0.86;
       p.x = Math.max(8, Math.min(W - 8, p.x)); p.y = Math.max(8, Math.min(H - 8, p.y));
     }
+    sim.alpha *= 0.985;   // cool down → eventually < SIM_MIN → freeze
   }
 
   function snapNodes(sim: any) {
     return sim.N.map((p: any) => ({ x: p.x, y: p.y, r: p.r, color: p.color, label: p.label }));
   }
   function snapEdges(sim: any) {
-    return sim.E.map(([a, b]: number[]) => ({ x1: sim.N[a].x, y1: sim.N[a].y, x2: sim.N[b].x, y2: sim.N[b].y }));
+    return sim.E.map(([a, b]: number[]) => ({ a, b, x1: sim.N[a].x, y1: sim.N[a].y, x2: sim.N[b].x, y2: sim.N[b].y }));
   }
 
-  // single rAF loop drives whichever sims are visible
+  // single rAF loop — steps each sim only while it's still cooling, then leaves it frozen.
   function frame() {
-    if (_inSim) {
-      const warming = _inSim.warm > 0;
-      if (warming) { for (let k = 0; k < 6; k++) stepSim(_inSim, false); _inSim.warm -= 6; }
-      else stepSim(_inSim, true);
+    if (_inSim && _inSim.alpha > SIM_MIN) {
+      stepSim(_inSim);
       gNodes = snapNodes(_inSim); gEdges = snapEdges(_inSim);
     }
-    if (showGraph && _fsSim) {
-      const warming = _fsSim.warm > 0;
-      if (warming) { for (let k = 0; k < 8; k++) stepSim(_fsSim, false); _fsSim.warm -= 8; }
-      else stepSim(_fsSim, true);
+    if (showGraph && _fsSim && _fsSim.alpha > SIM_MIN) {
+      stepSim(_fsSim);
       fgNodes = snapNodes(_fsSim); fgEdges = snapEdges(_fsSim);
     }
     _raf = requestAnimationFrame(frame);
   }
+
+  // ---- node selection → highlight neighbors + fetch rich detail ----
+  async function selectNode(i: number) {
+    if (!_fsSim) return;
+    selIdx = i;
+    const ns = new Set<number>();
+    for (const [a, b] of _fsSim.E) { if (a === i) ns.add(b); else if (b === i) ns.add(a); }
+    neighbor = ns;
+    selDetail = null; selLoading = true;
+    const label = _fsSim.N[i]?.label || '';
+    try {
+      const r = await fetch(`/api/projects/${slug}/graph/node?id=${encodeURIComponent(label)}`, { headers: _h() });
+      if (r.ok) selDetail = await r.json();
+    } catch { /* fail-soft */ }
+    selLoading = false;
+  }
+  function deselect() { selIdx = -1; selDetail = null; selLoading = false; neighbor = new Set(); }
 
   async function buildMiniGraph() {
     try {
@@ -206,7 +226,8 @@
   async function openGraph() {
     showGraph = true;
     hoverIdx = -1;
-    if (_fsSim) return;                    // already built once
+    deselect();
+    if (_fsSim) { _fsSim.alpha = Math.max(_fsSim.alpha, 0.25); return; }  // gentle re-settle on reopen
     graphLoading = true;
     try {
       const r = await fetch(`/api/projects/${slug}/graph?source=pharma&limit=1200`, { headers: _h() });
@@ -222,7 +243,7 @@
     } catch { /* fail-soft */ }
     graphLoading = false;
   }
-  function closeGraph() { showGraph = false; hoverIdx = -1; }
+  function closeGraph() { showGraph = false; hoverIdx = -1; deselect(); }
   function onGraphKey(e: KeyboardEvent) { if (e.key === 'Escape') closeGraph(); }
 
   onMount(() => {
@@ -544,7 +565,7 @@
     <div class="ov-gfs" role="dialog" aria-modal="true" aria-label="Knowledge graph fullscreen">
       <div class="ov-gfs-bar">
         <div class="ov-gfs-ttl">KNOWLEDGE GRAPH</div>
-        <div class="ov-gfs-sub">Drug substitute web · {fmtN(chem?.drugs_with_substitutes)} drugs · {fmtN(fgNodes.length)} nodes · {fmtN(fgEdges.length)} links · hover a node for its name</div>
+        <div class="ov-gfs-sub">Drug substitute web · {fmtN(chem?.drugs_with_substitutes)} drugs · {fmtN(fgNodes.length)} nodes · {fmtN(fgEdges.length)} links · click a drug for its relationships &amp; details</div>
         <button class="ov-gfs-x" onclick={closeGraph} aria-label="Close">✕</button>
       </div>
       <div class="ov-gfs-stage">
@@ -553,16 +574,24 @@
         {:else if !fgNodes.length}
           <div class="ov-gfs-load">No graph data yet — train the catalog to build the substitute web.</div>
         {:else}
-          <svg class="ov-gfs-svg" viewBox="0 0 {FW} {FH}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Full drug substitute knowledge graph">
+          <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+          <svg class="ov-gfs-svg" class:focused={selIdx >= 0} viewBox="0 0 {FW} {FH}" preserveAspectRatio="xMidYMid meet"
+               onclick={deselect} role="img" aria-label="Full drug substitute knowledge graph">
             {#each fgEdges as e}
-              <line x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2} stroke="rgba(190,180,210,0.13)" stroke-width="0.6" />
+              {@const on = selIdx < 0 || e.a === selIdx || e.b === selIdx}
+              <line x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2}
+                    stroke={on ? 'rgba(201,99,66,0.55)' : 'rgba(190,180,210,0.06)'} stroke-width={on && selIdx >= 0 ? 1.1 : 0.6} />
             {/each}
             {#each fgNodes as n, i}
-              <circle cx={n.x} cy={n.y} r={n.r} fill={n.color}
+              {@const dim = selIdx >= 0 && i !== selIdx && !neighbor.has(i)}
+              <circle cx={n.x} cy={n.y} r={i === selIdx ? n.r + 2 : n.r} fill={n.color}
+                      opacity={dim ? 0.1 : 1}
+                      stroke={i === selIdx ? '#fff' : 'none'} stroke-width={i === selIdx ? 2 : 0}
                       onmouseenter={() => (hoverIdx = i)} onmouseleave={() => (hoverIdx = -1)}
-                      role="img" aria-label={n.label} />
+                      onclick={(ev) => { ev.stopPropagation(); selectNode(i); }}
+                      style="cursor:pointer" role="img" aria-label={n.label} />
             {/each}
-            {#if hoverIdx >= 0 && fgNodes[hoverIdx]}
+            {#if hoverIdx >= 0 && fgNodes[hoverIdx] && hoverIdx !== selIdx}
               {@const hn = fgNodes[hoverIdx]}
               <g pointer-events="none">
                 <circle cx={hn.x} cy={hn.y} r={hn.r + 3} fill="none" stroke="#fff" stroke-width="1.4" />
@@ -571,6 +600,45 @@
               </g>
             {/if}
           </svg>
+
+          {#if selIdx >= 0}
+            <aside class="ov-gfs-panel">
+              <button class="ov-gfs-pclose" onclick={deselect} aria-label="Deselect">✕</button>
+              <div class="ov-gfs-pname">{fgNodes[selIdx]?.label}</div>
+              {#if selLoading}
+                <div class="ov-gfs-pmuted">Loading details…</div>
+              {:else if selDetail}
+                {@const idn = selDetail.identity || {}}
+                {@const cli = selDetail.clinical || {}}
+                {@const stk = selDetail.stock || {}}
+                <div class="ov-gfs-pmeta">
+                  {#if idn.generic}<span class="ov-gfs-tag">{idn.generic}</span>{/if}
+                  {#if idn.category}<span class="ov-gfs-tag alt">{idn.category}</span>{/if}
+                </div>
+                <div class="ov-gfs-psec">RELATIONSHIPS</div>
+                <div class="ov-gfs-prow"><span>Substitutes (same salt)</span><b>{(selDetail.substitutes || []).length}</b></div>
+                <div class="ov-gfs-prow"><span>Linked nodes in view</span><b>{neighbor.size}</b></div>
+                {#if stk && (stk.total != null)}
+                  <div class="ov-gfs-psec">AVAILABILITY</div>
+                  <div class="ov-gfs-prow"><span>Total stock</span><b>{fmtN(stk.total)}</b></div>
+                  <div class="ov-gfs-prow"><span>Stores carrying</span><b>{fmtN(stk.stores)}</b></div>
+                  {#if stk.avg_cost != null}<div class="ov-gfs-prow"><span>Avg cost (MMK)</span><b>{fmtN(stk.avg_cost)}</b></div>{/if}
+                {/if}
+                {#if cli.indication}<div class="ov-gfs-psec">CLINICAL</div><div class="ov-gfs-pfree"><i>Indication:</i> {cli.indication}</div>{/if}
+                {#if cli.dosage}<div class="ov-gfs-pfree"><i>Dosage:</i> {cli.dosage}</div>{/if}
+                {#if (selDetail.substitutes || []).length}
+                  <div class="ov-gfs-psec">SUBSTITUTES</div>
+                  <div class="ov-gfs-plist">
+                    {#each (selDetail.substitutes || []).slice(0, 30) as s}
+                      <div class="ov-gfs-pitem"><span>{s.brand}</span>{#if s.qty != null}<b class:zero={!s.qty}>{fmtN(s.qty)} in stock</b>{/if}</div>
+                    {/each}
+                  </div>
+                {/if}
+              {:else}
+                <div class="ov-gfs-pmuted">No detail available for this node.</div>
+              {/if}
+            </aside>
+          {/if}
         {/if}
       </div>
     </div>
@@ -793,6 +861,26 @@
   .ov-gfs-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
   .ov-gfs-svg circle { cursor: pointer; transition: opacity 0.1s; }
   .ov-gfs-load { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #b6aecb; font-size: 14px; }
+
+  /* selection detail panel (Obsidian-style, right) */
+  .ov-gfs-panel { position: absolute; top: 14px; right: 14px; bottom: 14px; width: 320px; background: #1d1926; border: 1px solid #3a3346; border-radius: 8px; padding: 16px 16px 14px; overflow-y: auto; box-shadow: 0 8px 30px rgba(0,0,0,0.5); }
+  .ov-gfs-pclose { position: absolute; top: 10px; right: 10px; font-size: 13px; color: #b6aecb; background: transparent; border: none; cursor: pointer; }
+  .ov-gfs-pclose:hover { color: #fff; }
+  .ov-gfs-pname { font-size: 15px; font-weight: 800; color: #fff; padding-right: 22px; line-height: 1.3; margin-bottom: 8px; }
+  .ov-gfs-pmuted { color: #8b8499; font-size: 12px; margin-top: 6px; }
+  .ov-gfs-pmeta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .ov-gfs-tag { font-size: 11px; font-weight: 700; color: #fff; background: #c96342; padding: 3px 8px; border-radius: 10px; }
+  .ov-gfs-tag.alt { background: #3a3346; color: #cdbfe0; }
+  .ov-gfs-psec { font-size: 10px; font-weight: 800; letter-spacing: 0.08em; color: #8b8499; margin: 14px 0 6px; }
+  .ov-gfs-prow { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; color: #d6cfe2; padding: 3px 0; border-bottom: 1px solid #272232; }
+  .ov-gfs-prow b { color: #fff; font-weight: 700; }
+  .ov-gfs-pfree { font-size: 12px; color: #cdc6da; line-height: 1.45; margin: 4px 0; }
+  .ov-gfs-pfree i { color: #8b8499; font-style: normal; font-weight: 700; }
+  .ov-gfs-plist { display: flex; flex-direction: column; gap: 2px; }
+  .ov-gfs-pitem { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: #d6cfe2; padding: 3px 0; border-bottom: 1px solid #272232; }
+  .ov-gfs-pitem b { color: #56d364; font-weight: 700; white-space: nowrap; }
+  .ov-gfs-pitem b.zero { color: #8b8499; }
+  .ov-gfs-svg.focused circle { transition: opacity 0.12s; }
 
   .ov-wiki-card { width: 100%; display: flex; align-items: center; gap: 16px; margin-bottom: 12px; padding: 16px 18px; background: var(--color-surface-bright, var(--color-surface)); border: 1px solid var(--pw-border, #e5ddcf); cursor: pointer; text-align: left; }
   .ov-wiki-card:hover { border-color: var(--color-primary); }
