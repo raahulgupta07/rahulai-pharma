@@ -25,6 +25,10 @@
   let gateway = $state<any>(null);
   let chem = $state<any>(null);          // /chemist (clinical coverage)
   let evalHealth = $state<any>(null);    // /eval-health (latest golden-eval run)
+  let summary = $state<any>(null);       // /dashboard-summary (per-tab chip counts + brain breakdown)
+  let agentsN = $state<number>(0);       // /agents length (team size)
+  let docsN = $state<number>(0);         // /docs length
+  let filesN = $state<number>(0);        // /knowledge-files length
 
   function _h(): Record<string, string> {
     const t = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
@@ -60,6 +64,17 @@
     runs = tr?.runs || [];
     log = lg?.events || [];
     gateway = gw;
+    // at-a-glance chip counts (one summary call + 3 light list calls)
+    const [sm, ag, dc, fl] = await Promise.all([
+      _j(`/api/projects/${s}/dashboard-summary`),
+      _j(`/api/projects/${s}/agents`),
+      _j(`/api/docs?project=${s}`),
+      _j(`/api/knowledge-files?project=${s}`),
+    ]);
+    summary = sm;
+    agentsN = ag?.agents?.length ?? 0;
+    docsN = dc?.docs?.length ?? 0;
+    filesN = fl?.files?.length ?? 0;
     lastUpdate = new Date().toLocaleTimeString();
     loading = false;
   }
@@ -204,6 +219,47 @@
     insights = insights.filter((x) => x.id !== id);
     try { await fetch(`/api/projects/${slug}/insights/${id}/dismiss`, { method: 'POST', headers: _h() }); } catch {}
   }
+
+  // ---- at-a-glance chips: route to the matching Cockpit (settings) tab via #hash ----
+  function goTab(hash: string) {
+    if (hash === 'graph') { goto(`${base}/project/${slug}/graph`); return; }
+    if (hash === 'pipeline') { document.querySelector('.ov-tflow')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+    goto(`${base}/project/${slug}/settings#${hash}`);
+  }
+  // chip groups — count resolved live from summary/ds/ov + the light list calls
+  const chipGroups = $derived([
+    { sect: 'WORKSPACE', chips: [
+      { k: 'Data Source', tab: 'upload',  v: ds ? fmtN(ds.tables) : '—',           s: ds ? fmtN(ds.rows ?? kpis.tables) + ' rows' : '' },
+      { k: 'Training',    tab: 'training', v: summary ? String(summary.training_runs) : '—', s: ds ? (ds.trained_tables + '/' + ds.tables + ' trained') : '' },
+      { k: 'Docs',        tab: 'docs',     v: String(docsN),                         s: 'documents' },
+      { k: 'Queries',     tab: 'queries',  v: summary ? String(summary.queries) : '—', s: 'saved' },
+      { k: 'Lineage',     tab: 'lineage',  v: summary ? String(summary.lineage) : '—', s: 'links' },
+      { k: 'Files',       tab: 'knowledge', v: String(filesN),                       s: 'knowledge' },
+    ]},
+    { sect: 'BRAIN', chips: [
+      { k: 'Rules',       tab: 'rules',           v: summary ? String(summary.brain?.rules ?? 0) : '—',       s: 'domain rules' },
+      { k: 'Graph',       tab: 'graph',           v: summary ? String(summary.triples) : '—',                 s: 'triples' },
+      { k: 'Schema',      tab: 'datasets',        v: summary ? String(summary.schema?.tables ?? 0) : '—',     s: (summary?.schema?.columns ?? 0) + ' cols' },
+    ]},
+    { sect: 'AGENTS', chips: [
+      { k: 'Agents',      tab: 'agents',    v: String(agentsN),                       s: 'in team' },
+      { k: 'Schedules',   tab: 'schedules', v: summary ? String(summary.schedules) : '—', s: 'scheduled' },
+      { k: 'Evals',       tab: 'evals',     v: summary ? String(summary.evals?.golden ?? 0) : '—', s: (summary?.evals?.score ?? 0) + '/5 · ' + (summary?.evals?.runs ?? 0) + ' runs' },
+    ]},
+    { sect: 'INTELLIGENCE', chips: [
+      { k: 'Learn',       tab: 'self-learn', v: summary ? String(summary.learn) : '—', s: 'self-learn runs' },
+      { k: 'Pipeline',    tab: 'pipeline',   v: '10', s: 'layers' },
+    ]},
+  ]);
+  // brain rich-card breakdown
+  const brainBars = $derived(summary?.brain ? [
+    { l: 'Definitions', v: summary.brain.definitions, c: '#c96342' },
+    { l: 'Glossary',    v: summary.brain.glossary,    c: '#0ca6b0' },
+    { l: 'KPI',         v: summary.brain.kpi,         c: '#d4930e' },
+    { l: 'Patterns',    v: summary.brain.patterns,    c: '#7c3aed' },
+    { l: 'Rules',       v: summary.brain.rules,       c: '#2d6a4f' },
+  ] : []);
+  const brainMax = $derived(Math.max(1, ...brainBars.map((b) => b.v || 0)));
 </script>
 
 <div class="ov-root">
@@ -241,6 +297,41 @@
         <div class="ov-kpi-s">{k.s}</div>
       </div>
     {/each}
+  </div>
+
+  <!-- AT A GLANCE — per-tab summary chips (click → Cockpit tab) + Brain rich card -->
+  <div class="ov-glance">
+    <div class="ov-chips">
+      {#each chipGroups as g}
+        <div class="ov-chip-sect">{g.sect}</div>
+        <div class="ov-chip-row">
+          {#each g.chips as c}
+            <button class="ov-chip" onclick={() => goTab(c.tab)} title="open {c.k}">
+              <div class="ov-chip-v">{c.v}</div>
+              <div class="ov-chip-k">{c.k}</div>
+              {#if c.s}<div class="ov-chip-s">{c.s}</div>{/if}
+            </button>
+          {/each}
+        </div>
+      {/each}
+    </div>
+
+    <div class="ov-card ov-brain">
+      <div class="ov-card-h">BRAIN <span class="ov-brain-tot">{summary?.brain?.total ?? 0} entries</span></div>
+      {#if brainBars.length}
+        <div class="ov-brain-bars">
+          {#each brainBars as b}
+            <button class="ov-brain-row" onclick={() => goTab(b.l === 'Rules' ? 'rules' : b.l === 'Glossary' ? 'brain-glossary' : 'brain-definitions')}>
+              <span class="ov-brain-l">{b.l}</span>
+              <span class="ov-brain-track"><span class="ov-brain-fill" style="width:{((b.v || 0) / brainMax) * 100}%;background:{b.c}"></span></span>
+              <span class="ov-brain-n">{b.v}</span>
+            </button>
+          {/each}
+        </div>
+      {:else}
+        <div class="ov-brain-empty">no brain entries yet</div>
+      {/if}
+    </div>
   </div>
 
   <!-- TRAINING PIPELINE — live boiler schematic + 60-step detail -->
@@ -486,8 +577,35 @@
   .ov-kpi-v { font-size: 26px; font-weight: 900; color: var(--color-on-surface); line-height: 1.1; margin: 4px 0 2px; }
   .ov-kpi-s { font-size: 10px; color: var(--color-on-surface-dim); }
 
+  /* AT A GLANCE: chip grid (left) + brain rich card (right) */
+  .ov-glance { display: grid; grid-template-columns: 1fr 290px; gap: 12px; margin-bottom: 14px; align-items: start; }
+  .ov-chips { display: flex; flex-direction: column; gap: 7px; }
+  .ov-chip-sect { font-size: 9px; font-weight: 800; letter-spacing: 0.09em; color: var(--color-on-surface-dim); margin-top: 4px; }
+  .ov-chip-sect:first-child { margin-top: 0; }
+  .ov-chip-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; }
+  .ov-chip { text-align: left; border: 1px solid var(--pw-border, #e5ddcf); background: var(--pw-surface, #fff); padding: 9px 10px; cursor: pointer; transition: 0.15s; border-top: 2px solid var(--pw-accent, #c96342); }
+  .ov-chip:hover { background: var(--pw-bg-alt, #f6f2ea); transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.07); }
+  .ov-chip-v { font-size: 19px; font-weight: 900; color: var(--color-on-surface); line-height: 1; font-variant-numeric: tabular-nums; }
+  .ov-chip-k { font-size: 10px; font-weight: 700; color: var(--color-on-surface); margin-top: 4px; }
+  .ov-chip-s { font-size: 8.5px; color: var(--color-on-surface-dim); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .ov-brain { align-self: stretch; }
+  .ov-brain-tot { font-size: 9px; color: var(--pw-muted, #877f74); font-weight: 600; }
+  .ov-brain-bars { padding: 10px 12px; display: flex; flex-direction: column; gap: 9px; }
+  .ov-brain-row { display: grid; grid-template-columns: 64px 1fr 30px; gap: 8px; align-items: center; background: none; border: none; padding: 0; cursor: pointer; text-align: left; }
+  .ov-brain-row:hover .ov-brain-l { color: var(--pw-accent, #c96342); }
+  .ov-brain-l { font-size: 10px; font-weight: 700; color: var(--color-on-surface); }
+  .ov-brain-track { height: 8px; background: var(--pw-bg-alt, #f0ebe2); overflow: hidden; }
+  .ov-brain-fill { display: block; height: 100%; transition: width 0.5s; }
+  .ov-brain-n { font-size: 11px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; color: var(--color-on-surface); }
+  .ov-brain-empty { padding: 16px; font-size: 11px; color: var(--color-on-surface-dim); }
+
   .ov-tflow { margin-bottom: 12px; }
   .ov-tflow :global(.tf) { padding: 14px; }
+  @media (max-width: 900px) {
+    .ov-glance { grid-template-columns: 1fr; }
+    .ov-chip-row { grid-template-columns: repeat(3, 1fr); }
+  }
   .ov-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
   .ov-card { border: 1px solid var(--pw-border, #e5ddcf); background: var(--pw-surface, #fff); padding: 0; overflow: hidden; }
   .ov-card-h { background: var(--pw-bg-alt, #f6f2ea); color: var(--pw-accent, #c96342); border-bottom: 1px solid var(--pw-border, #e5ddcf); padding: 8px 14px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; }

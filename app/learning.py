@@ -3228,6 +3228,89 @@ def training_flow(slug: str, request: Request):
     return derive_flow(slug, _du)
 
 
+@router.get("/{slug}/dashboard-summary")
+def dashboard_summary(slug: str, request: Request):
+    """At-a-glance counts for the Dashboard chip grid + Brain rich card.
+    One call → per-tab badge numbers (queries/lineage/rules/schedules/evals/
+    learn/graph + brain breakdown). All counts fail-soft (missing table → 0)."""
+    user = _get_user(request)
+    _check_access(user, slug)
+    schema = re.sub(r"[^a-z0-9_]", "_", slug.lower())[:63]
+
+    def _scalar(conn, sql, params=None):
+        try:
+            return int(conn.execute(text(sql), params or {}).scalar() or 0)
+        except Exception:
+            return 0
+
+    out = {
+        "project_slug": slug,
+        "queries": 0, "lineage": 0, "rules": 0, "schedules": 0,
+        "learn": 0, "triples": 0,
+        "training_runs": 0,
+        "evals": {"golden": 0, "runs": 0, "score": 0.0, "pass_rate": 0.0},
+        "brain": {"definitions": 0, "glossary": 0, "kpi": 0, "patterns": 0,
+                   "rules": 0, "total": 0},
+        "schema": {"tables": 0, "columns": 0},
+    }
+    p = {"s": slug}
+    try:
+        with _engine.connect() as conn:
+            out["queries"] = _scalar(conn, "SELECT COUNT(*) FROM public.dash_query_patterns WHERE project_slug=:s", p)
+            out["lineage"] = _scalar(conn, "SELECT COUNT(*) FROM public.dash_relationships WHERE project_slug=:s", p)
+            out["rules"] = _scalar(conn, "SELECT COUNT(*) FROM public.dash_rules_db WHERE project_slug=:s", p)
+            out["schedules"] = _scalar(conn, "SELECT COUNT(*) FROM public.dash_schedules WHERE project_slug=:s", p)
+            out["learn"] = _scalar(conn, "SELECT COUNT(*) FROM public.dash_self_learning_runs WHERE project_slug=:s", p)
+            out["triples"] = _scalar(conn, "SELECT COUNT(*) FROM public.dash_knowledge_triples WHERE project_slug=:s", p)
+            out["training_runs"] = _scalar(conn, "SELECT COUNT(*) FROM public.dash_training_runs WHERE project_slug=:s", p)
+
+            # brain breakdown by category (formula=definitions, glossary, kpi)
+            try:
+                for row in conn.execute(text(
+                    "SELECT category, COUNT(*) FROM public.dash_company_brain "
+                    "WHERE project_slug=:s GROUP BY category"), p).fetchall():
+                    cat = str(row[0] or "").lower()
+                    n = int(row[1] or 0)
+                    if cat == "formula":
+                        out["brain"]["definitions"] = n
+                    elif cat in ("glossary", "kpi"):
+                        out["brain"][cat] = n
+            except Exception:
+                pass
+            out["brain"]["patterns"] = out["queries"]
+            out["brain"]["rules"] = out["rules"]
+            out["brain"]["total"] = (out["brain"]["definitions"] + out["brain"]["glossary"]
+                                      + out["brain"]["kpi"] + out["brain"]["patterns"] + out["brain"]["rules"])
+
+            # evals: golden set size + run count + latest score / pass-rate
+            out["evals"]["golden"] = _scalar(conn, "SELECT COUNT(*) FROM public.dash_evals WHERE project_slug=:s", p)
+            out["evals"]["runs"] = _scalar(conn, "SELECT COUNT(*) FROM public.dash_eval_runs WHERE project_slug=:s", p)
+            try:
+                r = conn.execute(text(
+                    "SELECT total, passed, average_score FROM public.dash_eval_runs "
+                    "WHERE project_slug=:s ORDER BY run_at DESC NULLS LAST, id DESC LIMIT 1"), p).first()
+                if r:
+                    tot = int(r[0] or 0)
+                    out["evals"]["score"] = round(float(r[2] or 0), 2)
+                    out["evals"]["pass_rate"] = round((int(r[1] or 0) / tot), 4) if tot else 0.0
+            except Exception:
+                pass
+
+            # schema: tables + total columns in the project data schema
+            try:
+                conn.execute(text(f"SET search_path = {schema}, public"))
+                out["schema"]["tables"] = _scalar(conn,
+                    "SELECT COUNT(*) FROM information_schema.tables "
+                    "WHERE table_schema=:sc AND table_type='BASE TABLE'", {"sc": schema})
+                out["schema"]["columns"] = _scalar(conn,
+                    "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=:sc", {"sc": schema})
+            except Exception:
+                pass
+    except Exception as exc:
+        out["error"] = str(exc)[:160]
+    return out
+
+
 @router.get("/{slug}/catalog-enrich/gaps")
 def catalog_enrich_gaps(slug: str):
     """Per-field gap counts in the catalog + pending/approved suggestion counts.
