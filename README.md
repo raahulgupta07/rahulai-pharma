@@ -27,6 +27,81 @@ Operator landing page — one screen, fail-soft strips that reuse existing endpo
 
 ---
 
+## Design & architecture
+
+One FastAPI backend (gunicorn + uvicorn workers) serving a SvelteKit 5 SPA, fronted by Caddy, talking to Postgres 18 (pgvector + Apache AGE) through PgBouncer, with Redis for rate-limits/cache. Everything runs as `cp-*` containers from one `compose.yaml`.
+
+```
+                         ┌──────────── browser / embed widget / external PHP app ───────────┐
+                         │  /ui (SvelteKit SPA)   <script> embed.js   POST /api/v1 (OpenAI)  │
+                         └───────────────────────────────┬──────────────────────────────────┘
+                                                          │  HTTPS
+                                                  ┌───────▼────────┐
+                                                  │  Caddy (cp-caddy)   :8090/:8453
+                                                  └───────┬────────┘
+                                                          │
+                                            ┌─────────────▼──────────────┐
+                                            │  FastAPI app  (cp-api :8000)│
+                                            │  gunicorn + N uvicorn       │
+                                            │  ┌───────────────────────┐  │
+                                            │  │ auth middleware        │  │
+                                            │  │ scope guardrail        │  │
+                                            │  │ single-agent lock      │  │
+                                            │  └───────────────────────┘  │
+                                            │  CityPharma Analyst (Agno)  │
+                                            │  team: Analyst·Engineer·    │
+                                            │  Researcher·DataScientist   │
+                                            │  tools: stock_check ·       │
+                                            │  substitutes · indications ·│
+                                            │  run_sql · search_all       │
+                                            └──┬───────────┬─────────┬────┘
+                                               │           │         │
+                          ┌────────────────────▼──┐   ┌────▼────┐  ┌─▼─────────────┐
+                          │ PgBouncer (cp-pgbouncer)│  │ Redis   │  │ OpenRouter     │
+                          │  txn pool → 80 conns    │  │(cp-redis)│ │ Gemini / GPT   │
+                          └───────────┬─────────────┘  │ rate +  │  │ LLM + embed    │
+                                      │                │ cache   │  └────────────────┘
+                              ┌───────▼────────┐       └─────────┘
+                              │ Postgres 18    │   cp-ml (forecasts) · cp-mcp · cp-backup
+                              │ (cp-db)        │   cp-init (one-shot schema seeder)
+                              │ pgvector +     │
+                              │ Apache AGE     │
+                              │ public.dash_*  │  platform tables (users, feedback, costs, embeds…)
+                              │ citypharma.*   │  the locked pharma workspace (articles, stock, sales…)
+                              └────────────────┘
+```
+
+**Two schemas, one tenant.** `public.dash_*` = platform plumbing (auth, usage/cost, feedback, embeds, training runs). `citypharma.*` = the locked workspace's actual pharma tables. The product is permanently single-tenant — `is_single_agent()` is hardcoded, no project creation, schema name == slug == `citypharma`.
+
+**Data engines (rule):** `get_sql_engine()` = shared READ engine (PgBouncer routes it read-only). `get_write_engine()` = WRITE engine. Every write to `dash.dash_*` / `public.dash_*` must use the write engine, or PgBouncer silently rejects with "Cannot write".
+
+**Knowledge stores** the agent grounds on: relational tables (text-to-SQL), pgvector embeddings (semantic search), `dash_company_brain` (definitions/glossary/rules), `dash_knowledge_triples` + Apache AGE (graph), file-based golden corpus (`_golden.json`).
+
+## Workflow (end-to-end)
+
+**1 · Load → Train.** Upload CSV/Excel/docs in the Workspace → the 14-step per-table pipeline runs (drift → profile → dimension catalog → sample → Q&A gen verified against the real DB → persona → knowledge index → brain fill → bilingual twins), then a master tail (knowledge graph → vector backfill → scope guardrail → evals). Untrained tables also auto-train 24/7 via the leader-gated daemon. Live progress streams in the floating robot console + Dashboard Training Pipeline.
+
+```
+upload ─▶ per-table pipeline ─▶ master tail ─▶ embeddings + brain + graph ─▶ agent grounded
+            (×N tables, parallel)                 golden corpus + bilingual twins
+```
+
+**2 · Ask → Answer.** A chat turn → scope guardrail (off-topic? instant refusal) → metric shortcut (golden corpus hit?) → else the Agno team plans → picks tools (stock_check / substitutes / indications / run_sql / search_all) → grounds on SQL + vectors + brain → returns a structured answer card (SQL hidden in a collapsed trace). Casual/greeting turns skip the card and reply as a plain pharmacist. Bilingual: Burmese in → Burmese out.
+
+```
+question ─▶ scope gate ─▶ golden shortcut ─▶ agent team ─▶ tools+SQL+RAG ─▶ answer card (+ 👍/👎)
+```
+
+**3 · Feedback → Improve.** 👍/👎 on any answer opens a comment/correction modal → writes `dash_feedback`. A 👎 + correction is an **unverified** claim queued for admin review in `/ui/usage` → admin **Promotes** it into the golden corpus (or dismisses). Verified 👍 + SQL auto-promotes. The self-tuning + auto-evolve loops fold corrections back into the agent's instructions. Same loop runs from the embed widget (anonymous).
+
+```
+👍/👎 + comment ─▶ dash_feedback ─▶ admin review (promote/dismiss) ─▶ golden corpus ─▶ better answers
+```
+
+**4 · Serve.** Beyond the UI: the **embed widget** (drop-in `<script>`, consumer or analyst mode) and the **OpenAI-compatible API gateway** (`/api/v1/chat/completions`, 3-tier store-scoped keys) let external apps consume the same agent.
+
+---
+
 ## Pharmacy capabilities
 
 Primary persona = **pharmacy counter staff**. The chat answers branch-scoped medicine questions:
@@ -309,8 +384,8 @@ first boot, so there is **no manual SQL step** and **no "relation … does not e
 wall** on a fresh DB.
 
 ```bash
-git clone git@github.com:raahulgupta07/rahulai-city-pharma.git
-cd rahulai-city-pharma
+git clone git@github.com:raahulgupta07/rahulai-pharma.git
+cd rahulai-pharma
 cp .env.example .env          # fill 3 values: OPENROUTER_API_KEY, DB_PASS, SUPER_ADMIN_PASS
 docker compose up -d --build  # builds images, auto-seeds the DB, starts everything
 # wait ~1–2 min, then check: curl http://127.0.0.1:8011/api/health  →  {"status":"ok"}
@@ -362,7 +437,7 @@ never succeeded), so drop it and let the fixed image recreate it `dash`-owned:
 ```bash
 git pull
 docker compose down
-docker volume rm "$(basename "$PWD")_knowledge_data"   # e.g. rahulai-city-pharma_knowledge_data
+docker volume rm "$(basename "$PWD")_knowledge_data"   # e.g. rahulai-pharma_knowledge_data
 docker compose up -d --build
 ```
 Or chown in place without dropping: `docker run --rm -v <project>_knowledge_data:/k alpine chown -R 999:999 /k` (999 = the `dash` uid).
@@ -388,6 +463,29 @@ Or chown in place without dropping: `docker run --rm -v <project>_knowledge_data
 **Login**: `demo` / `<SUPER_ADMIN_PASS>` (super-admin). You can sign in with **either your username or your email** (2026-06-09 — the field is labelled "email"). API login response field is `token` (not `access_token`); frontend stores `localStorage.dash_token`.
 
 Open: `http://localhost:8011/ui`
+
+---
+
+## Upgrade (pull latest → rebuild)
+
+Upgrading an existing install = pull the new code, rebuild the image, recreate. The DB **migrates itself** on boot (idempotent migrations in `db/migrations/`, applied by worker rank 0) — no manual SQL. Your data, `.env`, and `knowledge/` volume are preserved.
+
+```bash
+git pull                                              # get new code
+docker compose -f compose.yaml build dash-api         # rebuild image (service name = dash-api)
+# clear the daemon leader so the new process re-claims it cleanly (see gotcha #9):
+docker exec cp-db psql -U ai -d ai -c "DELETE FROM dash.dash_daemon_leader;"
+docker compose -f compose.yaml up -d --force-recreate dash-api
+# poll until ok, then hard-refresh the browser (Cmd+Shift+R):
+curl http://127.0.0.1:8011/api/health                 # → {"status":"ok"}
+```
+
+**Notes**
+- **Migrations are automatic + idempotent** (`ALTER … IF NOT EXISTS`), run only on worker rank 0 on boot. Nothing to run by hand. A cold-volume install seeds the full baseline instead (see Install).
+- **Always rebuild — never `docker cp`.** A hot-copied bundle is wiped by any `force-recreate` (see Deploy gotcha #2).
+- **New `.env` var?** `dash-api` lists env vars individually (no `env_file`), so add it to the service `environment:` block in `compose.yaml` too, or it won't reach the container.
+- **Frontend changed?** `cd frontend && npm run build` first (or let the docker multi-stage build do it).
+- **Rollback** = check out the previous tag/commit and rebuild the same way. DB migrations are additive (forward-only); a rollback keeps the new columns (harmless to old code).
 
 ---
 
@@ -586,4 +684,3 @@ frontend/src/app.css        design tokens (single Inter font family)
 ```
 
 For the full inherited platform internals (training pipeline, 13 context layers, self-learning, security model, all gotchas), see **`CLAUDE.md`**.
-# rahulai-city-pharma
