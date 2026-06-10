@@ -188,6 +188,89 @@ def sanitize_consumer_response(text: str, max_chars: int = 600) -> str:
     return out
 
 
+def _sanitize_fragment(text: str) -> str:
+    """Strip developer-facing artifacts from a COMMITTED prefix of the running
+    answer (the incremental consumer streamer). Applies the SAME removal rules as
+    `sanitize_consumer_response` (tags / code blocks / <code> / agent-prefix /
+    routing / md-table-separator / banded-price tail) but does NOT truncate and
+    does NOT `.strip()` the result — stripping would shift the emitted_len cursor
+    and risk re-emitting or skipping characters. Internal blank-line collapsing is
+    likewise skipped so the committed text stays a stable, append-only prefix.
+
+    SECURITY: only ever called on a prefix that the hold-window guarantee has
+    proven contains no half-open sensitive token (see `_consumer_hold_len`)."""
+    if not text:
+        return ""
+    out = text
+    out = _CONSUMER_TAG_RE.sub("", out)        # [TAG:...]
+    out = _CODE_BLOCK_RE.sub("", out)          # ```...```
+    out = _HTML_CODE_RE.sub("", out)           # <code>
+    out = _AGENT_PREFIX_RE.sub("", out)        # "Analyst: ..."
+    out = _ROUTING_LINE_RE.sub("", out)        # ROUTING / FAST mode
+    out = _MD_TABLE_SEP_RE.sub("", out)        # |---|---|
+    out = _BANDED_PRICE_TAIL_RE.sub("", out)   # — [banded] MMK
+    return out
+
+
+def _consumer_hold_len(raw: str) -> int:
+    """Return how many characters at the TAIL of `raw` must be HELD BACK (not yet
+    committed) because they could be the beginning of an unclosed sensitive token
+    that `_sanitize_fragment` would otherwise fail to strip if cut mid-token.
+
+    The hold-window invariant: `raw[:len(raw) - hold]` is SAFE to sanitize +
+    commit, because no sensitive construct can begin inside that prefix and remain
+    unclosed past it. We hold from the EARLIEST suspicious open position to the end
+    of the string. Conservative by design — when in doubt, hold (correctness of
+    masking > stream smoothness). Cases held:
+
+      • an open `[` with no later `]`  → could become `[TAG:...]`
+      • an odd number of  ```  fences  → inside an open code block
+      • an open `<` that could grow into `<code` / `</code` (`<`, `<c`, `<co`,
+        `<cod`, `<code` …, or `</`, `</c` …) with no closing `>`
+      • a trailing partial line that *starts like* a markdown table separator
+        (`|`, `|-`, `:--` …) and has no terminating newline yet
+    """
+    if not raw:
+        return 0
+    n = len(raw)
+    hold_from = n  # earliest byte index we must hold from (default: hold nothing)
+
+    # 1. Unclosed '[' — a [TAG:...] could be mid-arrival.
+    lb = raw.rfind("[")
+    if lb != -1 and "]" not in raw[lb:]:
+        hold_from = min(hold_from, lb)
+
+    # 2. Odd number of ``` fences → we are inside an open code block. Hold from
+    #    the LAST opening fence so the whole open block stays masked.
+    if raw.count("```") % 2 == 1:
+        last_fence = raw.rfind("```")
+        if last_fence != -1:
+            hold_from = min(hold_from, last_fence)
+
+    # 3. Unclosed '<' that could be an emerging <code>/</code> tag. Hold from the
+    #    last '<' when there's no '>' after it AND the partial matches a code-tag
+    #    prefix (so we don't needlessly hold ordinary '<' like "a < b").
+    lt = raw.rfind("<")
+    if lt != -1 and ">" not in raw[lt:]:
+        partial = raw[lt:].lower()
+        _code_prefixes = ("</code", "<code", "</cod", "<cod", "</co", "<co",
+                          "</c", "<c", "</", "<")
+        if any(partial == p[:len(partial)] for p in _code_prefixes):
+            hold_from = min(hold_from, lt)
+
+    # 4. Trailing partial markdown table-separator row with no closing newline.
+    #    e.g. "...\n| --- | ---" still streaming → hold the whole partial line so
+    #    `_MD_TABLE_SEP_RE` (anchored ^...$) can match it once the newline lands.
+    nl = raw.rfind("\n")
+    tail = raw[nl + 1:] if nl != -1 else raw
+    bare = tail.lstrip()
+    if bare and all(c in "|:- " for c in bare) and ("-" in bare or "|" in bare):
+        line_start = nl + 1 if nl != -1 else 0
+        hold_from = min(hold_from, line_start)
+
+    return n - hold_from
+
+
 @router.get("/docs")
 def serve_embed_docs():
     """Self-contained docs page for integrators."""
@@ -943,6 +1026,29 @@ def try_embed_sandbox(embed_id: str, request: Request, token: str | None = None)
     return HTMLResponse(html, headers={"X-Frame-Options": "SAMEORIGIN"})
 
 
+def _resolve_starter_questions(row_value) -> list:
+    """Resolve the widget's initial starter-question chips:
+        per-widget starter_questions (non-empty list)  ?  global embed_default_starters.
+    Returns a list of strings (Burmese pharma defaults when nothing is set)."""
+    try:
+        import json as _json
+        v = row_value
+        if isinstance(v, str):
+            v = _json.loads(v) if v.strip() else []
+        if isinstance(v, list) and len(v) > 0:
+            return [str(x) for x in v if str(x).strip()]
+    except Exception:
+        pass
+    try:
+        from dash.admin.settings import get_setting
+        g = get_setting("embed_default_starters", default=[])
+        if isinstance(g, list):
+            return [str(x) for x in g if str(x).strip()]
+    except Exception:
+        pass
+    return []
+
+
 @router.get("/config/{embed_id}")
 def get_embed_public_config(embed_id: str, request: Request):
     """Return public theme config for the widget. No auth (origin-checked at session)."""
@@ -953,7 +1059,7 @@ def get_embed_public_config(embed_id: str, request: Request):
         with eng.connect() as conn:
             row = conn.execute(text(
                 "SELECT embed_id, name, primary_color, logo_url, welcome_msg, position, theme, "
-                " allowed_origins, enabled, status, auth_mode "
+                " allowed_origins, enabled, status, auth_mode, starter_questions "
                 "FROM public.dash_agent_embeds WHERE embed_id = :e"
             ), {"e": embed_id}).first()
     except Exception:
@@ -984,18 +1090,57 @@ def get_embed_public_config(embed_id: str, request: Request):
             return v
         bv = brand.get(col)
         return bv if (bv is not None and bv != "") else hard
+    # Greeting fallback chain: per-widget welcome_msg ?? brand ?? global
+    # embed_default_welcome setting ?? hard Burmese string.
+    _welcome_hard = "မင်္ဂလာပါ — ဘာများ ကူညီပေးရမလဲ?"
+    try:
+        from dash.admin.settings import get_setting as _gs
+        _welcome_default = _gs("embed_default_welcome", default=_welcome_hard) or _welcome_hard
+    except Exception:
+        _welcome_default = _welcome_hard
     payload = {
         "embed_id": d["embed_id"],
         "name": d.get("name"),
         "primary_color": _resolve("primary_color", "#1a2b4a"),
         "logo_url": _resolve("logo_url", "") or None,
-        "welcome_msg": _resolve("welcome_msg", "Hi! How can I help?"),
+        "welcome_msg": _resolve("welcome_msg", _welcome_default),
         "position": _resolve("position", "bottom-right"),
         "theme": _resolve("theme", "auto"),
         "auth_mode": d.get("auth_mode") or "public",
+        "starter_questions": _resolve_starter_questions(d.get("starter_questions")),
     }
     from fastapi.responses import JSONResponse
     return JSONResponse(payload, headers=cors)
+
+
+@router.get("/config/{embed_id}/suggestions")
+def get_embed_starter_suggestions(embed_id: str, request: Request):
+    """Initial starter-question chips for the widget (shown before the first
+    message). Resolves per-embed `starter_questions` ?? global Burmese default.
+    Per-ANSWER follow-ups are a separate heuristic (`_consumer_followups`) carried
+    in the stream `done` payload — this route only seeds the opening chips."""
+    from sqlalchemy import text
+    from dash.embed import _get_engine
+    from fastapi.responses import JSONResponse
+    starters: list = []
+    try:
+        eng = _get_engine()
+        with eng.connect() as conn:
+            row = conn.execute(text(
+                "SELECT starter_questions, enabled, status "
+                "FROM public.dash_agent_embeds WHERE embed_id = :e"
+            ), {"e": embed_id}).first()
+        if row and not (row[1] is False or row[2] == "disabled"):
+            starters = _resolve_starter_questions(row[0])
+        else:
+            # Unknown/disabled embed → still return the global Burmese defaults
+            # so the widget never shows an empty chip row.
+            starters = _resolve_starter_questions(None)
+    except Exception:
+        starters = _resolve_starter_questions(None)
+    origin = request.headers.get("origin", "")
+    cors = {"Access-Control-Allow-Origin": origin or "*", "Vary": "Origin"}
+    return JSONResponse({"questions": starters}, headers=cors)
 
 
 @router.post("/session/create")
@@ -1846,6 +1991,9 @@ async def embed_chat_stream(req: Request):
         _reasoning_shown = False
         _shown_steps = 0
         _MAX_CONSUMER_STEPS = 6
+        # Consumer incremental-streamer cursor: number of SANITIZED characters
+        # already emitted as 'token' deltas. We never re-emit before this point.
+        emitted_len = 0
 
         # meta event first.
         yield _sse_format("meta", {
@@ -2015,9 +2163,31 @@ async def embed_chat_stream(req: Request):
                 full_buffer.append(delta)
                 buffer_bytes += len(delta.encode("utf-8"))
 
-                # Consumer-mode buffers silently (sanitized once at the end).
                 if not consumer_mode:
+                    # Analyst embeds stream raw token deltas as before.
                     yield _sse_format("token", {"delta": delta})
+                else:
+                    # ── Consumer incremental SAFE streamer ──────────────────
+                    # Token-by-token like ChatGPT while masking stays 100% safe.
+                    # HOLD-WINDOW INVARIANT: we sanitize+commit only the prefix
+                    # of the running buffer that `_consumer_hold_len` proves can
+                    # contain no half-open sensitive token ([TAG:, ``` fence,
+                    # <code>, partial md-table-sep). The trailing hold window is
+                    # NEVER emitted — it is re-examined on the next delta once
+                    # more characters arrive (the token either closes → becomes
+                    # committable, or stays open → keeps being held). The FULL
+                    # `sanitize_consumer_response` at stream end is the source of
+                    # truth and flushes any safe remainder. Conservative: when in
+                    # doubt we hold rather than emit (masking > smoothness).
+                    raw_running = "".join(full_buffer)
+                    hold = _consumer_hold_len(raw_running)
+                    committable = raw_running[:len(raw_running) - hold] if hold else raw_running
+                    sanitized = _sanitize_fragment(committable)
+                    if len(sanitized) > emitted_len:
+                        new_text = sanitized[emitted_len:]
+                        emitted_len = len(sanitized)
+                        if new_text:
+                            yield _sse_format("token", {"delta": new_text})
 
                 now = _time_mod.monotonic()
                 if now - last_heartbeat >= _STREAM_HEARTBEAT_S:
@@ -2036,8 +2206,10 @@ async def embed_chat_stream(req: Request):
                 })
                 return
 
-            # Consumer-mode: sanitize the full buffer, then emit it as ONE
-            # token so masking/banding is never bypassed mid-stream.
+            # Consumer-mode end of stream: run the FULL sanitizer (with
+            # max_chars truncation, banded-price note, blank-line collapse) on
+            # the complete buffer — this is the source of truth. Emit only the
+            # remainder BEYOND what the incremental streamer already committed.
             final_for_followups = ""
             if consumer_mode:
                 final = "".join(full_buffer)
@@ -2057,8 +2229,12 @@ async def embed_chat_stream(req: Request):
                 if _had_banded and final and "price" not in final.lower():
                     final = final.rstrip() + "\n\n_Prices are hidden in this view — items are ranked highest to lowest._"
                 final_for_followups = final
-                if final:
-                    yield _sse_format("token", {"delta": final})
+                # If the fully-sanitized final is LONGER than what we streamed
+                # (the held tail + the appended price-note), flush the new chars.
+                # If truncation made it SHORTER than emitted (rare), do nothing —
+                # already-emitted text is acceptable; we never retract.
+                if final and len(final) > emitted_len:
+                    yield _sse_format("token", {"delta": final[emitted_len:]})
 
             latency_ms = int((_time_mod.monotonic() - t0) * 1000)
             done_payload = {

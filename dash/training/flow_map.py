@@ -163,6 +163,179 @@ STORES: list[dict] = [
 ]
 
 # ---------------------------------------------------------------------------
+# Display masking — hides internal tool / engine / table names from the UI and
+# the API response so the live training flow cannot be reverse-engineered.
+# ON by default; set FLOW_OBFUSCATE=0 for internal debugging (shows real names).
+# Internal labels are still used for log-matching BEFORE the mask is applied.
+# ---------------------------------------------------------------------------
+import re as _re_mask
+
+_OBFUSCATE = os.getenv("FLOW_OBFUSCATE", "1") not in ("0", "false", "False", "")
+
+# real step label -> (display label, display detail, display writes_to)
+_MASK_STEPS: dict[str, tuple] = {
+    # L0 intake
+    "POST /upload/stage":        ("receive_files",  "accept upload(s), batch group",     "(intake)"),
+    "sheet split":               ("split_sheets",   "workbook → one entry per sheet",    "(intake)"),
+    "content_hash":              ("fingerprint",    "content hash — dedup key",          "(intake)"),
+    "quality scan":              ("quality_scan",   "empty/unreadable → quarantine",     "(intake)"),
+    "write_manifest":            ("record_intake",  "status · files · hashes",           "(intake)"),
+    # L1 preflight
+    "infer_contract":            ("infer_schema",   "column types + load key",           "(plan)"),
+    "check_against_contract":    ("check_drift",    "schema drift vs prior",             "(plan)"),
+    "detect_load_key":           ("detect_key",     "primary / composite key",           "(plan)"),
+    # L2 load
+    "drift gate":                ("drift_gate",     "drift → quarantine else proceed",   "(intake)"),
+    "file_hash_seen":            ("dedup_files",    "skip already-loaded files",         "(plan)"),
+    "delete_where_period/batch": ("clean_reload",   "clean reload of same period",       "(primary store)"),
+    "_is_id_colname → TEXT":     ("preserve_codes", "ID/code cols kept as text",         "(primary store)"),
+    "copy_csv / stream_xlsx":    ("stream_load",    "streaming load (no OOM)",           "(primary store)"),
+    "stamp_lineage":             ("stamp_lineage",  "source · period · batch · hash",    "(primary store)"),
+    # L3 per-table learning
+    "drift detect":              ("drift_detect",   "fingerprint — skip unchanged",      "(metadata)"),
+    "profile_v2":                ("profile",        "types · roles · stats",             "(metadata)"),
+    "dimension_catalog":         ("dimension_catalog", "top distinct values per dim",    "(metadata)"),
+    "deep_analysis":             ("analyze",        "narrative table analysis",          "(knowledge)"),
+    "qa_generation":             ("gen_pairs",      "question→answer training pairs",    "Training Q&A"),
+    "persona":                   ("persona",        "agent persona for data",            "(knowledge)"),
+    "synthesis":                 ("synthesize",     "table summary",                     "(knowledge)"),
+    "workflows":                 ("workflows",      "common multi-step flows",           "(knowledge)"),
+    "knowledge index":           ("index",          "chunk + embed → vectors",           "Vector index"),
+    "brain fill":                ("facts_fill",     "company facts / rules",             "(company brain)"),
+    "domain_knowledge":          ("domain_rules",   "domain rules + glossary",           "(knowledge)"),
+    "persona enrich":            ("persona_enrich", "enrich persona",                    "(knowledge)"),
+    # L4 linking
+    "_discover_relationships":   ("propose_links",  "propose join candidates",           "(links)"),
+    "verify (SQL containment)":  ("verify_links",   "overlap % · timeout 30s",           "(links)"),
+    "_seed_cross_table_qa":      ("gen_join_pairs", "join question→answer pairs",        "Training Q&A"),
+    # L5 model design
+    "Engineer.inspect_schema":   ("probe_structure",   "read-only: cols + roles",        "(internal)"),
+    "Engineer.get_relationships":("probe_links",       "read-only: join keys",           "(internal)"),
+    "Engineer.sample_rows":      ("probe_samples",     "read-only: sample rows",         "(internal)"),
+    "Engineer.dry_run_sql":      ("validate_candidate","dry check candidate, iterate",   "(internal)"),
+    "→ SemanticLayerPlan (struct)": ("→ plan (sealed)","trust boundary: model stops here","(sealed)"),
+    "validate_matview_spec":     ("validate_spec",  "whitelist gate",                    "(gate)"),
+    "EXPLAIN dry-run (server)":  ("server_check",   "reject on error / timeout",         "(gate)"),
+    "build_ddl + CREATE (1 txn)":("materialize",    "build managed view (1 txn)",        "(managed view)"),
+    "register":                  ("register",       "mark managed · refresh rule",       "(metadata)"),
+    # L6 network + backfill
+    "knowledge_graph":           ("build_network",  "entities + edges",                  "Graph store"),
+    "subagent_synthesis":        ("cross_synth",    "cross-source synthesis",            "(knowledge)"),
+    "vector_backfill":           ("vector_backfill","embed rows missing vectors",        "Vector index"),
+    "codex_code_enrich":         ("logic_enrich",   "pipeline-logic enrichment",         "(metadata)"),
+    # L7 finishing
+    "scope":                     ("scope",          "derive feature / answer scope",     "(config)"),
+    "goals":                     ("goals",          "learning goals",                    "(knowledge)"),
+    "ml":                        ("ml",             "no-op (disabled)",                  "—"),
+    "evals (gen + run)":         ("evals",          "golden set → run → score",          "(eval store)"),
+    "auto_configure":            ("auto_configure", "vertical detect + pack apply",      "(history)"),
+    # L8 post-processing
+    "bilingual twins":           ("bilingual_pairs","bilingual question→answer twins",   "Training Q&A"),
+    "catalog vectors":           ("catalog_vectors","embed catalog → hybrid search",     "Vector index"),
+    "◆ articles_enriched view":  ("◆ enriched_view","always: merged + flag",             "(managed view)"),
+    "◆ detect_gaps":             ("◆ detect_gaps",  "count blank fields per col",        "(report)"),
+    "◆ retrieve_examples":       ("◆ retrieve_examples","ground on labeled rows",        "(internal)"),
+    "◆ run_enrichment":          ("◆ suggest_fills","suggest missing → pending",         "(enrichment)"),
+    "◆ auto_apply_low_risk":     ("◆ auto_apply",   "apply low-risk; clinical never",    "(enrichment)"),
+    "◆ rebuild enriched view":   ("◆ rebuild_view", "reflect new approvals",             "(managed view)"),
+    "shop_flat build":           ("denorm_build",   "flatten + join; orphans flagged",   "(primary store)"),
+    "◆ matview refresh":         ("◆ refresh_views","refresh managed views",             "(managed view)"),
+    # L9 done
+    "status finalizing→done":    ("finalize",       "flip after all hooks",              "(run state)"),
+    "watchdog clear":            ("watchdog_clear", "stop tracking",                     "(run state)"),
+    "UI panels live":            ("panels_live",    "dashboards live",                   "—"),
+}
+
+_MASK_TITLES: dict[int, str] = {
+    0: "STAGE 0 · INTAKE  (review before load)",
+    1: "STAGE 1 · PREFLIGHT  (preview, no write)",
+    2: "STAGE 2 · LOAD  (staged → store)",
+    3: "STAGE 3 · PER-TABLE LEARNING  (×N tables)",
+    4: "STAGE 4 · LINKING  (cross-table)",
+    5: "STAGE 5 · MODEL DESIGN  (internal optimizer)",
+    6: "STAGE 6 · NETWORK + BACKFILL",
+    7: "STAGE 7 · FINISHING  (concurrent)",
+    8: "STAGE 8 · POST-PROCESSING  (sequential)",
+    9: "STAGE 9 · DONE",
+}
+
+# scrub proprietary tokens out of dynamic (log-derived) value text
+_SCRUB = [(_re_mask.compile(p, _re_mask.I), r) for p, r in [
+    (r"apache\s+age\s+graph", "graph store"),
+    (r"apache\s+age", "graph store"),
+    (r"\bage\s+graph\b", "graph store"),
+    (r"\bpgvector\b", "vector index"),
+    (r"\bopencypher\b", "graph"),
+    (r"\bcypher\b", "graph"),
+    (r"materiali[sz]ed\s+view", "managed view"),
+    (r"\bmatview(s)?\b", "managed view"),
+    (r"\bcitypharma\.", ""),
+    (r"\bshop_flat\b", "dataset"),
+    (r"\barticles_enriched\b", "managed view"),
+    (r"\barticles_clean\b", "dataset"),
+    (r"\bbalance_stock\b", "dataset"),
+    (r"\bdash_table_metadata\b", "metadata"),
+    (r"\bdash_training_qa\b", "training Q&A"),
+    (r"\bdash_training_runs\b", "run"),
+    (r"\bdash_relationships\b", "links"),
+    (r"\bdash_eval_runs\b", "eval"),
+    (r"\bdash_evals\b", "eval"),
+    (r"\bdash_company_brain\b", "brain"),
+    (r"\bcatalog_enrichment\b", "enrichment"),
+    (r"\bpostgresql\b", "primary store"),
+    (r"\bpostgres\b", "primary store"),
+    (r"\b_norm\b", ""),
+]]
+
+
+# identifier-like real step labels (knowledge_graph, qa_generation, …) can also
+# appear verbatim inside dynamic log values ("step knowledge_graph: ran 4910ms")
+# and in run.progress.step — map those tokens to their masked label too.
+_LABEL_SCRUB = sorted(
+    [(_re_mask.compile(r"\b" + _re_mask.escape(real) + r"\b"), mk[0])
+     for real, mk in _MASK_STEPS.items()
+     if _re_mask.fullmatch(r"[A-Za-z0-9_]+", real) and len(real) > 3],
+    key=lambda x: -len(x[0].pattern),
+)
+
+
+def _scrub(s):
+    if not s:
+        return s
+    for rx, rep in _LABEL_SCRUB:
+        s = rx.sub(rep, s)
+    for rx, rep in _SCRUB:
+        s = rx.sub(rep, s)
+    return s
+
+
+def _mask_step(step: dict) -> dict:
+    out = dict(step)
+    m = _MASK_STEPS.get(step.get("label", ""))
+    if m:
+        out["label"], out["detail"], out["writes_to"] = m[0], m[1], m[2]
+    if out.get("value"):
+        out["value"] = _scrub(out["value"])
+    return out
+
+
+def _mask_flow(result: dict) -> dict:
+    """In-place mask of a derive_flow() result. No internal names survive."""
+    for L in result.get("layers", []):
+        L["title"] = _MASK_TITLES.get(L.get("idx"), L.get("title"))
+        L["steps"] = [_mask_step(s) for s in L.get("steps", [])]
+    run = result.get("run") or {}
+    if run.get("current_step"):
+        run["current_step"] = _scrub(run["current_step"])
+    prog = run.get("progress")
+    if isinstance(prog, dict):
+        for k in ("step", "table"):
+            if prog.get(k):
+                prog[k] = _scrub(prog[k])
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Layer status keyword mapping (edit here to tune)
 # ---------------------------------------------------------------------------
 
@@ -200,11 +373,12 @@ def derive_flow(slug: str, db_url: str) -> dict:
 
     # ---- latest training run ---------------------------------------------------
     run: Optional[dict] = None
+    run_logs: list = []
     try:
         with eng.connect() as conn:
             row = conn.execute(text("""
                 SELECT id, status, current_step, stage_progress, current_progress,
-                       tables_trained, started_at, finished_at
+                       tables_trained, started_at, finished_at, logs
                 FROM public.dash_training_runs
                 WHERE project_slug = :slug
                 ORDER BY started_at DESC NULLS LAST
@@ -220,6 +394,14 @@ def derive_flow(slug: str, db_url: str) -> dict:
                     "stage_progress": row["stage_progress"],
                     "progress": row["current_progress"] if row["current_progress"] else {},
                 }
+                _raw_logs = row["logs"]
+                if isinstance(_raw_logs, str):
+                    try:
+                        import json as _json
+                        _raw_logs = _json.loads(_raw_logs)
+                    except Exception:
+                        _raw_logs = []
+                run_logs = _raw_logs if isinstance(_raw_logs, list) else []
     except Exception as exc:
         logger.debug("flow_map: run query failed: %s", exc)
 
@@ -363,12 +545,160 @@ def derive_flow(slug: str, db_url: str) -> dict:
 
         return "idle"
 
+    # ---- per-step live state from logs + dash_training_steps -------------------
+    # Best-effort reconciliation of each static spec step against the run's
+    # freetext log events (which already embed real values) + the sparse
+    # dash_training_steps cache (tail steps carry status + elapsed_ms). No engine
+    # change, no migration; works on the current/last run immediately.
+    import re as _re
+
+    step_rows: dict[str, dict] = {}
+    if run is not None:
+        try:
+            with eng.connect() as conn:
+                for r in conn.execute(text(
+                    "SELECT name, status, elapsed_ms, error FROM public.dash_training_steps "
+                    "WHERE project_slug = :slug"), {"slug": slug}).mappings().fetchall():
+                    step_rows[str(r["name"]).lower()] = dict(r)
+        except Exception as exc:
+            logger.debug("flow_map: step_rows failed: %s", exc)
+
+    _ICONS = "✓✔✗✘⚠◉·•●○└├─│┌┐ \t"
+    _MS_RE = _re.compile(r"([\d.]+)\s*s\b")
+    _MSMS_RE = _re.compile(r"(\d+)\s*ms\b")
+    _COST_RE = _re.compile(r"\$([\d.]+)")
+
+    def _tokens(label: str) -> list[str]:
+        l = label.lower().strip()
+        toks = {l, l.replace(" ", "_"), l.split()[0] if l.split() else l}
+        # drop too-generic / symbol-only tokens that would mis-match
+        return [t for t in toks if len(t) >= 4 and t not in ("post", "scan", "gate", "plan", "check")]
+
+    def _match_log(label: str):
+        toks = _tokens(label)
+        if not toks:
+            return None
+        for ev in reversed(run_logs):
+            msg = str(ev.get("msg", ""))
+            ml = msg.lower()
+            if any(t in ml for t in toks):
+                return msg
+        return None
+
+    def _parse(msg: str, label: str) -> dict:
+        ml = msg.lower()
+        if "✗" in msg or "✘" in msg or "fail" in ml or "error" in ml:
+            state = "error"
+        elif "⚠" in msg or "quarantin" in ml or "skip" in ml:
+            state = "warn"
+        elif "✓" in msg or "✔" in msg or "done" in ml:
+            state = "done"
+        else:
+            state = "running"
+        ms = None
+        mm = _MSMS_RE.search(msg)
+        if mm:
+            ms = int(mm.group(1))
+        else:
+            sm = _MS_RE.search(msg)
+            if sm:
+                try:
+                    ms = int(float(sm.group(1)) * 1000)
+                except Exception:
+                    ms = None
+        cost = None
+        cm = _COST_RE.search(msg)
+        if cm:
+            try:
+                cost = float(cm.group(1))
+            except Exception:
+                cost = None
+        # clean value text: strip leading icons, "llm ·", and a leading "label:" / "label ·"
+        # first non-empty line only — never leak multi-line log dumps (e.g. "[SQL:\n...")
+        val = msg.strip()
+        for _ln in val.splitlines():
+            _ln = _ln.strip()
+            if _ln:
+                val = _ln
+                break
+        else:
+            val = ""
+        val = val.lstrip(_ICONS).strip()
+        # drop bracketed section markers ("[SQL:", "[CONFIDENCE...]", etc.) — not real step values
+        if val.startswith("[") or val.lower().startswith("[sql"):
+            val = ""
+        val = _re.sub(r"^llm\s*[·:]\s*", "", val, flags=_re.I)
+        val = _re.sub(r"^" + _re.escape(label) + r"\s*[:·]\s*", "", val, flags=_re.I)
+        val = val.strip().lstrip(_ICONS).strip()
+        return {"state": state, "value": val[:80] or None, "ms": ms, "cost": cost}
+
+    def _enrich_step(step: dict, lstatus: str, active_hint: str) -> dict:
+        label = step.get("label", "")
+        gate = step.get("gate")
+        out = {**step, "state": "idle", "value": None, "ms": None, "cost": None}
+        # gated by a disabled flag
+        if (gate == "ENGINEER" and not engineer_flag) or (gate == "ENRICH" and not enrich_flag):
+            out["state"] = "gated"
+            return out
+        # 1) sparse step cache (tail steps) wins for state + timing
+        srow = step_rows.get(label.lower()) or step_rows.get(label.lower().replace(" ", "_"))
+        if srow:
+            st = str(srow.get("status") or "").lower()
+            out["state"] = {"done": "done", "running": "running", "failed": "error",
+                            "skipped": "gated", "queued": "idle"}.get(st, "idle")
+            if srow.get("elapsed_ms") is not None:
+                out["ms"] = int(srow["elapsed_ms"])
+            if srow.get("error"):
+                out["state"] = "error"; out["value"] = str(srow["error"])[:80]
+        # 2) freetext log match → real value (+ ms/cost), refine state
+        msg = _match_log(label)
+        if msg:
+            p = _parse(msg, label)
+            out["value"] = p["value"] or out["value"]
+            if p["ms"] is not None:
+                out["ms"] = p["ms"]
+            if p["cost"] is not None:
+                out["cost"] = p["cost"]
+            if not srow:
+                out["state"] = p["state"]
+        # 3) no signal at all → fall back to the layer's coarse status
+        if not srow and not msg:
+            if lstatus == "done":
+                out["state"] = "done"
+            elif lstatus == "skipped":
+                out["state"] = "gated"
+            elif lstatus == "running":
+                out["state"] = "running" if any(t in active_hint for t in _tokens(label)) else "idle"
+            else:
+                out["state"] = "idle"
+        # a finished layer has nothing actually running — a value-only log
+        # (no ✓) must not show as live. Downgrade running→done; keep error/warn.
+        if lstatus == "done" and out["state"] in ("running", "idle"):
+            out["state"] = "done"
+        return out
+
+    def _active_hint() -> str:
+        if run is None:
+            return ""
+        prog = run.get("progress") or {}
+        ps = (prog.get("step") or "").lower() if isinstance(prog, dict) else ""
+        return ((run.get("current_step") or "").lower() + " " + ps)
+
     layers_out = []
+    _hint = _active_hint()
     for layer in LAYERS:
         idx = layer["idx"]
+        lstatus = _layer_status(idx)
+        esteps = [_enrich_step(s, lstatus, _hint) for s in layer.get("steps", [])]
+        active = [s for s in esteps if s["state"] != "gated"]
         layers_out.append({
             **layer,
-            "status": _layer_status(idx),
+            "status": lstatus,
+            "steps": esteps,
+            "step_done": sum(1 for s in active if s["state"] == "done"),
+            "step_total": len(active),
+            "ms": sum(s["ms"] or 0 for s in esteps) or None,
+            "cost": round(sum(s["cost"] or 0 for s in esteps), 4) or None,
         })
 
     # ---- assemble stores dict --------------------------------------------------
@@ -386,7 +716,7 @@ def derive_flow(slug: str, db_url: str) -> dict:
         "EVAL":  eval_count,
     }
 
-    return {
+    _result = {
         "run": run,
         "layers": layers_out,
         "stores": stores_out,
@@ -405,3 +735,6 @@ def derive_flow(slug: str, db_url: str) -> dict:
             "enrich":   enrich_flag,
         },
     }
+    if _OBFUSCATE:
+        _result = _mask_flow(_result)
+    return _result

@@ -106,6 +106,14 @@ REGISTRY: dict[str, dict] = {
     # Single-point brand theme — default widget appearance (JSON string). Widgets
     # with no per-store override inherit this at render time (embed ?? brand ?? hard).
     "embed_brand":                    {"type": "string", "default": "", "env": None, "scope": "global", "desc": "Default embed widget appearance JSON (single-point brand theme)"},
+    # Default auth mode for newly auto-provisioned outlet widgets.
+    "embed_default_auth_mode":        {"type": "enum", "default": "public", "env": None, "scope": "global", "choices": ["public", "hmac", "jwt"], "desc": "Default auth_mode for auto-provisioned outlet widgets (public = drop-in key only · hmac = server-signed · jwt = app identity)"},
+    # Default Burmese opening greeting shown when a widget opens (per-widget
+    # welcome_msg / brand override take precedence; this is the global fallback).
+    "embed_default_welcome":          {"type": "string", "default": "မင်္ဂလာပါ — ဘာများ ကူညီပေးရမလဲ?", "env": None, "scope": "global", "desc": "Default embed widget opening greeting (Burmese). Resolution: per-widget welcome_msg ?? brand ?? this ?? hard fallback"},
+    # Default Burmese starter (initial suggestion) question chips for the widget.
+    # JSON list — round-trips through get_setting()/_coerce (list default returned as-is).
+    "embed_default_starters":         {"type": "json", "default": ["ဒီဆေး လက်ကျန် ရှိလား?", "အစားထိုး ဆေးတွေ ပြပါ", "အနီးဆုံးဆိုင်မှာ ရှိလား?"], "env": None, "scope": "global", "desc": "Default embed widget starter-question chips (Burmese pharma). Per-widget starter_questions override this."},
 }
 
 

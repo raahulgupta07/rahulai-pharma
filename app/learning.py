@@ -3228,6 +3228,159 @@ def training_flow(slug: str, request: Request):
     return derive_flow(slug, _du)
 
 
+# Per-store detail for the training-flow DATA STORES rail. Clicking a store row
+# opens a modal that calls this — live sample rows (top 20) + a "what this holds"
+# blurb. Every query is fail-soft: a missing/empty store returns rows:[] not 500.
+_STORE_SPEC = {
+    "STAGE": {
+        "label": "Staging files", "table": "dash_extraction_plans",
+        "blurb": "Files received in the STAGING layer before any DB write — one row per sheet, with the chosen ingest strategy.",
+        "columns": ["file", "sheet", "rows_in", "strategy"],
+        "sql": "SELECT source_file, sheet_name, row_count_in, strategy FROM public.dash_extraction_plans "
+               "WHERE project_slug=:s ORDER BY created_at DESC NULLS LAST LIMIT 20",
+        "count": "SELECT COUNT(*) FROM public.dash_extraction_plans WHERE project_slug=:s",
+    },
+    "PG": {
+        "label": "Postgres tables", "table": "{sc}.<tables>",
+        "blurb": "The actual data tables promoted into your project schema. Rows from table metadata; columns from the live schema.",
+        "columns": ["table", "rows", "cols"],
+        "sql": "SELECT t.table_name, COALESCE(m.row_count,0), "
+               "(SELECT COUNT(*) FROM information_schema.columns c WHERE c.table_schema=:sc AND c.table_name=t.table_name) "
+               "FROM information_schema.tables t "
+               "LEFT JOIN public.dash_table_metadata m ON m.table_name=t.table_name AND m.project_slug=:s "
+               "WHERE t.table_schema=:sc AND t.table_type='BASE TABLE' ORDER BY 2 DESC LIMIT 20",
+        "count": "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=:sc AND table_type='BASE TABLE'",
+    },
+    "META": {
+        "label": "Table metadata", "table": "dash_table_metadata",
+        "blurb": "Per-table training fingerprint + row count. A table is 'trained' once its profile lands here.",
+        "columns": ["table", "rows", "fingerprint", "updated"],
+        "sql": "SELECT table_name, row_count, LEFT(COALESCE(fingerprint,''),8), to_char(updated_at,'YYYY-MM-DD HH24:MI') "
+               "FROM public.dash_table_metadata WHERE project_slug=:s ORDER BY updated_at DESC NULLS LAST LIMIT 20",
+        "count": "SELECT COUNT(*) FROM public.dash_table_metadata WHERE project_slug=:s",
+    },
+    "QA": {
+        "label": "Training Q&A", "table": "dash_training_qa",
+        "blurb": "Question→SQL pairs generated per table. These teach the agent how to answer real questions.",
+        "columns": ["question", "table", "answer"],
+        "sql": "SELECT question, table_name, LEFT(COALESCE(answer_template,''),90) FROM public.dash_training_qa "
+               "WHERE project_slug=:s ORDER BY created_at DESC NULLS LAST LIMIT 20",
+        "count": "SELECT COUNT(*) FROM public.dash_training_qa WHERE project_slug=:s",
+    },
+    "VEC": {
+        "label": "PgVector", "table": "dash.dash_vectors",
+        "blurb": "Embedding vectors for semantic search over tables, Q&A, and brain. Written in the EMBED layer.",
+        "columns": ["source", "text", "updated"],
+        "sql": "SELECT COALESCE(source_table, namespace, '—'), LEFT(COALESCE(text,''),90), to_char(updated_at,'YYYY-MM-DD HH24:MI') "
+               "FROM dash.dash_vectors WHERE project_slug=:s ORDER BY updated_at DESC NULLS LAST LIMIT 20",
+        "count": "SELECT COUNT(*) FROM dash.dash_vectors WHERE project_slug=:s",
+    },
+    "BRAIN": {
+        "label": "Company brain", "table": "dash_company_brain",
+        "blurb": "Curated facts: aliases, glossary, KPIs, formulas. Seeded + learned; injected into the agent's context.",
+        "columns": ["category", "name", "value"],
+        "sql": "SELECT category, name, LEFT(COALESCE(definition,''),90) FROM public.dash_company_brain "
+               "WHERE project_slug=:s ORDER BY updated_at DESC NULLS LAST LIMIT 20",
+        "count": "SELECT COUNT(*) FROM public.dash_company_brain WHERE project_slug=:s",
+    },
+    "REL": {
+        "label": "Relationships", "table": "dash_relationships",
+        "blurb": "Discovered table-to-table joins (foreign-key-like links) used for multi-table questions.",
+        "columns": ["from", "to", "on", "conf"],
+        "sql": "SELECT from_table, to_table, (from_column||' = '||to_column), ROUND(confidence::numeric,2) "
+               "FROM public.dash_relationships WHERE project_slug=:s ORDER BY confidence DESC NULLS LAST LIMIT 20",
+        "count": "SELECT COUNT(*) FROM public.dash_relationships WHERE project_slug=:s",
+    },
+    "MV": {
+        "label": "Matviews", "table": "{sc}.<matviews>",
+        "blurb": "Engineer-built materialized views — pre-joined / pre-aggregated so the agent reads fast.",
+        "columns": ["matview"],
+        "sql": "SELECT matviewname FROM pg_matviews WHERE schemaname=:sc ORDER BY matviewname LIMIT 20",
+        "count": "SELECT COUNT(*) FROM pg_matviews WHERE schemaname=:sc",
+    },
+    "AGE": {
+        "label": "Apache AGE graph", "table": "dash_knowledge_triples",
+        "blurb": "Knowledge-graph triples (subject → predicate → object) backing graph-lane 2-hop reasoning.",
+        "columns": ["subject", "predicate", "object"],
+        "sql": "SELECT subject, predicate, object FROM public.dash_knowledge_triples "
+               "WHERE project_slug=:s ORDER BY created_at DESC NULLS LAST LIMIT 20",
+        "count": "SELECT COUNT(*) FROM public.dash_knowledge_triples WHERE project_slug=:s",
+    },
+    "ENR": {
+        "label": "Catalog enrichment", "table": "{sc}.catalog_enrichment",
+        "blurb": "LLM-suggested fills for missing catalog fields — suggestion-only, human-gated (never auto-applied).",
+        "columns": ["article", "field", "original", "suggested", "conf"],
+        "sql": "SELECT article_code, field, LEFT(COALESCE(original_value,''),30), LEFT(COALESCE(suggested_value,''),40), ROUND(confidence::numeric,2) "
+               "FROM {sc}.catalog_enrichment ORDER BY confidence DESC NULLS LAST LIMIT 20",
+        "count": "SELECT COUNT(*) FROM {sc}.catalog_enrichment",
+    },
+    "EVAL": {
+        "label": "Eval runs", "table": "dash_eval_runs",
+        "blurb": "Accuracy checks against the golden set. Each run = total / passed / average score.",
+        "columns": ["when", "total", "passed", "score"],
+        "sql": "SELECT to_char(run_at,'YYYY-MM-DD HH24:MI'), total, passed, ROUND(average_score::numeric,2) "
+               "FROM public.dash_eval_runs WHERE project_slug=:s ORDER BY run_at DESC NULLS LAST LIMIT 20",
+        "count": "SELECT COUNT(*) FROM public.dash_eval_runs WHERE project_slug=:s",
+    },
+}
+
+
+@router.get("/{slug}/store-detail/{key}")
+def store_detail(slug: str, key: str, request: Request):
+    """Live detail for one DATA STORES rail item: top-20 sample rows + blurb."""
+    user = _get_user(request)
+    _check_access(user, slug)
+    spec = _STORE_SPEC.get(key.upper())
+    if not spec:
+        raise HTTPException(404, f"unknown store '{key}'")
+    schema = re.sub(r"[^a-z0-9_]", "_", slug.lower())[:63]
+    params = {"s": slug, "sc": schema}
+    # display masking — hide internal table / engine names from the modal too
+    try:
+        from dash.training.flow_map import _OBFUSCATE as _OBF
+    except Exception:
+        _OBF = True
+    _SMASK = {
+        "STAGE": ("Intake",        "intake",         "Files received before load — one entry per sheet, with status + dedup hash."),
+        "PG":    ("Primary store", "data store",     "Your loaded data tables. Rows promoted into the project after validation."),
+        "META":  ("Metadata",      "metadata",       "Per-table profile + row count. A table is 'trained' once profiled."),
+        "QA":    ("Training Q&A",  "training Q&A",   "Question→answer pairs generated per table to teach the agent."),
+        "VEC":   ("Vector index",  "vector index",   "Embeddings for semantic search over tables, Q&A, and knowledge."),
+        "BRAIN": ("Knowledge base","knowledge",      "Curated facts: aliases, glossary, KPIs, formulas — seeded + learned."),
+        "REL":   ("Relationships", "links",          "Discovered table-to-table links used for multi-table questions."),
+        "MV":    ("Managed views", "managed views",  "Managed views — pre-joined / pre-aggregated for fast reads."),
+        "AGE":   ("Graph store",   "graph store",    "Network triples (subject → relation → object) backing multi-hop reasoning."),
+        "ENR":   ("Enrichment",    "enrichment",     "Suggested fills for missing fields — suggestion-only, human-gated."),
+        "EVAL":  ("Eval runs",     "eval runs",      "Accuracy checks against the golden set: total / passed / average score."),
+    }
+    _m = _SMASK.get(key.upper()) if _OBF else None
+    out = {
+        "key": key.upper(),
+        "label": _m[0] if _m else spec["label"],
+        "table": _m[1] if _m else spec["table"].format(sc=schema),
+        "blurb": _m[2] if _m else spec["blurb"], "columns": spec["columns"],
+        "rows": [], "count": None, "truncated": False, "note": None,
+    }
+    try:
+        with _engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            try:
+                out["count"] = int(conn.execute(text(spec["count"].format(sc=schema)), params).scalar() or 0)
+            except Exception:
+                out["count"] = None
+            try:
+                res = conn.execute(text(spec["sql"].format(sc=schema)), params).fetchall()
+                out["rows"] = [[(None if v is None else str(v)) for v in r] for r in res]
+                if out["count"] and len(out["rows"]) < out["count"]:
+                    out["truncated"] = True
+            except Exception as qe:
+                out["note"] = "store is empty or not built yet"
+                logger.debug("store_detail %s/%s query: %s", slug, key, qe)
+    except Exception as e:
+        out["note"] = "could not read store"
+        logger.debug("store_detail %s/%s conn: %s", slug, key, e)
+    return out
+
+
 @router.get("/{slug}/dashboard-summary")
 def dashboard_summary(slug: str, request: Request):
     """At-a-glance counts for the Dashboard chip grid + Brain rich card.

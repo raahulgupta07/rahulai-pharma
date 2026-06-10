@@ -3,6 +3,44 @@
   import { goto } from '$app/navigation';
   import { markdownToHtml } from '$lib/markdown';
   import RequestFlow from '$lib/RequestFlow.svelte';
+  import ConfirmModal from './ConfirmModal.svelte';
+
+  // ---- shared confirm modal state ----
+  let confirmModal = $state<{
+    open: boolean;
+    title: string;
+    message: string;
+    danger: boolean;
+    confirmLabel: string;
+    typeToConfirm: string | null;
+    hideCancel: boolean;
+    onConfirm: () => void;
+  }>({ open: false, title: '', message: '', danger: false, confirmLabel: 'Confirm', typeToConfirm: null, hideCancel: false, onConfirm: () => {} });
+
+  function askConfirm(opts: {
+    title: string;
+    message: string;
+    danger?: boolean;
+    confirmLabel?: string;
+    typeToConfirm?: string | null;
+    hideCancel?: boolean;
+    onConfirm: () => void;
+  }) {
+    confirmModal = {
+      open: true,
+      danger: false,
+      confirmLabel: 'Confirm',
+      typeToConfirm: null,
+      hideCancel: false,
+      onConfirm: () => {},
+      ...opts,
+    };
+  }
+  function closeConfirm() { confirmModal = { ...confirmModal, open: false }; }
+  // Info / success popup — single OK button, no cancel (replaces native alert()).
+  function notify(title: string, message: string) {
+    askConfirm({ title, message, confirmLabel: 'OK', hideCancel: true, onConfirm: closeConfirm });
+  }
 
   let { embedded = false } = $props();
 
@@ -44,7 +82,7 @@
     { group: 'EMBED', items: [{ id: 'overview', label: 'Overview', icon: 'gauge' }] },
     { group: 'MANAGE', items: [
       { id: 'brand', label: 'Brand', icon: 'sliders' },
-      { id: 'widgets', label: 'Widgets', icon: 'grid' },
+      { id: 'widgets', label: 'Deployments', icon: 'grid' },
     ] },
     { group: 'ANALYTICS', items: [
       { id: 'monitoring', label: 'Monitoring', icon: 'activity' },
@@ -75,7 +113,7 @@
   const PAGE: Record<string, { title: string; sub: string }> = {
     overview: { title: 'Overview', sub: 'Embed status, endpoints + quick test' },
     brand: { title: 'Brand', sub: 'One theme for every widget — set it once, all stores inherit' },
-    widgets: { title: 'Widgets', sub: 'List, create + revoke — click a row to expand: keys, snippet, full PHP code + deploy' },
+    widgets: { title: 'Deployments', sub: 'Manage embeddable chat widgets — outlet + custom · keys, snippet, PHP, deploy' },
     widget: { title: 'Widget', sub: '' },
     monitoring: { title: 'Monitoring', sub: 'Live widget traffic, latency, errors + per-store breakdown' },
     developer: { title: 'Developer Docs', sub: 'Snippet, code examples + 3-tier access reference' },
@@ -85,6 +123,76 @@
   let embeds = $state<any[]>([]);
   let embedsErr = $state('');
   let embedsLoading = $state(false);
+  // Split widgets into two populations: auto-generated outlet widgets (tied to a
+  // DB store, permanent) and custom widgets the user built (deletable).
+  let embedTab = $state<'outlet' | 'custom'>('outlet');
+  const outletEmbeds = $derived(embeds.filter((e) => isStoreEmbed(e)));
+  const customEmbeds = $derived(embeds.filter((e) => !isStoreEmbed(e)));
+  const tabEmbeds = $derived(embedTab === 'outlet' ? outletEmbeds : customEmbeds);
+  const wgLiveCount = (list: any[]) => list.filter((e) => e.enabled !== false && e.status !== 'revoked' && e.status !== 'disabled').length;
+
+  // ---- global default auth mode (for new outlet widgets) + bulk apply ----
+  let defaultAuth = $state<'public' | 'hmac' | 'jwt'>('public');
+  let defaultAuthSaving = $state(false);
+  let authCardOpen = $state(false);
+  let bulkAuthBusy = $state(false);
+  const AUTH_HINTS: Record<string, string> = {
+    public: 'browser drop-in, public key only · no backend (recommended)',
+    hmac: 'server signs each request with the secret · needs PHP backend',
+    jwt: 'pass logged-in user identity · for app integrations',
+  };
+  async function loadDefaultAuth() {
+    try {
+      const r = await apiFetch(`/api/projects/${slug}/embed-default-auth`);
+      if (r.ok) { const d = await r.json(); defaultAuth = d.auth_mode || 'public'; }
+    } catch (e) { /* fail-soft */ }
+  }
+  async function saveDefaultAuth(mode: 'public' | 'hmac' | 'jwt') {
+    defaultAuth = mode;
+    defaultAuthSaving = true;
+    try {
+      await apiFetch(`/api/projects/${slug}/embed-default-auth`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth_mode: mode }),
+      });
+    } catch (e) { /* fail-soft */ }
+    defaultAuthSaving = false;
+  }
+  async function bulkApplyAuth() {
+    const n = embeds.length;
+    const mode = defaultAuth;
+    askConfirm({
+      title: `Apply "${mode}" to all widgets`,
+      message: `Apply "${mode}" auth to ALL ${n} widgets?\n\nEvery snippet is re-signed — stores must redeploy. This affects outlet AND custom widgets.`,
+      danger: true,
+      confirmLabel: `Apply ${mode}`,
+      typeToConfirm: mode,
+      onConfirm: async () => {
+        closeConfirm();
+        bulkAuthBusy = true;
+        try {
+          const r = await apiFetch(`/api/projects/${slug}/embeds/bulk-auth`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ auth_mode: mode }),
+          });
+          if (r.ok) { const d = await r.json(); notify('Auth updated', `Updated ${d.updated} widget${d.updated === 1 ? '' : 's'}${d.failed ? ` · ${d.failed} failed` : ''}.`); }
+        } catch (e) { /* fail-soft */ }
+        bulkAuthBusy = false;
+        await loadEmbeds();
+      },
+    });
+  }
+  async function setRowAuth(e: any, mode: string) {
+    const eid = e.embed_id || e.id;
+    if (mode === e.auth_mode) return;
+    try {
+      await apiFetch(`/api/projects/${slug}/embeds/${eid}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth_mode: mode }),
+      });
+    } catch (er) { /* fail-soft */ }
+    await loadEmbeds();
+  }
 
   async function loadEmbeds() {
     embedsLoading = true; embedsErr = '';
@@ -159,27 +267,74 @@
     newEmbedBusy = false;
   }
 
-  async function revokeEmbed(embedId: string) {
-    if (!confirm('Revoke this widget? Its snippet stops working immediately.')) return;
+  // Store/DB-outlet embeds mirror a real outlet — permanent, never deletable.
+  // Only user-created widgets can be deleted. Both kinds can be enabled/disabled.
+  function isStoreEmbed(e: any): boolean {
+    return String(e?.name || '').startsWith('store-') || !!(e?.bound_scope_id || e?.store_id);
+  }
+
+  let togglingEmbed = $state<string | null>(null);
+  async function toggleEmbedEnabled(e: any) {
+    const eid = e.embed_id || e.id;
+    const enabled = e.enabled !== false && e.status !== 'revoked' && e.status !== 'disabled';
+    togglingEmbed = eid;
     try {
-      await apiFetch(`/api/projects/${slug}/embeds/${embedId}`, { method: 'DELETE' });
+      await apiFetch(`/api/projects/${slug}/embeds/${eid}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !enabled, status: enabled ? 'disabled' : 'live' }),
+      });
     } catch (e) { /* fail-soft */ }
+    togglingEmbed = null;
     await loadEmbeds();
+  }
+
+  async function deleteEmbed(e: any) {
+    const eid = e.embed_id || e.id;
+    const name = String(e.name || eid).trim();
+    if (isStoreEmbed(e)) {
+      notify('Cannot delete', 'This is an outlet widget tied to a store in the database — it cannot be deleted. Disable it instead.');
+      return;
+    }
+    askConfirm({
+      title: 'Delete widget',
+      message: `Permanently delete "${name}"? Its snippet stops working. This cannot be undone.`,
+      danger: true,
+      confirmLabel: 'Delete',
+      typeToConfirm: name,
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          const r = await apiFetch(`/api/projects/${slug}/embeds/${eid}`, { method: 'DELETE' });
+          if (!r.ok && r.status === 403) { notify('Cannot delete', 'Outlet embeds cannot be deleted — disable instead.'); }
+        } catch (_e) { /* fail-soft */ }
+        await loadEmbeds();
+      },
+    });
   }
 
   let rotatingKey = $state<string | null>(null);
   async function rotateEmbedKey(embedId: string) {
-    if (!confirm('Rotate the public key? The OLD key stops working now — the store must update its snippet with the new key.')) return;
-    rotatingKey = embedId;
-    try {
-      const r = await apiFetch(`/api/projects/${slug}/embeds/${embedId}/rotate-key`, { method: 'POST' });
-      if (r.ok) {
-        const d = await r.json();
-        // patch the in-memory row so the expansion shows the new key without a full reload
-        embeds = embeds.map((x) => ((x.embed_id || x.id) === embedId ? { ...x, public_key: d.public_key } : x));
-      }
-    } catch (e) { /* fail-soft */ }
-    rotatingKey = null;
+    askConfirm({
+      title: 'Rotate public key',
+      message: 'Rotate the public key? The OLD key stops working immediately — the store must update its snippet with the new key.',
+      danger: true,
+      confirmLabel: 'Rotate key',
+      typeToConfirm: null,
+      onConfirm: async () => {
+        closeConfirm();
+        rotatingKey = embedId;
+        try {
+          const r = await apiFetch(`/api/projects/${slug}/embeds/${embedId}/rotate-key`, { method: 'POST' });
+          if (r.ok) {
+            const d = await r.json();
+            // patch the in-memory row so the expansion shows the new key without a full reload
+            embeds = embeds.map((x) => ((x.embed_id || x.id) === embedId ? { ...x, public_key: d.public_key } : x));
+          }
+        } catch (_e) { /* fail-soft */ }
+        rotatingKey = null;
+      },
+    });
   }
 
   // ---- config (first / selected embed) ----
@@ -783,6 +938,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
     if (!isSuper) return;
     await loadEmbeds();
     await loadOutlets();
+    loadDefaultAuth();
     loadSdk();
   });
 
@@ -1016,15 +1172,75 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
       <!-- ==================== WIDGETS ==================== -->
       {#if view === 'widgets'}
         <section class="emp-panel">
-          <div class="emp-h-row">
-            <div class="emp-h">WIDGETS ({embeds.length})</div>
+          <!-- global default authentication (collapsible) -->
+          <div class="wg-auth-card" class:wg-auth-open={authCardOpen}>
+            <button class="wg-auth-head" onclick={() => authCardOpen = !authCardOpen}>
+              <span class="wg-auth-ico">🔑</span>
+              <span class="wg-auth-title">Default authentication</span>
+              <span class="wg-auth-cur">{defaultAuth}{defaultAuthSaving ? ' · saving…' : ''}</span>
+              <span class="wg-auth-chev">{authCardOpen ? '▾' : '▸'}</span>
+            </button>
+            {#if authCardOpen}
+              <div class="wg-auth-body">
+                <div class="wg-auth-sub">Auth mode for <strong>new</strong> outlet widgets (auto-generated from DB):</div>
+                <div class="wg-auth-opts">
+                  {#each ['public','hmac','jwt'] as m (m)}
+                    <label class="wg-auth-opt" class:wg-auth-opt-on={defaultAuth === m}>
+                      <input type="radio" name="defauth" value={m} checked={defaultAuth === m} onchange={() => saveDefaultAuth(m as any)} />
+                      <span class="wg-auth-opt-name">{m}</span>
+                      <span class="wg-auth-opt-hint">{AUTH_HINTS[m]}</span>
+                    </label>
+                  {/each}
+                </div>
+                <div class="wg-auth-bulk">
+                  <span class="wg-auth-warn">⚠ Existing widgets keep their current mode.</span>
+                  <button class="emp-btn emp-btn-sm emp-btn-danger" disabled={bulkAuthBusy} onclick={bulkApplyAuth}>
+                    {bulkAuthBusy ? '◐ applying…' : `Apply "${defaultAuth}" to ALL ${embeds.length} widgets`}
+                  </button>
+                </div>
+              </div>
+            {/if}
+          </div>
+
+          <!-- segmented tabs: outlet (auto from DB) vs custom (user-built) -->
+          <div class="wg-tabbar">
+            <div class="wg-tabs" role="tablist">
+              <button class="wg-tab" class:wg-tab-on={embedTab === 'outlet'} role="tab" aria-selected={embedTab === 'outlet'}
+                onclick={() => { embedTab = 'outlet'; newEmbedOpen = false; }}>
+                <span class="wg-tab-ico">🏪</span> Outlet
+                <span class="wg-count">{outletEmbeds.length}</span>
+              </button>
+              <button class="wg-tab" class:wg-tab-on={embedTab === 'custom'} role="tab" aria-selected={embedTab === 'custom'}
+                onclick={() => { embedTab = 'custom'; }}>
+                <span class="wg-tab-ico">✦</span> Custom
+                <span class="wg-count">{customEmbeds.length}</span>
+              </button>
+            </div>
             <div class="emp-h-actions">
               {#if embeds.length > 0}
-                <button class="emp-btn" onclick={downloadDeployAll} title="One zip with every store's ready-to-deploy widget folder (keys baked in) + an INDEX page">⤓ Download ALL stores (.zip)</button>
+                <button class="emp-btn" onclick={downloadDeployAll} title="One zip with every store's ready-to-deploy widget folder (keys baked in) + an INDEX page">⬇ Export all</button>
               {/if}
-              <button class="emp-btn emp-btn-accent" onclick={() => { newEmbedOpen = !newEmbedOpen; newEmbedKey = ''; newEmbedErr = ''; }}>+ NEW EMBED</button>
             </div>
           </div>
+
+          <!-- contextual section caption -->
+          {#if embedTab === 'outlet'}
+            <div class="wg-banner">
+              <span class="wg-banner-ico">🔒</span>
+              <div class="wg-banner-txt">
+                <strong>Outlet widgets</strong> — auto-generated from store outlets in your database. Permanent: toggle on/off only, cannot be deleted.
+              </div>
+              <span class="wg-banner-meta">{wgLiveCount(outletEmbeds)} live · {outletEmbeds.length - wgLiveCount(outletEmbeds)} paused</span>
+            </div>
+          {:else}
+            <div class="wg-banner wg-banner-custom">
+              <span class="wg-banner-ico">✦</span>
+              <div class="wg-banner-txt">
+                <strong>Custom widgets</strong> — widgets you built. Toggle on/off, or permanently delete.
+              </div>
+              <button class="emp-btn emp-btn-accent emp-btn-sm" onclick={() => { newEmbedOpen = !newEmbedOpen; newEmbedKey = ''; newEmbedErr = ''; }}>+ New widget</button>
+            </div>
+          {/if}
 
           {#if newEmbedOpen}
             <div class="emp-mint">
@@ -1091,20 +1307,41 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
             <div class="emp-row emp-muted">◐ loading…</div>
           {:else if embedsErr}
             <div class="emp-row emp-err">✗ {embedsErr}</div>
-          {:else if embeds.length === 0}
-            <div class="emp-row emp-muted">no embeds yet — create one above</div>
+          {:else if tabEmbeds.length === 0}
+            {#if embedTab === 'custom'}
+              <div class="wg-empty">
+                <div class="wg-empty-ico">✦</div>
+                <div class="wg-empty-txt">No custom widgets yet.</div>
+                <button class="emp-btn emp-btn-accent emp-btn-sm" onclick={() => { newEmbedOpen = true; newEmbedKey = ''; newEmbedErr = ''; }}>+ New widget</button>
+              </div>
+            {:else}
+              <div class="wg-empty">
+                <div class="wg-empty-ico">🏪</div>
+                <div class="wg-empty-txt">No outlet widgets — they auto-generate when store data is loaded.</div>
+              </div>
+            {/if}
           {:else}
-            <table class="emp-table">
-              <thead><tr><th>name</th><th>auth</th><th>origins</th><th>status</th><th>snippet</th><th>test</th><th>revoke</th></tr></thead>
+            <table class="emp-table wg-table">
+              <thead><tr><th>name</th><th>auth</th><th>origins</th><th>status</th><th>enabled</th><th>actions</th><th>{embedTab === 'outlet' ? '' : 'manage'}</th></tr></thead>
               <tbody>
-                {#each embeds as e (e.embed_id || e.id)}
+                {#each tabEmbeds as e (e.embed_id || e.id)}
                   {@const isLive = e.enabled !== false && e.status !== 'revoked' && e.status !== 'disabled'}
                   {@const eid = e.embed_id || e.id}
                   {@const isOpen = expandedEmbed === eid}
                   {@const scope = e.bound_scope_id || e.store_id || ''}
-                  <tr class="emp-row-click" class:emp-row-open={isOpen} onclick={() => toggleRow(eid)} title="Expand — keys, snippet, full PHP code + deploy">
+                  {@const isStore = isStoreEmbed(e)}
+                  <tr class="emp-row-click wg-row" class:emp-row-open={isOpen} class:wg-row-off={!isLive} onclick={() => toggleRow(eid)} title="Expand — keys, snippet, full PHP code + deploy">
                     <td><span class="emp-row-go">{isOpen ? '▾' : '›'}</span> <code class="emp-code">{e.name || eid}</code></td>
-                    <td>{e.auth_mode ?? 'public'}</td>
+                    <td>
+                      <select class="wg-auth-sel" title="Authentication mode — public (key only) · hmac (signed) · jwt (app identity)"
+                        value={e.auth_mode ?? 'public'}
+                        onclick={(ev) => ev.stopPropagation()}
+                        onchange={(ev) => { ev.stopPropagation(); setRowAuth(e, (ev.currentTarget as HTMLSelectElement).value); }}>
+                        <option value="public">public</option>
+                        <option value="hmac">hmac</option>
+                        <option value="jwt">jwt</option>
+                      </select>
+                    </td>
                     <td>
                       {#if Array.isArray(e.allowed_origins) && e.allowed_origins.length}
                         {e.allowed_origins.length} origin{e.allowed_origins.length > 1 ? 's' : ''}
@@ -1114,26 +1351,45 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
                     </td>
                     <td>
                       {#if isLive}
-                        <span class="emp-badge emp-badge-on">● live</span>
+                        <span class="emp-badge emp-badge-on">● Live</span>
                       {:else}
-                        <span class="emp-badge emp-badge-off">✗ revoked</span>
+                        <span class="emp-badge emp-badge-off">◌ Paused</span>
                       {/if}
                     </td>
                     <td>
-                      <button class="emp-btn emp-btn-sm" onclick={(ev) => {
-                        ev.stopPropagation();
-                        const snip = buildSnippet(eid, e.public_key || '', scope);
-                        copyText(snip, `snip-${eid}`);
-                      }}>{copied === `snip-${eid}` ? '✓ copied' : 'snippet'}</button>
+                      <!-- toggle switch: world-class enable/disable -->
+                      <button class="wg-switch" class:wg-switch-on={isLive} disabled={togglingEmbed === eid}
+                        role="switch" aria-checked={isLive}
+                        title={isLive ? 'Click to disable — snippet stops working, row stays' : 'Click to enable — snippet works again'}
+                        onclick={(ev) => { ev.stopPropagation(); toggleEmbedEnabled(e); }}>
+                        <span class="wg-knob">{togglingEmbed === eid ? '◐' : ''}</span>
+                        <span class="wg-switch-lbl">{isLive ? 'ON' : 'OFF'}</span>
+                      </button>
                     </td>
                     <td>
-                      {#if isLive}
-                        <button class="emp-btn emp-btn-sm" onclick={(ev) => { ev.stopPropagation(); window.open(`${baseUrl}/api/embed/try/${eid}`, '_blank'); }} title="Open a live chat sandbox for this widget">▶ Test chat</button>
-                      {/if}
+                      <div class="wg-quick">
+                        <button class="emp-btn emp-btn-sm" title="Copy embed snippet" onclick={(ev) => {
+                          ev.stopPropagation();
+                          const snip = buildSnippet(eid, e.public_key || '', scope);
+                          copyText(snip, `snip-${eid}`);
+                        }}>{copied === `snip-${eid}` ? '✓ copied' : '⧉ snippet'}</button>
+                        <button class="emp-btn emp-btn-sm emp-btn-accent" title="Ready-to-host folder (index.html + snippet + README), keys baked in"
+                          onclick={(ev) => { ev.stopPropagation(); downloadDeployZip(eid, scope); }}>⬇ .zip</button>
+                        {#if isLive}
+                          <button class="emp-btn emp-btn-sm" title="Open a live chat sandbox for this widget"
+                            onclick={(ev) => { ev.stopPropagation(); window.open(`${baseUrl}/api/embed/try/${eid}`, '_blank'); }}>▶ test</button>
+                        {/if}
+                        <button class="emp-btn emp-btn-sm" title="Configure appearance — colors, logo, welcome message"
+                          onclick={(ev) => { ev.stopPropagation(); openWidgetCockpit(e); }}>⚙ config</button>
+                      </div>
                     </td>
                     <td>
-                      {#if isLive}
-                        <button class="emp-btn emp-btn-sm emp-btn-danger" onclick={(ev) => { ev.stopPropagation(); revokeEmbed(eid); }}>Revoke</button>
+                      {#if isStore}
+                        <span class="emp-lock" title="Outlet widget tied to a store in the database — permanent, cannot be deleted">🔒 Locked</span>
+                      {:else}
+                        <button class="emp-btn emp-btn-sm emp-btn-danger"
+                          title="Delete this widget permanently (double confirmation)"
+                          onclick={(ev) => { ev.stopPropagation(); deleteEmbed(e); }}>🗑 Delete</button>
                       {/if}
                     </td>
                   </tr>
@@ -1222,8 +1478,11 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
                               <button class="emp-btn emp-btn-sm" onclick={() => window.open(`${baseUrl}/api/embed/try/${eid}`, '_blank')}>▶ Test chat ↗</button>
                             {/if}
                             <button class="emp-btn emp-btn-sm" onclick={() => openWidgetCockpit(e)}>⚙ Configure appearance →</button>
-                            {#if isLive}
-                              <button class="emp-btn emp-btn-sm emp-btn-danger" onclick={() => revokeEmbed(eid)}>Revoke</button>
+                            <button class="emp-btn emp-btn-sm" onclick={() => toggleEmbedEnabled(e)} title={isLive ? 'Disable — snippet stops working' : 'Enable'}>{isLive ? '⏸ Disable' : '▶ Enable'}</button>
+                            {#if isStore}
+                              <span class="emp-lock" title="Outlet widget tied to a DB store — permanent, cannot be deleted">🔒 Locked</span>
+                            {:else}
+                              <button class="emp-btn emp-btn-sm emp-btn-danger" onclick={() => deleteEmbed(e)}>🗑 Delete</button>
                             {/if}
                           </div>
                         </div>
@@ -1262,7 +1521,12 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
             <div class="emp-wc-head-actions">
               {#if ceLive}<button class="emp-btn emp-btn-sm" onclick={() => window.open(`${baseUrl}/api/embed/try/${ceId}`, '_blank')}>▶ Test chat</button>{/if}
               <button class="emp-btn emp-btn-sm emp-btn-accent" onclick={() => downloadDeployZip(ceId, ceScope)}>⤓ Deploy .zip</button>
-              {#if ceLive}<button class="emp-btn emp-btn-sm emp-btn-danger" onclick={() => revokeEmbed(ceId)}>Revoke</button>{/if}
+              <button class="emp-btn emp-btn-sm" onclick={() => toggleEmbedEnabled(configEmbed)} title={ceLive ? 'Disable' : 'Enable'}>{ceLive ? '⏸ Disable' : '▶ Enable'}</button>
+              {#if isStoreEmbed(configEmbed)}
+                <span class="emp-lock" title="Outlet widget tied to a DB store — permanent, cannot be deleted">🔒 Locked</span>
+              {:else}
+                <button class="emp-btn emp-btn-sm emp-btn-danger" onclick={() => deleteEmbed(configEmbed)}>🗑 Delete</button>
+              {/if}
             </div>
           </section>
 
@@ -1987,6 +2251,19 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
   </div>
 {/if}
 
+<!-- Global confirm modal — rendered outside route branches so it always overlays -->
+<ConfirmModal
+  open={confirmModal.open}
+  title={confirmModal.title}
+  message={confirmModal.message}
+  danger={confirmModal.danger}
+  confirmLabel={confirmModal.confirmLabel}
+  typeToConfirm={confirmModal.typeToConfirm}
+  hideCancel={confirmModal.hideCancel}
+  onConfirm={confirmModal.onConfirm}
+  onCancel={closeConfirm}
+/>
+
 <style>
   /* expandable widget rows (mirror Gateway Outlet Keys) */
   .emp-row-click { cursor: pointer; }
@@ -2076,6 +2353,64 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
   .emp-btn-accent:hover { background: var(--pw-accent-strong, #b8553a); color: #fff; }
   .emp-btn-danger { color: #c0392b; border-color: #c0392b; }
   .emp-btn-danger:hover { background: #c0392b; color: #fff; }
+  .emp-actions { display: flex; align-items: center; gap: 6px; }
+  .emp-lock { font-size: 11px; opacity: 0.5; cursor: help; white-space: nowrap; letter-spacing: 0.02em; }
+
+  /* ---- widgets: segmented tabs ---- */
+  .wg-tabbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; border-bottom: 1px solid var(--pw-border, #ece6d9); }
+  .wg-tabs { display: flex; gap: 4px; }
+  .wg-tab { display: inline-flex; align-items: center; gap: 8px; padding: 9px 18px; background: transparent; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; font-size: 13px; font-weight: 600; color: var(--pw-muted, #8a8275); cursor: pointer; transition: color 0.12s, border-color 0.12s; }
+  .wg-tab:hover { color: var(--pw-ink, #3a352c); }
+  .wg-tab-on { color: var(--pw-accent, #c96342); border-bottom-color: var(--pw-accent, #c96342); }
+  .wg-tab-ico { font-size: 14px; }
+  .wg-count { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 10px; background: var(--pw-border, #ece6d9); color: var(--pw-ink, #3a352c); }
+  .wg-tab-on .wg-count { background: var(--pw-accent, #c96342); color: #fff; }
+
+  /* ---- widgets: contextual banner ---- */
+  .wg-banner { display: flex; align-items: center; gap: 12px; padding: 11px 14px; margin-bottom: 14px; border: 1px solid var(--pw-border, #ece6d9); border-left: 3px solid var(--pw-muted, #8a8275); border-radius: 6px; background: rgba(0,0,0,0.015); }
+  .wg-banner-custom { border-left-color: var(--pw-accent, #c96342); }
+  .wg-banner-ico { font-size: 16px; opacity: 0.7; }
+  .wg-banner-txt { flex: 1; font-size: 12px; color: var(--pw-muted, #8a8275); line-height: 1.45; }
+  .wg-banner-txt strong { color: var(--pw-ink, #3a352c); }
+  .wg-banner-meta { font-size: 11px; font-weight: 600; color: var(--pw-muted, #8a8275); white-space: nowrap; }
+
+  /* ---- widgets: empty state ---- */
+  .wg-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 48px 16px; color: var(--pw-muted, #8a8275); }
+  .wg-empty-ico { font-size: 30px; opacity: 0.45; }
+  .wg-empty-txt { font-size: 13px; }
+
+  /* ---- widgets: rows + toggle switch ---- */
+  .wg-row-off { opacity: 0.55; }
+  .wg-switch { display: inline-flex; align-items: center; position: relative; width: 70px; height: 22px; padding: 0 10px; border: 1px solid var(--pw-border-strong, #cdc6b8); border-radius: 12px; background: #efe9dd; cursor: pointer; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; color: var(--pw-muted, #8a8275); transition: background 0.15s, border-color 0.15s, color 0.15s; }
+  .wg-switch:disabled { opacity: 0.6; cursor: progress; }
+  .wg-knob { position: absolute; left: 3px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; font-size: 9px; color: var(--pw-muted, #8a8275); transition: left 0.16s ease; }
+  .wg-switch-lbl { margin-left: auto; }
+  .wg-switch-on { background: var(--pw-accent, #c96342); border-color: var(--pw-accent, #c96342); color: #fff; }
+  .wg-switch-on .wg-knob { left: 51px; }
+  .wg-switch-on .wg-switch-lbl { margin-left: 0; margin-right: auto; }
+  .wg-quick { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+
+  /* ---- global default auth card ---- */
+  .wg-auth-card { border: 1px solid var(--pw-border, #ece6d9); border-radius: 8px; margin-bottom: 14px; background: rgba(0,0,0,0.012); overflow: hidden; }
+  .wg-auth-open { border-color: var(--pw-border-strong, #cdc6b8); }
+  .wg-auth-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px; background: transparent; border: none; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--pw-ink, #3a352c); text-align: left; }
+  .wg-auth-ico { font-size: 14px; }
+  .wg-auth-title { flex: 1; }
+  .wg-auth-cur { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 9px; border-radius: 10px; background: var(--pw-accent, #c96342); color: #fff; }
+  .wg-auth-chev { font-size: 11px; color: var(--pw-muted, #8a8275); }
+  .wg-auth-body { padding: 4px 14px 14px 14px; border-top: 1px solid var(--pw-border, #ece6d9); }
+  .wg-auth-sub { font-size: 12px; color: var(--pw-muted, #8a8275); margin: 10px 0 8px; }
+  .wg-auth-sub strong { color: var(--pw-ink, #3a352c); }
+  .wg-auth-opts { display: flex; flex-direction: column; gap: 6px; }
+  .wg-auth-opt { display: flex; align-items: baseline; gap: 9px; padding: 8px 10px; border: 1px solid var(--pw-border, #ece6d9); border-radius: 6px; cursor: pointer; transition: border-color 0.12s, background 0.12s; }
+  .wg-auth-opt:hover { border-color: var(--pw-border-strong, #cdc6b8); }
+  .wg-auth-opt-on { border-color: var(--pw-accent, #c96342); background: rgba(201,99,66,0.05); }
+  .wg-auth-opt-name { font-size: 12px; font-weight: 700; min-width: 52px; color: var(--pw-ink, #3a352c); }
+  .wg-auth-opt-hint { font-size: 11px; color: var(--pw-muted, #8a8275); }
+  .wg-auth-bulk { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--pw-border, #ece6d9); }
+  .wg-auth-warn { font-size: 11px; color: var(--pw-muted, #8a8275); }
+  .wg-auth-sel { padding: 3px 6px; font-size: 11px; font-family: inherit; border: 1px solid var(--pw-border, #ece6d9); border-radius: 5px; background: #fff; color: var(--pw-ink, #3a352c); cursor: pointer; }
+  .wg-auth-sel:hover { border-color: var(--pw-accent, #c96342); }
 
   .emp-mint { border: 1px dashed var(--pw-border-strong, #cdc6b8); padding: 14px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 12px; }
   .emp-mint-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }

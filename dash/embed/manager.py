@@ -236,6 +236,15 @@ def auto_provision_store_embeds(project_slug: str) -> int:
         logger.exception("embed: auto_provision_store_embeds setup failed")
         return 0
 
+    # Global default auth mode for new outlet widgets (super-admin configurable).
+    try:
+        from dash.admin.settings import get_setting
+        _default_auth = get_setting("embed_default_auth_mode") or "public"
+        if _default_auth not in _VALID_AUTH_MODES:
+            _default_auth = "public"
+    except Exception:
+        _default_auth = "public"
+
     made = 0
     for code in missing:
         try:
@@ -243,7 +252,7 @@ def auto_provision_store_embeds(project_slug: str) -> int:
                 project_slug=project_slug,
                 name=f"store-{code}",
                 allowed_origins=[],          # any origin, like the existing 53
-                auth_mode="public",
+                auth_mode=_default_auth,
                 rate_limit_per_min=120,
                 created_by=created_by,
                 bound_scope_id=code,

@@ -447,7 +447,8 @@ _BRAND_HARD = {
     "primary_color": "#1a2b4a",
     "position": "bottom-right",
     "theme": "default",
-    "welcome_msg": "Hi! How can I help?",
+    # Burmese opening greeting (matches the embed_default_welcome setting).
+    "welcome_msg": "မင်္ဂလာပါ — ဘာများ ကူညီပေးရမလဲ?",
     "logo_url": "",
 }
 _BRAND_KEYS = tuple(_BRAND_HARD.keys())
@@ -525,6 +526,56 @@ async def put_embed_brand(slug: str, request: Request):
         logger.exception("save embed_brand failed")
         raise HTTPException(500, "Failed to save brand")
     return {"status": "ok", "brand": get_brand_defaults(), "inheritance": _brand_inheritance(slug)}
+
+
+@router.get("/{slug}/embed-default-auth")
+def get_embed_default_auth(slug: str, request: Request):
+    """Resolved global default auth mode for newly auto-provisioned outlet widgets."""
+    user = _get_user(request)
+    _check_access(user, slug)
+    from dash.admin.settings import get_setting
+    return {"status": "ok", "auth_mode": get_setting("embed_default_auth_mode") or "public"}
+
+
+@router.put("/{slug}/embed-default-auth")
+async def put_embed_default_auth(slug: str, request: Request):
+    """Set the global default auth mode for FUTURE outlet widgets. Existing widgets
+    are untouched — use bulk-auth to re-apply to all."""
+    user = _get_user(request)
+    _check_access(user, slug)
+    body = await request.json()
+    mode = (body or {}).get("auth_mode")
+    if mode not in ("public", "hmac", "jwt"):
+        raise HTTPException(400, "auth_mode must be one of: public, hmac, jwt")
+    from dash.admin.settings import set_setting
+    ok, err = set_setting("embed_default_auth_mode", mode, scope="global", user_id=user.get("user_id"))
+    if not ok:
+        raise HTTPException(400, err or "failed to save")
+    return {"status": "ok", "auth_mode": mode}
+
+
+@router.post("/{slug}/embeds/bulk-auth")
+async def bulk_set_embed_auth(slug: str, request: Request):
+    """Apply one auth mode to EVERY widget in this project (outlet + custom).
+    Re-signs all snippets — stores must redeploy. Returns count updated."""
+    user = _get_user(request)
+    _check_access(user, slug)
+    body = await request.json()
+    mode = (body or {}).get("auth_mode")
+    if mode not in ("public", "hmac", "jwt"):
+        raise HTTPException(400, "auth_mode must be one of: public, hmac, jwt")
+    updated, failed = 0, 0
+    for emb in embed_mgr.list_embeds(slug):
+        eid = emb.get("embed_id") or emb.get("id")
+        if not eid:
+            continue
+        try:
+            embed_mgr.update_embed(eid, auth_mode=mode)
+            updated += 1
+        except Exception:
+            failed += 1
+            logger.exception("bulk-auth: failed for %s", eid)
+    return {"status": "ok", "auth_mode": mode, "updated": updated, "failed": failed}
 
 
 @router.post("/{slug}/embed-brand/reset-widgets")
@@ -615,7 +666,13 @@ async def upload_embed_logo(slug: str, embed_id: str, request: Request):
 def delete_embed_endpoint(slug: str, embed_id: str, request: Request):
     user = _get_user(request)
     _check_access(user, slug)
-    _load_embed_or_404(embed_id, slug)
+    emb = _load_embed_or_404(embed_id, slug)
+    # Store/DB-outlet embeds are permanent — they mirror a real outlet that must
+    # always exist. They can only be enabled/disabled (PATCH enabled), never deleted.
+    # Only user-created embeds are deletable. Defense-in-depth: the UI hides delete
+    # for these, but enforce here too so the API can't be used to drop an outlet.
+    if str(emb.get("name") or "").startswith("store-") or emb.get("bound_scope_id"):
+        raise HTTPException(403, "Outlet embeds cannot be deleted — disable instead")
     ok = embed_mgr.delete_embed(embed_id)
     if not ok:
         raise HTTPException(404, "Embed not found")
@@ -891,7 +948,9 @@ def auto_provision_project_embed(
                 " status = 'draft', "
                 " response_style = 'consumer', "
                 " access_mode = 'public', "
-                " welcome_msg = COALESCE(welcome_msg, 'Hi! Ask me anything.'), "
+                # Leave welcome_msg NULL so it inherits the configurable
+                # Burmese default (embed_default_welcome) via the /config
+                # resolver chain — don't bake an English string here.
                 " max_reply_chars = COALESCE(max_reply_chars, 600) "
                 "WHERE embed_id = :e"
             ), {"e": emb["embed_id"]})

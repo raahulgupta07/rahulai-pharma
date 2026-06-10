@@ -92,15 +92,47 @@ LEFT JOIN piv p ON p.ac = a.article_code::text
 
 def build_articles_enriched_view(db_url: str, log=print) -> bool:
     """CREATE OR REPLACE the articles_enriched view. Idempotent, non-destructive
-    (the source table is untouched). Returns True on success."""
+    (the source table is untouched). Returns True on success.
+
+    The full COALESCE view needs the enrichment table (catalog_enrichment) plus
+    the clinical source columns (indication/dosage/…). When enrichment is OFF or
+    the schema doesn't carry those (e.g. a lean demo catalog), we fall back to a
+    PASSTHROUGH view (articles_enriched == source) so downstream readers like
+    shop_flat still resolve — no red error, just a no-op enrichment."""
+    eng = create_engine(db_url)
+    # source must exist at all
     try:
-        eng = create_engine(db_url)
+        with eng.connect() as conn:
+            if conn.execute(text("SELECT to_regclass(:t)"),
+                            {"t": f"{SCHEMA}.{SOURCE_TABLE}"}).scalar() is None:
+                log(f"[catalog_apply] source {SCHEMA}.{SOURCE_TABLE} absent — view skipped")
+                return False
+            enrich_exists = conn.execute(text("SELECT to_regclass(:t)"),
+                                         {"t": f"{SCHEMA}.{ENRICH_TABLE}"}).scalar() is not None
+    except Exception as e:
+        log(f"[catalog_apply] precheck failed: {str(e)[:120]}")
+        return False
+
+    # full enriched view only when the enrichment table is present
+    if enrich_exists:
+        try:
+            with eng.begin() as conn:
+                conn.execute(text(f"SET search_path = {SCHEMA}, public"))
+                conn.execute(text(ENRICHED_VIEW_SQL))
+            log(f"[catalog_apply] {SCHEMA}.{ENRICHED_VIEW} view created/replaced (enriched)")
+            return True
+        except Exception as e:
+            log(f"[catalog_apply] enriched view unavailable ({str(e)[:80]}) — passthrough")
+
+    # passthrough: articles_enriched mirrors the source so readers never break
+    try:
         with eng.begin() as conn:
             conn.execute(text(f"SET search_path = {SCHEMA}, public"))
-            conn.execute(text(ENRICHED_VIEW_SQL))
-        log(f"[catalog_apply] {SCHEMA}.{ENRICHED_VIEW} view created/replaced")
+            conn.execute(text(
+                f"CREATE OR REPLACE VIEW {SCHEMA}.{ENRICHED_VIEW} AS SELECT * FROM {SCHEMA}.{SOURCE_TABLE}"))
+        log(f"[catalog_apply] {SCHEMA}.{ENRICHED_VIEW} view created (passthrough — enrichment off)")
         return True
-    except Exception as e:  # fail-soft — never break training
+    except Exception as e:
         log(f"[catalog_apply] view build failed: {str(e)[:160]}")
         return False
 

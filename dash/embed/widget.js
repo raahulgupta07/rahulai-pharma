@@ -56,6 +56,10 @@
   var messages = [];
   var sending = false;
   var firstReplyReceived = false;
+  // Starter-question chips resolved from the server config (Burmese default ??
+  // per-widget override). Used by loadSuggestions; falls back to the
+  // /suggestions endpoint if the config didn't carry them.
+  var starterQuestions = null;
 
   var explicit = {
     position: script.hasAttribute('data-position'),
@@ -79,6 +83,9 @@
             if (!explicit.title    && cfg.name)     title    = cfg.name;
             if (!explicit.accent   && cfg.primary_color) accent = cfg.primary_color;
             if (!logoUrl && cfg.logo_url) logoUrl = cfg.logo_url;
+            if (cfg.starter_questions && cfg.starter_questions.length) {
+              starterQuestions = cfg.starter_questions;
+            }
           }
           cb();
         })
@@ -785,6 +792,12 @@
 
   // ── Suggested questions chips ───────────────────────────────────────
   function loadSuggestions() {
+    // Prefer starter chips already carried in the server config (no extra
+    // round-trip); fall back to the /suggestions endpoint otherwise.
+    if (starterQuestions && starterQuestions.length) {
+      renderChips(starterQuestions.slice(0, 3));
+      return;
+    }
     fetch(apiOrigin + '/api/embed/config/' + encodeURIComponent(embedId) + '/suggestions')
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(d) {
