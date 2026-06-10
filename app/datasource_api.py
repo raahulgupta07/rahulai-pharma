@@ -203,11 +203,19 @@ def _trained_map(conn, slug: str) -> dict[str, dict]:
     out: dict[str, dict] = {}
     try:
         rows = conn.execute(text(
-            "SELECT table_name, updated_at FROM public.dash_table_metadata "
+            "SELECT table_name, updated_at, metadata FROM public.dash_table_metadata "
             "WHERE project_slug=:s"), {"s": slug}).fetchall()
         for r in rows:
             out.setdefault(r[0], {})["trained"] = True
             out[r[0]]["last_at"] = _iso(r[1])
+            meta = r[2]
+            if isinstance(meta, str):
+                try:
+                    import json as _json
+                    meta = _json.loads(meta)
+                except Exception:
+                    meta = {}
+            out[r[0]]["meta"] = meta if isinstance(meta, dict) else {}
     except Exception as e:
         logger.debug("trained_map meta %s: %s", slug, e)
     try:
@@ -219,6 +227,31 @@ def _trained_map(conn, slug: str) -> dict[str, dict]:
     except Exception as e:
         logger.debug("trained_map qa %s: %s", slug, e)
     return out
+
+
+# ---------------------------------------------------------------------------
+# table origin — uploaded vs AI/LLM-created vs derived
+# ---------------------------------------------------------------------------
+# Derived = pre-joined/denormalized tables the pipeline builds (never uploaded,
+# never trained as a source). AI = tables an LLM produced (catalog enrichment:
+# carries model + suggested_value columns). Everything else = uploaded source.
+_DERIVED_NAMES = {"shop_flat"}
+
+
+def _classify_origin(name: str, meta: dict, cols: list[dict]) -> str:
+    """Return 'uploaded' | 'ai' | 'derived'.
+
+    Explicit metadata.origin wins (set at creation, durable). Falls back to a
+    heuristic so existing tables classify with no retrain."""
+    o = (meta or {}).get("origin")
+    if o in ("uploaded", "ai", "derived"):
+        return o
+    if name in _DERIVED_NAMES:
+        return "derived"
+    colnames = {c["name"].lower() for c in cols}
+    if name == "catalog_enrichment" or ({"model", "suggested_value"} <= colnames):
+        return "ai"
+    return "uploaded"
 
 
 def _counts(conn, slug: str) -> dict:
@@ -289,6 +322,7 @@ def datasource(slug: str, request: Request, quality: bool = True, preview: bool 
                 "rows": rows,
                 "cols": len(cols),
                 "columns": cols,
+                "origin": _classify_origin(t, tr.get("meta", {}), cols),
                 "trained": bool(tr.get("trained")),
                 "last_trained": tr.get("last_at"),
                 "qa_count": tr.get("qa_count", 0),
@@ -347,9 +381,13 @@ def datasource(slug: str, request: Request, quality: bool = True, preview: bool 
     issues = sum(1 for e in tables if e.get("quality") and e["quality"]["score"] < 80) + len(_join_warnings)
 
     sites = max((e.get("store", {}).get("site_count", 0) for e in tables), default=0)
+    origins = {"uploaded": 0, "ai": 0, "derived": 0}
+    for e in tables:
+        origins[e.get("origin", "uploaded")] = origins.get(e.get("origin", "uploaded"), 0) + 1
     summary = {
         "tables": len(tables),
         "rows": total_rows,
+        "origins": origins,
         "sites": sites,
         "join_warnings": _join_warnings,
         "trained_tables": trained_tables,

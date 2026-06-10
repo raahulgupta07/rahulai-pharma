@@ -286,6 +286,19 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
     except Exception as _bp_e:
         import logging as _bp_log
         _bp_log.getLogger(__name__).warning(f"rls_blueprints seed skipped: {_bp_e}")
+    # Demo seed: a brand-new / empty install gets synthetic pharma data + a
+    # locked project row so it demos out-of-box. No-op when the project already
+    # has data (idempotent, force=False). WORKER_RANK==0 only (like migrations);
+    # disable with DEMO_SEED_ON_EMPTY=0.
+    if getenv("WORKER_RANK", "0") == "0" and getenv("DEMO_SEED_ON_EMPTY", "1") not in ("0", "false", "False"):
+        try:
+            from scripts.seed_pharma_demo import seed_demo as _seed_demo
+            _seed_res = _seed_demo("citypharma", force=False, train=True)
+            import logging as _sd_log
+            _sd_log.getLogger(__name__).info(f"demo seed: {_seed_res}")
+        except Exception as _sd_e:
+            import logging as _sd_log
+            _sd_log.getLogger(__name__).warning(f"demo seed skipped: {_sd_e}")
     try:
         from app.connectors import init_connectors
         init_connectors()

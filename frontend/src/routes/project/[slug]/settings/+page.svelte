@@ -1463,11 +1463,11 @@ $effect(() => {
  function dqOpenEda(it: DqIssue) {
  activeTab = 'eda';
  if (!Object.keys(edaAll).length && !edaAllLoading) loadEdaAll();
- edaColKey = it.column ? `${it.table}::${it.column}` : null;
+ if (it.column) edaColOpen = { ...edaColOpen, [`${it.table}::${it.column}`]: true };
  if (typeof document !== 'undefined') setTimeout(() => document.getElementById(`eda-t-${it.table}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 200);
  }
  // open the DATA SOURCE screen with a table row expanded (cross-link from a DQ issue)
- function dqOpenTable(tname: string) { activeTab = 'upload'; dsView = 'overview'; dsExpanded = tname; loadDataSource();
+ function dqOpenTable(tname: string) { activeTab = 'upload'; dsView = 'overview'; dsOpen = { ...dsOpen, [tname]: true }; loadDataSource();
  if (typeof document !== 'undefined') setTimeout(() => document.querySelector('.set-content')?.scrollTo?.({ top: 0 }), 80); }
 
  function openDataQualityForTable(tname: string) {
@@ -5554,7 +5554,16 @@ function signUserJWT($user) {
  // ── EXPLORATORY: all tables profiled at once (no dropdown) ──
  let edaAll = $state<Record<string, any>>({});
  let edaAllLoading = $state(false);
- let edaColKey = $state<string | null>(null);   // `${table}::${col}` expanded row
+ // per-column open state, keyed `${table}::${col}`. DEFAULT OPEN unless set false.
+ let edaColOpen = $state<Record<string, boolean>>({});
+ function edaColIsOpen(key: string) { return edaColOpen[key] !== false; }
+ function edaColToggle(key: string) { edaColOpen = { ...edaColOpen, [key]: edaColOpen[key] === false }; }
+ function edaExpandAll() { edaColOpen = {}; }
+ function edaCollapseAll() {
+   const m: Record<string, boolean> = {};
+   for (const tn of Object.keys(edaAll)) for (const c of (edaAll[tn]?.columns || [])) m[`${tn}::${c.name}`] = false;
+   edaColOpen = m;
+ }
  function edaAllNames(): string[] {
    const fromData = Object.keys(edaAll);
    if (fromData.length) return fromData;
@@ -5625,7 +5634,39 @@ function signUserJWT($user) {
    } catch {}
  }
  let dsLoading = $state(false);
- let dsExpanded = $state<string | null>(null);
+ // per-row open state. DEFAULT OPEN: a table is expanded unless explicitly set false.
+ // (was single-open accordion `dsExpanded`; now independent, all-open-on-load + toggle)
+ let dsOpen = $state<Record<string, boolean>>({});
+ function dsIsOpen(name: string) { return dsOpen[name] !== false; }
+ function dsToggle(name: string) { dsOpen = { ...dsOpen, [name]: dsOpen[name] === false }; }
+ function dsOriginMeta(o: string) {
+   if (o === 'ai') return { label: 'AI-created', icon: '🤖', cls: 'dsx-orig-ai' };
+   if (o === 'derived') return { label: 'Derived', icon: '⚙️', cls: 'dsx-orig-derived' };
+   return { label: 'Uploaded', icon: '📤', cls: 'dsx-orig-uploaded' };
+ }
+ let dsSeeding = $state(false);
+ async function dsSeedDemo() {
+   const hasData = (dsData?.tables || []).some((t: any) => t.name !== 'shop_flat');
+   const msg = hasData
+     ? 'Replace ALL current tables with synthetic demo pharma data (200 drugs × 8 stores)? This cannot be undone.'
+     : 'Load synthetic demo pharma data (200 drugs × 8 stores) into this project?';
+   if (!confirm(msg)) return;
+   dsSeeding = true;
+   try {
+     const r = await fetch(`/api/projects/${slug}/seed-demo${hasData ? '?force=1' : ''}`, { method: 'POST', headers: _h() });
+     const d = await r.json().catch(() => ({}));
+     if (!r.ok) { alert(d?.detail || 'Seed failed'); return; }
+     try { window.dispatchEvent(new CustomEvent('dash-cli-log', { detail: `▸ demo data loaded (${d.rows || 0} rows) — training…` })); } catch {}
+     await loadDataSource();
+     dsTrainAll();  // kick training via the normal path → live console
+   } catch (e) {
+     alert('Seed failed: ' + e);
+   } finally {
+     dsSeeding = false;
+   }
+ }
+ function dsExpandAll() { dsOpen = {}; }
+ function dsCollapseAll() { const m: Record<string, boolean> = {}; for (const t of (dsData?.tables || [])) m[t.name] = false; dsOpen = m; }
  let dsSort = $state<'health'|'rows'|'name'|'trained'>('health');
  let dsFilter = $state('');
  let dsUploadOpen = $state(false);
@@ -5758,7 +5799,7 @@ function signUserJWT($user) {
    try {
      await fetch(`/api/tables/${encodeURIComponent(name)}?project=${slug}`, { method: 'DELETE', headers: _h() });
      try { window.dispatchEvent(new CustomEvent('dash-cli-log', { detail: `▸ deleted table ${name}` })); } catch {}
-     dsExpanded = null;
+     dsOpen = { ...dsOpen, [name]: false };
      await loadDataSource();
    } catch {}
  }
@@ -7644,6 +7685,7 @@ function signUserJWT($user) {
       <div class="dsx-ring"><div class="dsx-ring-n">{_ds.vectors ?? 0}</div><div class="dsx-ring-l">vectors</div></div>
       <div class="dsx-ring" class:dsx-ring-warn={(_ds.issues ?? 0) > 0}><div class="dsx-ring-n">{_ds.issues ?? 0}</div><div class="dsx-ring-l">issues</div></div>
       <div class="dsx-rings-sp"></div>
+      {#if canEdit}<button class="dsx-btn dsx-seedbtn" onclick={dsSeedDemo} disabled={dsSeeding} title="Populate this project with synthetic demo pharma data">{dsSeeding ? '◐ loading…' : '⚗ Load demo data'}</button>{/if}
       {#if canEdit}<button class="dsx-upbtn" onclick={() => dsUploadOpen = !dsUploadOpen}>＋ Upload data {dsUploadOpen ? '▴' : '▾'}</button>{/if}
     </div>
     {/if}
@@ -7656,10 +7698,36 @@ function signUserJWT($user) {
     <!-- TRAINING PIPELINE moved to the Dashboard (overview) — see project/[slug]/overview -->
     {#if isTraining}<div class="dsx-trainmsg">⟳ training… — live pipeline on the Dashboard</div>{/if}
 
+    <!-- ═══ TABLE ORIGINS — uploaded vs AI-created vs derived ═══ -->
+    {#if dsData?.tables?.length}
+    {@const _byO = (o) => (dsData.tables || []).filter((x) => (x.origin || 'uploaded') === o)}
+    <div class="dsx-origins">
+      {#each [{k:'uploaded',icon:'📤',label:'Uploaded',hint:'source files you uploaded'},{k:'ai',icon:'🤖',label:'AI-created',hint:'generated by the LLM'},{k:'derived',icon:'⚙️',label:'Derived',hint:'built by the pipeline (pre-joined)'}] as g}
+        {@const list = _byO(g.k)}
+        <div class="dsx-ocard">
+          <div class="dsx-ocard-h"><span class="dsx-orig dsx-orig-{g.k}">{g.icon} {g.label}</span><span class="dsx-ocount">{list.length}</span></div>
+          <div class="dsx-ohint">{g.hint}</div>
+          {#if list.length}
+            <div class="dsx-olist">
+              {#each list as x}
+                <button type="button" class="dsx-orow" onclick={() => dsOpen = { ...dsOpen, [x.name]: true }}>
+                  <span class="dsx-oname">{x.name}</span>
+                  <span class="dsx-ometa">{(x.rows||0).toLocaleString()} rows · {x.cols} cols</span>
+                </button>
+              {/each}
+            </div>
+          {:else}<div class="dsx-oempty">none</div>{/if}
+        </div>
+      {/each}
+    </div>
+    {/if}
+
     <!-- ═══ TABLE LIST ═══ -->
     <div class="dsx-tb">
       <input class="dsx-search" placeholder="filter tables…" bind:value={dsFilter} />
       <div class="dsx-tb-sp"></div>
+      <button class="dsx-btn" onclick={dsExpandAll}>⊕ expand all</button>
+      <button class="dsx-btn" onclick={dsCollapseAll}>⊖ collapse all</button>
       {#if canEdit}<button class="dsx-btn" onclick={dsTrainAll}>↻ retrain all</button>{/if}
       <select class="dsx-sortsel" bind:value={dsSort}>
         <option value="health">sort: health</option>
@@ -7671,14 +7739,16 @@ function signUserJWT($user) {
 
     <div class="dsx-rows">
       <div class="dsx-row dsx-rowhead">
-        <span>NAME</span><span>ROWS</span><span>COLS</span><span>TRAINED</span><span>Q&amp;A</span><span>VEC</span><span>HEALTH</span>
+        <span>NAME</span><span>ORIGIN</span><span>ROWS</span><span>COLS</span><span>TRAINED</span><span>Q&amp;A</span><span>VEC</span><span>HEALTH</span>
       </div>
       {#if dsLoading && !dsData}<div class="dsx-empty">loading…</div>{/if}
       {#each dsSortedTables() as t (t.name)}
         {@const q = t.quality || {}}
         {@const training = dsTrainingTables[t.name] || (dsData?.summary?.is_training)}
-        <div class="dsx-row dsx-rowclk" onclick={() => dsExpanded = dsExpanded === t.name ? null : t.name}>
-          <span class="dsx-tname">{dsExpanded === t.name ? '▾' : '▸'} {t.name}{#if training}<span class="dsx-spin">⟳</span>{/if}</span>
+        {@const om = dsOriginMeta(t.origin || 'uploaded')}
+        <div class="dsx-row dsx-rowclk" onclick={() => dsToggle(t.name)}>
+          <span class="dsx-tname">{dsIsOpen(t.name) ? '▾' : '▸'} {t.name}{#if training}<span class="dsx-spin">⟳</span>{/if}</span>
+          <span><span class="dsx-orig {om.cls}" title={om.label}>{om.icon} {om.label}</span></span>
           <span>{(t.rows||0).toLocaleString()}</span>
           <span>{t.cols}</span>
           <span>{#if t.trained}<span class="dsx-ok">✓</span>{:else}<span class="dsx-no">○</span>{/if}</span>
@@ -7686,7 +7756,7 @@ function signUserJWT($user) {
           <span>{t.vec ?? '—'}</span>
           <span><span class="dsx-health" class:dsx-health-lo={(q.score??0)<80}>{q.score??0}%</span></span>
         </div>
-        {#if dsExpanded === t.name}
+        {#if dsIsOpen(t.name)}
           <div class="dsx-detail">
             <div class="dsx-dsec"><b>OVERVIEW</b> {(t.rows||0).toLocaleString()} rows · {t.cols} cols{#if t.store?.column} · store key: {t.store.column}{#if Array.isArray(t.store.stores) && t.store.stores.length} ({t.store.stores.slice(0,4).join(', ')}{t.store.stores.length>4?'…':''}){/if}{/if} · {#if t.trained}<span class="dsx-ok">trained{#if t.last_trained} {new Date(t.last_trained).toLocaleString()}{/if}</span>{:else}<span class="dsx-no">not trained</span>{/if}</div>
             <div class="dsx-dsec"><b>QUALITY</b> score {q.score??0}/100
@@ -7798,6 +7868,8 @@ function signUserJWT($user) {
     <div class="dsx-eda-head">
       <div class="dsx-sechead" style="margin:0;border:none;padding:0;">EXPLORATORY ANALYSIS</div>
       <div class="dsx-tb-sp"></div>
+      <button class="dsx-btn" onclick={edaExpandAll}>⊕ expand all</button>
+      <button class="dsx-btn" onclick={edaCollapseAll}>⊖ collapse all</button>
       <button class="dsx-btn" disabled={edaAllLoading} onclick={loadEdaAll}>{edaAllLoading ? '◐ scanning…' : '↻ rescan all'}</button>
     </div>
 
@@ -7845,8 +7917,8 @@ function signUserJWT($user) {
               {#each ed.columns as c}
                 {@const _key = `${tn}::${c.name}`}
                 {@const isUnique = c.distinct >= (ed.rows > 50000 ? 20000 : ed.rows) && ed.rows > 0}
-                <div class="dsx-row dsx-edarow dsx-rowclk" onclick={() => edaColKey = edaColKey === _key ? null : _key}>
-                  <span class="dsx-tname">{edaColKey === _key ? '▾' : '▸'} {c.name}</span>
+                <div class="dsx-row dsx-edarow dsx-rowclk" onclick={() => edaColToggle(_key)}>
+                  <span class="dsx-tname">{edaColIsOpen(_key) ? '▾' : '▸'} {c.name}</span>
                   <span class="dsx-edatype">{c.type}</span>
                   <span><span class="dsx-nullbadge" class:hi={(c.null_pct||0) >= 10}>{(c.null_pct ?? 0)}%</span></span>
                   <span>{(c.distinct ?? 0).toLocaleString()}</span>
@@ -7857,7 +7929,7 @@ function signUserJWT($user) {
                     {:else if c.avg_len}avg len {c.avg_len}{/if}
                   </span>
                 </div>
-                {#if edaColKey === _key}
+                {#if edaColIsOpen(_key)}
                   <div class="dsx-detail">
                     <div class="dsx-dsec"><b>STATS</b>
                       type {c.type} · {(c.distinct ?? 0).toLocaleString()} distinct · {(c.null_pct ?? 0)}% null
@@ -18716,7 +18788,24 @@ function signUserJWT($user) {
 .dsx-btn-danger:hover { border-color:#c0392b; color:#c0392b; }
 
 .dsx-rows { border:1px solid var(--pw-border); border-radius:10px; overflow:hidden; }
-.dsx-row { display:grid; grid-template-columns:1fr 90px 56px 80px 56px 56px 90px; gap:8px; align-items:center; padding:9px 14px; font-size:13px; border-bottom:1px solid var(--pw-border); }
+.dsx-row { display:grid; grid-template-columns:1fr 116px 90px 56px 80px 56px 56px 90px; gap:8px; align-items:center; padding:9px 14px; font-size:13px; border-bottom:1px solid var(--pw-border); }
+.dsx-orig { display:inline-flex; align-items:center; gap:4px; padding:1px 8px; border-radius:10px; font-size:10.5px; font-weight:600; line-height:1.6; white-space:nowrap; }
+.dsx-orig-uploaded { background:#e8f0e9; color:#2f6b3a; }
+.dsx-orig-ai { background:#efe7f6; color:#6a3a9a; }
+.dsx-orig-derived { background:#f3ece1; color:#9a4a2f; }
+.dsx-seedbtn { align-self:center; margin-right:8px; }
+.dsx-origins { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:4px 0 14px; }
+.dsx-ocard { border:1px solid var(--pw-border); border-radius:8px; padding:10px 12px; background:var(--pw-bg-alt); }
+.dsx-ocard-h { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.dsx-ocount { font-size:18px; font-weight:700; color:var(--pw-ink); }
+.dsx-ohint { font-size:10.5px; color:var(--pw-ink-soft); margin:4px 0 8px; }
+.dsx-olist { display:flex; flex-direction:column; gap:4px; }
+.dsx-orow { display:flex; align-items:baseline; justify-content:space-between; gap:8px; text-align:left; background:var(--pw-bg); border:1px solid var(--pw-border); border-radius:6px; padding:5px 8px; cursor:pointer; font:inherit; }
+.dsx-orow:hover { background:var(--pw-bg-alt); border-color:var(--pw-accent); }
+.dsx-oname { font-size:12px; font-weight:600; color:var(--pw-ink); }
+.dsx-ometa { font-size:10.5px; color:var(--pw-ink-soft); white-space:nowrap; }
+.dsx-oempty { font-size:11px; color:var(--pw-ink-soft); font-style:italic; }
+@media (max-width:760px){ .dsx-origins { grid-template-columns:1fr; } }
 .dsx-row:last-child { border-bottom:none; }
 .dsx-rowhead { background:var(--pw-bg-alt); font-size:10px; text-transform:uppercase; letter-spacing:0.05em; color:var(--pw-ink-soft); font-weight:600; }
 .dsx-rowclk { cursor:pointer; }
