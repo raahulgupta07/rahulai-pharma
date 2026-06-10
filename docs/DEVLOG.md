@@ -14,6 +14,8 @@ Replaced the flat `dsx-pipe` 7-dot strip in the Data Source page with a live, bo
 
 **Verified.** svelte-check 0 errors (3 new files + page), `bun run build` clean, image rebuilt + `--force-recreate`, healthy, endpoint returns live data (run #10 done, flags engineer=ON enrich=OFF, 4 tables / 212,653 rows / 134 Q&A / 7 rels / 3 matviews / 1,566 gaps / eval 4.5, AGE=0 graph empty, all 10 layers done, L3=12 steps), component shipped in served `/app/frontend/build/_app` bundle. SUPER_ADMIN=demo / demo@2026.
 
+**RELOCATED (commits d34b882 + 7560099).** The card belongs on the **Dashboard** (`project/[slug]/overview`, below the KPI strip), NOT the Data Source/settings page — first mount was on the wrong page. Removed `<TrainingFlow/>` + import from `settings/+page.svelte` (settings now shows only a slim "live pipeline on the Dashboard" hint while `isTraining`). Mounted on overview as a full-width `.ov-card` (`.ov-tflow`, `:global(.tf)` padding). Also fixed the schematic clipping stages 7-9 (TAIL/POST-HOOKS/DONE) past GRAPH: `.ts-stage` min-width 150→92px, `.ts-conn` flex 38→22px, stacked card title over status pill, tighter padding → all 10 stages fit edge-to-edge, no scroll.
+
 ---
 
 ### Session 2026-06-10 (latest+50) — Engineer semantic-layer matviews + LLM catalog enrichment (both gated, deployed, eval-verified)
