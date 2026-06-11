@@ -2,6 +2,21 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-11 (latest+66) — Version + What's-new feed on the login screen (public /api/version)
+
+**Goal (product owner):** see at a glance that an upgrade actually deployed (version + build) AND that the latest data is loaded, plus a feed of what features each release added — all on the LOGIN screen (pre-auth).
+
+**Built (curated changelog + manual version, per chosen options):**
+- **`VERSION`** (new, repo root) = single line `1.12.0`. Baked into image via existing `COPY . /app`; bump it when cutting a release.
+- **`docs/CHANGELOG.json`** (new) = curated, customer-facing "What's new" feed (newest-first `releases[]`, each `{version,date,title,items[]}`). Plain-language, no internal table/tool names. **`.dockerignore` was excluding `docs/` wholesale** → changed to `docs/*` + `!docs/CHANGELOG.json` (Docker can't re-include a child of a fully-excluded parent — must exclude the dir's *contents*, not the dir) so the feed bakes into the image. **LANDMINE: keep that pattern; reverting to a bare `docs` line drops the changelog from the image → empty feed.**
+- **`GET /api/version`** (new, `app/main.py`, **public** — added to `SKIP_PATHS`): returns `{version, commit, built_at, image_age_hours, stale, product, data, changelog}`. Version = `APP_VERSION` env, falls back to reading baked `/app/VERSION` when env is unset/`dev`. `commit`/`built_at` from `BUILD_COMMIT`/`BUILD_TIME` (Dockerfile already had these ARGs). `data` = fail-soft freshness: `last_upload` (max `dash_table_metadata.updated_at` for locked slug), `catalog_rows`/`stock_rows` + `shop_flat{both,catalog_only,stock_only}` (distinct `art_key` per `link_status`, `to_regclass`-guarded). Every piece degrades to null — never 500s.
+- **`compose.yaml`** dash-api `build.args`: `APP_VERSION`/`BUILD_COMMIT`/`BUILD_TIME` (empty APP_VERSION → Dockerfile default `dev` → endpoint reads the baked file). Deploy stamp: `APP_VERSION=$(cat VERSION) BUILD_COMMIT=$(git rev-parse --short HEAD) BUILD_TIME=$(date -u +%FT%TZ) docker compose build dash-api`.
+- **Login UI** (`frontend/src/routes/login/+page.svelte`): `loadVersion()` on mount → (1) **version chip** top-right of the brand header (green dot · `v1.12.0` · short commit · build date; turns amber `⚠ stale` when `stale` — >24h image or `dev`); (2) data date appended to the live-stats line (`· data 2026-06-11`); (3) **"What's new" panel** above the footer — collapsed shows the latest release's title + top-3 items, "See all ▸" expands to every release; (4) footer shows `· v1.12.0 (commit)`. Warm-pill theme (`--pw-accent-bg`/`--pw-accent`). `.pw-top` now `space-between` so the chip sits right.
+
+**Verified live** (rebuilt image + force-recreate, leader deleted first): `/api/version` → `version 1.12.0, commit 9599258, stale false, data{catalog 200/stock 200/both 200}, changelog[1.12.0,1.11.0,1.10.0]`. Frontend built clean (vite, login chunk compiled). Demo data is the matched 200/200 set so all-`both` (mismatch counts show real numbers once the 4600/3800 files load).
+
+---
+
 ### Session 2026-06-11 (latest+65) — shop_flat FULL OUTER join: catalog↔stock mismatch handled honestly (3-state + Not Found)
 
 **Problem (from product owner):** the catalog (Article) table and Balance-Stock table are kept by DIFFERENT ERP processes and legitimately DON'T match 100%. Scenario 1 (common): more catalog than stock (4600 vs 3800) — frozen/inactive, advance-entry, supplier-out. Scenario 2 (rare): more stock than catalog — delayed catalog entry. Required behavior: found → return info; not found → "Not Found". **Root cause found:** `scripts/build_shop_flat.py` built shop_flat by looping over STOCK rows only (`agg.items()`) → effectively `stock LEFT JOIN catalog`. So **catalog-only articles never entered shop_flat at all** → agent couldn't tell "in catalog, 0 stock" from "we don't carry it", no clean "Not Found".

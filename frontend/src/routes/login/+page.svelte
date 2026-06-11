@@ -102,12 +102,44 @@
  }
  }
 
+ // Build version + data freshness + What's-new feed (GET /api/version, public)
+ type Release = { version: string; date?: string; title?: string; items: string[] };
+ type VersionInfo = {
+   version: string; commit?: string; built_at?: string | null;
+   image_age_hours?: number | null; stale?: boolean;
+   data?: { last_upload?: string | null; catalog_rows?: number | null;
+            stock_rows?: number | null;
+            shop_flat?: { both: number; catalog_only: number; stock_only: number } | null } | null;
+   changelog?: Release[];
+ };
+ let versionInfo = $state<VersionInfo | null>(null);
+ let showWhatsNew = $state(false);
+
+ let shortCommit = $derived(versionInfo?.commit && versionInfo.commit !== 'unknown'
+   ? versionInfo.commit.slice(0, 7) : '');
+ let builtLabel = $derived.by(() => {
+   const iso = versionInfo?.built_at;
+   if (!iso) return '';
+   try { return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
+   catch { return ''; }
+ });
+ let latestRelease = $derived(versionInfo?.changelog?.[0] ?? null);
+
+ async function loadVersion() {
+   try {
+     const res = await fetch('/api/version', { headers: { Accept: 'application/json' } });
+     if (!res.ok) { versionInfo = null; return; }
+     versionInfo = await res.json();
+   } catch { versionInfo = null; }
+ }
+
  let _statsTimer: any = null;
  let _clockTimer: any = null;
 
  onMount(() => {
  document.body.classList.add('pw-login-active');
  loadStats();
+ loadVersion();
  _statsTimer = setInterval(loadStats, 30_000);
  _clockTimer = setInterval(() => { now = new Date(); }, 60_000);
  return () => { document.body.classList.remove('pw-login-active'); };
@@ -164,6 +196,17 @@
     <div class="pw-brand">
       <img src="/brand/cityagent.png?v=3" alt="CityPharma" class="pw-brand-logo" />
     </div>
+    {#if versionInfo}
+      <button class="pw-ver" class:pw-ver--stale={versionInfo.stale}
+              type="button" onclick={() => showWhatsNew = !showWhatsNew}
+              title={versionInfo.stale ? 'Dev / stale build — rebuild to deploy latest' : 'View what\'s new'}>
+        <span class="pw-ver-dot"></span>
+        <span class="pw-ver-v">v{versionInfo.version}</span>
+        {#if shortCommit}<span class="pw-ver-sep">·</span><span class="pw-ver-c">{shortCommit}</span>{/if}
+        {#if builtLabel}<span class="pw-ver-sep">·</span><span class="pw-ver-d">{builtLabel}</span>{/if}
+        {#if versionInfo.stale}<span class="pw-ver-warn">⚠ stale</span>{/if}
+      </button>
+    {/if}
   </header>
 
   <main class="pw-split">
@@ -179,7 +222,7 @@
       {#if liveStats}
         <div class="pw-stats">
           <span class="pw-stats-dot"></span>
-          {liveStats.teams} branches · {liveStats.rows} stock rows · {liveStats.uptime} SKUs
+          {liveStats.teams} branches · {liveStats.rows} stock rows · {liveStats.uptime} SKUs{#if versionInfo?.data?.last_upload} · data {versionInfo.data.last_upload}{/if}
         </div>
       {/if}
 
@@ -310,7 +353,45 @@
 
   </main>
 
-  <footer class="pw-footer">© 2026 CityAgent Pharma</footer>
+  {#if latestRelease}
+    <section class="pw-whatsnew" class:pw-whatsnew--open={showWhatsNew}>
+      <button class="pw-wn-head" type="button" onclick={() => showWhatsNew = !showWhatsNew}>
+        <span class="pw-wn-spark">✦</span>
+        <span class="pw-wn-title">
+          What's new {#if versionInfo?.version}<span class="pw-wn-ver">in v{versionInfo.version}</span>{/if}
+          {#if latestRelease.title} — {latestRelease.title}{/if}
+        </span>
+        <span class="pw-wn-toggle">{showWhatsNew ? 'Hide' : 'See all ▸'}</span>
+      </button>
+
+      {#if !showWhatsNew}
+        <ul class="pw-wn-list">
+          {#each latestRelease.items.slice(0, 3) as it}
+            <li>{it}</li>
+          {/each}
+        </ul>
+      {:else}
+        <div class="pw-wn-all">
+          {#each (versionInfo?.changelog ?? []) as rel}
+            <div class="pw-wn-rel">
+              <div class="pw-wn-relhead">
+                <span class="pw-wn-relver">v{rel.version}</span>
+                {#if rel.title}<span class="pw-wn-reltitle">{rel.title}</span>{/if}
+                {#if rel.date}<span class="pw-wn-reldate">{rel.date}</span>{/if}
+              </div>
+              <ul class="pw-wn-list">
+                {#each rel.items as it}<li>{it}</li>{/each}
+              </ul>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </section>
+  {/if}
+
+  <footer class="pw-footer">
+    © 2026 CityAgent Pharma{#if versionInfo} · v{versionInfo.version}{#if shortCommit} ({shortCommit}){/if}{/if}
+  </footer>
 </div>
 
 <style>
@@ -341,11 +422,85 @@
  .pw-split { flex: 1; min-height: 0; overflow: hidden; }
 
  .pw-top {
- padding: 8px 0 0 12px;
+ padding: 8px 16px 0 12px;
  display: flex;
- align-items: flex-start;
- justify-content: flex-start;
+ align-items: center;
+ justify-content: space-between;
+ gap: 12px;
  }
+
+ /* version chip (top-right) — warm pill, matches inline-code theme */
+ .pw-ver {
+ display: inline-flex;
+ align-items: center;
+ gap: 6px;
+ padding: 5px 11px;
+ border-radius: 999px;
+ background: var(--pw-accent-bg, #f3ece1);
+ color: var(--pw-accent, #9a4a2f);
+ border: 1px solid var(--pw-accent-soft, rgba(154,74,47,.18));
+ font-size: 12px;
+ font-weight: 600;
+ letter-spacing: .2px;
+ cursor: pointer;
+ transition: box-shadow .15s, transform .15s;
+ white-space: nowrap;
+ }
+ .pw-ver:hover { box-shadow: 0 0 0 3px var(--pw-accent-bg, #f3ece1); transform: translateY(-1px); }
+ .pw-ver-dot {
+ width: 7px; height: 7px; border-radius: 50%;
+ background: #2fa36b; box-shadow: 0 0 0 3px rgba(47,163,107,.18);
+ }
+ .pw-ver-sep { opacity: .4; }
+ .pw-ver-c, .pw-ver-d { font-weight: 500; opacity: .85; }
+ .pw-ver--stale {
+ background: #fbf0d6; color: #8a5a00; border-color: rgba(180,120,0,.28);
+ }
+ .pw-ver--stale .pw-ver-dot { background: #d4930e; box-shadow: 0 0 0 3px rgba(212,147,14,.18); }
+ .pw-ver-warn { font-weight: 700; }
+
+ /* What's new feed (above footer) */
+ .pw-whatsnew {
+ max-width: 760px;
+ margin: 4px auto 0;
+ width: calc(100% - 48px);
+ background: var(--pw-bg-alt, #faf6f0);
+ border: 1px solid var(--pw-line, rgba(0,0,0,.08));
+ border-radius: 14px;
+ padding: 12px 16px;
+ }
+ .pw-wn-head {
+ display: flex;
+ align-items: center;
+ gap: 9px;
+ width: 100%;
+ background: none;
+ border: none;
+ padding: 0;
+ cursor: pointer;
+ text-align: left;
+ color: var(--pw-ink, #2a2622);
+ font: inherit;
+ }
+ .pw-wn-spark { color: var(--pw-accent, #9a4a2f); font-size: 14px; }
+ .pw-wn-title { font-size: 13.5px; font-weight: 650; flex: 1; }
+ .pw-wn-ver { color: var(--pw-accent, #9a4a2f); font-weight: 700; }
+ .pw-wn-toggle { font-size: 12px; color: var(--pw-accent, #9a4a2f); font-weight: 600; white-space: nowrap; }
+ .pw-wn-list {
+ margin: 8px 0 2px;
+ padding-left: 20px;
+ color: var(--pw-ink-soft, #5a5550);
+ font-size: 12.5px;
+ line-height: 1.55;
+ }
+ .pw-wn-list li { margin: 2px 0; }
+ .pw-wn-all { margin-top: 10px; display: flex; flex-direction: column; gap: 12px; max-height: 240px; overflow-y: auto; }
+ .pw-wn-rel { border-top: 1px dashed var(--pw-line, rgba(0,0,0,.08)); padding-top: 8px; }
+ .pw-wn-rel:first-child { border-top: none; padding-top: 0; }
+ .pw-wn-relhead { display: flex; align-items: baseline; gap: 8px; }
+ .pw-wn-relver { font-weight: 700; color: var(--pw-accent, #9a4a2f); font-size: 12.5px; }
+ .pw-wn-reltitle { font-weight: 600; font-size: 12.5px; color: var(--pw-ink, #2a2622); }
+ .pw-wn-reldate { margin-left: auto; font-size: 11px; color: var(--pw-dim, #9a948c); }
 
  .pw-brand {
  display: flex;

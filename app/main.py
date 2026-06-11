@@ -1683,7 +1683,7 @@ def _integrations_state() -> dict:
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    SKIP_PATHS = {"/health", "/api/health", "/api/flags", "/", "/info", "/config", "/api/auth/login", "/api/auth/register", "/api/auth/methods", "/api/auth/ldap/login", "/api/sharepoint/callback", "/api/gdrive/callback", "/api/onedrive/callback", "/api/embed/session/create", "/api/embed/chat", "/api/embed/chat/stream", "/api/embed/feedback", "/api/embed/widget.js", "/api/embed/docs"}
+    SKIP_PATHS = {"/health", "/api/health", "/api/version", "/api/flags", "/", "/info", "/config", "/api/auth/login", "/api/auth/register", "/api/auth/methods", "/api/auth/ldap/login", "/api/sharepoint/callback", "/api/gdrive/callback", "/api/onedrive/callback", "/api/embed/session/create", "/api/embed/chat", "/api/embed/chat/stream", "/api/embed/feedback", "/api/embed/widget.js", "/api/embed/docs"}
     SKIP_PREFIXES = ("/ui", "/docs", "/openapi.json", "/redoc", "/api/branding", "/v1/ontology", "/brand", "/decks", "/api/health", "/health", "/api/embed/try", "/api/embed/config", "/api/embed/sdk", "/api/embed/deploy", "/api/embed/logo", "/api/s/", "/api/v1/docs", "/api/auth/oidc/")
 
     async def dispatch(self, request, call_next):  # type: ignore[no-untyped-def]
@@ -3084,6 +3084,98 @@ def admin_image_info(request: Request):
         "version": version,
         "image_age_hours": image_age_hours,
         "stale_warning": (image_age_hours is not None and image_age_hours > 24),
+    }
+
+
+@app.get("/api/version")
+def api_version():
+    """PUBLIC build + data-freshness + changelog feed (no auth — login screen reads it).
+
+    Lets an operator confirm a deploy actually landed (version/commit/build time)
+    AND that the latest data is loaded (last upload + catalog/stock reconcile),
+    plus surfaces the customer-facing 'What's new' feed from docs/CHANGELOG.json.
+    Fully fail-soft: any missing piece degrades to null/[] — never 500s.
+    """
+    import os as _os
+    import json as _json
+    from datetime import datetime as _dt, timezone as _tz
+
+    version = _os.getenv("APP_VERSION", "").strip()
+    if not version or version == "dev":
+        # fall back to the baked VERSION file (image carries it even if env unset)
+        try:
+            with open("/app/VERSION", "r") as _f:
+                version = (_f.read().strip() or version) or "dev"
+        except Exception:
+            version = version or "dev"
+
+    build_commit = _os.getenv("BUILD_COMMIT", "unknown")
+    build_time = _os.getenv("BUILD_TIME", "").strip()
+    built_at_iso = None
+    image_age_hours = None
+    try:
+        if build_time:
+            bt = build_time.replace("Z", "+00:00")
+            dt_built = _dt.fromisoformat(bt)
+            if dt_built.tzinfo is None:
+                dt_built = dt_built.replace(tzinfo=_tz.utc)
+            built_at_iso = dt_built.isoformat()
+            image_age_hours = round((_dt.now(_tz.utc) - dt_built).total_seconds() / 3600.0, 2)
+    except Exception:
+        pass
+
+    # changelog feed (baked into the image at /app/docs/CHANGELOG.json)
+    changelog = []
+    try:
+        with open("/app/docs/CHANGELOG.json", "r") as _f:
+            doc = _json.load(_f)
+        rels = doc.get("releases", []) if isinstance(doc, dict) else []
+        changelog = rels[:6]  # newest few; feed is newest-first
+    except Exception:
+        changelog = []
+
+    # data freshness — fail-soft, every piece guarded
+    data = {"last_upload": None, "catalog_rows": None, "stock_rows": None,
+            "shop_flat": None}
+    try:
+        slug = _os.getenv("LOCKED_PROJECT_SLUG", "citypharma")
+        with _shared_engine.connect() as conn:
+            try:
+                r = conn.execute(sa_text(
+                    "SELECT to_char(MAX(updated_at),'YYYY-MM-DD') "
+                    "FROM public.dash_table_metadata WHERE project_slug = :s"
+                ), {"s": slug}).fetchone()
+                data["last_upload"] = r[0] if r else None
+            except Exception:
+                pass
+            try:
+                if conn.execute(sa_text(
+                        "SELECT to_regclass(:t)"), {"t": f"{slug}.shop_flat"}).scalar():
+                    r = conn.execute(sa_text(
+                        "SELECT "
+                        " count(DISTINCT art_key) FILTER (WHERE link_status='both'), "
+                        " count(DISTINCT art_key) FILTER (WHERE link_status='catalog_only'), "
+                        " count(DISTINCT art_key) FILTER (WHERE link_status='stock_only') "
+                        f'FROM "{slug}".shop_flat')).fetchone()
+                    both, cat_only, stk_only = int(r[0] or 0), int(r[1] or 0), int(r[2] or 0)
+                    data["shop_flat"] = {"both": both, "catalog_only": cat_only,
+                                         "stock_only": stk_only}
+                    data["catalog_rows"] = both + cat_only
+                    data["stock_rows"] = both + stk_only
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    return {
+        "version": version,
+        "commit": build_commit,
+        "built_at": built_at_iso,
+        "image_age_hours": image_age_hours,
+        "stale": bool(image_age_hours is not None and image_age_hours > 24) or version == "dev",
+        "product": _os.getenv("PRODUCT_NAME", "CityAgent Pharma"),
+        "data": data,
+        "changelog": changelog,
     }
 
 

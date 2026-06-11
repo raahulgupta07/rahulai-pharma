@@ -1,6 +1,9 @@
 .DS_Store
 
-docs
+# ignore docs/ CONTENTS but keep the dir re-includable (can't re-add a child of a
+# wholly-excluded parent) so the customer-facing changelog feed bakes into the image
+docs/*
+!docs/CHANGELOG.json
 .git
 .github
 

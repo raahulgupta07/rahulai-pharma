@@ -133,6 +133,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # Build provenance — surfaced on the login screen + admin via /api/version.
+        # APP_VERSION empty => Dockerfile default 'dev' => endpoint reads the baked
+        # /app/VERSION file. To stamp the env too: APP_VERSION=$(cat VERSION) docker compose build.
+        APP_VERSION: ${APP_VERSION:-}
+        BUILD_COMMIT: ${BUILD_COMMIT:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-}
     image: ${IMAGE_NAME:-citypharma}:${IMAGE_TAG:-latest}
     container_name: cp-api
     command: gunicorn -c scripts/gunicorn_conf.py app.main:app
