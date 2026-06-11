@@ -2,6 +2,56 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-11 (latest+73) — v1.16.0: RBAC expanded 3→7 surfaces + new defaults
+
+**Ask (follow-up to latest+72).** From the Admin dropdown screenshot (Admin Console / Users & Access / Usage & Cost), user wanted finer control: admin should see everything EXCEPT Admin Console governance; user = dashboard+chat only; super = all locked. Showed the proposed 7-row matrix in CLI, confirmed, built.
+
+**7 surfaces** (was 3): `dashboard`, `chat`, `workspace`, `integration`, `admin_console`, `users_access`, `usage_cost`. New defaults: **admin = all except admin_console** · **user = dashboard+chat only** · super = all (locked). `surfaces_for` rewritten generic over `_SURFACES` tuple (`app/auth.py`); REGISTRY default + matrix UI (`command-center` ACCESS CONTROL, 7 rows) + `+layout.svelte` derived `canDashboard/canChat/canWorkspace/canIntegration/canAdminConsole/canUsers/canUsage`+`canAdminGroup` updated to match.
+
+**Nav gating** = the `{#if singleAgent}` branch (citypharma is single-agent): Dashboard→canDashboard, Chat→canChat, Workspace→canWorkspace, Integrations→`canIntegration && (gateway||embed)`, Admin dropdown→`canAdminGroup` (shows if any of console/users/usage), with inner items per-surface. People label shows if canUsers||canUsage.
+
+**Backend 403.** Audited `_require_admin` callers: only 6, and the request-based version is used ONLY by the 5 user-mgmt endpoints in `auth.py` (brain_seeds has its own `_require_admin(user)`). Since `_require_admin = admin_console` and admin now lacks admin_console, **retargeted those 5 (list/create/toggle/delete/reset-pw) to `_require_surface(req,"users_access")`** — else admins 403 on user mgmt. `usage_api._gate` → super OR `surfaces_for(user).usage_cost`. **LANDMINE: never gate user-mgmt or usage with `_require_admin` (=admin_console, which admins lack by default).**
+
+**Verified.** v1.16.0 live; login/check carry all 7 surfaces (super=all true). `surfaces_for` in-container: admin=all-except-admin_console, user=dashboard+chat, super=all. Standard rebuild (bun build + COPY ran), leader cleared, force-recreate, 0 errors.
+
+---
+
+### Session 2026-06-11 (latest+72) — v1.15.0: configurable RBAC surface access (role → who-sees-what)
+
+**Ask.** "admin can see all on admin console, user sees only dashboard + chat, super admin can configure all those — add to admin console, default like that but super admin can change." Chose: coarse 3-bucket matrix (Admin Console / Dashboard / Chat), enforce BOTH nav + backend, placed in **Command Center → Admin Settings** (NOT a new tab — user rejected that).
+
+**Model.** Existing 3 tiers (`super` = username==SUPER_ADMIN · `admin` = `dash_users.role` · `user` = default) were hardcoded-gated. Now configurable via a single super-editable setting.
+
+**Storage.** New `dash_admin_settings` registry key **`rbac_surface_access`** (json, scope global) — `{admin:{admin_console,dashboard,chat}, user:{...}}`. Super admin is ALWAYS full (not stored). Defaults: admin=all true · user=dashboard+chat (admin_console=false). NO migration — just a settings row (uses the generic `/api/admin/settings` POST; json round-trips via `_serialize`/`_coerce`).
+
+**Backend (`app/auth.py`).** New `surfaces_for(user)→{admin_console,dashboard,chat}` (super=all true; else read setting row by `admin`/`user` key, fail-soft to `_SURFACE_DEFAULTS`). New `_require_surface(req, name)`. **`_require_admin` REWIRED** = `_require_surface(req,"admin_console")` — LANDMINE: it no longer means "is_admin tier"; it now means "role may see Admin Console per the matrix" (super always passes). `surfaces` added to `/api/auth/login` + `/api/auth/check` responses.
+
+**Frontend.** `+layout.svelte`: `surfaces` state from `/auth/check`, derived `canAdminConsole/canDashboard/canChat` (super OR matrix). Admin nav branch + Admin Console link gated by `canAdminConsole` (was `isAdmin`/`isSuper`); Chat + Dashboards nav gated by `canChat`/`canDashboard`. `command-center` Admin Settings tab: new **ACCESS CONTROL** card — role×surface checkbox matrix (super admin column locked "✓ locked"), Save/Reset, seeded from `rbac_surface_access` via `seedRbac()` in `loadAdminSettings`.
+
+**Bonus fix.** `reset_setting` (dash/admin/settings.py) used the READ engine (`get_sql_engine`) for a DELETE → never landed → every global-setting Reset returned `false` + left the row. Switched to `get_write_engine()`+`eng.begin()` like `set_setting`. (Reset now verified: `reset:true`, row removed.)
+
+**Verified.** v1.15.0 live (`/api/version`). login/check return `surfaces` (super=all). Saved a matrix → DB row correct → `surfaces_for(admin/user/super)` resolves it (user.chat=false honored, super=all). Reset → row gone → falls back to defaults. Image rebuilt twice (COPY `. /app` + `bun run build` both ran, not cached), leader cleared + force-recreate each time, 0 boot errors.
+
+---
+
+### Session 2026-06-11 (latest+71) — v1.14.x: autonomy heartbeat + training pre-gate + 4 ingest fixes
+
+**Context.** User wiped all project data (manual re-upload), then re-uploaded the latest `articles-export 2.xlsx` + `balance_stock 1.xlsx` via the API. Asked: is the catalog↔stock mismatch handled? make the agent "watch + self-improve every few min but waste no tokens when idle"? show all training triggers + don't train on unchanged data? Then: "run agents and fix."
+
+**Multi-agent fix (disjoint file sets, no conflicts):** A→`app/upload.py` (3 bugs), B→`dash/cron/auto_train_daemon.py` (bug 4), C→new autonomy core, D→wiring. Orchestrator (me) did migration apply + frontend build + image rebuild + verify.
+
+**Autonomy heartbeat — TOKEN-FRUGAL** (`dash/cron/heartbeat.py`, started in `main.py` like `auto_train_loop`, leader-elected). Per tick: **T0** `load_state` → **T1** `collect_signals` (pure SQL, `dash/autonomy/signals.py`, no LLM) → **T2** `diff`; **no change → save + sleep, ZERO tokens, NO journal row**; **T3** tripped = STUB journal only (no LLM yet). First tick = silent baseline. `dash/autonomy/state.py` = `load_state/save_state/diff/journal`. `public.dash_autonomy_{state,journal}` (**migration 187**, folded into `db/baseline/schema.sql` recon block after `\unrestrict` + seeded). Env `AUTONOMY_HEARTBEAT_DISABLED`/`AUTONOMY_POLL_INTERVAL_S=300`/`AUTONOMY_DAILY_TOKEN_CAP=50000`. API `GET /api/projects/{slug}/autonomy/{journal,state}` (`app/autonomy_api.py`); UI = robot **Watching** tab. Fix during verify: signals store ABSOLUTE `last_eval_ts` not age-from-now (relative age trips diff every tick).
+
+**Training pre-gate** (`tables_needing_train`, `dash/cron/auto_train_daemon.py`). `_enqueue_retrain` creates NO run unless a table is not-pipeline-complete (no Q&A) OR fingerprint-changed. Re-upload identical data / quiet poll → zero run. **`_is_trainable`** excludes `shop_flat`/`catalog_enrichment`/`_`-prefixed — LANDMINE: `shop_flat` is a base table w/ no Q&A → without this it reads untrained forever → daemon loop-trains it. **"trained" = metadata row AND ≥1 `dash_training_qa`** (was: metadata presence alone → profiled-but-unpipelined looked trained forever, daemon never fired).
+
+**4 ingest bugs (`app/upload.py`).** (1) clean 1-row-header xlsx mis-detected as 3-level → positional names `0..16` → catalog unusable (stricter detect + reject >50% positional). (2) silent **100K row cap** → env `EXCEL_MAX_ROWS=2M` + loud warning, 3 sites; CSV path uncapped (`copy_stream`) — workaround = convert xlsx→csv. (3) `replace` `DROP TABLE` w/o CASCADE → 500 on engineer views → `DROP CASCADE`. (4) the metadata≠trained above.
+
+**Result.** articles 3200 (real cols after csv re-upload), stock 112114 (full), `shop_flat` rebuilt 112160 rows, link_status **both 3154 / catalog_only 46 / stock_only 364** (matches overlap → FULL-OUTER 4-state resolver handles both ERP-mismatch scenarios). v1.14.0→1.14.2, rebuilt+verified, both daemons started, 0 errors from new code.
+
+**LANDMINE (hit 2×).** `docker compose build` silently **cached `COPY . /app`** → shipped a stale image WITHOUT the edit. Verify edit IS in container (`docker exec cp-api grep … /app/…`); `--progress=plain` shows COPY ran vs `CACHED`.
+
+---
+
 ### Session 2026-06-11 (latest+70) — v1.13.1: login What's-new = version-chip popover
 
 **Request (user: "don't show the version number in the What's-new, just the version — clicking v1.13.0 top-right should show what's new in the latest version only; redesign the login screen").** Login screen had BOTH a top-right version chip AND a big bottom "What's new" banner; the chip click weirdly opened the bottom banner, and the banner expanded to the full changelog (all versions).

@@ -178,6 +178,17 @@
  let showChangePassword = $state(false);
  let isSuper = $state(false);
  let isAdmin = $state(false);
+ // RBAC surface visibility (super-admin configurable matrix). Super = always full.
+ type Surfaces = { dashboard: boolean; chat: boolean; workspace: boolean; integration: boolean; admin_console: boolean; users_access: boolean; usage_cost: boolean };
+ let surfaces = $state<Surfaces>({ dashboard: true, chat: true, workspace: true, integration: true, admin_console: true, users_access: true, usage_cost: true });
+ const canDashboard = $derived(isSuper || surfaces.dashboard);
+ const canChat = $derived(isSuper || surfaces.chat);
+ const canWorkspace = $derived(isSuper || surfaces.workspace);
+ const canIntegration = $derived(isSuper || surfaces.integration);
+ const canAdminConsole = $derived(isSuper || surfaces.admin_console);
+ const canUsers = $derived(isSuper || surfaces.users_access);
+ const canUsage = $derived(isSuper || surfaces.usage_cost);
+ const canAdminGroup = $derived(canAdminConsole || canUsers || canUsage);
  let cpOld = $state('');
  let cpNew = $state('');
  let cpConfirm = $state('');
@@ -988,6 +999,7 @@
  username = data.username;
  isSuper = data.is_super || false;
  isAdmin = data.is_admin || data.is_super || false;
+ if (data.surfaces && typeof data.surfaces === 'object') { const s = data.surfaces; surfaces = { dashboard: !!s.dashboard, chat: !!s.chat, workspace: !!s.workspace, integration: !!s.integration, admin_console: !!s.admin_console, users_access: !!s.users_access, usage_cost: !!s.usage_cost }; }
  // Refresh active scope chip from localStorage (set by scope-picker)
  activeScope = getActiveScope();
  // Load notifications + build version (for the merged feed bell)
@@ -1268,20 +1280,26 @@
         <!-- Desktop Nav -->
         <nav class="pw-nav-row" onclick={(e) => e.stopPropagation()}>
         {#if singleAgent}
+          {#if canDashboard}
           <button onclick={() => navTo(overviewHref)} class="pw-nav" class:pw-nav-active={page.url.pathname.includes('/overview')}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
             <span class="pw-nav-label">Dashboard</span>
           </button>
+          {/if}
+          {#if canChat}
           <button onclick={() => navTo(chatHref)} class="pw-nav" class:pw-nav-active={page.url.pathname.includes('/project/') && !page.url.pathname.includes('/settings') && !page.url.pathname.includes('/overview')}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
             <span class="pw-nav-label">Chat</span>
           </button>
+          {/if}
           <!-- Data Source top button removed — it lives as the DATA SOURCE tab inside Workspace's left rail. -->
+          {#if canWorkspace}
           <button onclick={() => { openMenu = null; window.location.href = agentBrainHref; }} class="pw-nav" class:pw-nav-active={page.url.pathname.includes('/settings')}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
             <span class="pw-nav-label">Workspace</span>
           </button>
-          {#if isSuper && (gatewayEnabled || embedEnabled)}
+          {/if}
+          {#if canIntegration && (gatewayEnabled || embedEnabled)}
             <div class="pw-nav-group" class:pw-group-active={routeMatches('/gateway') || routeMatches('/embed')}>
               <button class="pw-nav"
                       class:pw-nav-active={(routeMatches('/gateway') || routeMatches('/embed')) && openMenu !== 'integrations'}
@@ -1314,7 +1332,7 @@
               {/if}
             </div>
           {/if}
-          {#if isAdmin}
+          {#if canAdminGroup}
             <div class="pw-nav-group" class:pw-group-active={isAdminGroupActive}>
               <button class="pw-nav"
                       class:pw-nav-active={isAdminGroupActive && openMenu !== 'admingrp'}
@@ -1326,8 +1344,8 @@
               </button>
               {#if openMenu === 'admingrp'}
                 <div class="pw-menu">
-                  {#if isSuper}
-                    <div class="pw-menu-label">Super admin</div>
+                  {#if canAdminConsole}
+                    <div class="pw-menu-label">{isSuper ? 'Super admin' : 'Admin'}</div>
                     <button class="pw-menu-row" class:pw-menu-active={isAdminActive} onclick={() => navTo('/ui/command-center')}>
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                       <div class="pw-menu-text">
@@ -1335,8 +1353,11 @@
                         <span class="pw-menu-sub">Governance, traces, audit, LLM config</span>
                       </div>
                     </button>
+                  {/if}
+                  {#if canUsers || canUsage}
                     <div class="pw-menu-label">People</div>
                   {/if}
+                  {#if canUsers}
                   <button class="pw-menu-row" class:pw-menu-active={routeMatches('/users')} onclick={() => navTo('/ui/users')}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                     <div class="pw-menu-text">
@@ -1344,7 +1365,8 @@
                       <span class="pw-menu-sub">Accounts + roles — create, reset, grant admin</span>
                     </div>
                   </button>
-                  {#if isSuper}
+                  {/if}
+                  {#if canUsage}
                     <button class="pw-menu-row" class:pw-menu-active={isUsageActive} onclick={() => navTo('/ui/usage')}>
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><path d="M3 20h18"/></svg>
                       <div class="pw-menu-text">
@@ -1362,10 +1384,12 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
             Projects
           </button>
+          {#if canChat}
           <button onclick={() => navTo('/ui/chat')} class="pw-nav" class:pw-nav-active={isChatActive}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
             Chat
           </button>
+          {/if}
 
           <!-- Build dropdown -->
           <div class="pw-nav-group" class:pw-group-active={isBuildActive}>
@@ -1375,6 +1399,7 @@
             </button>
             {#if openMenu === 'build'}
               <div class="pw-menu">
+                {#if canDashboard}
                 <button class="pw-menu-row" class:pw-menu-active={routeMatches('/dashboard')} onclick={() => navTo('/ui/dashboard')}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
                   <div class="pw-menu-text">
@@ -1382,6 +1407,7 @@
                     <span class="pw-menu-sub">Live KPI canvases</span>
                   </div>
                 </button>
+                {/if}
                 <button class="pw-menu-row" class:pw-menu-active={routeMatches('/presentations')} onclick={() => navTo('/ui/presentations')}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                   <div class="pw-menu-text">

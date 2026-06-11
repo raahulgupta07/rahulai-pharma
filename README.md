@@ -515,9 +515,9 @@ curl http://127.0.0.1:8011/api/health                 # → {"status":"ok"}
 
 Operators can see, at a glance, **whether an upgrade actually landed** and **what each release added** — on the login screen and inside the app.
 
-**Rule: every change cuts a new version.** Each shipped change bumps `VERSION` **and** adds a `CHANGELOG.json` block — never deploy a behaviour change on the old version number. Current: `1.13.1`.
+**Rule: every change cuts a new version.** Each shipped change bumps `VERSION` **and** adds a `CHANGELOG.json` block — never deploy a behaviour change on the old version number. Current: `1.14.2`.
 
-- **`VERSION`** (repo root, one line e.g. `1.13.1`) — bump it on **every** release/change. Baked into the image; surfaced as the app version.
+- **`VERSION`** (repo root, one line e.g. `1.14.2`) — bump it on **every** release/change. Baked into the image; surfaced as the app version.
 - **`docs/CHANGELOG.json`** — curated, customer-facing "What's new" feed (newest-first `releases[]`, each `{version,date,title,items[]}`). Plain language, no internal table/tool names. Add a block per release.
 - **`GET /api/version`** (public, no auth) — returns `{version, commit, built_at, image_age_hours, stale, data, changelog}`. `data` = live freshness (last upload, catalog/stock counts, `shop_flat` link-status). Powers every surface below.
 
@@ -525,9 +525,9 @@ Operators can see, at a glance, **whether an upgrade actually landed** and **wha
 
 **Visible on Docker too.** The build stamps OCI labels + a version image tag so an operator can confirm the release straight from Docker without hitting the API:
 ```bash
-docker inspect citypharma:latest --format '{{json .Config.Labels}}'   # → org.opencontainers.image.version=1.13.1
-docker images citypharma                                              # → citypharma:1.13.1 + :latest
-docker exec cp-api printenv APP_VERSION                               # → 1.13.1
+docker inspect citypharma:latest --format '{{json .Config.Labels}}'   # → org.opencontainers.image.version=1.14.2
+docker images citypharma                                              # → citypharma:1.14.2 + :latest
+docker exec cp-api printenv APP_VERSION                               # → 1.14.2
 ```
 
 **Release flow:** bump `VERSION` → add a `CHANGELOG.json` block → rebuild (stamps provenance into ENV **and** OCI labels) → tag the image with the version → redeploy:
@@ -540,6 +540,20 @@ APP_VERSION=$VER BUILD_COMMIT=$COMMIT BUILD_TIME=$TS docker compose -f compose.y
 Stale check: the version chip turns **amber "⚠ stale"** when the running image is >24h old or version is `dev` → instant "did the deploy land?" signal.
 
 > **Landmine:** `.dockerignore` excludes `docs/` wholesale; the changelog is re-included via `docs/*` + `!docs/CHANGELOG.json`. Docker can't re-include a child of a *fully*-excluded parent — exclude the dir's **contents**, not the dir. Reverting to a bare `docs` line drops the changelog from the image → empty feed.
+
+---
+
+## Autonomy heartbeat (token-frugal) — v1.14
+
+A background loop that watches the data and **only spends tokens when something actually changed** — quiet ticks cost $0.
+
+- **`dash/cron/heartbeat.py`** — leader-elected loop (poll `AUTONOMY_POLL_INTERVAL_S`, default 300s). Per tick: **T0** load last state → **T1** `collect_signals` (pure SQL, no LLM) → **T2** `diff`; *no change → save + sleep, ZERO tokens, NO journal row* → **T3** only tripped signals dispatch (stubs for now). First tick = silent baseline. Disable with `AUTONOMY_HEARTBEAT_DISABLED=1`; daily ceiling `AUTONOMY_DAILY_TOKEN_CAP` (50k).
+- **`dash/autonomy/{signals,state}.py`** — cheap signals (table fingerprints, schema hash, `shop_flat` link counts, queue depth, pipeline-incomplete tables, last upload/eval) + `dash_autonomy_state` (one-row snapshot) + `dash_autonomy_journal` (append-only intents w/ token cost). Migration `187`.
+- **API:** `GET /api/projects/{slug}/autonomy/{journal,state}`. **UI:** robot panel → **Watching** tab.
+
+**Training fires only on real change.** Triggers: ▶ button · upload (`AUTO_TRAIN_ON_UPLOAD=1`) · auto-train daemon (15-min poll: untrained/new table/row-Δ≥5%) · ingest promote · drift · connector. **Pre-gate** (`tables_needing_train` in `dash/cron/auto_train_daemon.py`): a table is skipped unless it's *not pipeline-complete* (no Q&A) **or** its fingerprint changed — so re-uploading identical data or a quiet poll creates **no run**. "Trained" = metadata row **AND** ≥1 `dash_training_qa` row (not mere metadata presence). Derived/artifact tables (`shop_flat`, `catalog_enrichment`, `_`-prefixed) are **excluded** via `_is_trainable` — else `shop_flat` (a built artifact with no Q&A) would loop-train forever.
+
+> **Landmine:** `docker compose build` can silently **cache `COPY . /app`** and ship a stale image that omits your source edit. After every rebuild, confirm the edit landed *inside the container* (`docker exec cp-api grep ... /app/...`); `--progress=plain` shows whether the COPY layer ran or was `CACHED`.
 
 ---
 

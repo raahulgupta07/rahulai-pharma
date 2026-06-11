@@ -114,6 +114,14 @@ REGISTRY: dict[str, dict] = {
     # Default Burmese starter (initial suggestion) question chips for the widget.
     # JSON list — round-trips through get_setting()/_coerce (list default returned as-is).
     "embed_default_starters":         {"type": "json", "default": ["ဒီဆေး လက်ကျန် ရှိလား?", "အစားထိုး ဆေးတွေ ပြပါ", "အနီးဆုံးဆိုင်မှာ ရှိလား?"], "env": None, "scope": "global", "desc": "Default embed widget starter-question chips (Burmese pharma). Per-widget starter_questions override this."},
+
+    # RBAC — role → surface visibility matrix (super-admin editable). Super admin
+    # is ALWAYS full (not stored here). Surfaces: admin_console / dashboard / chat.
+    # Enforced both in nav (hide) and backend (403). See app/auth.py:surfaces_for.
+    "rbac_surface_access":            {"type": "json", "default": {
+        "admin": {"dashboard": True, "chat": True, "workspace": True,  "integration": True,  "admin_console": False, "users_access": True,  "usage_cost": True},
+        "user":  {"dashboard": True, "chat": True, "workspace": False, "integration": False, "admin_console": False, "users_access": False, "usage_cost": False},
+    }, "env": None, "scope": "global", "desc": "Role→surface access matrix. Roles: admin, user (super always full). Surfaces: dashboard, chat, workspace, integration, admin_console, users_access, usage_cost"},
 }
 
 
@@ -335,15 +343,20 @@ def reset_setting(key: str, *, scope: str = "global",
     """Delete a DB override, falling back to env/default."""
     try:
         from sqlalchemy import text
-        from db.session import get_sql_engine
-        eng = get_sql_engine()
-        with eng.connect() as conn:
+        # public.dash_* writes MUST use get_write_engine (CLAUDE.md rule) — the
+        # read engine routes through pgbouncer read paths and the DELETE never lands.
+        try:
+            from db.session import get_write_engine
+            eng = get_write_engine()
+        except Exception:
+            from db.session import get_sql_engine
+            eng = get_sql_engine()
+        with eng.begin() as conn:
             conn.execute(text(
                 "DELETE FROM public.dash_admin_settings "
                 "WHERE key = :k AND scope = :s AND "
                 " (project_slug = :p OR (project_slug IS NULL AND :p IS NULL))"
             ), {"k": key, "s": scope, "p": project_slug})
-            conn.commit()
         with _lock:
             _CACHE.pop((key, project_slug), None)
             _CACHE.pop((key, None), None)

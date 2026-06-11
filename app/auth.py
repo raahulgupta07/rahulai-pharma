@@ -1016,7 +1016,8 @@ def login(req: LoginRequest):
             is_admin = is_super or (row[3] in ("admin", "super"))
             _token_cache[token] = {"user_id": row[0], "username": row[1], "expiry": expiry, "is_super": is_super, "is_admin": is_admin, "cached_at": time.time()}
 
-            return {"status": "ok", "token": token, "username": row[1], "user_id": row[0], "is_super": is_super, "is_admin": is_admin}
+            _surfaces = surfaces_for({"is_super": is_super, "is_admin": is_admin})
+            return {"status": "ok", "token": token, "username": row[1], "user_id": row[0], "is_super": is_super, "is_admin": is_admin, "surfaces": _surfaces}
     except HTTPException:
         raise
     except Exception as e:
@@ -1036,6 +1037,7 @@ def check(request: Request):
         "user_id": user["user_id"],
         "is_super": user.get("is_super", False),
         "is_admin": user.get("is_admin", user.get("is_super", False)),
+        "surfaces": surfaces_for(user),
         "active_scope_id": active_scope_id,
     }
 
@@ -1100,6 +1102,45 @@ def seed_scopes(req: ScopeSeedRequest, request: Request):
     return {"status": "ok", "inserted": inserted}
 
 
+# ── RBAC surface access (super-admin configurable) ──────────────────────────
+# Role → which surfaces are visible. Super admin is ALWAYS full. The "admin" and
+# "user" rows are read from the `rbac_surface_access` admin setting (super-editable
+# in Command Center → Admin Settings). Enforced both in nav (hide) and here (403).
+# 7 surfaces. admin_console = Command Center governance; users_access = Users &
+# Access; usage_cost = Usage & Cost; workspace = project settings; integration =
+# API Gateway + Embed. Defaults: admin = everything EXCEPT admin_console; user =
+# dashboard + chat only.
+_SURFACES = ("dashboard", "chat", "workspace", "integration", "admin_console", "users_access", "usage_cost")
+_ALL_SURFACES = {s: True for s in _SURFACES}
+_SURFACE_DEFAULTS = {
+    "admin": {"dashboard": True, "chat": True, "workspace": True, "integration": True, "admin_console": False, "users_access": True,  "usage_cost": True},
+    "user":  {"dashboard": True, "chat": True, "workspace": False, "integration": False, "admin_console": False, "users_access": False, "usage_cost": False},
+}
+
+
+def surfaces_for(user: Optional[dict]) -> dict:
+    """Resolve the surface-visibility map for a user. Super → all true.
+    Fail-soft: any error falls back to role defaults."""
+    if not user:
+        return {s: False for s in _SURFACES}
+    if user.get("is_super"):
+        return dict(_ALL_SURFACES)
+    key = "admin" if user.get("is_admin") else "user"
+    cfg = None
+    try:
+        from dash.admin.settings import get_setting
+        cfg = get_setting("rbac_surface_access")
+    except Exception:
+        cfg = None
+    if not isinstance(cfg, dict):
+        cfg = _SURFACE_DEFAULTS
+    row = cfg.get(key)
+    if not isinstance(row, dict):
+        row = _SURFACE_DEFAULTS[key]
+    dflt = _SURFACE_DEFAULTS[key]
+    return {s: bool(row.get(s, dflt.get(s, False))) for s in _SURFACES}
+
+
 def _require_super(request: Request):
     """Raise 403 if not super admin."""
     user = get_current_user(request)
@@ -1108,12 +1149,23 @@ def _require_super(request: Request):
     return user
 
 
-def _require_admin(request: Request):
-    """Raise 403 if not admin (admin tier OR super admin)."""
+def _require_surface(request: Request, surface: str):
+    """Raise 403 if the user's role lacks access to the named surface.
+    Super admin always passes."""
     user = get_current_user(request)
-    if not user or not user.get("is_admin"):
-        raise HTTPException(403, "Admin access required")
+    if not user:
+        raise HTTPException(403, "Access required")
+    if user.get("is_super"):
+        return user
+    if not surfaces_for(user).get(surface):
+        raise HTTPException(403, f"{surface} access not permitted for your role")
     return user
+
+
+def _require_admin(request: Request):
+    """Raise 403 unless the user's role may see the Admin Console surface.
+    Super admin always passes; admin/user gated by the rbac_surface_access matrix."""
+    return _require_surface(request, "admin_console")
 
 
 def _guard_admin_target(request: Request, target_username: str):
@@ -1151,7 +1203,7 @@ def _clear_user_token_cache(username: str):
 @router.get("/users")
 def list_users(request: Request):
     """List all users with full profiles. Admin tier (admin or super)."""
-    _require_admin(request)
+    _require_surface(request, "users_access")
     try:
         with _engine.connect() as conn:
             rows = conn.execute(text(
@@ -1208,7 +1260,7 @@ def set_user_role(request: Request, username: str, role: str):
 def create_user(request: Request, username: str, password: str, email: str = "", role: str = "user"):
     """Create a new user. Admin tier (admin or super). New users are always role='user';
     only the super admin can elevate via Roles & Access."""
-    _require_admin(request)
+    _require_surface(request, "users_access")
     if not username or len(username) < 2:
         raise HTTPException(400, "Username must be at least 2 characters")
     if not password or len(password) < 4:
@@ -1291,7 +1343,7 @@ def update_user_profile(username: str, request: Request,
 @router.post("/users/{username}/toggle-active")
 def toggle_user_active(username: str, request: Request):
     """Enable/disable a user. Admin tier; plain admins cannot touch admin-tier accounts."""
-    _require_admin(request)
+    _require_surface(request, "users_access")
     if username == SUPER_ADMIN:
         raise HTTPException(403, "Cannot disable super admin")
     _guard_admin_target(request, username)
@@ -1419,7 +1471,7 @@ def oidc_callback(code: str, request: Request):
 @router.delete("/users/{username}")
 def delete_user(username: str, request: Request):
     """Delete a user and their schema. Admin tier; plain admins cannot delete admin-tier accounts."""
-    _require_admin(request)
+    _require_surface(request, "users_access")
     if username == SUPER_ADMIN:
         raise HTTPException(403, "Cannot delete super admin")
     _guard_admin_target(request, username)
@@ -1468,7 +1520,7 @@ def change_password(request: Request, old_password: str, new_password: str):
 @router.post("/users/{username}/reset-password")
 def reset_password(username: str, new_password: str, request: Request):
     """Reset a user's password. Admin tier; plain admins cannot reset admin-tier accounts."""
-    _require_admin(request)
+    _require_surface(request, "users_access")
     _guard_admin_target(request, username)
     if len(new_password) < 4:
         raise HTTPException(400, "Password must be at least 4 characters")

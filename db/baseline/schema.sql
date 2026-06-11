@@ -12977,3 +12977,29 @@ DROP TABLE IF EXISTS dash.dash_skill_drafts CASCADE;
 DROP TABLE IF EXISTS dash.dash_skill_marketplace CASCADE;
 DROP TABLE IF EXISTS dash.dash_skill_audit_log CASCADE;
 DROP TABLE IF EXISTS dash.dash_skills CASCADE;
+
+-- ============================================================
+-- POST-BASELINE RECONCILIATION (migration 187 — autonomy heartbeat)
+-- Token-frugal autonomy state + journal. Idempotent.
+-- ============================================================
+SET search_path = public, dash;
+
+CREATE TABLE IF NOT EXISTS public.dash_autonomy_state (
+  project_slug TEXT PRIMARY KEY,
+  signals      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.dash_autonomy_journal (
+  id           BIGSERIAL PRIMARY KEY,
+  project_slug TEXT,
+  ts           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  tier         TEXT,
+  signal       TEXT,
+  action       TEXT,
+  detail       JSONB,
+  tokens       INT NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS dash_autonomy_journal_slug_ts
+  ON public.dash_autonomy_journal (project_slug, ts DESC);

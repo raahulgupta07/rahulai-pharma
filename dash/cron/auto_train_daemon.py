@@ -101,11 +101,28 @@ async def _is_training_running(slug: str) -> bool:
         return False
 
 
+# Base tables that are pipeline ARTIFACTS / internal, NOT trainable sources.
+# `shop_flat` is BUILT by the finalize step (denormalized catalog×stock) — it has
+# no Q&A by design, so without this it would look "untrained" forever and the
+# daemon would loop-train it endlessly. Same for the enrichment suggestion table.
+_NON_TRAINABLE = {"shop_flat", "catalog_enrichment"}
+
+
+def _is_trainable(name: str) -> bool:
+    """A user data table worth training — excludes derived artifacts, backups
+    (_bk_*) and any internal/underscore-prefixed table."""
+    return bool(name) and name not in _NON_TRAINABLE and not name.startswith("_")
+
+
 def _get_untrained_tables(slug: str) -> list[str]:
-    """Return base tables in the project schema that have NEVER been trained.
-    A table is 'trained' once the pipeline writes its profile to
-    dash_table_metadata. (dash_training_steps only holds global tail steps —
-    KG/vectors — never per-table rows, so it can't be used here.)"""
+    """Return base tables in the project schema that are NOT pipeline-complete.
+
+    A metadata row alone is NOT proof of training: upload PROFILING writes the
+    dash_table_metadata row BEFORE the heavy 14-step pipeline (Q&A / vectors /
+    brain / shop_flat) runs, so a profiled-but-not-pipelined table would look
+    trained forever and the daemon would never fire the real pipeline. So a
+    table counts as 'trained' ONLY when it has BOTH a metadata row AND >=1
+    dash_training_qa row (the Q&A-gen step is what proves the pipeline ran)."""
     try:
         from db.session import get_sql_engine
         from sqlalchemy import text
@@ -114,10 +131,13 @@ def _get_untrained_tables(slug: str) -> list[str]:
             all_tables = {r[0] for r in conn.execute(text(
                 "SELECT table_name FROM information_schema.tables "
                 "WHERE table_schema = :s AND table_type = 'BASE TABLE'"
-            ), {"s": slug}).fetchall()}
+            ), {"s": slug}).fetchall() if _is_trainable(r[0])}
+            # Pipeline-complete = has a metadata row AND at least one training_qa row.
             trained = {r[0] for r in conn.execute(text(
-                "SELECT DISTINCT table_name FROM public.dash_table_metadata "
-                "WHERE project_slug = :s"
+                "SELECT m.table_name FROM public.dash_table_metadata m "
+                "WHERE m.project_slug = :s AND EXISTS ("
+                "  SELECT 1 FROM public.dash_training_qa q "
+                "  WHERE q.project_slug = :s AND q.table_name = m.table_name)"
             ), {"s": slug}).fetchall()}
         return sorted(all_tables - trained)
     except Exception as e:
@@ -152,28 +172,82 @@ async def _trigger_full_train(slug: str, tables: list[str]) -> bool:
         return False
 
 
-def _enqueue_retrain(slug: str, reason: str) -> bool:
-    """Enqueue a retrain job. Returns True on success."""
+def tables_needing_train(slug: str) -> list[str]:
+    """Pre-gate: which base tables actually need (re)training RIGHT NOW.
+
+    A table needs training when it is EITHER:
+      - not pipeline-complete (no Q&A yet — see _get_untrained_tables), OR
+      - data changed vs its stored fingerprint (rows or schema changed).
+    A pipeline-complete table whose fingerprint is unchanged is SKIPPED. When the
+    returned list is empty, the caller must NOT create a run at all — that is the
+    'no change → nothing happens (not even an empty run)' guarantee.
+    Fail-soft: on any error, fall back to 'all base tables' (never silently skip a
+    genuine change)."""
     try:
         from db.session import get_sql_engine
-        from dash.training.train_queue import enqueue_train_jobs, create_training_run
         from sqlalchemy import text
+        from app.upload import check_fingerprint_changed
 
-        # Get tables
+        needing = set(_get_untrained_tables(slug))  # pipeline-incomplete always need it
+
         eng = get_sql_engine()
-        with eng.connect() as conn:
-            tables = [r[0] for r in conn.execute(text(
+        with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            all_tables = [r[0] for r in conn.execute(text(
                 "SELECT table_name FROM information_schema.tables "
                 "WHERE table_schema = :s AND table_type = 'BASE TABLE'"
-            ), {"s": slug}).fetchall()]
+            ), {"s": slug}).fetchall() if _is_trainable(r[0])]
+            # For pipeline-complete tables, compare live fingerprint vs stored.
+            for t in all_tables:
+                if t in needing:
+                    continue
+                try:
+                    cols = [c[0] for c in conn.execute(text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_schema = :s AND table_name = :t "
+                        "ORDER BY ordinal_position"
+                    ), {"s": slug, "t": t}).fetchall()]
+                    rc = int(conn.execute(text(
+                        f'SELECT COUNT(*) FROM "{slug}"."{t}"'
+                    )).scalar() or 0)
+                    if check_fingerprint_changed(slug, t, rc, cols) != "unchanged":
+                        needing.add(t)
+                except Exception as ie:
+                    # Can't verify this one → treat as needing (safe side).
+                    log.debug(f"auto_train: fingerprint check failed for {slug}.{t}: {ie}")
+                    needing.add(t)
+        return sorted(needing)
+    except Exception as e:
+        log.debug(f"auto_train: tables_needing_train failed for {slug}: {e}")
+        # Fail-soft: fall back to all base tables so a real change is never missed.
+        try:
+            from db.session import get_sql_engine
+            from sqlalchemy import text
+            eng = get_sql_engine()
+            with eng.connect() as conn:
+                return sorted(r[0] for r in conn.execute(text(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = :s AND table_type = 'BASE TABLE'"
+                ), {"s": slug}).fetchall() if _is_trainable(r[0]))
+        except Exception:
+            return []
 
+
+def _enqueue_retrain(slug: str, reason: str) -> bool:
+    """Enqueue a retrain job for ONLY the tables that need it. Returns True if a
+    run was created, False if skipped (nothing to train) or on error."""
+    try:
+        from dash.training.train_queue import enqueue_train_jobs, create_training_run
+
+        # PRE-GATE — skip entirely (no run row) when nothing changed and every
+        # table is already pipeline-complete.
+        tables = tables_needing_train(slug)
         if not tables:
+            log.info(f"auto_train: skip retrain for {slug} (reason={reason}) — no changed/untrained tables")
             return False
 
         run_id = create_training_run(slug, len(tables))
-
         n = enqueue_train_jobs(slug, tables, run_id)
-        log.info(f"auto_train: enqueued retrain for {slug} (reason={reason}, tables={len(tables)}, run_id={run_id}, jobs={n})")
+        log.info(f"auto_train: enqueued retrain for {slug} (reason={reason}, tables={len(tables)}:{tables}, run_id={run_id}, jobs={n})")
         return True
     except Exception as e:
         log.warning(f"auto_train: enqueue failed for {slug}: {e}")

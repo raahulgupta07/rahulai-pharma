@@ -864,6 +864,16 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
             logger.info("auto_train_daemon: started")
     except Exception as _e:
         logger.warning(f"auto_train_daemon import failed: {_e}")
+    # Autonomy heartbeat loop — FREE SQL signal detection per tick, PAID/rare
+    # T3 thinking only on a tripped signal. Disable: AUTONOMY_HEARTBEAT_DISABLED=1.
+    try:
+        if _should_run_daemons():
+            import asyncio as _asyncio_hb
+            from dash.cron.heartbeat import heartbeat_loop as _heartbeat_loop
+            _asyncio_hb.create_task(_heartbeat_loop())
+            logger.info("autonomy_heartbeat: started")
+    except Exception as _e:
+        logger.warning(f"autonomy_heartbeat import failed: {_e}")
     yield
     # ---- Shutdown: dispose all data-source providers (engines + caches).
     try:
@@ -1219,6 +1229,12 @@ if _os_dd.getenv("DECK_DISTRIBUTION_DISABLED", "").lower() not in ("1", "true", 
         _lg.getLogger(__name__).warning("deck_distribution router not registered: %s", _e)
 app.include_router(schedules_router)
 app.include_router(learning_router)
+try:
+    from app.autonomy_api import router as _autonomy_router
+    app.include_router(_autonomy_router)
+except Exception as _e:
+    import logging as _au_log
+    _au_log.getLogger(__name__).warning(f"autonomy_api router not registered: {_e}")
 try:
     from app.training_api import router as _training_router
     app.include_router(_training_router)

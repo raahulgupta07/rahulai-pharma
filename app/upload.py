@@ -5819,9 +5819,30 @@ def _rules_analyze_sheet(rows: list[list[str]], merged_cells: list = None,
             else:
                 break
 
+        # Stricter guard: a multi-level header is only real when the detected
+        # header row `hdr` is itself an INCOMPLETE/sparse header — i.e. the
+        # genuine group-header case where top-level labels span/merge across
+        # columns (so many cells are blank) and the child labels live below.
+        # A CLEAN single-row-header sheet has row `hdr` fully populated with
+        # distinct short labels and the rows below are DATA that merely looked
+        # text-heavy. Treating that as multi-level clobbers the real names
+        # (flatten yields `name__<datavalue>` garbage). So: if the top header
+        # row is already dense + mostly-unique labels, it is a complete header
+        # on its own → reject the multi-level plan.
         if multi_level >= 2:
-            plan["multi_level_header"] = multi_level
-            plan["header_rows"] = list(range(hdr, hdr + multi_level))
+            top = rows[hdr] if hdr < len(rows) else []
+            n_cols = max((len(r) for r in rows[hdr:hdr + multi_level]), default=0)
+            top_non_empty = [str(v).strip() for v in top if v and str(v).strip()]
+            density = (len(top_non_empty) / n_cols) if n_cols else 0.0
+            uniq_ratio = (len(set(top_non_empty)) / len(top_non_empty)) if top_non_empty else 0.0
+            # Dense (≥90% of columns labeled) AND mostly-unique labels ⇒ this is
+            # already a complete single-row header, NOT a spanning group header.
+            top_is_complete_header = density >= 0.9 and uniq_ratio >= 0.9
+
+            if top_is_complete_header:
+                multi_level = 1  # fall back to single detected header row
+
+        if multi_level >= 2:
             # Build flattened header: concatenate parent > child
             flat_headers = []
             max_cols = max(len(r) for r in rows[hdr:hdr + multi_level])
@@ -5831,6 +5852,21 @@ def _rules_analyze_sheet(rows: list[list[str]], merged_cells: list = None,
                     if ci < len(rows[ri]) and rows[ri][ci] and str(rows[ri][ci]).strip():
                         parts.append(str(rows[ri][ci]).strip())
                 flat_headers.append("__".join(parts) if parts else f"col_{ci}")
+
+            # Belt-and-braces: also reject if the flattened names come out mostly
+            # bare-positional (`col_N` / pure integers) — the extra rows added no
+            # real labels and we'd be destroying a genuine single-row header.
+            def _is_positional(name: str) -> bool:
+                s = str(name).strip()
+                return (not s) or bool(re.match(r'^col_\d+$', s)) or bool(re.match(r'^\d+(\.0+)?$', s))
+            positional = sum(1 for h in flat_headers if _is_positional(h))
+            mostly_positional = bool(flat_headers) and positional > len(flat_headers) * 0.5
+            if mostly_positional:
+                multi_level = 1
+
+        if multi_level >= 2:
+            plan["multi_level_header"] = multi_level
+            plan["header_rows"] = list(range(hdr, hdr + multi_level))
             plan["flat_headers"] = flat_headers
             plan["data_start_row"] = hdr + multi_level
             plan["confidence"] = max(plan["confidence"], 0.85)
@@ -6298,7 +6334,10 @@ def _handle_excel(file_path: str, filename: str) -> dict:
                     # Large sheet protection: limit rows read to actual data (not ghost rows)
                     sheet_info = sheet_previews.get(sname, {})
                     actual_rows = sheet_info.get("max_row", 0)
-                    nrows_limit = min(actual_rows, 100000) if actual_rows > 0 else None  # Cap at 100K
+                    _excel_cap = int(os.environ.get("EXCEL_MAX_ROWS", "2000000"))
+                    nrows_limit = min(actual_rows, _excel_cap) if actual_rows > 0 else None  # env-configurable cap (default 2M)
+                    if actual_rows > _excel_cap:
+                        result["warnings"].append(f"⚠ Sheet '{sname}': {actual_rows:,} rows exceeds EXCEL_MAX_ROWS={_excel_cap:,} — DROPPED {actual_rows - _excel_cap:,} rows. Raise EXCEL_MAX_ROWS to ingest all.")
 
                     # Pandas-safe skiprows: include ALL rows above header_row + skip rows.
                     # Then header=0 since first remaining row IS the header.
@@ -6629,7 +6668,10 @@ If correct as-is: {{"action": "keep", "reason": "brief"}}"""
                     try:
                         full_skip = sorted(set(_c_banner) | set(range(0, _c_hrow)))
                         pd_skip = [s for s in full_skip if s != _c_hrow]
-                        nrows_limit = min(expected_max, 100000)
+                        _excel_cap = int(os.environ.get("EXCEL_MAX_ROWS", "2000000"))
+                        nrows_limit = min(expected_max, _excel_cap)
+                        if expected_max > _excel_cap:
+                            result["warnings"].append(f"⚠ Sheet '{sname}': {expected_max:,} rows exceeds EXCEL_MAX_ROWS={_excel_cap:,} — DROPPED {expected_max - _excel_cap:,} rows. Raise EXCEL_MAX_ROWS to ingest all.")
                         try:
                             df_new = pd.read_excel(file_path, sheet_name=sname, header=0,
                                                    skiprows=pd_skip, nrows=nrows_limit, engine='calamine')
@@ -6710,7 +6752,10 @@ Rules:
                 # Pandas-safe: skiprows = all rows above header + banner skip
                 full_skip = sorted(set(banner_skip) | set(range(0, new_hrow)))
                 pd_skip = [s for s in full_skip if s != new_hrow]
-                nrows_limit = min(expected_max, 100000)
+                _excel_cap = int(os.environ.get("EXCEL_MAX_ROWS", "2000000"))
+                nrows_limit = min(expected_max, _excel_cap)
+                if expected_max > _excel_cap:
+                    result["warnings"].append(f"⚠ Sheet '{sname}': {expected_max:,} rows exceeds EXCEL_MAX_ROWS={_excel_cap:,} — DROPPED {expected_max - _excel_cap:,} rows. Raise EXCEL_MAX_ROWS to ingest all.")
                 try:
                     df_new = pd.read_excel(file_path, sheet_name=sname, header=0,
                                            skiprows=pd_skip, nrows=nrows_limit, engine='calamine')
@@ -9335,6 +9380,17 @@ async def upload_file(request: Request, file: UploadFile, table_name: str | None
         else:
             # REPLACE or new table
             mode = "replace" if (replace or upload_action == "replace") else "fail"
+            # pandas if_exists='replace' issues a bare DROP TABLE (no CASCADE),
+            # which fails (DependentObjectsStillExist → HTTP 500) when an
+            # engineer-built view depends on the data table. Drop with CASCADE
+            # ourselves first, then create fresh via append-on-empty.
+            if mode == "replace":
+                try:
+                    with engine.begin() as _conn:
+                        _conn.execute(text(f'DROP TABLE IF EXISTS "{user_schema}"."{tbl}" CASCADE'))
+                    mode = "fail"  # table now gone — create fresh
+                except Exception as _de:
+                    logger.warning(f"replace DROP CASCADE failed for {tbl}: {_de}")
             df.to_sql(tbl, engine, if_exists=mode, index=False, schema=user_schema)
             try:
                 _upload_lg.info(f"✓ upload success: {file.filename}: {len(df)} rows × {len(df.columns)} cols → {tbl}")

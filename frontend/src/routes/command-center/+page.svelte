@@ -518,6 +518,70 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  const r = await fetch('/api/admin/settings', { headers: _ccHdr() });
  if (r.ok) allSettings = (await r.json()).settings || [];
  } catch {}
+ seedRbac();
+ }
+
+ /* ─── RBAC role→surface matrix (super-admin) ─── */
+ const RBAC_DEFAULTS: Record<string, Record<string, boolean>> = {
+   admin: { dashboard: true, chat: true, workspace: true,  integration: true,  admin_console: false, users_access: true,  usage_cost: true },
+   user:  { dashboard: true, chat: true, workspace: false, integration: false, admin_console: false, users_access: false, usage_cost: false },
+ };
+ const RBAC_SURFACES = [
+   { key: 'dashboard',     label: 'Dashboard',      sub: 'KPI canvases + project overview' },
+   { key: 'chat',          label: 'Chat',           sub: 'Ask-the-data assistant' },
+   { key: 'workspace',     label: 'Workspace',      sub: 'Project settings, brain, agents, data source' },
+   { key: 'integration',   label: 'Integration',    sub: 'API Gateway + Embed widgets' },
+   { key: 'admin_console', label: 'Admin Console',  sub: 'Command Center — governance, traces, settings' },
+   { key: 'users_access',  label: 'Users & Access', sub: 'Accounts + roles — create, reset' },
+   { key: 'usage_cost',    label: 'Usage & Cost',   sub: 'Tokens, cost, requests, billing' },
+ ];
+ let rbacMatrix = $state<Record<string, Record<string, boolean>>>({ admin: { ...RBAC_DEFAULTS.admin }, user: { ...RBAC_DEFAULTS.user } });
+ let rbacDirty = $state(false);
+ let rbacSaving = $state(false);
+
+ function seedRbac() {
+   const s = allSettings.find((x) => x.key === 'rbac_surface_access');
+   let v: any = s ? s.effective_value : null;
+   if (typeof v === 'string') { try { v = JSON.parse(v); } catch { v = null; } }
+   const base = (v && typeof v === 'object') ? v : RBAC_DEFAULTS;
+   const build = (role: string) => {
+     const out: Record<string, boolean> = {};
+     for (const s of RBAC_SURFACES) out[s.key] = base?.[role]?.[s.key] ?? RBAC_DEFAULTS[role][s.key];
+     return out;
+   };
+   rbacMatrix = { admin: build('admin'), user: build('user') };
+   rbacDirty = false;
+ }
+ function rbacToggle(role: string, surface: string) {
+   rbacMatrix[role][surface] = !rbacMatrix[role][surface];
+   rbacMatrix = { ...rbacMatrix };
+   rbacDirty = true;
+ }
+ async function rbacSave() {
+   rbacSaving = true;
+   try {
+     await fetch('/api/admin/settings', {
+       method: 'POST',
+       headers: { ..._h(), 'Content-Type': 'application/json' },
+       body: JSON.stringify({ settings: [{ key: 'rbac_surface_access', value: rbacMatrix, scope: 'global' }] }),
+     });
+     await loadAdminSettings();
+   } finally {
+     rbacSaving = false;
+   }
+ }
+ async function rbacReset() {
+   rbacSaving = true;
+   try {
+     await fetch('/api/admin/settings/reset', {
+       method: 'POST',
+       headers: { ..._h(), 'Content-Type': 'application/json' },
+       body: JSON.stringify({ key: 'rbac_surface_access', scope: 'global' }),
+     });
+     await loadAdminSettings();
+   } finally {
+     rbacSaving = false;
+   }
  }
 
  async function saveSection(sectionKeys: string[]) {
@@ -2836,6 +2900,68 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
     <div style="font-size:11px; opacity:0.7; margin-bottom:12px;">
       Resolution order: project &gt; global &gt; env var &gt; default. Changes
       take effect within 30s (cache TTL).
+    </div>
+  </div>
+
+  <!-- ── ACCESS CONTROL: role → surface matrix (super-admin) ── -->
+  <div class="ink-border" style="margin-top:8px; padding:14px;">
+    <div style="display:flex; align-items:baseline; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+      <strong style="font-size:13px;">ACCESS CONTROL</strong>
+      <span style="font-size:10px; opacity:0.6;">who sees what · super admin always full</span>
+    </div>
+    <div style="font-size:11px; opacity:0.7; margin:6px 0 12px;">
+      Toggle which surfaces each role can reach. Enforced in the nav (hidden) AND
+      on the backend (403). Defaults: admin = all · user = dashboard + chat only.
+    </div>
+
+    <div style="overflow-x:auto;">
+      <table style="border-collapse:collapse; font-size:12px; min-width:420px;">
+        <thead>
+          <tr style="text-align:left;">
+            <th style="padding:6px 12px 6px 0; font-weight:600;">Surface</th>
+            <th style="padding:6px 18px; text-align:center; font-weight:600;">super admin</th>
+            <th style="padding:6px 18px; text-align:center; font-weight:600;">admin</th>
+            <th style="padding:6px 18px; text-align:center; font-weight:600;">user</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each RBAC_SURFACES as srf}
+            <tr style="border-top:1px solid var(--pw-border);">
+              <td style="padding:8px 12px 8px 0;">
+                <div style="font-weight:500;">{srf.label}</div>
+                <div style="font-size:10px; opacity:0.6;">{srf.sub}</div>
+              </td>
+              <td style="padding:8px 18px; text-align:center;">
+                <span title="super admin always has full access" style="opacity:0.45;">✓ locked</span>
+              </td>
+              <td style="padding:8px 18px; text-align:center;">
+                <input type="checkbox" checked={rbacMatrix.admin[srf.key]}
+                       onchange={() => rbacToggle('admin', srf.key)} />
+              </td>
+              <td style="padding:8px 18px; text-align:center;">
+                <input type="checkbox" checked={rbacMatrix.user[srf.key]}
+                       onchange={() => rbacToggle('user', srf.key)} />
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+
+    <div style="font-size:10px; opacity:0.6; margin-top:10px;">
+      Default: admin sees everything except Admin Console · user sees Dashboard + Chat only. Super admin is always full.
+    </div>
+
+    <div style="display:flex; gap:8px; align-items:center; margin-top:12px;">
+      <button onclick={rbacSave} disabled={!rbacDirty || rbacSaving}
+              style="font-size:12px; padding:6px 14px;">
+        {rbacSaving ? 'SAVING…' : 'SAVE CHANGES'}
+      </button>
+      <button onclick={rbacReset} disabled={rbacSaving}
+              style="font-size:11px; padding:6px 10px;" class="cc-btn-ghost">
+        RESET TO DEFAULTS
+      </button>
+      {#if rbacDirty}<span style="font-size:10px; opacity:0.6;">unsaved changes</span>{/if}
     </div>
   </div>
 

@@ -38,8 +38,17 @@ def _get_user(request: Request) -> dict:
 
 def _gate(request: Request):
     user = _get_user(request)
-    if not user.get("is_super") and not user.get("is_super_admin"):
-        raise HTTPException(403, "super-admin only")
+    if user.get("is_super") or user.get("is_super_admin"):
+        return
+    # Usage & Cost is a configurable surface — admins (or any role granted it in
+    # the rbac_surface_access matrix) may view it. Super admin always passes.
+    try:
+        from app.auth import surfaces_for
+        if surfaces_for(user).get("usage_cost"):
+            return
+    except Exception:
+        pass
+    raise HTTPException(403, "Usage & Cost access not permitted for your role")
 
 
 def _engine():

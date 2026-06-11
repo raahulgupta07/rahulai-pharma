@@ -36,6 +36,14 @@
     }
   }
 
+  // Autonomy journal (heartbeat T3 intents + budget events). Read-only tab.
+  let consoleTab = $state<'log' | 'autonomy'>('log');
+  let autonomy = $state<{ id: number; ts: string; tier: string; signal: string; action: string; tokens: number }[]>([]);
+  async function loadAutonomy() {
+    const d = await _j(`/api/projects/${slug}/autonomy/journal?limit=50`);
+    autonomy = (d?.journal || []) as typeof autonomy;
+  }
+
   let trainErr = $state('');
   // Adaptive heartbeat — fast while training, slow while idle. Always runs so a
   // backgrounded tab self-heals on the next tick (no more frozen "training" state).
@@ -424,18 +432,29 @@
         <button class="fr-close" onclick={toggleOpen} aria-label="close">✕</button>
       </div>
 
-      <!-- log meta strip -->
+      <!-- log meta strip + tab toggle -->
       <div class="fr-meta">
-        LIVE LOG
-        {#if runMeta.id}· run #{runMeta.id}{/if}
-        {#if atStatus?.is_training && atStatus?.current_step}· {atStatus.current_step}{/if}
-        <span class="fr-meta-st st-{runMeta.st}">● {runMeta.st}</span>
+        <button class="fr-tab" class:fr-tab-on={consoleTab === 'log'} onclick={() => (consoleTab = 'log')}>LIVE LOG</button>
+        <button class="fr-tab" class:fr-tab-on={consoleTab === 'autonomy'} onclick={() => { consoleTab = 'autonomy'; loadAutonomy(); }}>WATCHING</button>
+        {#if consoleTab === 'log'}
+          {#if runMeta.id}· run #{runMeta.id}{/if}
+          {#if atStatus?.is_training && atStatus?.current_step}· {atStatus.current_step}{/if}
+          <span class="fr-meta-st st-{runMeta.st}">● {runMeta.st}</span>
+        {/if}
       </div>
-      {#if trainErr}<div class="fr-trainerr">⚠ {trainErr}</div>{/if}
+      {#if trainErr && consoleTab === 'log'}<div class="fr-trainerr">⚠ {trainErr}</div>{/if}
 
       <!-- dark console -->
       <div class="fr-console" bind:this={consoleEl}>
-        {#if !logs.length}
+        {#if consoleTab === 'autonomy'}
+          {#if !autonomy.length}
+            <div class="fr-log-empty">nothing tripped yet — heartbeat is watching the data signals…</div>
+          {:else}
+            {#each autonomy as a (a.id)}
+              <div class="fr-log"><span class="fr-ts">{a.tier}</span> {a.signal} · {a.action}{#if a.tokens}<span class="fr-ts"> · {a.tokens} tok</span>{/if}</div>
+            {/each}
+          {/if}
+        {:else if !logs.length}
           <div class="fr-log-empty">no recent training activity — robot is watching for new data…</div>
         {:else}
           {#each logs as l (l.i)}
@@ -670,6 +689,9 @@
 
   .fr-meta { padding: 5px 11px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; color: #8a8398; background: #1a1622; border-bottom: 1px solid #2c2638; display: flex; align-items: center; gap: 6px; }
   .fr-meta-st { margin-left: auto; font-size: 9.5px; }
+  .fr-tab { background: none; border: none; padding: 0; font: inherit; letter-spacing: 0.05em; color: #6b6478; cursor: pointer; }
+  .fr-tab:hover { color: #b8b0c6; }
+  .fr-tab-on { color: #c96342; }
   .st-running { color: #c96342; }
   .st-done { color: #4ec77a; }
   .st-error, .st-failed { color: #e05a4a; }

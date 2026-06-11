@@ -2,6 +2,50 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.16.0",
+      "date": "2026-06-11",
+      "title": "Finer control over who sees what",
+      "items": [
+        "Access control now covers seven areas — Dashboard, Chat, Workspace, Integrations, Admin Console, Users & Access and Usage & Cost — each toggled per role.",
+        "New default: admins see everything except the Admin Console (governance), while regular users get Dashboard and Chat only. Super admins stay full and can change any of it."
+      ]
+    },
+    {
+      "version": "1.15.0",
+      "date": "2026-06-11",
+      "title": "Control who sees what",
+      "items": [
+        "Super admins can now decide which roles reach the Admin Console, dashboards and chat — set once in Admin Settings, enforced everywhere.",
+        "By default admins see the full console while regular users get just dashboards and chat; the super admin can change this any time."
+      ]
+    },
+    {
+      "version": "1.14.2",
+      "date": "2026-06-11",
+      "title": "Stop re-training built-in tables",
+      "items": [
+        "The system no longer tries to repeatedly train its own internal lookup tables, so it stays idle when there is genuinely nothing new to learn."
+      ]
+    },
+    {
+      "version": "1.14.1",
+      "date": "2026-06-11",
+      "title": "No busywork on unchanged data",
+      "items": [
+        "Re-uploading the same data, or a routine check with nothing changed, no longer starts a training run — it only trains when data actually changes or a table is new."
+      ]
+    },
+    {
+      "version": "1.14.0",
+      "date": "2026-06-11",
+      "title": "The agent watches over your data",
+      "items": [
+        "A background helper now keeps an eye on your data and only does work when something actually changes — quiet times cost nothing.",
+        "More reliable data imports: large spreadsheets load in full, column names stay intact, and re-uploads no longer fail.",
+        "See what the helper has been doing in the robot panel's new Watching tab."
+      ]
+    },
+    {
       "version": "1.13.1",
       "date": "2026-06-11",
       "title": "What's new, right on the version",
