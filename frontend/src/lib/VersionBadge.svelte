@@ -22,12 +22,16 @@
       · v{v.version}{#if v.stale} ⚠{/if} <span class="vb-foot-caret">⌄</span>
     </button>
   {:else}
-    <button class="vb-chip" class:vb-chip--stale={v.stale} type="button"
+    <button class="vb-bell" class:vb-bell--stale={v.stale} type="button"
             onclick={() => (open = true)}
-            title={v.stale ? 'Stale / dev build — rebuild to deploy latest' : "What's new"}>
-      <span class="vb-dot"></span>
-      <span class="vb-v">v{v.version}</span>
-      {#if v.stale}<span class="vb-warn">⚠</span>{/if}
+            aria-label="What's new"
+            title={v.stale ? 'Stale / dev build — rebuild to deploy latest' : `What's new — v${v.version}`}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
+        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+      </svg>
+      <span class="vb-bell-dot" class:vb-bell-dot--stale={v.stale}></span>
     </button>
   {/if}
 {/if}
@@ -35,22 +39,23 @@
 <WhatsNew bind:open />
 
 <style>
-  /* nav pill */
-  .vb-chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 5px 10px; border-radius: 999px;
-    background: var(--pw-accent-bg, #f3ece1);
-    color: var(--pw-accent, #9a4a2f);
-    border: 1px solid var(--pw-accent-soft, rgba(154,74,47,.18));
-    font-size: 12px; font-weight: 650; letter-spacing: .2px;
-    cursor: pointer; white-space: nowrap;
-    transition: box-shadow .15s, transform .15s;
+  /* nav bell icon (no text) */
+  .vb-bell {
+    position: relative;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; border-radius: 9px;
+    background: none; border: none; cursor: pointer;
+    color: var(--pw-ink-soft, #5a5550);
+    transition: background .15s, color .15s;
   }
-  .vb-chip:hover { box-shadow: 0 0 0 3px var(--pw-accent-bg, #f3ece1); transform: translateY(-1px); }
-  .vb-dot { width: 7px; height: 7px; border-radius: 50%; background: #2fa36b; box-shadow: 0 0 0 3px rgba(47,163,107,.18); }
-  .vb-chip--stale { background: #fbf0d6; color: #8a5a00; border-color: rgba(180,120,0,.28); }
-  .vb-chip--stale .vb-dot { background: #d4930e; box-shadow: 0 0 0 3px rgba(212,147,14,.18); }
-  .vb-warn { font-weight: 800; }
+  .vb-bell:hover { background: var(--pw-accent-bg, #f3ece1); color: var(--pw-accent, #9a4a2f); }
+  .vb-bell-dot {
+    position: absolute; top: 6px; right: 7px;
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #2fa36b; box-shadow: 0 0 0 2px var(--pw-bg, #fff);
+  }
+  .vb-bell-dot--stale { background: #d4930e; }
+  .vb-bell--stale { color: #8a5a00; }
 
   /* footer inline link */
   .vb-foot {
