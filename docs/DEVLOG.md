@@ -2,6 +2,22 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-11 (latest+75) — v1.17.0: prod-readiness gap closes (dashboard 403 + heartbeat real handlers + create_user role)
+
+**Ask.** "Is this production-ready?" → enumerated 4 deferred items, user said fix all. Three got code, one is doc-only (intentional, not a gap).
+
+**P1 — dashboard surface backend 403 (defense-in-depth).** `app/main.py` AuthMiddleware `_SURFACE_API_GATES`: added `("dashboard", ("/api/dashboards",))` (clean prefix) **plus** a `for…else` branch for project-scoped views — `/api/projects/{slug}/{datasource,overview,graph,eda,chemist}` carry the slug mid-path so `startswith` can't catch them, matched by leaf-segment `in path` instead. Other `/api/projects/*` paths stay OPEN (over-gating the shared prefix would break core APIs). Super always passes; everyone has `dashboard=true` by default so this only ever trips if a super disables it — pure completeness. LANDMINE: don't broaden the project-scoped match to bare `/api/projects` — shared prefix.
+
+**P2 — autonomy heartbeat real T3 handlers (env-gated OFF).** `dash/cron/heartbeat.py`: `_dispatch_t3` was journal-only stub. Now: new env `AUTONOMY_T3_ACTIONS` (default `0` = original stub behaviour, zero side effects). When `=1` and the tripped signal is a data/schema-change one (`table_fingerprints`/`schema_hash`/`shop_flat` = `_T3_RETRAIN_SIGNALS`), calls the tested `auto_train_daemon._enqueue_retrain(slug, reason="heartbeat:<signal>")` — enqueue only (heavy work on the train worker), already budget-gated upstream by `_DAILY_TOKEN_CAP`. Unknown signal or failed action → journal fallback, never raises. Default-off = enabling autonomy is an explicit operator decision, never a surprise on upgrade. (`_build_shop_flat` is nested in upload `_bg`, not importable — retrain enqueue is the correct reusable action.)
+
+**P3 — create_user honors role (super-only).** `app/auth.py` `create_user`: was always inserting `role='user'` (param ignored). Now validates role ∈ {user,admin}; `role='admin'` requires `request.state.user.is_super` else **403** (admins still cannot mint admins — same safety, now explicit not silent). INSERT writes the role column; response + audit log carry it.
+
+**P4 — single-tenant lock = BY DESIGN, not a gap.** `is_single_agent()` hardcoded True, slug pinned `citypharma`, 2nd-tenant attempts 403. Intentional for this single customer. Multi-tenant lives in the compas sibling. Do NOT "fix" — leave locked unless the product pivots to multi-customer. Documented here so it stops getting re-flagged as a bug.
+
+**Deploy blockers (separate, NOT in this version, must do on AWS before customer):** set `PUBLIC_URL`+`CORS_ORIGINS` (default falls back allow-all-no-creds); rotate weak `SUPER_ADMIN_PASS`; re-export balance_stock CSV as Text (`article_code=1E+12` source corruption, unrecoverable in-place).
+
+---
+
 ### Session 2026-06-11 (latest+74) — v1.16.1: RBAC backend 403 (real lockout, not just nav-hide) + live verify
 
 **Gap closed.** v1.16.0 hid surfaces in nav but `dashboard/chat/workspace` data APIs were still open (a logged-in user could hit the URL). Added a surface gate in `app/main.py` `AuthMiddleware` right after `request.state.user = user`: a small `_SURFACE_API_GATES` map (workspace → `/api/upload`,`/api/brain`,`/api/training`,`/api/auto-train`,`/api/rules`,`/api/suggested_rules`,`/api/scores`; chat → `/api/super-chat`) → 403 if `surfaces_for(user)` lacks it. Super always passes; admin has workspace+chat by default. Fail-open on unmapped paths/errors. (admin_console/users_access/usage_cost/integration already gated at their routers.) Conservative prefix list — only workspace-only, browser-facing paths, so no shared-endpoint breakage.

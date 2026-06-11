@@ -1258,26 +1258,39 @@ def set_user_role(request: Request, username: str, role: str):
 
 @router.post("/users/create")
 def create_user(request: Request, username: str, password: str, email: str = "", role: str = "user"):
-    """Create a new user. Admin tier (admin or super). New users are always role='user';
-    only the super admin can elevate via Roles & Access."""
+    """Create a new user (users_access surface required).
+
+    role defaults to 'user'. role='admin' is honored ONLY for the super admin —
+    a plain admin asking for an admin gets 403 (admins cannot mint admins). Any
+    other role value is rejected. Super may also elevate later via set_user_role.
+    """
     _require_surface(request, "users_access")
     if not username or len(username) < 2:
         raise HTTPException(400, "Username must be at least 2 characters")
     if not password or len(password) < 4:
         raise HTTPException(400, "Password must be at least 4 characters")
 
+    role = (role or "user").strip().lower()
+    if role not in ("user", "admin"):
+        raise HTTPException(400, "role must be 'user' or 'admin'")
+    if role == "admin":
+        creator = getattr(getattr(request, 'state', None), 'user', None)
+        if not (creator and creator.get("is_super")):
+            raise HTTPException(403, "Only the super admin can create admin users")
+
     with _engine.connect() as conn:
         exists = conn.execute(text("SELECT 1 FROM public.dash_users WHERE username = :u"), {"u": username}).fetchone()
         if exists:
             raise HTTPException(409, f"User '{username}' already exists")
         conn.execute(text(
-            "INSERT INTO public.dash_users (username, password_hash, email) VALUES (:u, :p, :e)"
-        ), {"u": username, "p": _hash_password(password), "e": email or None})
+            "INSERT INTO public.dash_users (username, password_hash, email, role) "
+            "VALUES (:u, :p, :e, :r)"
+        ), {"u": username, "p": _hash_password(password), "e": email or None, "r": role})
         conn.commit()
 
     admin_user = getattr(getattr(request, 'state', None), 'user', None)
-    log_action(admin_user, "create_user", "user", username, f"email={email}")
-    return {"status": "ok", "username": username}
+    log_action(admin_user, "create_user", "user", username, f"email={email} role={role}")
+    return {"status": "ok", "username": username, "role": role}
 
 
 @router.get("/users/{username}/profile")

@@ -1757,6 +1757,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                                     "/api/training", "/api/auto-train", "/api/rules",
                                     "/api/suggested_rules", "/api/scores")),
                     ("chat", ("/api/super-chat",)),
+                    ("dashboard", ("/api/dashboards",)),
                 )
                 for _surface, _prefixes in _SURFACE_API_GATES:
                     if any(path.startswith(p) for p in _prefixes):
@@ -1766,6 +1767,21 @@ class AuthMiddleware(BaseHTTPMiddleware):
                                 status_code=403,
                             )
                         break
+                else:
+                    # Project-scoped dashboard views live under
+                    # /api/projects/{slug}/… so the slug sits mid-path →
+                    # startswith can't catch them. Match the dashboard-surface
+                    # leaf segments explicitly. Other /api/projects/* paths stay
+                    # open — over-gating that shared prefix would break core APIs.
+                    if path.startswith("/api/projects/") and any(
+                        _leaf in path for _leaf in
+                        ("/datasource", "/overview", "/graph", "/eda", "/chemist")
+                    ):
+                        if not surfaces_for(user).get("dashboard"):
+                            return JSONResponse(
+                                {"detail": "dashboard access not permitted for your role"},
+                                status_code=403,
+                            )
         except Exception:
             pass
 

@@ -36,6 +36,17 @@ _DISABLED = os.getenv("AUTONOMY_HEARTBEAT_DISABLED", "0").strip().lower() in ("1
 _POLL_INTERVAL = int(os.getenv("AUTONOMY_POLL_INTERVAL_S", "300"))
 _DAILY_TOKEN_CAP = int(os.getenv("AUTONOMY_DAILY_TOKEN_CAP", "50000"))
 
+# T3 real-action gate. Default OFF → handlers only journal the detected intent
+# (the original stub behaviour, zero side effects). Flip AUTONOMY_T3_ACTIONS=1
+# to let data-change signals trigger a real (free) retrain enqueue. Kept off by
+# default so enabling autonomy is an explicit operator decision, never a
+# surprise on upgrade.
+_T3_ACTIONS = os.getenv("AUTONOMY_T3_ACTIONS", "0").strip().lower() in ("1", "true", "yes")
+
+# Signals whose trip means "the underlying data/schema moved" → a retrain is the
+# meaningful autonomous response. Any other signal stays a journal-only stub.
+_T3_RETRAIN_SIGNALS = {"table_fingerprints", "schema_hash", "shop_flat"}
+
 # Track the last day we journalled a budget_cap_reached row (per slug) so we
 # don't spam it every tick once the cap is hit.
 _budget_capped_day: dict[str, str] = {}
@@ -69,10 +80,35 @@ def _tokens_today(slug: str) -> int:
 
 
 def _dispatch_t3(slug: str, signal: str, new: dict) -> None:
-    """STUB T3 handler — journal the detected intent only. NO LLM / training."""
+    """T3 handler for one tripped signal.
+
+    Default (AUTONOMY_T3_ACTIONS off): journal the detected intent only — no
+    LLM, no training, zero side effects (original stub behaviour).
+
+    When AUTONOMY_T3_ACTIONS=1 and the signal is a data/schema-change signal,
+    take the real autonomous action: enqueue a retrain for only the tables that
+    actually need it (reuses the tested auto_train_daemon path). Enqueue itself
+    is cheap SQL+Redis; the heavy work runs on the train worker. Any unknown
+    signal — or a failed action — falls back to a journal row so the loop never
+    raises.
+    """
     from dash.autonomy.state import journal
     detail = {"value": new.get(signal)} if signal in new else {"removed": True}
-    journal(slug, "T3", signal, "detected — handler stub", detail=detail, tokens=0)
+
+    if not _T3_ACTIONS or signal not in _T3_RETRAIN_SIGNALS:
+        journal(slug, "T3", signal, "detected — handler stub", detail=detail, tokens=0)
+        return
+
+    try:
+        from dash.cron.auto_train_daemon import _enqueue_retrain
+        queued = _enqueue_retrain(slug, reason=f"heartbeat:{signal}")
+        action = "retrain enqueued" if queued else "no tables need retrain"
+        journal(slug, "T3", signal, action, detail=detail, tokens=0)
+        log.info("heartbeat: T3 action for %s signal=%s → %s", slug, signal, action)
+    except Exception as e:
+        journal(slug, "T3", signal, "action failed — journalled intent",
+                detail={**detail, "error": str(e)}, tokens=0)
+        log.debug("heartbeat: T3 action failed for %s/%s: %s", slug, signal, e)
     log.info("heartbeat: T3 intent journalled for %s signal=%s", slug, signal)
 
 

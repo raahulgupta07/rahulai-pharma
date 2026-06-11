@@ -2,6 +2,16 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.17.0",
+      "date": "2026-06-11",
+      "title": "Production-readiness hardening",
+      "items": [
+        "Dashboard access is now enforced on the server as well, closing the last gap where a restricted role could still reach dashboard data by typing the address.",
+        "Creating an admin account is now reserved for the super admin — regular admins can add users but cannot grant admin rights.",
+        "Optional hands-off mode: when turned on, the system can automatically refresh its training the moment your data changes (off by default)."
+      ]
+    },
+    {
       "version": "1.16.1",
       "date": "2026-06-11",
       "title": "Access limits are now enforced, not just hidden",
