@@ -2,6 +2,14 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.16.1",
+      "date": "2026-06-11",
+      "title": "Access limits are now enforced, not just hidden",
+      "items": [
+        "Surfaces a role can't see are now blocked on the server too — not only hidden from the menu — so restricted users can't reach data-management screens by typing the address."
+      ]
+    },
+    {
       "version": "1.16.0",
       "date": "2026-06-11",
       "title": "Finer control over who sees what",

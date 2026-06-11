@@ -1741,6 +1741,34 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Attach user to request state
         request.state.user = user
 
+        # ── RBAC surface 403 (backend lockout, not just nav-hide) ──
+        # Block API access to a surface the user's role can't see. Super admin
+        # always passes (surfaces_for → all true); admin has workspace/chat by
+        # default. Only browser-facing, workspace-only prefixes are gated, so a
+        # plain `user` (dashboard+chat only) can't reach data-management APIs by
+        # typing the URL. Fail-open on anything unmapped or on error.
+        # (admin_console / users_access / usage_cost / integration are already
+        # gated at their own routers.)
+        try:
+            if not user.get("is_super"):
+                from app.auth import surfaces_for
+                _SURFACE_API_GATES = (
+                    ("workspace", ("/api/upload", "/api/upload_stream", "/api/brain",
+                                    "/api/training", "/api/auto-train", "/api/rules",
+                                    "/api/suggested_rules", "/api/scores")),
+                    ("chat", ("/api/super-chat",)),
+                )
+                for _surface, _prefixes in _SURFACE_API_GATES:
+                    if any(path.startswith(p) for p in _prefixes):
+                        if not surfaces_for(user).get(_surface):
+                            return JSONResponse(
+                                {"detail": f"{_surface} access not permitted for your role"},
+                                status_code=403,
+                            )
+                        break
+        except Exception:
+            pass
+
         # Optional X-Scope-Id header → validate + thread into RLS ContextVar
         scope_id = request.headers.get("X-Scope-Id") or request.headers.get("x-scope-id")
         request.state.scope_id = None

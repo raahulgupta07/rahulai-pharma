@@ -2,6 +2,16 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-11 (latest+74) — v1.16.1: RBAC backend 403 (real lockout, not just nav-hide) + live verify
+
+**Gap closed.** v1.16.0 hid surfaces in nav but `dashboard/chat/workspace` data APIs were still open (a logged-in user could hit the URL). Added a surface gate in `app/main.py` `AuthMiddleware` right after `request.state.user = user`: a small `_SURFACE_API_GATES` map (workspace → `/api/upload`,`/api/brain`,`/api/training`,`/api/auto-train`,`/api/rules`,`/api/suggested_rules`,`/api/scores`; chat → `/api/super-chat`) → 403 if `surfaces_for(user)` lacks it. Super always passes; admin has workspace+chat by default. Fail-open on unmapped paths/errors. (admin_console/users_access/usage_cost/integration already gated at their routers.) Conservative prefix list — only workspace-only, browser-facing paths, so no shared-endpoint breakage.
+
+**Live verify with real accounts.** Created `tadmin`(role=admin)+`tuser`(role=user), logged in each: admin surfaces = all-except-admin_console, user = dashboard+chat only. Gates: `/api/brain/x` admin=404(passed)/user=403; `/api/admin/usage` admin=200/user=403; `/api/auth/users` admin=200/user=403/super=200. All correct. Deleted both test accounts after (no weak `test12345` creds left in DB).
+
+**Note (pre-existing, safe).** `create_user` ignores its `role` query param → always creates `role=user`; role elevation is super-only via `set_user_role` (`_require_super`). So an admin can create accounts but can't mint another admin — safe default, left as-is. (Set tadmin's role via direct SQL UPDATE for the test.)
+
+---
+
 ### Session 2026-06-11 (latest+73) — v1.16.0: RBAC expanded 3→7 surfaces + new defaults
 
 **Ask (follow-up to latest+72).** From the Admin dropdown screenshot (Admin Console / Users & Access / Usage & Cost), user wanted finer control: admin should see everything EXCEPT Admin Console governance; user = dashboard+chat only; super = all locked. Showed the proposed 7-row matrix in CLI, confirmed, built.
