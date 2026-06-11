@@ -417,7 +417,50 @@ Three tiers: **super admin** (username == `SUPER_ADMIN`), **admin** (`dash_users
 
 - **Storage** — one JSON setting `rbac_surface_access` in `dash_admin_settings` (no migration). `app/auth.py:surfaces_for(user)` resolves it; `surfaces` rides in `/api/auth/login` + `/api/auth/check`.
 - **Enforced both ways** — nav hides the surface **and** the backend returns **403**. Nav gating in `+layout.svelte` (`canDashboard/canChat/canWorkspace/canIntegration/canAdminConsole/canUsers/canUsage`); backend via `_require_surface` (users → `users_access`, usage → `usage_cost`, governance → `admin_console`) **plus** an `AuthMiddleware` prefix gate (`_SURFACE_API_GATES`: workspace → upload/brain/training/rules/scores, chat → super-chat) so a restricted user can't reach data APIs by typing the URL. Super always passes; fail-open on unmapped paths.
-- **Landmine** — never gate user-management or usage endpoints with the old `_require_admin` (it now means `admin_console`, which admins lack by default → they'd 403). `create_user` ignores its `role` param (always creates `user`); role elevation is **super-only** via `set_user_role` — an admin can't mint another admin.
+- **Landmine** — never gate user-management or usage endpoints with the old `_require_admin` (it now means `admin_console`, which admins lack by default → they'd 403). As of **v1.17.0** `create_user` honors its `role` param, but `role=admin` requires the **super admin** (an admin gets 403) — an admin still can't mint another admin.
+
+---
+
+## Environment configuration (`.env`)
+
+`.env` holds **all secrets and per-deploy config** — it is **gitignored, never commit it**. Copy `.env.example` → `.env` and fill it in. `dash-api` lists env vars individually in `compose.yaml` (no `env_file`), so a **new** var must be added to the service `environment:` block too, or it won't reach the container.
+
+### 🔴 Must set before production (security / boot)
+
+| Variable | Default | Set to | Secret |
+|----------|---------|--------|:------:|
+| `OPENROUTER_API_KEY` | placeholder | real key (app won't start without it) | ✅ |
+| `DB_PASS` | `ai` | strong database password | ✅ |
+| `SUPER_ADMIN` | `admin` | your super-admin username | |
+| `SUPER_ADMIN_PASS` | `admin` | strong unique password | ✅ |
+| `CORS_ORIGINS` | blank → allow-all **no-creds** | exact domains, comma-sep (`https://pharma.x.com`). **Never ship `*` with real users.** | |
+| `PUBLIC_URL` | blank | your public origin (`https://pharma.x.com`) — drives embed snippets, SDK, OIDC callback | |
+| `DOMAIN` | `localhost` | your domain | |
+| `DASH_DEBUG` | blank | **keep blank** — truthy leaks tracebacks to clients + mounts `/api/_debug/*` | |
+
+### 🟡 Recommended (prod tuning)
+
+| Variable | Default | Note |
+|----------|---------|------|
+| `WORKERS` | `min(8, cpu)` | size to **RAM** (~1–2/GB). 5–10 users→2, 30–100→8; 16 needs 16 GB+ |
+| `OPENROUTER_API_KEYS` | unset | semicolon-separated key **pool** — set for >10 concurrent users (escapes per-key 429) ✅ |
+| `RUNTIME_ENV` / `DASH_ENV` | `prd` / `dev` | set to production values |
+| `APIGW_CACHE_TTL` | `90` | keep **ON** in prod (hides 70–220s repeat-question latency). `0`+`METRIC_SHORTCUT_DISABLED=1` are **dev-only** |
+| `SENTRY_DSN` | blank | set to enable error tracking ✅ |
+| `BACKUP_RETENTION_DAYS` | `7` | nightly `pg_dump` prune (`dash-backup` service) |
+
+### 🟢 Optional (only if used — all OFF by default)
+
+- **Federated auth** — local login always works. Add **LDAP** (`ENABLE_LDAP` + `LDAP_*`, secret `LDAP_APP_PASSWORD`), **OIDC/Keycloak** (`OPENID_PROVIDER_URL`/`KEYCLOAK_*` + secret `*_CLIENT_SECRET`), or **Google/Microsoft** (`*_CLIENT_SECRET`). Non-secret config is also editable live at `/ui/auth-admin`; **secrets stay in env only**, never written to the DB.
+- **Slack** — `SLACK_TOKEN` + `SLACK_SIGNING_SECRET` (both secret). ✅
+- **Autonomy** (v1.17.0) — `AUTONOMY_T3_ACTIONS=1` lets data/schema-change signals auto-enqueue a retrain (default `0` = detect-only). Also `AUTONOMY_HEARTBEAT_DISABLED`, `AUTONOMY_POLL_INTERVAL_S=300`, `AUTONOMY_DAILY_TOKEN_CAP=50000`.
+- **Feature flags** — `AUTOML_ENABLED`, `SIM_LAB_ENABLED`, `INVESTMENT_VERTICAL_ENABLED`, `ONTOLOGY_CLUSTER_ENABLED`, `BENCHMARK_SYNC_ENABLED` (set `1` to mount).
+
+> **Secrets (✅ above) live ONLY in `.env`.** Rotate any that have been shared. The full annotated template with every var is `.env.example`.
+
+### Deploy data caveat — `balance_stock` source CSV
+
+`article_code` in the stock CSV can arrive Excel-mangled as `1E+12` (float). The pharma tools already cast/normalize (`::text`, `shop_flat` denorm) so this **never crashes**, but the corrupted rows show `linked=false`. **Fix = re-export the source CSV with `article_code` as a Text column** and re-upload — it cannot be recovered in-place from the float.
 
 ---
 
@@ -430,7 +473,7 @@ wall** on a fresh DB.
 ```bash
 git clone git@github.com:raahulgupta07/rahulai-pharma.git
 cd rahulai-pharma
-cp .env.example .env          # fill 3 values: OPENROUTER_API_KEY, DB_PASS, SUPER_ADMIN_PASS
+cp .env.example .env          # fill the 🔴 must-set rows (see "Environment configuration" above): OPENROUTER_API_KEY, DB_PASS, SUPER_ADMIN_PASS, CORS_ORIGINS, PUBLIC_URL, DOMAIN
 docker compose up -d --build  # builds images, auto-seeds the DB, starts everything
 # wait ~1–2 min, then check: curl http://127.0.0.1:8011/api/health  →  {"status":"ok"}
 ```
