@@ -121,6 +121,16 @@ ARG APP_VERSION=dev
 ENV BUILD_COMMIT=$BUILD_COMMIT \
     BUILD_TIME=$BUILD_TIME \
     APP_VERSION=$APP_VERSION
+# OCI labels — `docker inspect citypharma:latest` / `docker images` surface the
+# release so an operator can confirm the deployed version straight from Docker.
+LABEL org.opencontainers.image.title="CityAgent Pharma" \
+      org.opencontainers.image.version="$APP_VERSION" \
+      org.opencontainers.image.revision="$BUILD_COMMIT" \
+      org.opencontainers.image.created="$BUILD_TIME" \
+      org.opencontainers.image.description="CityAgent Pharma — single-tenant agentic pharmacy assistant" \
+      org.opencontainers.image.url="" \
+      org.opencontainers.image.source="" \
+      org.opencontainers.image.licenses=""
 
 # ---------------------------------------------------------------------------
 # Non-root user

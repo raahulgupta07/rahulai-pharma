@@ -693,23 +693,32 @@ def _deploy_files(row: dict, base: str) -> dict[str, str]:
     store = row.get("bound_scope_id") or ""
     name = row.get("name") or row.get("project_slug") or "CityPharma"
     title = f"{name}" + (f" — {store}" if store else "")
-    accent = row.get("primary_color") or "#1a2b4a"
-    welcome = (row.get("welcome_msg") or "Hi! Ask me about stock, drug info, or substitutes.")
-    position = row.get("position") or "bottom-right"
-    theme = row.get("theme") or "light"
+    # Per-store appearance OVERRIDES (raw, un-defaulted). Only bake a data-*
+    # attribute when this store actually overrides — otherwise OMIT it so the
+    # widget falls through to /api/embed/config and inherits the live Brand
+    # theme. Baking the hard default froze every widget on navy/English and
+    # broke the "change Brand → all widgets update live" promise.
+    accent_ov   = (row.get("primary_color") or "").strip()
+    position_ov = (row.get("position") or "").strip()
+    theme_ov    = (row.get("theme") or "").strip()
+    welcome_ov  = (row.get("welcome_msg") or "").strip()
+    accent = accent_ov or "#1a2b4a"   # page chrome (h1 etc.) still needs a color
+    position = position_ov or "bottom-right"
     et = _html.escape(title)
-    ew = _html.escape(welcome, quote=True)
     base = base.rstrip("/")
 
-    # the one snippet — same shape as the live sandbox (data-key = public key)
+    _attr_pos = f'        data-position="{position_ov}"\n' if position_ov else ''
+    _attr_thm = f'        data-theme="{theme_ov}"\n' if theme_ov else ''
+    _attr_acc = f'        data-accent="{accent_ov}"\n' if accent_ov else ''
+    _attr_grt = (f'        data-greeting="{_html.escape(welcome_ov, quote=True)}"\n'
+                 if welcome_ov else '')
+    # the one snippet — same shape as the live sandbox (data-key = public key).
+    # Appearance attrs appear only on override; absent → inherit Brand.
     snippet = (
         f'<script src="{base}/api/embed/widget.js"\n'
         f'        data-embed-id="{eid}"\n'
         f'        data-key="{pubkey}"\n'
-        f'        data-position="{position}"\n'
-        f'        data-theme="{theme}"\n'
-        f'        data-accent="{accent}"\n'
-        f'        data-greeting="{ew}"\n'
+        f'{_attr_pos}{_attr_thm}{_attr_acc}{_attr_grt}'
         f'        data-title="{et}"\n'
         f'        async></script>'
     )
@@ -1024,10 +1033,13 @@ def try_embed_sandbox(embed_id: str, request: Request, token: str | None = None)
     project_slug = row["project_slug"]
     proj_name = row["name"] or project_slug
     base_url = str(request.base_url).rstrip("/")
-    primary = row.get("primary_color") or "#1a2b4a"
-    welcome = (row.get("welcome_msg") or "Hi! Ask me anything.").replace('"', "&quot;")
-    position = row.get("position") or "bottom-right"
-    theme = row.get("theme") or "light"
+    # Raw per-store overrides — only baked as data-* attrs when set, else the
+    # widget inherits the live Brand theme via /api/embed/config.
+    primary_ov  = (row.get("primary_color") or "").strip()
+    position_ov = (row.get("position") or "").strip()
+    theme_ov    = (row.get("theme") or "").strip()
+    primary = primary_ov or "#1a2b4a"   # page chrome still needs a color
+    position = position_ov or "bottom-right"
 
     # ── Sandbox claim impersonation — ?claim_store_id=42&claim_role=staff ──
     # Bake into a JSON-encoded JS object passed to widget so live preview can
@@ -1041,6 +1053,11 @@ def try_embed_sandbox(embed_id: str, request: Request, token: str | None = None)
         _json_mod.dumps(_claim_overrides).replace('"', "&quot;")
         if _claim_overrides else ""
     )
+
+    # Appearance attrs only when this store overrides — else inherit Brand.
+    _attr_pos = f'          data-position="{position_ov}"\n' if position_ov else ''
+    _attr_thm = f'          data-theme="{theme_ov}"\n' if theme_ov else ''
+    _attr_acc = f'          data-accent="{primary_ov}"\n' if primary_ov else ''
 
     html = f"""<!doctype html>
 <html><head><meta charset="utf-8"/>
@@ -1061,10 +1078,7 @@ def try_embed_sandbox(embed_id: str, request: Request, token: str | None = None)
   <script src="{base_url}/api/embed/widget.js"
           data-embed-id="{row['embed_id']}"
           data-key="{row['public_key']}"
-          data-position="{position}"
-          data-theme="{theme}"
-          data-accent="{primary}"
-          data-title="{proj_name}"
+{_attr_pos}{_attr_thm}{_attr_acc}          data-title="{proj_name}"
           {('data-claims="' + _claims_json_attr + '"') if _claims_json_attr else ''}
           async></script>
   {('<div style="margin-top:24px;padding:10px 14px;background:#fff;border:1px dashed #c96342;border-radius:6px;display:inline-block;font-size:11px;color:#1a2b4a;">Impersonating claims: <code style="color:#c96342;">' + _json_mod.dumps(_claim_overrides) + '</code></div>') if _claim_overrides else ''}

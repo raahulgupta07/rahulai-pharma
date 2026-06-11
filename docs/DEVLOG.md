@@ -2,6 +2,26 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-11 (latest+70) — v1.13.1: login What's-new = version-chip popover
+
+**Request (user: "don't show the version number in the What's-new, just the version — clicking v1.13.0 top-right should show what's new in the latest version only; redesign the login screen").** Login screen had BOTH a top-right version chip AND a big bottom "What's new" banner; the chip click weirdly opened the bottom banner, and the banner expanded to the full changelog (all versions).
+
+**Change (`frontend/src/routes/login/+page.svelte`).** Removed the bottom `pw-whatsnew` banner section entirely. Wrapped the chip in `.pw-ver-wrap` (position:relative) and added a floating `.pw-ver-pop` popover anchored under the chip (`top: 100%+8px; right:0`, up-arrow `::before`, drop-in animation). Popover shows **the latest release only** — `latestRelease.title` + all its `items` (no full-changelog "See all", no per-version list). Close via ✕ button, `Escape`, or click-outside (`<svelte:window on:keydown on:click>` → `onWinKey`/`onWinClick`, the latter closes unless the click is inside `.pw-ver-wrap`). Chip gets `.pw-ver--on` active ring while open. Footer still prints the version. Swapped the old banner CSS for popover CSS (kept `.pw-wn-list`).
+
+**Version.** Per the every-change rule: `VERSION` 1.13.0 → **1.13.1** + `CHANGELOG.json` block "What's new, right on the version". Rebuilt `citypharma:1.13.1`+`:latest`, cleared daemon leader, force-recreated. `/api/version` live = 1.13.1, stale false, top changelog 1.13.1. Frontend `bun run build` clean.
+
+---
+
+### Session 2026-06-11 (latest+69) — v1.13.0: widgets inherit Brand live + version visible on Docker
+
+**Bug (user: "I brand everything but I don't see it in the embedding").** The Brand page saves fine and `/config` correctly resolves the brown brand, but deployed/sandbox widgets stayed navy. Root cause: both snippet generators in `app/embed_public.py` (deploy-zip `render_*` ~L705 + `/try/{embed_id}` sandbox ~L1061) **always baked** `data-accent="{primary_color or '#1a2b4a'}"` + `data-theme`/`data-position`. Every store has NULL `primary_color` (Brand page shows 0 overrides) → baked the **hard navy default** → `widget.js` `explicit.accent=true` → it skipped `/config` → Brand ignored. Greeting still inherited (Burmese) because the sandbox never baked `data-greeting` — that mismatch was the tell.
+
+**Fix.** Emit `data-accent`/`data-theme`/`data-position`/`data-greeting` **only when the store has a real non-empty override** (raw `*_ov` values); NULL → omit the attr → widget falls through to `/config` → live Brand. Page chrome (h1 colour) still uses the resolved colour. Verified: `/config` → `primary_color #4b241b, theme default`; `/try/<embed>` snippet now bakes only `data-key`+`data-title` (no appearance attrs). **Never re-bake appearance attrs unconditionally** — re-breaks "edit Brand → all widgets update live". Already-downloaded deploy zips need re-download; live sandbox/cockpit pick it up now.
+
+**Versioning hardening (user: "every change should cut a version, with features, and I want to see it on Docker").** Bumped `VERSION` 1.12.0 → **1.13.0** + added a `CHANGELOG.json` block ("Widgets follow your Brand instantly"). New rule: **every change bumps VERSION + adds a changelog block**. **Docker visibility:** Dockerfile now stamps **OCI labels** (`org.opencontainers.image.{version,revision,created,title,description}` from `APP_VERSION/BUILD_COMMIT/BUILD_TIME` args; also overrides the leftover `uv` base-image `description/url/source/licenses` labels) and the release flow tags the image `citypharma:$VER`. Operator can now confirm the release from Docker alone: `docker inspect citypharma:latest --format '{{json .Config.Labels}}'` / `docker images citypharma` / `docker exec cp-api printenv APP_VERSION` — all show `1.13.0`. `/api/version` live = 1.13.0, commit 0321d9f, stale false, top changelog 1.13.0.
+
+---
+
 ### Session 2026-06-11 (latest+68) — Feed bell MERGE + drawer redesign + embed consumer fixes
 
 **One bell, not two.** The nav had two bells (Feed notifications + the new What's-new badge). Merged: the **Feed bell** drawer (`+layout.svelte`) now has a segment toggle **Activity | What's new**. Activity = existing notifications (unchanged); What's new = `VersionCard` (build + data freshness + releases). Removed the separate nav badge. Bell dot = unread events OR an unseen version (`versionIsNew` vs `localStorage cp_seen_version`, set on opening the What's-new tab). `openFeed(tab)` + `feedTab` state + `loadVersion()` on auth init.

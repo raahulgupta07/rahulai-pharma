@@ -515,17 +515,27 @@ curl http://127.0.0.1:8011/api/health                 # → {"status":"ok"}
 
 Operators can see, at a glance, **whether an upgrade actually landed** and **what each release added** — on the login screen and inside the app.
 
-- **`VERSION`** (repo root, one line e.g. `1.12.0`) — bump it when you cut a release. Baked into the image; surfaced as the app version.
+**Rule: every change cuts a new version.** Each shipped change bumps `VERSION` **and** adds a `CHANGELOG.json` block — never deploy a behaviour change on the old version number. Current: `1.13.1`.
+
+- **`VERSION`** (repo root, one line e.g. `1.13.1`) — bump it on **every** release/change. Baked into the image; surfaced as the app version.
 - **`docs/CHANGELOG.json`** — curated, customer-facing "What's new" feed (newest-first `releases[]`, each `{version,date,title,items[]}`). Plain language, no internal table/tool names. Add a block per release.
 - **`GET /api/version`** (public, no auth) — returns `{version, commit, built_at, image_age_hours, stale, data, changelog}`. `data` = live freshness (last upload, catalog/stock counts, `shop_flat` link-status). Powers every surface below.
 
-**Where it shows:** login screen (version chip + What's-new panel), the **Feed bell** (top nav → drawer with **Activity | What's new** tabs), the app **footer** (`· v1.12.0`), Admin → Overview (**Build & Release** card), and Profile → **About** tab. The Feed-bell dot lights for unread events **or** an unseen new version; opening "What's new" marks it seen.
+**Where it shows:** login screen — **click the version chip** (top-right) to drop a popover showing the **latest release only** (closes on ✕ / Esc / click-outside); the **Feed bell** (top nav → drawer with **Activity | What's new** tabs), the app **footer** (`· v1.13.0`), Admin → Overview (**Build & Release** card), and Profile → **About** tab. The Feed-bell dot lights for unread events **or** an unseen new version; opening "What's new" marks it seen.
 
-**Release flow:** edit `VERSION` → add a `CHANGELOG.json` block → rebuild (stamp provenance):
+**Visible on Docker too.** The build stamps OCI labels + a version image tag so an operator can confirm the release straight from Docker without hitting the API:
 ```bash
-APP_VERSION=$(cat VERSION) BUILD_COMMIT=$(git rev-parse --short HEAD) \
-  BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-  docker compose -f compose.yaml build dash-api
+docker inspect citypharma:latest --format '{{json .Config.Labels}}'   # → org.opencontainers.image.version=1.13.1
+docker images citypharma                                              # → citypharma:1.13.1 + :latest
+docker exec cp-api printenv APP_VERSION                               # → 1.13.1
+```
+
+**Release flow:** bump `VERSION` → add a `CHANGELOG.json` block → rebuild (stamps provenance into ENV **and** OCI labels) → tag the image with the version → redeploy:
+```bash
+VER=$(cat VERSION); COMMIT=$(git rev-parse --short HEAD); TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+APP_VERSION=$VER BUILD_COMMIT=$COMMIT BUILD_TIME=$TS docker compose -f compose.yaml build dash-api
+docker tag citypharma:latest citypharma:$VER
+APP_VERSION=$VER BUILD_COMMIT=$COMMIT BUILD_TIME=$TS docker compose -f compose.yaml up -d --force-recreate --no-deps dash-api
 ```
 Stale check: the version chip turns **amber "⚠ stale"** when the running image is >24h old or version is `dev` → instant "did the deploy land?" signal.
 

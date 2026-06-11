@@ -154,6 +154,15 @@
  if (e.key === 'Enter') login();
  }
 
+ function onWinKey(e: KeyboardEvent) {
+ if (e.key === 'Escape' && showWhatsNew) showWhatsNew = false;
+ }
+ function onWinClick(e: MouseEvent) {
+ if (!showWhatsNew) return;
+ const t = e.target as HTMLElement;
+ if (!t.closest('.pw-ver-wrap')) showWhatsNew = false;
+ }
+
  async function login() {
  if (!username || !password) { error = 'Both fields required.'; return; }
  loading = true; error = '';
@@ -190,6 +199,8 @@
   <title>Sign in — {$brand.name}</title>
 </svelte:head>
 
+<svelte:window on:keydown={onWinKey} on:click={onWinClick} />
+
 <div class="pw-login">
 
   <header class="pw-top">
@@ -197,15 +208,32 @@
       <img src="/brand/cityagent.png?v=3" alt="CityPharma" class="pw-brand-logo" />
     </div>
     {#if versionInfo}
-      <button class="pw-ver" class:pw-ver--stale={versionInfo.stale}
-              type="button" onclick={() => showWhatsNew = !showWhatsNew}
-              title={versionInfo.stale ? 'Dev / stale build — rebuild to deploy latest' : 'View what\'s new'}>
-        <span class="pw-ver-dot"></span>
-        <span class="pw-ver-v">v{versionInfo.version}</span>
-        {#if shortCommit}<span class="pw-ver-sep">·</span><span class="pw-ver-c">{shortCommit}</span>{/if}
-        {#if builtLabel}<span class="pw-ver-sep">·</span><span class="pw-ver-d">{builtLabel}</span>{/if}
-        {#if versionInfo.stale}<span class="pw-ver-warn">⚠ stale</span>{/if}
-      </button>
+      <div class="pw-ver-wrap">
+        <button class="pw-ver" class:pw-ver--stale={versionInfo.stale} class:pw-ver--on={showWhatsNew}
+                type="button" onclick={() => showWhatsNew = !showWhatsNew}
+                aria-expanded={showWhatsNew}
+                title={versionInfo.stale ? 'Dev / stale build — rebuild to deploy latest' : 'View what\'s new'}>
+          <span class="pw-ver-dot"></span>
+          <span class="pw-ver-v">v{versionInfo.version}</span>
+          {#if shortCommit}<span class="pw-ver-sep">·</span><span class="pw-ver-c">{shortCommit}</span>{/if}
+          {#if builtLabel}<span class="pw-ver-sep">·</span><span class="pw-ver-d">{builtLabel}</span>{/if}
+          {#if versionInfo.stale}<span class="pw-ver-warn">⚠ stale</span>{/if}
+        </button>
+
+        {#if showWhatsNew && latestRelease}
+          <div class="pw-ver-pop" role="dialog" aria-label="What's new">
+            <div class="pw-pop-head">
+              <span class="pw-pop-spark">✦</span>
+              <span class="pw-pop-ttl">What's new <span class="pw-pop-ver">in v{versionInfo.version}</span></span>
+              <button class="pw-pop-x" type="button" onclick={() => showWhatsNew = false} aria-label="Close">✕</button>
+            </div>
+            {#if latestRelease.title}<div class="pw-pop-sub">{latestRelease.title}</div>{/if}
+            <ul class="pw-wn-list">
+              {#each latestRelease.items as it}<li>{it}</li>{/each}
+            </ul>
+          </div>
+        {/if}
+      </div>
     {/if}
   </header>
 
@@ -353,42 +381,6 @@
 
   </main>
 
-  {#if latestRelease}
-    <section class="pw-whatsnew" class:pw-whatsnew--open={showWhatsNew}>
-      <button class="pw-wn-head" type="button" onclick={() => showWhatsNew = !showWhatsNew}>
-        <span class="pw-wn-spark">✦</span>
-        <span class="pw-wn-title">
-          What's new {#if versionInfo?.version}<span class="pw-wn-ver">in v{versionInfo.version}</span>{/if}
-          {#if latestRelease.title} — {latestRelease.title}{/if}
-        </span>
-        <span class="pw-wn-toggle">{showWhatsNew ? 'Hide' : 'See all ▸'}</span>
-      </button>
-
-      {#if !showWhatsNew}
-        <ul class="pw-wn-list">
-          {#each latestRelease.items.slice(0, 3) as it}
-            <li>{it}</li>
-          {/each}
-        </ul>
-      {:else}
-        <div class="pw-wn-all">
-          {#each (versionInfo?.changelog ?? []) as rel}
-            <div class="pw-wn-rel">
-              <div class="pw-wn-relhead">
-                <span class="pw-wn-relver">v{rel.version}</span>
-                {#if rel.title}<span class="pw-wn-reltitle">{rel.title}</span>{/if}
-                {#if rel.date}<span class="pw-wn-reldate">{rel.date}</span>{/if}
-              </div>
-              <ul class="pw-wn-list">
-                {#each rel.items as it}<li>{it}</li>{/each}
-              </ul>
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </section>
-  {/if}
-
   <footer class="pw-footer">
     © 2026 CityAgent Pharma{#if versionInfo} · v{versionInfo.version}{#if shortCommit} ({shortCommit}){/if}{/if}
   </footer>
@@ -458,49 +450,51 @@
  }
  .pw-ver--stale .pw-ver-dot { background: #d4930e; box-shadow: 0 0 0 3px rgba(212,147,14,.18); }
  .pw-ver-warn { font-weight: 700; }
+ .pw-ver--on { box-shadow: 0 0 0 3px var(--pw-accent-bg, #f3ece1); }
 
- /* What's new feed (above footer) */
- .pw-whatsnew {
- max-width: 760px;
- margin: 4px auto 0;
- width: calc(100% - 48px);
- background: var(--pw-bg-alt, #faf6f0);
- border: 1px solid var(--pw-line, rgba(0,0,0,.08));
+ /* What's-new popover — anchored under the version chip */
+ .pw-ver-wrap { position: relative; }
+ .pw-ver-pop {
+ position: absolute;
+ top: calc(100% + 8px);
+ right: 0;
+ z-index: 40;
+ width: 300px;
+ max-width: calc(100vw - 32px);
+ background: #fff;
+ border: 1px solid var(--pw-line, rgba(0,0,0,.10));
  border-radius: 14px;
- padding: 12px 16px;
- }
- .pw-wn-head {
- display: flex;
- align-items: center;
- gap: 9px;
- width: 100%;
- background: none;
- border: none;
- padding: 0;
- cursor: pointer;
+ box-shadow: 0 12px 34px rgba(40,30,20,.16);
+ padding: 13px 15px 14px;
  text-align: left;
- color: var(--pw-ink, #2a2622);
- font: inherit;
+ animation: pw-pop-in .14s ease-out;
  }
- .pw-wn-spark { color: var(--pw-accent, #9a4a2f); font-size: 14px; }
- .pw-wn-title { font-size: 13.5px; font-weight: 650; flex: 1; }
- .pw-wn-ver { color: var(--pw-accent, #9a4a2f); font-weight: 700; }
- .pw-wn-toggle { font-size: 12px; color: var(--pw-accent, #9a4a2f); font-weight: 600; white-space: nowrap; }
+ @keyframes pw-pop-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+ .pw-ver-pop::before {
+ content: ''; position: absolute; top: -6px; right: 18px;
+ width: 11px; height: 11px; background: #fff;
+ border-left: 1px solid var(--pw-line, rgba(0,0,0,.10));
+ border-top: 1px solid var(--pw-line, rgba(0,0,0,.10));
+ transform: rotate(45deg);
+ }
+ .pw-pop-head { display: flex; align-items: center; gap: 8px; }
+ .pw-pop-spark { color: var(--pw-accent, #9a4a2f); font-size: 14px; }
+ .pw-pop-ttl { font-size: 13px; font-weight: 700; color: var(--pw-ink, #2a2622); flex: 1; }
+ .pw-pop-ver { color: var(--pw-accent, #9a4a2f); }
+ .pw-pop-x {
+ background: none; border: none; cursor: pointer; padding: 2px 4px;
+ font-size: 12px; line-height: 1; color: var(--pw-dim, #9a948c); border-radius: 6px;
+ }
+ .pw-pop-x:hover { background: var(--pw-bg-alt, #f5f1eb); color: var(--pw-ink, #2a2622); }
+ .pw-pop-sub { margin: 5px 0 2px; font-size: 12.5px; font-weight: 600; color: var(--pw-ink, #2a2622); }
  .pw-wn-list {
- margin: 8px 0 2px;
- padding-left: 20px;
+ margin: 8px 0 0;
+ padding-left: 18px;
  color: var(--pw-ink-soft, #5a5550);
  font-size: 12.5px;
  line-height: 1.55;
  }
- .pw-wn-list li { margin: 2px 0; }
- .pw-wn-all { margin-top: 10px; display: flex; flex-direction: column; gap: 12px; max-height: 240px; overflow-y: auto; }
- .pw-wn-rel { border-top: 1px dashed var(--pw-line, rgba(0,0,0,.08)); padding-top: 8px; }
- .pw-wn-rel:first-child { border-top: none; padding-top: 0; }
- .pw-wn-relhead { display: flex; align-items: baseline; gap: 8px; }
- .pw-wn-relver { font-weight: 700; color: var(--pw-accent, #9a4a2f); font-size: 12.5px; }
- .pw-wn-reltitle { font-weight: 600; font-size: 12.5px; color: var(--pw-ink, #2a2622); }
- .pw-wn-reldate { margin-left: auto; font-size: 11px; color: var(--pw-dim, #9a948c); }
+ .pw-wn-list li { margin: 3px 0; }
 
  .pw-brand {
  display: flex;

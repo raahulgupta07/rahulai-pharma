@@ -2,6 +2,25 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.13.1",
+      "date": "2026-06-11",
+      "title": "What's new, right on the version",
+      "items": [
+        "Click the version on the sign-in screen to see what changed in the latest release.",
+        "Cleaner sign-in page — the old What's-new banner is gone."
+      ]
+    },
+    {
+      "version": "1.13.0",
+      "date": "2026-06-11",
+      "title": "Widgets follow your Brand instantly",
+      "items": [
+        "Set a theme once on the Brand page and every store widget updates live — colour, position and greeting, no re-deploy.",
+        "Widgets only keep their own look when you deliberately override a single store.",
+        "Fixed widgets showing the old navy default instead of your brand colour."
+      ]
+    },
+    {
       "version": "1.12.0",
       "date": "2026-06-11",
       "title": "Smarter stock answers",
