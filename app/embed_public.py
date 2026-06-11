@@ -20,8 +20,16 @@ import os as _os
 
 
 def _embed_log_bodies() -> bool:
-    """True when EMBED_LOG_BODIES is enabled — store raw question/answer text on
-    dash_embed_calls (message_text/response_text). Off by default (privacy + size)."""
+    """True when embed body logging is on — store raw question/answer text on
+    dash_embed_calls (message_text/response_text). Admin setting embed_log_bodies
+    (DB ► env EMBED_LOG_BODIES ► default). Live-tunable from Command Center."""
+    try:
+        from dash.admin.settings import get_setting
+        v = get_setting("embed_log_bodies")
+        if v is not None:
+            return bool(v)
+    except Exception:
+        pass
     return _os.getenv("EMBED_LOG_BODIES", "0").strip().lower() in ("1", "true", "yes", "on")
 
 

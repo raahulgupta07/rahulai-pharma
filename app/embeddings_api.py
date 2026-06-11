@@ -159,7 +159,13 @@ async def openai_embeddings(request: Request):
         import os as _os
         from app.api_gateway import _log_usage
         _prev = None
-        if _os.getenv("EMBED_LOG_INPUT", "0").lower() in ("1", "true", "yes", "on"):
+        try:
+            from dash.admin.settings import get_setting as _gs
+            _v = _gs("embed_log_input")
+            _log_input = bool(_v) if _v is not None else (_os.getenv("EMBED_LOG_INPUT", "0").lower() in ("1", "true", "yes", "on"))
+        except Exception:
+            _log_input = _os.getenv("EMBED_LOG_INPUT", "0").lower() in ("1", "true", "yes", "on")
+        if _log_input:
             _first = texts[0] if texts else ""
             _prev = (_first[:280] + (f"  …(+{len(texts)-1} more)" if len(texts) > 1 else "")) if _first else None
         _log_usage(user, real_model or "text-embedding-3-small",

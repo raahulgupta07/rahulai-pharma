@@ -2,6 +2,15 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.18.0",
+      "date": "2026-06-11",
+      "title": "Tune the system live from the admin console",
+      "items": [
+        "Super admins can now adjust operational settings — answer caching, response speed, automatic retraining, catalog enrichment, and activity logging — from the admin console, with changes taking effect in seconds and no restart.",
+        "The chat concurrency limit is now adjustable on the fly, so you can scale how many questions the assistant answers in parallel as your store count grows."
+      ]
+    },
+    {
       "version": "1.17.0",
       "date": "2026-06-11",
       "title": "Production-readiness hardening",

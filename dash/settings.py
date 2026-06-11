@@ -35,8 +35,12 @@ LLM_PARALLEL_CAP_CHAT = int(getenv("LLM_PARALLEL_CAP_CHAT") or "10")
 LLM_PARALLEL_CAP_DEEP = int(getenv("LLM_PARALLEL_CAP_DEEP") or "3")
 LLM_PARALLEL_CAP_LITE = int(getenv("LLM_PARALLEL_CAP_LITE") or "20")
 
-# Pool size = sum of all 3 tier caps + 5 buffer (default 38). Configurable via env.
-_DEFAULT_POOL_SIZE = LLM_PARALLEL_CAP_CHAT + LLM_PARALLEL_CAP_DEEP + LLM_PARALLEL_CAP_LITE + 5
+# Pool size = sum of all 3 tier caps + 5 buffer. The chat cap is now live-tunable
+# from the UI (admin setting llm_parallel_cap_chat), so size the pool with headroom
+# (>= 50 chat threads) — the pool is import-time fixed and can't grow, so this lets
+# the UI raise the chat cap up to ~50 without starving the executor.
+_CHAT_POOL_HEADROOM = max(LLM_PARALLEL_CAP_CHAT, 50)
+_DEFAULT_POOL_SIZE = _CHAT_POOL_HEADROOM + LLM_PARALLEL_CAP_DEEP + LLM_PARALLEL_CAP_LITE + 5
 LLM_POOL_SIZE = int(getenv("LLM_POOL_SIZE") or str(_DEFAULT_POOL_SIZE))
 
 _LLM_POOL = _futures.ThreadPoolExecutor(
@@ -70,13 +74,26 @@ def _tier_for_task(task: str) -> str:
     return "chat"
 
 
+def _chat_cap_live() -> int:
+    """Chat-tier cap — live from admin setting (DB ► env ► default), capped at
+    the pool headroom so a UI bump can never exceed the executor size."""
+    try:
+        from dash.admin.settings import get_setting
+        v = int(get_setting("llm_parallel_cap_chat") or LLM_PARALLEL_CAP_CHAT)
+        if v < 1:
+            v = 1
+        return min(v, _CHAT_POOL_HEADROOM)
+    except Exception:
+        return LLM_PARALLEL_CAP_CHAT
+
+
 def _cap_for_tier(tier: str) -> int:
     if tier == "deep":
         return LLM_PARALLEL_CAP_DEEP
     if tier == "lite":
         return LLM_PARALLEL_CAP_LITE
     if tier == "chat":
-        return LLM_PARALLEL_CAP_CHAT
+        return _chat_cap_live()
     return LLM_PARALLEL_CAP
 
 
@@ -89,7 +106,10 @@ def _get_sem(task: str) -> "_asyncio.Semaphore":
     loop = _asyncio.get_event_loop()
     tier = _tier_for_task(task)
     cap = _cap_for_tier(tier)
-    key = (id(loop), tier)
+    # Cap is part of the cache key: when a super-admin changes llm_parallel_cap_chat
+    # the new value yields a new key → a fresh Semaphore at the new cap, no restart.
+    # (Old semaphores for the prior cap simply go unused and are GC'd.)
+    key = (id(loop), tier, cap)
     with _LLM_SEM_LOCK:
         sem = _LLM_SEM_CACHE.get(key)
         if sem is None:

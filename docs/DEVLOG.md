@@ -2,6 +2,26 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-11 (latest+76) — v1.18.0: 11 operational env knobs → live UI control (Command Center · Admin settings · SYSTEM/RUNTIME)
+
+**Ask.** Tune operational config from the UI instead of `.env`; keep the vars in `.env` but commented, settings changeable from the admin console.
+
+**Load-test that started it.** Stress-tested all 66 store embeds first: 434 real LLM embed chats across 4 phases (66@conc20, 40@conc40, 66@conc66, 66×3-Q sustained) — **100% success, 0 cross-store leaks, 0 errors**. Cap-20→40 bump cut tail p95 48s→38s + wall 54s→45s (p50 ~21s = model floor, can't beat). Real ceiling = OpenRouter key pool, not the app (`LLM_PARALLEL_CAP_CHAT` semaphore queues, never rejects). Test scripts: `/tmp/embed_loadtest.py` + `/tmp/embed_sustained.py`. Two gotchas found: embed session/create needs `Origin == server_origin` (else `verify_origin` 403); embed widgets have their OWN cache (`dash.cache.embed_cache`) live even when `APIGW_CACHE_TTL=0` (that only gates the gateway).
+
+**Mechanism (zero new infra).** `dash/admin/settings.py` already does DB ► env ► default w/ 30s cache + write-invalidates + a typed REGISTRY + the generic Command Center renderer. So: registered 11 keys in REGISTRY (each w/ its `env` name + default), swapped 11 read-sites to `get_setting(...)`, added ONE `SYSTEM / RUNTIME` section to the existing `admin-settings` tab array in `frontend/.../command-center/+page.svelte` (the generic renderer handles int/bool/enum + save/reset — no new component, no new endpoint).
+
+**The 11 keys** (`llm_parallel_cap_chat`, `apigw_cache_ttl`, `reasoning_floor`, `metric_shortcut_disabled`, `autonomy_t3_actions`, `engineer_semantic_layer`, `catalog_enrich`, `catalog_enrich_limit`, `embed_log_bodies`, `embed_log_input`, `apigw_log_bodies`). Read-sites swapped: `api_gateway.py` (`_cache_ttl()` live + `_log_bodies` setting), `projects.py` (metric-shortcut + reasoning-floor), `upload.py` (`_admin_bool`/`_admin_int` helpers → catalog + semantic), `learning.py` (semantic), `embed_public.py` (`_embed_log_bodies`), `embeddings_api.py` + `usage_api.py` (embed_log_input), `heartbeat.py` (`_t3_actions_on()` live).
+
+**LLM cap live (the only refactor with teeth).** `dash/settings.py`: `_cap_for_tier("chat")` → new `_chat_cap_live()` reads `get_setting("llm_parallel_cap_chat")`, clamped to `_CHAT_POOL_HEADROOM = max(env, 50)`. Semaphore cache key is now `(loop, tier, cap)` so a cap change yields a NEW `asyncio.Semaphore` at the new value — **rebuilds live, no restart** (old ones GC'd). Thread-pool `_DEFAULT_POOL_SIZE` sized off the headroom so a UI bump to ≤50 can't starve the executor (pool is import-time fixed, can't grow).
+
+**Excluded (deliberate).** `api_gw_rate_per_min` — already has its OWN live UI control (`public.dash_apigw_config` via Gateway panel); a second control = two sources of truth fighting. `CONNECTOR_SCHEDULER_DISABLED` + `VERTICAL_DAEMONS_DISABLED` — boot-only, can't start/stop a running daemon live; kept ACTIVE in `.env`.
+
+**`.env` + seeding gotcha (LANDMINE).** Commented the 11 in `.env` (documented, w/ a `[UI-managed → …]` pointer each). BUT `compose.yaml` passes most as `${VAR:-default}` → commenting `.env` makes compose inject the COMPOSE DEFAULT into the container env, and **env beats registry-default in `get_setting`**. So 4 needed a DB seed to preserve current behaviour (compose default ≠ desired): `llm_parallel_cap_chat=40` (compose :-20), `apigw_cache_ttl=0` (compose :-90), `metric_shortcut_disabled=true` (compose :-0), `engineer_semantic_layer=true` (compose :-0). Seeded via `set_setting(...)`. The other 7 match their compose default → no seed. **Rule: when commenting a var that compose injects with a `:-default`, the effective fallback is that compose default, NOT the registry default — seed a DB row if they differ.**
+
+**Verified live (rebuilt, force-recreated, seeded):** `_chat_cap_live()=40`, semaphore rebuild 40→set25→new-sem@25→set40→@40 (no restart), `_cache_ttl()=0`, `/api/admin/settings` returns 11/11 SYSTEM/RUNTIME keys, all effective values match pre-refactor behaviour, super-chat smoke = 3,200 products. `.env` confirmed gitignored.
+
+---
+
 ### Session 2026-06-11 (latest+75) — v1.17.0: prod-readiness gap closes (dashboard 403 + heartbeat real handlers + create_user role)
 
 **Ask.** "Is this production-ready?" → enumerated 4 deferred items, user said fix all. Three got code, one is doc-only (intentional, not a gap).

@@ -1443,9 +1443,15 @@ def embeddings_analytics(request: Request,
                              "cost_usd, service_account, latency_ms, input_preview " + base
                              + " ORDER BY ts DESC LIMIT :lim", {**p, "lim": max(1, min(500, limit))})]
     import os as _os
+    try:
+        from dash.admin.settings import get_setting as _gs
+        _tlv = _gs("embed_log_input")
+        _text_logging = bool(_tlv) if _tlv is not None else (_os.getenv("EMBED_LOG_INPUT", "0").lower() in ("1", "true", "yes", "on"))
+    except Exception:
+        _text_logging = _os.getenv("EMBED_LOG_INPUT", "0").lower() in ("1", "true", "yes", "on")
     return {"window": {"from": start.isoformat(), "to": end.isoformat()},
             "summary": summary, "series": series, "by_model": by_model, "recent": recent,
-            "text_logging": _os.getenv("EMBED_LOG_INPUT", "0").lower() in ("1", "true", "yes", "on")}
+            "text_logging": _text_logging}
 
 
 @router.get("/feedback")

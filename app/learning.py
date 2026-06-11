@@ -3267,8 +3267,13 @@ def eval_health(slug: str):
 def semantic_layer(slug: str):
     """Engineer-built materialized views for a project (name, purpose, grain,
     live row count). Feeds the Data Source → Semantic Layer UI panel."""
-    import os as _os
-    enabled = _os.environ.get("ENGINEER_SEMANTIC_LAYER") in ("1", "true", "True")
+    try:
+        from dash.admin.settings import get_setting as _gs
+        _v = _gs("engineer_semantic_layer")
+        enabled = bool(_v) if _v is not None else True
+    except Exception:
+        import os as _os
+        enabled = _os.environ.get("ENGINEER_SEMANTIC_LAYER") in ("1", "true", "True")
     try:
         from db import db_url as _du
         from dash.training.semantic_layer import list_semantic_layer

@@ -2975,6 +2975,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
     {name: 'SECURITY', keys: ['rate_limit_per_minute','agno_debug']},
     {name: 'SCHEDULER', keys: ['enable_in_process_scheduler','enable_k8s_cronjob_mode']},
     {name: 'INTEGRATIONS', keys: ['gateway_enabled','embed_enabled']},
+    {name: 'SYSTEM / RUNTIME', keys: ['llm_parallel_cap_chat','apigw_cache_ttl','reasoning_floor','metric_shortcut_disabled','autonomy_t3_actions','engineer_semantic_layer','catalog_enrich','catalog_enrich_limit','embed_log_bodies','embed_log_input','apigw_log_bodies']},
   ] as section}
     <div class="ink-border" style="margin-top:8px;">
       <div onclick={() => openSection = openSection === section.name ? null : section.name}

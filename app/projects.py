@@ -1380,10 +1380,14 @@ async def project_chat(slug: str, request: Request):
     # directly. Pinned-metric questions become deterministic + ~30ms instead
     # of risking LITE-model flakiness on the `metric` tool (the "couldn't
     # query / empty result" class). Reuses the verified-reward matcher.
-    # Kill-switch: METRIC_SHORTCUT_DISABLED=1.
-    import os as _os_ms
-    if (model_pref in ("", "auto")
-            and _os_ms.getenv("METRIC_SHORTCUT_DISABLED", "").strip().lower() not in ("1", "true", "yes")):
+    # Kill-switch: admin setting metric_shortcut_disabled (env fallback).
+    try:
+        from dash.admin.settings import get_setting as _gs_ms
+        _ms_disabled = bool(_gs_ms("metric_shortcut_disabled"))
+    except Exception:
+        import os as _os_ms
+        _ms_disabled = _os_ms.getenv("METRIC_SHORTCUT_DISABLED", "").strip().lower() in ("1", "true", "yes")
+    if (model_pref in ("", "auto") and not _ms_disabled):
         try:
             from dash.learning.verified_reward import try_metric_shortcut
             _ms = try_metric_shortcut(slug, message)
@@ -1623,9 +1627,13 @@ async def project_chat(slug: str, request: Request):
             # which the UI surfaces as a live thinking trace.
             # Floor reasoning_effort at "low" so the model always streams a
             # thinking trace (surfaced live in the UI), even on fast/lite lookups.
-            # Opt out with REASONING_FLOOR=0.
-            import os as _os_rf
-            _floor_on = _os_rf.getenv("REASONING_FLOOR", "1").strip().lower() not in ("0", "false", "no", "off")
+            # Opt out via admin setting reasoning_floor (env REASONING_FLOOR fallback).
+            try:
+                from dash.admin.settings import get_setting as _gs_rf
+                _floor_on = bool(_gs_rf("reasoning_floor"))
+            except Exception:
+                import os as _os_rf
+                _floor_on = _os_rf.getenv("REASONING_FLOOR", "1").strip().lower() not in ("0", "false", "no", "off")
             # Cheap tiers (TRIVIAL/LOOKUP = simple stock/drug lookups) don't need a
             # streamed thinking trace — flooring reasoning_effort there just adds
             # ~400ms with no analytical benefit. Floor only kicks in on

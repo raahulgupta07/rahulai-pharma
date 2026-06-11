@@ -445,7 +445,7 @@ Three tiers: **super admin** (username == `SUPER_ADMIN`), **admin** (`dash_users
 | `WORKERS` | `min(8, cpu)` | size to **RAM** (~1–2/GB). 5–10 users→2, 30–100→8; 16 needs 16 GB+ |
 | `OPENROUTER_API_KEYS` | unset | semicolon-separated key **pool** — set for >10 concurrent users (escapes per-key 429) ✅ |
 | `RUNTIME_ENV` / `DASH_ENV` | `prd` / `dev` | set to production values |
-| `APIGW_CACHE_TTL` | `90` | keep **ON** in prod (hides 70–220s repeat-question latency). `0`+`METRIC_SHORTCUT_DISABLED=1` are **dev-only** |
+| `APIGW_CACHE_TTL` | `90` | keep **ON** in prod (hides 70–220s repeat-question latency). `0`+`METRIC_SHORTCUT_DISABLED=1` are **dev-only**. Now **live-tunable from the admin console** (see "Live-tunable" below) — flip to prod there, not `.env` |
 | `SENTRY_DSN` | blank | set to enable error tracking ✅ |
 | `BACKUP_RETENTION_DAYS` | `7` | nightly `pg_dump` prune (`dash-backup` service) |
 
@@ -453,10 +453,27 @@ Three tiers: **super admin** (username == `SUPER_ADMIN`), **admin** (`dash_users
 
 - **Federated auth** — local login always works. Add **LDAP** (`ENABLE_LDAP` + `LDAP_*`, secret `LDAP_APP_PASSWORD`), **OIDC/Keycloak** (`OPENID_PROVIDER_URL`/`KEYCLOAK_*` + secret `*_CLIENT_SECRET`), or **Google/Microsoft** (`*_CLIENT_SECRET`). Non-secret config is also editable live at `/ui/auth-admin`; **secrets stay in env only**, never written to the DB.
 - **Slack** — `SLACK_TOKEN` + `SLACK_SIGNING_SECRET` (both secret). ✅
-- **Autonomy** (v1.17.0) — `AUTONOMY_T3_ACTIONS=1` lets data/schema-change signals auto-enqueue a retrain (default `0` = detect-only). Also `AUTONOMY_HEARTBEAT_DISABLED`, `AUTONOMY_POLL_INTERVAL_S=300`, `AUTONOMY_DAILY_TOKEN_CAP=50000`.
+- **Autonomy** (v1.17.0) — auto-enqueue a retrain on data/schema change (default detect-only). Now toggled **live** from the admin console (`autonomy_t3_actions`, see "Live-tunable" below); `AUTONOMY_T3_ACTIONS` env is the fallback. Also `AUTONOMY_HEARTBEAT_DISABLED`, `AUTONOMY_POLL_INTERVAL_S=300`, `AUTONOMY_DAILY_TOKEN_CAP=50000`.
 - **Feature flags** — `AUTOML_ENABLED`, `SIM_LAB_ENABLED`, `INVESTMENT_VERTICAL_ENABLED`, `ONTOLOGY_CLUSTER_ENABLED`, `BENCHMARK_SYNC_ENABLED` (set `1` to mount).
 
 > **Secrets (✅ above) live ONLY in `.env`.** Rotate any that have been shared. The full annotated template with every var is `.env.example`.
+
+### ⚙️ Live-tunable from the admin console (no restart, v1.18.0)
+
+These 11 operational knobs are now edited from **Command Center → Admin settings → SYSTEM / RUNTIME** (super-admin). Changes persist to the DB and take effect within ~30s — **no restart, no `.env` edit**. They are kept **commented** in `.env`/`.env.example` for documentation; the UI value (or the `compose.yaml` default) wins.
+
+| Setting | What it does |
+|---------|--------------|
+| `llm_parallel_cap_chat` | Max concurrent LLM calls (chat + embed). Semaphore rebuilds live. |
+| `apigw_cache_ttl` | Gateway answer cache TTL (s). `0` = off (dev), `90` = prod. |
+| `metric_shortcut_disabled` | Force full agent vs fast metric shortcut. |
+| `reasoning_floor` | Minimum reasoning tier (off = faster counter lookups). |
+| `autonomy_t3_actions` | Heartbeat auto-retrain on data change (off = detect-only). |
+| `engineer_semantic_layer` | Build materialized-view semantic layer during training. |
+| `catalog_enrich` / `catalog_enrich_limit` | LLM catalog gap-fill + per-run cap. |
+| `embed_log_bodies` / `embed_log_input` / `apigw_log_bodies` | Q&A / input body logging for Monitoring panels. |
+
+> The **API Gateway rate limit** has its own live control (Gateway panel, backed by `dash_apigw_config`) — not in this list. Daemon kill-switches (`CONNECTOR_SCHEDULER_DISABLED`, `VERTICAL_DAEMONS_DISABLED`) are **boot-only** and stay in `.env`.
 
 ### Deploy data caveat — `balance_stock` source CSV
 

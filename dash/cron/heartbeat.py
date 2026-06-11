@@ -41,7 +41,17 @@ _DAILY_TOKEN_CAP = int(os.getenv("AUTONOMY_DAILY_TOKEN_CAP", "50000"))
 # to let data-change signals trigger a real (free) retrain enqueue. Kept off by
 # default so enabling autonomy is an explicit operator decision, never a
 # surprise on upgrade.
-_T3_ACTIONS = os.getenv("AUTONOMY_T3_ACTIONS", "0").strip().lower() in ("1", "true", "yes")
+def _t3_actions_on() -> bool:
+    """Live — admin setting autonomy_t3_actions (DB ► env AUTONOMY_T3_ACTIONS ►
+    default off). A super-admin can arm/disarm autonomy from the UI, no restart."""
+    try:
+        from dash.admin.settings import get_setting
+        v = get_setting("autonomy_t3_actions")
+        if v is not None:
+            return bool(v)
+    except Exception:
+        pass
+    return os.getenv("AUTONOMY_T3_ACTIONS", "0").strip().lower() in ("1", "true", "yes")
 
 # Signals whose trip means "the underlying data/schema moved" → a retrain is the
 # meaningful autonomous response. Any other signal stays a journal-only stub.
@@ -95,7 +105,7 @@ def _dispatch_t3(slug: str, signal: str, new: dict) -> None:
     from dash.autonomy.state import journal
     detail = {"value": new.get(signal)} if signal in new else {"removed": True}
 
-    if not _T3_ACTIONS or signal not in _T3_RETRAIN_SIGNALS:
+    if not _t3_actions_on() or signal not in _T3_RETRAIN_SIGNALS:
         journal(slug, "T3", signal, "detected — handler stub", detail=detail, tokens=0)
         return
 

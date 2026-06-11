@@ -115,6 +115,25 @@ REGISTRY: dict[str, dict] = {
     # JSON list — round-trips through get_setting()/_coerce (list default returned as-is).
     "embed_default_starters":         {"type": "json", "default": ["ဒီဆေး လက်ကျန် ရှိလား?", "အစားထိုး ဆေးတွေ ပြပါ", "အနီးဆုံးဆိုင်မှာ ရှိလား?"], "env": None, "scope": "global", "desc": "Default embed widget starter-question chips (Burmese pharma). Per-widget starter_questions override this."},
 
+    # ── Operational runtime knobs (super-admin · live, no restart) ──────────
+    # Mirror the legacy env vars (kept commented in .env for documentation). DB
+    # override ► env ► default. Defaults below = the current prod-effective value
+    # so commenting the env line is a no-op. Edited from Command Center →
+    # Admin settings → System settings.
+    "llm_parallel_cap_chat":          {"type": "int",  "default": 20,    "env": "LLM_PARALLEL_CAP_CHAT",   "scope": "global", "desc": "Max concurrent LLM calls (chat+embed shared semaphore). Raising past pool headroom queues, never errors. Live — semaphore rebuilds on change."},
+    # NOTE: API Gateway rate cap is NOT here — it has its own live UI control
+    # (public.dash_apigw_config via the Gateway panel). Don't duplicate it.
+    "apigw_cache_ttl":                {"type": "int",  "default": 90,    "env": "APIGW_CACHE_TTL",         "scope": "global", "desc": "Gateway answer cache TTL (seconds). 0 = disabled (dev). 90 = prod (hides 70-220s repeat latency)"},
+    "metric_shortcut_disabled":       {"type": "bool", "default": False, "env": "METRIC_SHORTCUT_DISABLED", "scope": "global", "desc": "Disable the fast metric shortcut path. True = always run full agent (dev/eval). False = use shortcut (prod speed)"},
+    "reasoning_floor":                {"type": "bool", "default": False, "env": "REASONING_FLOOR",         "scope": "global", "desc": "Force a minimum reasoning tier. Off = pharmacy-counter lookups skip reasoning (faster). On = always reason"},
+    "autonomy_t3_actions":            {"type": "bool", "default": False, "env": "AUTONOMY_T3_ACTIONS",     "scope": "global", "desc": "Autonomy heartbeat real actions. Off = detect-only journal (safe). On = data/schema change auto-enqueues a retrain"},
+    "catalog_enrich":                 {"type": "bool", "default": False, "env": "CATALOG_ENRICH",          "scope": "global", "desc": "LLM catalog gap-fill + low-risk auto-apply during training (cost)"},
+    "catalog_enrich_limit":           {"type": "int",  "default": 200,   "env": "CATALOG_ENRICH_LIMIT",    "scope": "global", "desc": "Max articles enriched per training run (cost control)"},
+    "engineer_semantic_layer":        {"type": "bool", "default": True,  "env": "ENGINEER_SEMANTIC_LAYER", "scope": "global", "desc": "Engineer agent builds the materialized-view semantic layer during training"},
+    "embed_log_bodies":               {"type": "bool", "default": True,  "env": "EMBED_LOG_BODIES",        "scope": "global", "desc": "Log embed widget Q&A bodies for Monitoring QUESTION/ANSWER panels"},
+    "embed_log_input":                {"type": "bool", "default": True,  "env": "EMBED_LOG_INPUT",         "scope": "global", "desc": "Log embedding-API input text (usage panels)"},
+    "apigw_log_bodies":               {"type": "bool", "default": True,  "env": "APIGW_LOG_BODIES",        "scope": "global", "desc": "Log API Gateway request/response bodies"},
+
     # RBAC — role → surface visibility matrix (super-admin editable). Super admin
     # is ALWAYS full (not stored here). Surfaces: admin_console / dashboard / chat.
     # Enforced both in nav (hide) and backend (403). See app/auth.py:surfaces_for.

@@ -22,6 +22,25 @@ from typing import Any
 _bg_executor = ThreadPoolExecutor(max_workers=5, thread_name_prefix="dash-bg")
 
 
+def _admin_bool(key: str, default: bool = False) -> bool:
+    """Resolve a runtime admin setting (DB ► env ► default). Fail-soft."""
+    try:
+        from dash.admin.settings import get_setting
+        v = get_setting(key)
+        return bool(v) if v is not None else default
+    except Exception:
+        return default
+
+
+def _admin_int(key: str, default: int) -> int:
+    try:
+        from dash.admin.settings import get_setting
+        v = get_setting(key)
+        return int(v) if v is not None else default
+    except Exception:
+        return default
+
+
 def _bg_done_log(fut):
     """Log exceptions from bg executor tasks (otherwise swallowed silently)."""
     try:
@@ -12712,7 +12731,7 @@ async def retrain_project(slug: str, request: Request):
         # (needs the join keys) and BEFORE the KG/vector backfill so those see
         # the views. Whitelist-gated DDL; shop_flat stays as the guaranteed
         # baseline below regardless. Flag default OFF.
-        if os.environ.get("ENGINEER_SEMANTIC_LAYER") in ("1", "true", "True"):
+        if _admin_bool("engineer_semantic_layer", True):
             _set_step("semantic_layer")
             _master_log("Engineer: designing semantic layer (materialized views)...", "", total_tables)
             try:
@@ -13170,11 +13189,11 @@ async def retrain_project(slug: str, request: Request):
         except Exception as _ave:
             import logging as _l
             _l.getLogger(__name__).warning(f"articles_enriched view skipped for {slug}: {_ave}")
-        if os.environ.get("CATALOG_ENRICH") in ("1", "true", "True"):
+        if _admin_bool("catalog_enrich"):
             try:
                 from app.catalog_enrich import run_enrichment, auto_apply_low_risk
                 from app.catalog_apply import build_articles_enriched_view as _bev
-                _cap = int(os.environ.get("CATALOG_ENRICH_LIMIT", "200") or 200)
+                _cap = _admin_int("catalog_enrich_limit", 200)
                 _er = run_enrichment(db_url, limit=_cap,
                                      log=lambda m: _master_log(m, "", total_tables))
                 _aa = auto_apply_low_risk(db_url,
@@ -13203,7 +13222,7 @@ async def retrain_project(slug: str, request: Request):
         # ─── Engineer semantic-layer matviews — REFRESH every registered view
         # so reads reflect the just-loaded data. CONCURRENTLY (no read lock);
         # falls back to plain refresh if the unique index is missing. Fail-soft.
-        if os.environ.get("ENGINEER_SEMANTIC_LAYER") in ("1", "true", "True"):
+        if _admin_bool("engineer_semantic_layer", True):
             try:
                 from dash.training.semantic_layer import refresh_semantic_layer
                 _rn = refresh_semantic_layer(slug, db_url, schema=schema,

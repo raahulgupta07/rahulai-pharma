@@ -88,6 +88,17 @@ try:
 except (TypeError, ValueError):
     _CACHE_TTL = 90
 
+
+def _cache_ttl() -> int:
+    """Live cache TTL — admin setting (DB ► env ► default), 30s-cached. A
+    super-admin can flip caching on/off (0) from the UI without a restart."""
+    try:
+        from dash.admin.settings import get_setting
+        v = get_setting("apigw_cache_ttl")
+        return int(v) if v is not None else _CACHE_TTL
+    except Exception:
+        return _CACHE_TTL
+
 # --- LLM-down fallback config (Feature #5) ----------------------------------
 # APIGW_FALLBACK (default "1" = on). When the agent call raises/times-out AND
 # the message matches a simple stock/availability heuristic, the gateway
@@ -352,11 +363,16 @@ def _sec_event(kind: str, user: dict | None, detail: str = "",
 
 def _log_bodies(user: dict, session_id: str, prompt: str, answer: str,
                 masked: bool) -> None:
-    """Persist the chat prompt + answer for the gateway (privacy-gated by env
-    APIGW_LOG_BODIES). OFF by default. Fail-soft."""
-    import os
-    if str(os.getenv("APIGW_LOG_BODIES", "")).strip().lower() not in ("1", "true", "yes"):
-        return
+    """Persist the chat prompt + answer for the gateway (privacy-gated by the
+    admin setting apigw_log_bodies, env APIGW_LOG_BODIES fallback). Fail-soft."""
+    try:
+        from dash.admin.settings import get_setting
+        if not get_setting("apigw_log_bodies"):
+            return
+    except Exception:
+        import os
+        if str(os.getenv("APIGW_LOG_BODIES", "")).strip().lower() not in ("1", "true", "yes"):
+            return
     try:
         from sqlalchemy import text
         from db.session import get_write_engine
@@ -416,7 +432,7 @@ def _cache_key(user: dict, message: str, model: str) -> str:
 
 def _cache_get(user: dict, message: str, model: str):
     """Return the cached response dict (OpenAI shape) or None. Fail-soft."""
-    if _CACHE_TTL <= 0:
+    if _cache_ttl() <= 0:
         return None
     try:
         r = _get_redis()
@@ -433,8 +449,9 @@ def _cache_get(user: dict, message: str, model: str):
 
 
 def _cache_set(user: dict, message: str, model: str, payload: dict) -> None:
-    """Store a blocking response dict in Redis with TTL=_CACHE_TTL. Fail-soft."""
-    if _CACHE_TTL <= 0:
+    """Store a blocking response dict in Redis with TTL=_cache_ttl(). Fail-soft."""
+    _ttl = _cache_ttl()
+    if _ttl <= 0:
         return
     # Never cache empty / whitespace-only answers — one failed or empty run
     # would otherwise poison the key and serve "" for the whole TTL.
@@ -450,7 +467,7 @@ def _cache_set(user: dict, message: str, model: str, payload: dict) -> None:
         if r is None:
             return
         rkey = _cache_key(user, message, model)
-        r.setex(rkey, _CACHE_TTL, _json.dumps(payload, ensure_ascii=False))
+        r.setex(rkey, _ttl, _json.dumps(payload, ensure_ascii=False))
     except Exception:
         logger.debug("apigw: cache set failed (ignored)", exc_info=True)
 
