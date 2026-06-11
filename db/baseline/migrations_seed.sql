@@ -186,3 +186,5 @@ COPY public.dash_migrations (filename, applied_at, checksum) FROM stdin;
 INSERT INTO public.dash_migrations(filename,checksum) VALUES('179_usage_latency.sql','0fe2d971b6f66029eed693423987e821b94bd0513543e78c14bb71d70039be2f') ON CONFLICT(filename) DO NOTHING;
 INSERT INTO public.dash_migrations(filename,checksum) VALUES('180_drop_dormant_clusters.sql','e18f88d69989cc737980cdd038dcaaf71dcf11ec7ce759b5aec12423052230c3') ON CONFLICT(filename) DO NOTHING;
 INSERT INTO public.dash_migrations(filename,checksum) VALUES('181_drop_skills_feature.sql','8937960e526f503a2f0af123c62a4abc1a4a4e8531d33f6c3552426805998977') ON CONFLICT(filename) DO NOTHING;
+-- migration 186 (shop_flat.link_status — folded into baseline schema.sql above; seed-mark so runner skips)
+INSERT INTO public.dash_migrations(filename,checksum) VALUES('186_shop_flat_link_status.sql','7d02985f59bf11c4bd0742cba5e8f3ffd8815357a19949f2ba8fc7daa6a6392f') ON CONFLICT(filename) DO NOTHING;

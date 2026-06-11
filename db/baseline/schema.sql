@@ -158,6 +158,7 @@ CREATE TABLE citypharma.shop_flat (
     cost numeric DEFAULT 0 NOT NULL,
     is_in_stock boolean DEFAULT false NOT NULL,
     linked boolean DEFAULT false NOT NULL,
+    link_status text DEFAULT 'both'::text NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
@@ -10486,6 +10487,13 @@ CREATE INDEX shop_flat_generic_trgm ON citypharma.shop_flat USING gin (generic c
 --
 
 CREATE INDEX shop_flat_instock_idx ON citypharma.shop_flat USING btree (site_code) WHERE is_in_stock;
+
+
+--
+-- Name: shop_flat_link_status_idx; Type: INDEX; Schema: citypharma; Owner: -
+--
+
+CREATE INDEX shop_flat_link_status_idx ON citypharma.shop_flat USING btree (link_status);
 
 
 --

@@ -16,6 +16,8 @@ Issue types
 - cast_artifact      : table name ends in `_casted`
 - enum_no_value_map  : bigint/int column with <10 distinct values + no value-map in brain
 - low_codex_confidence: table missing purpose / grain / PK in semantic_model
+- catalog_gap         : article in catalog with no stock (shop_flat link_status='catalog_only') — LEGIT gap
+- orphan_stock        : stock row with no catalog match (shop_flat link_status='stock_only') — LEGIT gap
 
 Each issue: {type, severity, table, column?, message, suggestion, count}
 severity ∈ {'high', 'medium', 'low', 'info'}
@@ -88,6 +90,8 @@ _IMPACT_BY_TYPE = {
     "low_codex_confidence": "Weak semantic model — routing and SQL grounding are less accurate.",
     "tiny_table": "Too few rows for reliable statistics — treat results as illustrative.",
     "cast_artifact": "Leftover type-cast table clutters the schema and can be picked by mistake.",
+    "catalog_gap": "These articles show to users as 'in catalog, not currently stocked' — expected, not an error.",
+    "orphan_stock": "Stock code is searchable but catalog details (brand/generic) are missing until the article is added.",
 }
 
 
@@ -262,6 +266,77 @@ def _is_int_type(data_type: str) -> bool:
 def _looks_like_fk_name(col: str) -> bool:
     c = col.lower()
     return c.endswith("_id") or (c.endswith("id") and len(c) > 2 and not c.startswith("id"))
+
+
+def _scan_shop_flat_link_gaps(eng: Engine, slug: str) -> list[dict]:
+    """
+    Schema-level checks over citypharma.shop_flat (the FULL OUTER join of catalog
+    and balance-stock). These are LEGITIMATE business gaps, NOT corruption:
+
+      - catalog_gap  (link_status='catalog_only') : article in catalog, no stock row
+                       (frozen / advance-entry / supplier-out — COMMON, expected).
+      - orphan_stock (link_status='stock_only')   : stock row, no catalog match
+                       (delayed catalog update — RARE).
+
+    Fail-soft: if shop_flat doesn't exist yet, or has no link_status column, return
+    []. 0 rows for a status → no issue emitted (no noise).
+    """
+    out: list[dict] = []
+    try:
+        with eng.connect() as c:
+            # Guard 1: table must exist.
+            reg = c.execute(text(
+                "SELECT to_regclass('citypharma.shop_flat')"
+            )).scalar()
+            if reg is None:
+                return out
+            # Guard 2: link_status column must exist.
+            has_col = c.execute(text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_schema = 'citypharma' AND table_name = 'shop_flat' "
+                "  AND column_name = 'link_status'"
+            )).scalar()
+            if not has_col:
+                return out
+
+            catalog_only = int(c.execute(text(
+                "SELECT count(*) FROM citypharma.shop_flat "
+                "WHERE link_status = 'catalog_only'"
+            )).scalar() or 0)
+            stock_only = int(c.execute(text(
+                "SELECT count(*) FROM citypharma.shop_flat "
+                "WHERE link_status = 'stock_only'"
+            )).scalar() or 0)
+    except Exception:
+        # Never raise from a data-quality check.
+        return out
+
+    if catalog_only > 0:
+        out.append(_make_issue(
+            "catalog_gap", "medium", "shop_flat",
+            f"{catalog_only:,} article(s) exist in the catalog but have no stock "
+            "record (frozen / advance-entry / supplier-out). Expected — these are "
+            "shown to users as 'in catalog, not currently stocked', not as errors.",
+            "No action required — this is a legitimate catalog/stock gap, not "
+            "corruption. If a specific article should be stocked, check the "
+            "balance-stock feed for that branch.",
+            count=catalog_only,
+            recoverable=None,
+        ))
+
+    if stock_only > 0:
+        out.append(_make_issue(
+            "orphan_stock", "medium", "shop_flat",
+            f"{stock_only:,} stock row(s) have no matching catalog article (delayed "
+            "catalog update). The code is searchable, but catalog details "
+            "(brand/generic) are missing — add the article to the catalog to enrich.",
+            "Add the missing article(s) to the catalog so brand/generic details "
+            "appear. The stock code stays searchable in the meantime.",
+            count=stock_only,
+            recoverable=None,
+        ))
+
+    return out
 
 
 def scan_project(eng: Engine, slug: str, force: bool = False) -> dict:
@@ -484,6 +559,13 @@ def scan_project(eng: Engine, slug: str, force: bool = False) -> dict:
                     "or rename to clarify their distinct purpose.",
                     count=int(overlap * 100),
                 ))
+
+    # ------------------------------------------------------------------
+    # Schema/table-level checks (run once over derived tables, not per-column).
+    # catalog_gap / orphan_stock — LEGITIMATE catalog↔stock gaps on shop_flat
+    # (distinct from the per-column sci_notation_id corruption check). Fail-soft.
+    # ------------------------------------------------------------------
+    issues.extend(_scan_shop_flat_link_gaps(eng, slug))
 
     # ------------------------------------------------------------------
     # Enrich each issue with total_rows + a few real sample values so the UI

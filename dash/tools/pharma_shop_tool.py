@@ -136,7 +136,27 @@ def stock_check(query: str = "", site_code: str = "", limit: int = 15) -> dict:
                     (q, q, int(limit)))
             rows = cur.fetchall()
             if not rows:
-                return {"ok": True, "site": _site_label, "query": query, "count": 0, "results": []}
+                # No stock-bearing match. Distinguish the 3 states via the shared
+                # resolver: catalog_only (in catalog, 0 stock — the COMMON case,
+                # NOT "out of stock everywhere"), stock_only, or genuine not_found.
+                from dash.tools.pharma_resolve import resolve_article
+                res = resolve_article(cur, SCHEMA, query,
+                                      sites=(allowed or None))
+                base = {"ok": True, "site": _site_label, "query": query,
+                        "count": 0, "results": []}
+                if res["state"] == "catalog_only":
+                    base.update({"state": "catalog_only", "in_catalog": True,
+                                 "in_stock_count": 0,
+                                 "message": res["message"],
+                                 "article_codes": res["art_keys"]})
+                elif res["state"] == "stock_only":
+                    base.update({"state": "stock_only",
+                                 "message": res["message"],
+                                 "article_codes": res["art_keys"]})
+                else:
+                    base.update({"state": "not_found",
+                                 "message": res["message"]})
+                return base
 
             # art_key is text; keep both the raw key (for the shop_flat lookups below)
             # and the int form (downstream find_substitutes expects an int code).
@@ -185,9 +205,26 @@ def stock_check(query: str = "", site_code: str = "", limit: int = 15) -> dict:
                         if len(other[k]) < 4:
                             other[k].append({"site": sc, "qty": int(qty)})
 
+            # link_status per matched art_key — so a catalog_only item (in catalog,
+            # 0 stock chain-wide) is framed honestly, not as "out of stock". NULL/
+            # missing (pre-build rows) → 'both' (fail-soft). Whole-chain catalog
+            # presence, so this is NOT site-scoped.
+            link_status = {}
+            if art_keys:
+                cur.execute(
+                    f"""SELECT art_key,
+                               MAX(COALESCE(NULLIF(link_status, ''), 'both')) AS ls
+                        FROM {FLAT}
+                        WHERE art_key = ANY(%s)
+                        GROUP BY art_key""", (art_keys,))
+                for ak, ls in cur.fetchall():
+                    link_status[_ac(ak)] = ls
+
             results = []
             for art_key, brand, salt, cat, your_qty, cost in rows:
                 ac = _ac(art_key)
+                _ls = link_status.get(ac, "both")
+                _catalog_only = (_ls == "catalog_only")
                 _row = {
                     "article_code": ac,
                     "brand": (brand or "").strip(),
@@ -197,7 +234,13 @@ def stock_check(query: str = "", site_code: str = "", limit: int = 15) -> dict:
                     "in_stock": int(your_qty) > 0,
                     "cost": int(cost or 0),
                     "other_branches": other.get(ac, []),
+                    "in_catalog": True,
                 }
+                if _catalog_only:
+                    # In the catalog but not stocked anywhere — honest framing.
+                    from dash.tools.pharma_resolve import MSG_CATALOG_ONLY
+                    _row["state"] = "catalog_only"
+                    _row["note"] = MSG_CATALOG_ONLY
                 if _locked:
                     # per-owned-outlet split (Tier-1) for multi-outlet keys
                     _row["your_stores"] = owned_bd.get(ac, [])

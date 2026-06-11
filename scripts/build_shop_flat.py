@@ -114,7 +114,10 @@ def run() -> dict:
             slot[0] += float(qty or 0)
             slot[1] = max(slot[1], float(cost or 0))
 
-        # 3. (re)create table
+        # 3. (re)create table. FULL OUTER semantics via link_status:
+        #    both = catalog+stock, catalog_only = catalog w/ no stock (site '__none__'),
+        #    stock_only = stock w/ no catalog (brand NULL). Catalog & stock are kept by
+        #    DIFFERENT ERP processes and legitimately DON'T match — all 3 states land.
         cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
         cur.execute(f"""
             CREATE TABLE IF NOT EXISTS "{SCHEMA}".shop_flat (
@@ -128,31 +131,54 @@ def run() -> dict:
                 cost         numeric NOT NULL DEFAULT 0,
                 is_in_stock  boolean NOT NULL DEFAULT false,
                 linked       boolean NOT NULL DEFAULT false,
+                link_status  text NOT NULL DEFAULT 'both',
                 updated_at   timestamptz NOT NULL DEFAULT now(),
                 PRIMARY KEY (art_key, site_code)
             );""")
+        # in case the table pre-existed without link_status (older build)
+        cur.execute(f'ALTER TABLE "{SCHEMA}".shop_flat '
+                    'ADD COLUMN IF NOT EXISTS link_status text NOT NULL DEFAULT \'both\';')
         cur.execute(f'TRUNCATE "{SCHEMA}".shop_flat;')
 
-        # 4. rows
+        NONE_SITE = "__none__"
+
+        # 4. rows. (a) one row per stock (art_key, site): both | stock_only.
         rows = []
-        linked_n = 0
+        both_n = stock_only_n = 0
+        stocked_keys: set[str] = set()
         for (art_key, site), (qty, cost) in agg.items():
+            stocked_keys.add(art_key)
             attrs = catalog.get(art_key)
             linked = attrs is not None
+            status = "both" if linked else "stock_only"
             if linked:
-                linked_n += 1
+                both_n += 1
+            else:
+                stock_only_n += 1
             brand, generic, comp, cat = attrs if linked else (None, None, None, None)
             rows.append((
                 art_key, site, brand, generic, comp, cat,
-                qty, cost, qty > 0, linked,
+                qty, cost, qty > 0, linked, status,
+            ))
+
+        # (b) catalog articles with NO stock anywhere -> one catalog_only row each,
+        #     site '__none__', qty 0, catalog attrs populated, linked (catalog-known).
+        catalog_only_n = 0
+        for art_key, (brand, generic, comp, cat) in catalog.items():
+            if art_key in stocked_keys:
+                continue
+            catalog_only_n += 1
+            rows.append((
+                art_key, NONE_SITE, brand, generic, comp, cat,
+                0, 0, False, True, "catalog_only",
             ))
 
         if rows:
             cur.executemany(
                 f'INSERT INTO "{SCHEMA}".shop_flat '
                 '(art_key,site_code,brand,generic,composition,category,'
-                'stock_qty,cost,is_in_stock,linked) '
-                'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+                'stock_qty,cost,is_in_stock,linked,link_status) '
+                'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
                 rows)
 
         # 5. indexes (after load)
@@ -160,6 +186,7 @@ def run() -> dict:
         cur.execute(f'CREATE INDEX IF NOT EXISTS shop_flat_brand_trgm ON "{SCHEMA}".shop_flat USING gin (brand gin_trgm_ops);')
         cur.execute(f'CREATE INDEX IF NOT EXISTS shop_flat_generic_trgm ON "{SCHEMA}".shop_flat USING gin (generic gin_trgm_ops);')
         cur.execute(f'CREATE INDEX IF NOT EXISTS shop_flat_instock_idx ON "{SCHEMA}".shop_flat (site_code) WHERE is_in_stock;')
+        cur.execute(f'CREATE INDEX IF NOT EXISTS shop_flat_link_status_idx ON "{SCHEMA}".shop_flat (link_status);')
 
         cur.execute(f'SELECT count(*), count(*) FILTER (WHERE linked) FROM "{SCHEMA}".shop_flat;')
         total, linked_total = cur.fetchone()
@@ -168,6 +195,7 @@ def run() -> dict:
             "catalog_keys": len(catalog), "rows": int(total or 0),
             "linked": int(linked_total or 0),
             "unlinked": int((total or 0) - (linked_total or 0)),
+            "both": both_n, "catalog_only": catalog_only_n, "stock_only": stock_only_n,
         }
     finally:
         c.close()

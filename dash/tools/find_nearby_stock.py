@@ -80,12 +80,36 @@ def find_nearby_stock(query: str = "", my_store: str = "", low_threshold: int = 
                 (q, q))
             arts = cur.fetchall()
             if not arts:
+                # Nothing matched by name. Use the shared 3-state resolver to tell
+                # a genuine not_found from a stock_only code (NULL brand → name
+                # ILIKE can't reach it).
+                from dash.tools.pharma_resolve import resolve_article
+                res = resolve_article(cur, SCHEMA, query)
+                if res["state"] == "stock_only":
+                    return {"ok": True, "query": query, "my_branch": my_label,
+                            "results": [], "count": 0, "state": "stock_only",
+                            "message": res["message"],
+                            "article_codes": res["art_keys"]}
                 return {"ok": True, "query": query, "my_branch": my_label,
-                        "results": [], "count": 0}
+                        "results": [], "count": 0, "state": "not_found",
+                        "message": res["message"]}
 
             labels = {a[0]: {"brand": (a[1] or "").strip(), "salt": (a[2] or "").strip()}
                       for a in arts}
             art_keys = list(labels.keys())
+
+            # link_status per matched art_key — a catalog_only item is in the
+            # catalog but stocked at NO branch (honest framing, NOT "out of stock
+            # everywhere"). NULL/missing → 'both' (fail-soft pre-build).
+            link_status = {}
+            cur.execute(
+                f"""SELECT art_key,
+                           MAX(COALESCE(NULLIF(link_status, ''), 'both')) AS ls
+                    FROM {FLAT}
+                    WHERE art_key = ANY(%s)
+                    GROUP BY art_key""", (art_keys,))
+            for ak, ls in cur.fetchall():
+                link_status[ak] = ls
 
             # 2) YOUR stock = SUM(stock_qty) per art_key at your branch(es)
             your_qty = {ak: 0 for ak in art_keys}
@@ -129,6 +153,7 @@ def find_nearby_stock(query: str = "", my_store: str = "", low_threshold: int = 
             results = []
             for ak in art_keys:
                 yq = int(your_qty.get(ak, 0))
+                _ls = link_status.get(ak, "both")
                 _row = {
                     "brand": labels[ak]["brand"],
                     "salt": labels[ak]["salt"],
@@ -137,7 +162,12 @@ def find_nearby_stock(query: str = "", my_store: str = "", low_threshold: int = 
                     "is_low": yq <= int(low_threshold),
                     "in_stock": yq > 0,
                     "other_branches": other.get(ak, []),
+                    "in_catalog": True,
                 }
+                if _ls == "catalog_only" and not _row["other_branches"] and yq == 0:
+                    # In the catalog but not stocked at any branch — honest.
+                    _row["state"] = "catalog_only"
+                    _row["note"] = "In catalog, not stocked at any branch."
                 # belt-and-suspenders, same as pharma_shop_tool
                 mask_row(_row, "" if _locked else my_store)
                 results.append(_row)
