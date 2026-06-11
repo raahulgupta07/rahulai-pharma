@@ -83,3 +83,49 @@ def clusters(
     except Exception as exc:  # noqa: BLE001
         logger.warning("cache clusters failed for %s: %s", slug, exc)
         return {"ok": False, "error": str(exc), "clusters": []}
+
+
+@router.get("/api/projects/{slug}/cache/list")
+def cache_list(slug: str, request: Request, limit: int = Query(200)):
+    """List cached answer rows (newest first) with a live schema-freshness flag."""
+    _gate(request)
+    try:
+        from dash.learning.cache_curator import list_cached
+        return {"rows": list_cached(slug, limit=limit)}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("cache list failed for %s: %s", slug, exc)
+        return {"ok": False, "error": str(exc), "rows": []}
+
+
+@router.post("/api/projects/{slug}/cache/promote")
+async def promote_one(slug: str, request: Request):
+    """Targeted 'Cache this' — leader judges + verifies + promotes ONE question.
+    Body: {"question": "..."}. Returns the curate_one outcome dict."""
+    _gate(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    question = str((body or {}).get("question") or "").strip()
+    if not question:
+        return {"ok": False, "error": "question required"}
+    try:
+        from dash.learning.cache_curator import curate_one
+        res = await curate_one(slug, question, dry_run=False)
+        res["ok"] = res.get("outcome") == "promoted"
+        return res
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("cache promote failed for %s: %s", slug, exc)
+        return {"ok": False, "error": str(exc)}
+
+
+@router.post("/api/projects/{slug}/cache/{cache_id}/evict")
+def evict(slug: str, cache_id: int, request: Request):
+    """Soft-delete a cache row + drop its question vector."""
+    _gate(request)
+    try:
+        from dash.learning.answer_cache import demote_answer
+        return demote_answer(slug, cache_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("cache evict failed for %s/%s: %s", slug, cache_id, exc)
+        return {"ok": False, "error": str(exc)}

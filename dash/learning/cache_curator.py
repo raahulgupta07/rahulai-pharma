@@ -236,6 +236,112 @@ def _build_card(question: str, value, rows: list, cols: list,
     return "\n".join(parts)
 
 
+async def curate_one(project_slug: str, question: str, *, dry_run: bool = False) -> dict:
+    """Judge → verify → (promote) ONE question. Reused by run_curator's loop and
+    by the per-row 'Cache this' endpoint.
+
+    Returns {"question", "outcome": "promoted"|"candidate"|"skipped",
+             "reason", "sql", "value", "id", "source_tables"}. Fail-soft.
+    """
+    from dash.learning.schema_guard import sql_source_tables
+    rep = (question or "").strip()
+    out = {"question": rep, "outcome": "skipped", "reason": "", "sql": "",
+           "value": None, "id": None, "source_tables": []}
+    if not rep:
+        out["reason"] = "empty question"
+        return out
+    try:
+        if _is_cached(project_slug, rep):
+            out["reason"] = "already cached"
+            return out
+
+        judgment = _judge_cluster(project_slug, rep)
+        if not judgment.get("cacheable"):
+            out["reason"] = judgment.get("reason") or "leader: not cacheable"
+            return out
+
+        sql = (judgment.get("canonical_sql") or "").strip()
+        if not _is_read_only(sql):
+            out["reason"] = "sql not read-only / unsafe"
+            return out
+        out["sql"] = sql
+
+        from dash.learning import verified_reward as _vr
+        run = _vr._run_rows(project_slug, sql, limit=20)
+        if not run or run.get("value") is None:
+            out["reason"] = "no data"
+            return out
+
+        value = run.get("value")
+        rows = run.get("rows") or []
+        cols = run.get("columns") or []
+        tables = sql_source_tables(sql)
+        out["value"] = value
+        out["source_tables"] = tables
+
+        if dry_run:
+            out["outcome"] = "candidate"
+            out["reason"] = "would promote"
+            return out
+
+        card = _build_card(rep, value, rows, cols, sql, tables)
+        from dash.learning.answer_cache import promote_answer
+        promo = await promote_answer(
+            project_slug, question=rep, content=card, canonical_sql=sql,
+            source_tables=tables, confidence=0.9, promoted_by="leader",
+        )
+        if promo.get("ok"):
+            out["outcome"] = "promoted"
+            out["id"] = promo.get("id")
+            out["reason"] = "promoted"
+        else:
+            out["reason"] = f"promote failed: {promo.get('error')}"
+        return out
+    except Exception as exc:  # noqa: BLE001
+        out["reason"] = f"error: {exc}"
+        return out
+
+
+def list_cached(project_slug: str, *, limit: int = 200) -> list[dict]:
+    """List cache rows (newest first) with a live schema-freshness flag.
+    Read-only. Fail-soft → []."""
+    try:
+        from sqlalchemy import text as _text
+        from db.session import get_sql_engine
+        from dash.learning.schema_guard import live_schema_hash
+        with get_sql_engine().connect() as conn:
+            rows = conn.execute(_text(
+                "SELECT id, question, hit_count, status, source_tables, schema_hash, "
+                "       promoted_by, confidence, created_at, last_served_at "
+                "FROM dash.dash_answer_cache WHERE project_slug = :s "
+                "AND status <> 'demoted' "
+                "ORDER BY created_at DESC LIMIT :l"
+            ), {"s": project_slug, "l": int(limit)}).fetchall()
+        out = []
+        for r in rows:
+            tables = list(r[4] or [])
+            stored = r[5]
+            fresh = True
+            if stored:
+                try:
+                    live = live_schema_hash(project_slug, tables)
+                    fresh = (not live) or (live == stored)
+                except Exception:
+                    fresh = True
+            out.append({
+                "id": r[0], "question": r[1], "hit_count": int(r[2] or 0),
+                "status": r[3], "source_tables": tables,
+                "promoted_by": r[6], "confidence": float(r[7] or 0),
+                "created_at": r[8].isoformat() + "Z" if r[8] else None,
+                "last_served_at": r[9].isoformat() + "Z" if r[9] else None,
+                "schema_fresh": fresh,
+            })
+        return out
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("cache_curator.list_cached failed for %s: %s", project_slug, exc)
+        return []
+
+
 async def run_curator(
     project_slug: str,
     *,
@@ -269,72 +375,23 @@ async def run_curator(
     promoted_n = 0
     for cluster in clusters[:_MAX_CLUSTERS]:
         try:
-            rep = (cluster or {}).get("representative") or ""
-            rep = rep.strip()
+            rep = ((cluster or {}).get("representative") or "").strip()
             if not rep:
                 continue
             count = int((cluster or {}).get("count") or 0)
 
-            # Already cached → skip silently-ish.
-            if _is_cached(project_slug, rep):
-                result["skipped"].append(
-                    {"question": rep, "count": count, "reason": "already cached"})
-                continue
-
-            # LEADER JUDGE.
-            judgment = _judge_cluster(project_slug, rep)
-            if not judgment.get("cacheable"):
-                result["skipped"].append({
-                    "question": rep, "count": count,
-                    "reason": judgment.get("reason") or "leader: not cacheable",
-                })
-                continue
-
-            sql = (judgment.get("canonical_sql") or "").strip()
-            if not _is_read_only(sql):
-                result["skipped"].append({
-                    "question": rep, "count": count,
-                    "reason": "sql not read-only / unsafe",
-                })
-                continue
-
-            # VERIFY — run read-only, must return data.
-            from dash.learning import verified_reward as _vr
-            run = _vr._run_rows(project_slug, sql, limit=20)
-            if not run or run.get("value") is None:
-                result["skipped"].append({
-                    "question": rep, "count": count, "reason": "no data",
-                })
-                continue
-
-            value = run.get("value")
-            rows = run.get("rows") or []
-            cols = run.get("columns") or []
-            tables = sql_source_tables(sql)
-            card = _build_card(rep, value, rows, cols, sql, tables)
-
-            if dry_run:
+            one = await curate_one(project_slug, rep, dry_run=dry_run)
+            outcome = one.get("outcome")
+            if outcome == "candidate":
                 result["candidates"].append({
-                    "question": rep, "count": count, "sql": sql,
-                    "value": value, "would_promote": True,
-                    "source_tables": tables,
+                    "question": rep, "count": count, "sql": one.get("sql"),
+                    "value": one.get("value"), "would_promote": True,
+                    "source_tables": one.get("source_tables") or [],
                 })
-                continue
-
-            from dash.learning.answer_cache import promote_answer
-            promo = await promote_answer(
-                project_slug,
-                question=rep,
-                content=card,
-                canonical_sql=sql,
-                source_tables=tables,
-                confidence=0.9,
-                promoted_by="leader",
-            )
-            if promo.get("ok"):
+            elif outcome == "promoted":
                 result["promoted"].append({
-                    "question": rep, "count": count, "sql": sql,
-                    "value": value, "id": promo.get("id"),
+                    "question": rep, "count": count, "sql": one.get("sql"),
+                    "value": one.get("value"), "id": one.get("id"),
                 })
                 promoted_n += 1
                 if promoted_n >= max_promote:
@@ -342,7 +399,7 @@ async def run_curator(
             else:
                 result["skipped"].append({
                     "question": rep, "count": count,
-                    "reason": f"promote failed: {promo.get('error')}",
+                    "reason": one.get("reason") or "skipped",
                 })
         except Exception as exc:  # noqa: BLE001
             logger.debug("cache_curator: cluster failed for %s: %s", project_slug, exc)

@@ -11,6 +11,7 @@
     { label: 'Learning', items: [['learning', 'Like / Dislike', 'thumb']] },
     { label: 'People', items: [['people', 'People', 'people2']] },
     { label: 'Analytics', items: [['tools', 'Tools', 'wrench'], ['security', 'Security', 'shield'], ['entities', 'Entities', 'users']] },
+    { label: 'Answer Cache', items: [['cache', 'Answer Cache', 'vector']] },
     { label: 'Billing', items: [['billing', 'Billing', 'receipt'], ['live', 'Live', 'bolt']] },
   ] as { label: string; items: [string, string, string][] }[];
   const ICONS: Record<string, string> = {
@@ -65,6 +66,61 @@
   // budget edit
   let bDaily = $state(0); let bMonthly = $state(0); let bSaving = $state(false);
   let invGroup = $state('store');
+
+  // answer cache (P4) — leader-driven repeated-question cache
+  let cacheSlug = $state('');
+  let cacheStats: any = $state(null);
+  let cacheClusters: any[] = $state([]);
+  let cacheRows: any[] = $state([]);
+  let cacheBusy = $state('');          // question/id currently acting on
+  let cacheMsg = $state('');
+  let curatePreview: any[] | null = $state(null);
+  let curateBusy = $state(false);
+
+  async function loadCache() {
+    if (!cacheSlug) {
+      try { const f = await jget('/api/flags'); cacheSlug = f?.locked_slug || f?.slug || 'citypharma'; }
+      catch { cacheSlug = 'citypharma'; }
+    }
+    const base = `/api/projects/${cacheSlug}/cache`;
+    const [s, c, l] = await Promise.all([
+      jget(`${base}/stats`), jget(`${base}/clusters?min_count=3`), jget(`${base}/list`),
+    ]);
+    cacheStats = s; cacheClusters = c?.clusters ?? []; cacheRows = l?.rows ?? [];
+  }
+  async function cacheThis(q: string) {
+    cacheBusy = q; cacheMsg = '';
+    try {
+      const r = await jpost(`/api/projects/${cacheSlug}/cache/promote`, { question: q });
+      cacheMsg = r?.ok ? `Cached: "${q.slice(0, 48)}…"` : `Not cached — ${r?.reason || r?.error || 'leader declined'}`;
+      await loadCache();
+    } catch (e: any) { cacheMsg = `Failed: ${e.message}`; }
+    cacheBusy = '';
+  }
+  async function evictRow(id: number) {
+    cacheBusy = String(id); cacheMsg = '';
+    try { await jpost(`/api/projects/${cacheSlug}/cache/${id}/evict`, {}); cacheMsg = 'Evicted.'; await loadCache(); }
+    catch (e: any) { cacheMsg = `Evict failed: ${e.message}`; }
+    cacheBusy = '';
+  }
+  async function runPreview() {
+    curateBusy = true; cacheMsg = ''; curatePreview = null;
+    try {
+      const r = await jpost(`/api/projects/${cacheSlug}/cache/curate?dry_run=1&max_promote=10`, {});
+      curatePreview = r?.candidates ?? [];
+      if (!curatePreview.length) cacheMsg = `No new cacheable questions (${(r?.skipped ?? []).length} skipped).`;
+    } catch (e: any) { cacheMsg = `Preview failed: ${e.message}`; }
+    curateBusy = false;
+  }
+  async function promoteAll() {
+    curateBusy = true; cacheMsg = '';
+    try {
+      const r = await jpost(`/api/projects/${cacheSlug}/cache/curate?dry_run=0&max_promote=10`, {});
+      cacheMsg = `Promoted ${(r?.promoted ?? []).length} answer(s).`;
+      curatePreview = null; await loadCache();
+    } catch (e: any) { cacheMsg = `Promote failed: ${e.message}`; }
+    curateBusy = false;
+  }
 
   // drawer
   let drawerOpen = $state(false); let drawerType = $state(''); let drawerId = $state('');
@@ -170,6 +226,8 @@
         const u = await jget(`/api/admin/usage?${qs({ group_by: 'actor', limit: '1' })}`);
         const s = await jget(`/api/admin/usage?${qs({ group_by: 'store_id', limit: '1' })}`);
         entUsers = u?.breakdown ?? []; entStores = s?.breakdown ?? [];
+      } else if (t === 'cache') {
+        await loadCache();
       }
       loaded[t] = true; loaded = { ...loaded };
     } catch (e: any) { error = e?.message || String(e); }
@@ -887,6 +945,70 @@
         </div>
       </div>
     {/if}
+  {/if}
+
+  <!-- ============ ANSWER CACHE (P4) ============ -->
+  {#if tab === 'cache'}
+    <div class="u-frow" style="margin-bottom:.75rem; align-items:center">
+      <button class="u-btn ghost" onclick={() => loadTab('cache', true)}>↻ refresh</button>
+      <button class="u-btn" onclick={runPreview} disabled={curateBusy}>{curateBusy ? 'running…' : '▶ Run curation preview'}</button>
+      {#if cacheMsg}<span class="u-st">{cacheMsg}</span>{/if}
+    </div>
+
+    {#if cacheStats}
+      <div class="u-kpis">
+        <div class="u-kpi"><span class="k">LIVE ROWS</span><b>{cacheStats.by_status?.live ?? 0}</b></div>
+        <div class="u-kpi"><span class="k">TOTAL HITS</span><b>{compact(cacheStats.total_hit_count ?? 0)}</b></div>
+        <div class="u-kpi"><span class="k">LEADER-MADE</span><b>{cacheStats.by_promoted_by?.leader ?? 0}</b></div>
+        <div class="u-kpi" class:bad={(cacheStats.by_status?.stale ?? 0) > 0}><span class="k">STALE</span><b>{cacheStats.by_status?.stale ?? 0}</b></div>
+      </div>
+    {/if}
+
+    {#if curatePreview}
+      <div class="u-card" style="border-color:rgba(201,99,66,.3)">
+        <div class="u-ctitle">Curation preview — leader-judged candidates ({curatePreview.length})
+          {#if curatePreview.length}<button class="u-btn sm" style="float:right" onclick={promoteAll} disabled={curateBusy}>{curateBusy ? 'promoting…' : `Promote all (${curatePreview.length})`}</button>{/if}
+        </div>
+        <table class="u-tbl"><thead><tr><th>question</th><th>value</th><th>SQL</th></tr></thead><tbody>
+          {#each curatePreview as c}<tr><td>{c.question}</td><td class="num">{c.value ?? '—'}</td><td class="mono dim" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{c.sql}</td></tr>{/each}
+          {#if !curatePreview.length}<tr><td colspan="3" class="u-empty">nothing new to cache</td></tr>{/if}
+        </tbody></table>
+      </div>
+    {/if}
+
+    <div class="u-card"><div class="u-ctitle">Frequent questions (last 30d, asked ≥3×)</div>
+      <table class="u-tbl"><thead><tr><th>×</th><th>question</th><th></th></tr></thead><tbody>
+        {#each cacheClusters as c}
+          <tr>
+            <td class="num">{c.count}</td>
+            <td>{c.representative}</td>
+            <td style="text-align:right">
+              <button class="u-btn ghost sm" onclick={() => cacheThis(c.representative)} disabled={cacheBusy === c.representative}>
+                {cacheBusy === c.representative ? 'caching…' : 'Cache this →'}
+              </button>
+            </td>
+          </tr>
+        {/each}
+        {#if !cacheClusters.length}<tr><td colspan="3" class="u-empty">no repeated questions yet</td></tr>{/if}
+      </tbody></table>
+    </div>
+
+    <div class="u-card"><div class="u-ctitle">Cached answers ({cacheRows.length})</div>
+      <table class="u-tbl"><thead><tr><th>question</th><th>hits</th><th>source</th><th>schema</th><th>by</th><th></th></tr></thead><tbody>
+        {#each cacheRows as r}
+          <tr class:dim={r.status !== 'live'}>
+            <td>{r.question}</td>
+            <td class="num">{r.hit_count}</td>
+            <td class="mono dim">{(r.source_tables ?? []).join(', ') || '—'}</td>
+            <td>{#if r.schema_fresh}<span class="u-st">✓</span>{:else}<span class="u-st error">⚠ drift</span>{/if}</td>
+            <td class="dim">{r.promoted_by}</td>
+            <td style="text-align:right"><button class="u-btn ghost sm" onclick={() => evictRow(r.id)} disabled={cacheBusy === String(r.id)}>{cacheBusy === String(r.id) ? '…' : 'Evict'}</button></td>
+          </tr>
+        {/each}
+        {#if !cacheRows.length}<tr><td colspan="6" class="u-empty">cache empty — promote a frequent question above, or enable the curator daemon (CACHE_CURATOR_ENABLED=1)</td></tr>{/if}
+      </tbody></table>
+    </div>
+    <p class="u-hint">Cached answers serve verbatim with zero LLM. The leader auto-promotes via the curator daemon (default OFF — env <code>CACHE_CURATOR_ENABLED=1</code>); "Cache this" / "Run curation" promote on demand. A cached answer auto-evicts when its source-table schema drifts.</p>
   {/if}
 
   </div><!-- /u-main -->

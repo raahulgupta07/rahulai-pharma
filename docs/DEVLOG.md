@@ -2,6 +2,18 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-11 (latest+64) — Answer-cache P4 admin tab (Usage dashboard) — ALL PHASES P0–P4 COMPLETE (LOCAL, LIVE)
+
+**P4 = admin surface** for the answer cache, as a new **"Answer Cache" rail tab in the Usage dashboard** (`frontend/src/lib/admin/UsagePanel.svelte`, `/ui/usage`). UI: KPI tiles (live rows / total hits / leader-made / stale), **Frequent questions** list (from `/cache/clusters`) each w/ a per-row **Cache this →** button (targeted leader promote), **Cached answers** table (question · hits · source tables · schema ✓ or ⚠drift · promoted_by · **Evict**), and a **Run curation preview** button → leader-judged candidates table + **Promote all**. Reuses the panel's `jget`/`jpost`, `.u-card`/`.u-kpi`/`.u-tbl`/`.u-btn` style tokens, rail-scroll shell. Slug resolved once from `/api/flags.locked_slug`.
+
+**Backend additions** (`app/cache_curator_api.py` — super-admin gated like the rest): `GET /api/projects/{slug}/cache/list` (→ `cache_curator.list_cached`: rows newest-first + a LIVE schema-fresh flag via `schema_guard.live_schema_hash`, **excludes status='demoted'** so an evict disappears from view), `POST .../cache/promote` (body `{question}` → `curate_one`), `POST .../cache/{id}/evict` (→ `answer_cache.demote_answer`). Refactored `cache_curator.curate_one(slug, question, dry_run)` = the single-question judge→read-only-gate→verify→promote path, now reused by both `run_curator`'s loop AND the per-row promote endpoint (DRY).
+
+**E2E-verified live:** `list` empty → `promote` a stable question → promoted id, `list` shows it (schema_fresh=true, by=leader) → `evict` → `list` back to **0** (demoted excluded). Time-relative "currently" question still correctly **refused** by the leader. 3 new endpoints 200 super-admin. Frontend `bun run build` clean (22s). Test rows wiped → prod cache empty (daemon OFF). Deploy: image rebuild ×2 (+ a UX fix: `list_cached` excludes demoted) + force-recreate, `/api/flags`→200.
+
+**MILESTONE — answer cache P0–P4 ALL DONE:** P0 schema-drift guard · P1 full-answer semantic cache (table 185 + serve) · P2 question clustering · P3 leader Cache Curator daemon (default OFF) · P4 admin tab. The loop: logged questions → cluster → leader judges stable-vs-volatile → verify SQL → promote full AnswerCard → semantic NN serve (zero LLM) → schema-drift evict. Files this session: `UsagePanel.svelte`, `cache_curator.py`, `cache_curator_api.py`. LOCAL.
+
+---
+
 ### Session 2026-06-11 (latest+63) — Answer-cache P2 (question clustering) + P3 (leader-driven Cache Curator) — built via 2 parallel file-disjoint agents (LOCAL, LIVE)
 
 **P2 — `dash/learning/question_clusters.py`** (agent A). `cluster_questions(slug, *, days=30, min_count=2, limit=50)` — read-only, deterministic (NO LLM/embeddings): unions logged questions from `public.dash_feedback.question` + `public.dash_embed_calls.message_text` (the latter has NO project_slug → JOIN `dash_agent_embeds` on embed_id), normalizes (`_norm` same as answer_cache), groups by norm, returns clusters `{representative, norm, count, variants, last_seen, sources}` filtered `count>=min_count`, sorted count desc. `dash_traces` deliberately SKIPPED — its `meta` stamps only actor/channel/store_id, never the raw question (confirmed `set_root_meta` at projects.py:1016). Bonus `recent_questions`. E2E: 17 real clusters from demo feedback.
