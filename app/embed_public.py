@@ -1807,6 +1807,17 @@ _STEP_TOOL_MAP = {
 }
 
 
+def _tool_name_of(data: dict) -> str:
+    """Extract the tool name from a tool-call event payload (same logic as
+    _step_label's tool branch). Used to whitelist-gate consumer step labels."""
+    tool = data.get("tool") or {}
+    name = ""
+    if isinstance(tool, dict):
+        name = tool.get("tool_name") or tool.get("name") or ""
+    name = name or data.get("tool_name") or data.get("tool") or ""
+    return name if isinstance(name, str) else ""
+
+
 def _step_label(event_name: str, data: dict) -> tuple[str, str]:
     """Map an Agno tool/reasoning event to a short (label, icon) for the strip."""
     if "Reasoning" in event_name:
@@ -2193,6 +2204,17 @@ async def embed_chat_stream(req: Request):
                             _reasoning_shown = True
                             yield _sse_format("step", {"label": "Thinking", "icon": "🧠"})
                         continue
+                    # Consumer mode: WHITELIST-ONLY tool steps. An un-mapped tool
+                    # (team delegation/transfer, internal orchestration — e.g.
+                    # "delegate_task_to_member") must NOT leak its raw name into
+                    # the customer strip; collapse it to one generic "Thinking".
+                    if consumer_mode and not _is_reasoning:
+                        _tname = _tool_name_of(data)
+                        if _tname not in _STEP_TOOL_MAP:
+                            if not _reasoning_shown:
+                                _reasoning_shown = True
+                                yield _sse_format("step", {"label": "Thinking", "icon": "🧠"})
+                            continue
                     label, icon = _step_label(event_name, data)
                     # Consumer mode: cap visible distinct steps so a 27-step run
                     # doesn't flood the bubble.
