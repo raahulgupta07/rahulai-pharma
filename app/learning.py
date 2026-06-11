@@ -682,6 +682,32 @@ def get_auto_train_status(slug: str, request: Request):
     else:
         callout = "Watching for new data"
 
+    # Derive robot accessory task tag.
+    try:
+        _is_training = active_run is not None
+        if daemon.get("enabled") is False and not _is_training:
+            task = "paused"
+        elif not _is_training:
+            task = "idle"
+        else:
+            _step = (active_run.get("current_step") or "").lower()
+            if "embed" in _step or "vector" in _step:
+                task = "embedding"
+            elif "index" in _step or "finaliz" in _step or "knowledge" in _step:
+                task = "indexing"
+            elif "eval" in _step:
+                task = "eval"
+            else:
+                task = "training"
+    except Exception:
+        task = "idle"
+
+    # Derive attention badge count (cheap, no extra queries).
+    try:
+        attention = 1 if recent_runs and recent_runs[0].get("status") in ("failed", "error") else 0
+    except Exception:
+        attention = 0
+
     return {
         "daemon": daemon,
         "active_run": active_run,
@@ -690,6 +716,8 @@ def get_auto_train_status(slug: str, request: Request):
         "current_step": active_run["current_step"] if active_run else "",
         "last_run": recent_runs[0] if recent_runs else None,
         "callout": callout,
+        "task": task,
+        "attention": attention,
     }
 
 

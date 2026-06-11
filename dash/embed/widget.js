@@ -214,6 +214,9 @@
       overflow: hidden;
     }
     .msg-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .msg-avatar .bot-robot { display: block; }
+    .msg-avatar .bot-ant { animation: bot-ant-pulse 1.8s ease-in-out infinite; }
+    @keyframes bot-ant-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
     .msg {
       padding: 10px 14px; max-width: 80%;
@@ -306,6 +309,15 @@
       animation: agent-spin 0.7s linear infinite;
     }
     @keyframes agent-spin { to { transform: rotate(360deg); } }
+    .agent-steps-head .think-bot { flex-shrink: 0; vertical-align: middle; overflow: visible; }
+    .think-bot .tb-gear { transform-box: fill-box; transform-origin: center; animation: tb-gear-spin 2.2s linear infinite; }
+    @keyframes tb-gear-spin { to { transform: rotate(360deg); } }
+    .think-bot .tb-eye { animation: tb-blink 2.6s ease-in-out infinite; }
+    @keyframes tb-blink { 0%,92%,100% { opacity: 1; } 96% { opacity: 0.15; } }
+    .think-bot .tb-ant { animation: bot-ant-pulse 1.6s ease-in-out infinite; }
+    @media (prefers-reduced-motion: reduce) {
+      .think-bot .tb-gear, .think-bot .tb-eye, .think-bot .tb-ant { animation: none; }
+    }
     .agent-step {
       font-size: 12px; color: ${t.fg}; opacity: 0.85;
       display: flex; align-items: center; gap: 7px;
@@ -435,8 +447,32 @@
     if (logoUrl) {
       return '<img src="' + escapeHtml(logoUrl) + '" alt="">';
     }
-    var ch = (title || 'A').trim().charAt(0).toUpperCase();
-    return escapeHtml(ch);
+    // Same robot character as the dashboard — white on the accent avatar circle.
+    return '<svg class="bot-robot" viewBox="0 0 32 32" width="16" height="16" aria-hidden="true">'
+      + '<line x1="16" y1="9" x2="16" y2="5" stroke="#fff" stroke-width="2" stroke-linecap="round"/>'
+      + '<circle class="bot-ant" cx="16" cy="4.3" r="1.8" fill="#fff"/>'
+      + '<rect x="6" y="9" width="20" height="14" rx="4" fill="#fff"/>'
+      + '<rect x="11" y="13" width="3.5" height="3.5" rx="1" fill="' + t.accent + '"/>'
+      + '<rect x="17.5" y="13" width="3.5" height="3.5" rx="1" fill="' + t.accent + '"/>'
+      + '<rect x="12" y="19" width="8" height="1.4" rx="0.7" fill="' + t.accent + '"/>'
+      + '</svg>';
+  }
+
+  // Gear-pose "thinking" robot for the live activity strip head: accent head,
+  // focused eyes (blink), pulsing antenna, a gear spinning beside the antenna.
+  function thinkBotSvg() {
+    return '<svg class="think-bot" viewBox="0 0 42 30" width="38" height="27" aria-hidden="true">'
+      // spinning gear, upper-right
+      + '<text class="tb-gear" x="33" y="11" font-size="13" text-anchor="middle" fill="' + t.accent + '">⚙</text>'
+      // antenna
+      + '<line x1="13" y1="9" x2="13" y2="5.5" stroke="' + t.accent + '" stroke-width="2" stroke-linecap="round"/>'
+      + '<circle class="tb-ant" cx="13" cy="4.6" r="1.7" fill="' + t.accent + '"/>'
+      // head
+      + '<rect x="3" y="9" width="20" height="15" rx="4.5" fill="' + t.accent + '"/>'
+      // focused eyes
+      + '<circle class="tb-eye" cx="9" cy="16.5" r="2.1" fill="#fff"/>'
+      + '<circle class="tb-eye" cx="17" cy="16.5" r="2.1" fill="#fff"/>'
+      + '</svg>';
   }
 
   var panel = document.createElement('div');
@@ -767,6 +803,10 @@
     msgList.appendChild(g);
   }
   showGreeting();
+  // Seed the opening starter-question chips immediately (before any reply) so
+  // the customer sees what they can ask. Falls back to the /suggestions
+  // endpoint if the server config didn't carry starters.
+  loadSuggestions();
 
   // ── Typing indicator ────────────────────────────────────────────────
   var typingRow = null;
@@ -1092,7 +1132,7 @@
         hideTyping();
         var strip = document.createElement('div');
         strip.className = 'agent-steps';
-        strip.innerHTML = '<div class="agent-steps-head"><span class="spin"></span>thinking…</div>';
+        strip.innerHTML = '<div class="agent-steps-head">' + thinkBotSvg() + '<span>thinking…</span></div>';
         msgList.appendChild(strip);
 
         var stepStart = Date.now();

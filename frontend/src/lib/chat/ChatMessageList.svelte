@@ -1,5 +1,6 @@
 <script module lang="ts">
   import Icon from '$lib/Icon.svelte';
+  import RobotAvatar from '$lib/RobotAvatar.svelte';
  /**
  * Module-level exports for chat-renderer helpers shared across surfaces.
  * Both routes/chat/+page.svelte and routes/project/[slug]/+page.svelte
@@ -357,8 +358,8 @@ import AnswerCard from './AnswerCard.svelte';
 {#each messages as msg, i (i)}
   {#if msg.role === 'assistant'}
     <div class="msg-row" style="display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px;">
-      <div style="width: 28px; height: 28px; border-radius: 0; background: var(--pw-bg-alt); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--pw-accent);">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="0"/><path d="M12 2v4"/><circle cx="12" cy="7" r="1"/><path d="M7 15h0M17 15h0M9 18h6"/></svg>
+      <div style="width: 28px; height: 28px; border-radius: 0; background: var(--pw-bg-alt); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+        <RobotAvatar size={20} mood={msg.status === 'error' ? 'error' : (msg.status === 'streaming' ? (msg.content ? 'typing' : 'thinking') : 'done')} />
       </div>
       <div style="flex: 1; min-width: 0;">
 
@@ -1220,7 +1221,7 @@ import AnswerCard from './AnswerCard.svelte';
 
           <!-- Live "generating" indicator while the answer is still streaming -->
           {#if msg.status === 'streaming'}
-            <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--pw-accent)" stroke-width="2"><rect x="3" y="11" width="18" height="10"/><path d="M12 2v4"/><circle cx="12" cy="7" r="1"/></svg><div class="typing-indicator"><span></span><span></span><span></span></div></div>
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;"><RobotAvatar size={16} mood="thinking" /><div class="typing-indicator"><span></span><span></span><span></span></div></div>
           {/if}
 
           <!-- panel_announcement pills: mini-thumbnail + ✓ Added X (N rows). Click → scroll right pane to that panel. -->
@@ -1265,10 +1266,10 @@ import AnswerCard from './AnswerCard.svelte';
                   `<span style="display:inline-block;background:rgba(22,163,74,0.12);color:#15803d;font-size:10px;font-weight:700;letter-spacing:0.04em;padding:2px 6px;border-radius:3px;margin-left:6px;text-transform:uppercase;vertical-align:middle;">✓ ${inner}</span>`)
               }</div>
               {#if msg.status === 'streaming'}
-                <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--pw-accent)" stroke-width="2"><rect x="3" y="11" width="18" height="10"/><path d="M12 2v4"/><circle cx="12" cy="7" r="1"/></svg><div class="typing-indicator"><span></span><span></span><span></span></div></div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;"><RobotAvatar size={16} mood="thinking" /><div class="typing-indicator"><span></span><span></span><span></span></div></div>
               {/if}
             {:else if msg.status === 'streaming'}
-              <div style="display: flex; align-items: center; gap: 8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--pw-accent)" stroke-width="2"><rect x="3" y="11" width="18" height="10"/><path d="M12 2v4"/><circle cx="12" cy="7" r="1"/></svg><div class="typing-indicator"><span></span><span></span><span></span></div></div>
+              <div style="display: flex; align-items: center; gap: 8px;"><RobotAvatar size={16} mood="thinking" /><div class="typing-indicator"><span></span><span></span><span></span></div></div>
             {/if}
             {#if Array.isArray((msg as any).panelAnnouncements) && (msg as any).panelAnnouncements.length > 0}
               <div class="panel-anno-list">

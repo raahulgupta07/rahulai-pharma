@@ -99,7 +99,11 @@ def invalidate_team_cache(project_slug: str | None = None):
         for k in list(_team_cache.keys()):
             if k.startswith(f"{project_slug}_"):
                 _team_cache.pop(k, None)
-_TEAM_CACHE_TTL = 60  # 1 minute — faster refresh for instruction changes
+_TEAM_CACHE_TTL = 300  # 5 min — a cold rebuild costs 2-4s, so hold the team
+# longer to cut that off the hot path. Staleness is handled explicitly:
+# invalidate_team_cache(slug) fires on every feature_config/instruction change
+# (dash/feature_config.py), so a longer TTL never serves stale instructions —
+# it only avoids needless rebuilds between edits.
 
 
 def create_project_team(

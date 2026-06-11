@@ -1016,7 +1016,6 @@ def try_embed_sandbox(embed_id: str, request: Request, token: str | None = None)
           data-position="{position}"
           data-theme="{theme}"
           data-accent="{primary}"
-          data-greeting="{welcome}"
           data-title="{proj_name}"
           {('data-claims="' + _claims_json_attr + '"') if _claims_json_attr else ''}
           async></script>
@@ -1568,49 +1567,72 @@ async def embed_chat(req: Request):
     content = ""
     _usage = {"tokens_in": 0, "tokens_out": 0, "model": ""}
     try:
-        from dash.team import create_project_team
-        team = create_project_team(
-            project_slug=project_slug,
-            agent_name="Embed Agent",
-            agent_role="",
-            agent_personality="friendly",
-            # Per-store team cache key. The store_id is baked into the system
-            # prompt at build time; with user_id=None every store collided on
-            # one cached team (citypharma_None_<lang>) and reused the FIRST
-            # store's baked store_id → cross-store number leak. synthetic_viewer
-            # is the per-embed (per-store) negative id → one team per store.
-            user_id=synthetic_viewer,
-        )
-
-        ctx_note = ""
-        if sess.get("external_user"):
-            ctx_note += f"\n[EMBED CONTEXT] external_user={sess['external_user']}"
-        if sess.get("user_attrs"):
-            import json as _json
-            ctx_note += f"\n[EMBED CONTEXT] user_attrs={_json.dumps(sess['user_attrs'])}"
-
-        # Rate-limit concurrent agent runs to prevent OpenRouter 429s under
-        # load (e.g. 100-shop embed load test). Reuses the chat-tier semaphore
-        # from dash.settings so embed traffic shares the same cap as other
-        # async chat paths. Offloads the blocking team.run() to a thread so
-        # the event loop stays free while we hold the semaphore.
-        import asyncio as _asyncio
+        # ── Stock fast-path (no LLM) ──────────────────────────────────────
+        # Pure "do we have X in stock?" → answer from stock_check directly,
+        # skipping ~12s of model round-trips. Falls through to the agent on any
+        # ambiguity. Consumer / non-private embeds hide qty + cost.
+        _shortcut_hit = False
         try:
-            from dash.settings import _get_sem as _llm_get_sem
-            _sem = _llm_get_sem("qa_generation")  # chat tier
+            from dash.tools.stock_shortcut import try_stock_shortcut
+            _bound_site = (sess_user_attrs or {}).get("store_id") or ""
+            _mask_qty = (response_style == "consumer") or bool(
+                bound_intent and bound_intent != "private")
+            _sc = try_stock_shortcut(message, site_code=_bound_site, mask_qty=_mask_qty)
+            if _sc and _sc.get("answer"):
+                content = _sc["answer"]
+                _usage = {"tokens_in": 0, "tokens_out": 0, "model": "shortcut/stock"}
+                _shortcut_hit = True
+                logger.info("stock shortcut hit (%dms, %d match) — no LLM",
+                            _sc.get("elapsed_ms", 0), _sc.get("count", 0))
         except Exception:
-            _sem = None
-        if _sem is not None:
-            async with _sem:
+            logger.debug("stock shortcut skipped", exc_info=True)
+
+        # Team build + run ONLY when the fast-path did not already answer.
+        team = None
+        if not _shortcut_hit:
+            from dash.team import create_project_team
+            team = create_project_team(
+                project_slug=project_slug,
+                agent_name="Embed Agent",
+                agent_role="",
+                agent_personality="friendly",
+                # Per-store team cache key. The store_id is baked into the system
+                # prompt at build time; with user_id=None every store collided on
+                # one cached team (citypharma_None_<lang>) and reused the FIRST
+                # store's baked store_id → cross-store number leak. synthetic_viewer
+                # is the per-embed (per-store) negative id → one team per store.
+                user_id=synthetic_viewer,
+            )
+
+            ctx_note = ""
+            if sess.get("external_user"):
+                ctx_note += f"\n[EMBED CONTEXT] external_user={sess['external_user']}"
+            if sess.get("user_attrs"):
+                import json as _json
+                ctx_note += f"\n[EMBED CONTEXT] user_attrs={_json.dumps(sess['user_attrs'])}"
+
+            # Rate-limit concurrent agent runs to prevent OpenRouter 429s under
+            # load (e.g. 100-shop embed load test). Reuses the chat-tier semaphore
+            # from dash.settings so embed traffic shares the same cap as other
+            # async chat paths. Offloads the blocking team.run() to a thread so
+            # the event loop stays free while we hold the semaphore.
+            import asyncio as _asyncio
+            try:
+                from dash.settings import _get_sem as _llm_get_sem
+                _sem = _llm_get_sem("qa_generation")  # chat tier
+            except Exception:
+                _sem = None
+            if _sem is not None:
+                async with _sem:
+                    response = await _asyncio.to_thread(
+                        team.run, message + ctx_note, session_id=f"embed_{token[:16]}"
+                    )
+            else:
                 response = await _asyncio.to_thread(
                     team.run, message + ctx_note, session_id=f"embed_{token[:16]}"
                 )
-        else:
-            response = await _asyncio.to_thread(
-                team.run, message + ctx_note, session_id=f"embed_{token[:16]}"
-            )
-        content = response.content or ""
-        _usage = _embed_usage_from_response(response)  # tokens + model for cost
+            content = response.content or ""
+            _usage = _embed_usage_from_response(response)  # tokens + model for cost
 
         # WHY: bound_intent is non-private by default for embeds; strip raw
         # numbers from narrative so banding policy is enforced end-to-end.
@@ -2011,6 +2033,49 @@ async def embed_chat_stream(req: Request):
                 "cache_hit": False,
                 "refused": True,
             })
+            return
+
+        # ── Stock fast-path (no LLM) — pure "do we have X?" answers in code,
+        # skipping ~12s of model round-trips. Falls through on any ambiguity.
+        try:
+            from dash.tools.stock_shortcut import try_stock_shortcut
+            _sc_site = (sess_user_attrs or {}).get("store_id") or ""
+            _sc_mask = consumer_mode or bool(bound_intent and bound_intent != "private")
+            _sc = try_stock_shortcut(message, site_code=_sc_site, mask_qty=_sc_mask)
+        except Exception:
+            _sc = None
+        if _sc and _sc.get("answer"):
+            yield _sse_format("step", {"label": "Checking stock", "icon": "🔍"})
+            _sc_answer = _sc["answer"]
+            full_buffer.append(_sc_answer)
+            yield _sse_format("token", {"delta": _sc_answer})
+            yield _sse_format("done", {
+                "latency_ms": int((_time_mod.monotonic() - t0) * 1000),
+                "session_token": token,
+                "cache_hit": False,
+                "shortcut": "stock",
+            })
+            logger.info("stock shortcut hit (stream, %dms, %d match) — no LLM",
+                        _sc.get("elapsed_ms", 0), _sc.get("count", 0))
+            # Audit row (best-effort) — keep shortcut hits visible in usage stats.
+            try:
+                _lb = _embed_log_bodies()
+                _sc_params = {
+                    "e": embed_id, "t": token, "u": sess.get("external_user"),
+                    "o": req.headers.get("Origin") or "",
+                    "ip": req.client.host if req.client else None,
+                    "mc": len(message or ""), "rc": len(_sc_answer or ""),
+                    "ms": int((_time_mod.monotonic() - t0) * 1000),
+                    "s": True, "err": None, "ti": 0, "to": 0,
+                    "cost": 0.0, "emodel": "shortcut/stock",
+                }
+                if _lb:
+                    _sc_params["mt"] = message
+                    _sc_params["rt"] = _sc_answer
+                with eng.begin() as conn:
+                    conn.execute(text(_embed_call_insert_sql(_lb)), _sc_params)
+            except Exception:
+                pass
             return
 
         try:

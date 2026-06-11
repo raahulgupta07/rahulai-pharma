@@ -8,6 +8,7 @@ with its own schema, knowledge, and agent persona.
 
 import asyncio
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
@@ -65,21 +66,33 @@ def _qa_tokens(s: str) -> set:
     return out
 
 
-def _rank_training_qa(project_slug: str, question: str, k: int = 3) -> str:
-    """Rank this project's trained Q→SQL pairs by relevance to `question` and
-    return a compact 'RELEVANT PROVEN QUERIES' block of the top-k matches.
+# Parsed-training-pairs cache: {slug: (dir_signature, pairs, df, n)}. Avoids
+# re-globbing + JSON-parsing every training file on EVERY chat turn (the parse is
+# the only cost here — ranking itself is pure-Python token math). Busted when the
+# training dir's file set / mtimes change, so a retrain is picked up automatically.
+_TRAINING_PAIRS_CACHE: dict = {}
+_training_pairs_lock = threading.Lock()
 
-    Lexical relevance (rare-term-weighted token overlap) — $0, no latency, no
-    embedding call. Lets a short prompt retrieve the proven SQL for its metric
-    even though session-level instructions can't see the live question.
-    """
+
+def _load_training_pairs(project_slug: str):
+    """Return (pairs, df, n) for a project's trained Q→SQL files, cached by the
+    training dir's (file, mtime) signature. Empty (([], {}, 0)) when none."""
     from dash.paths import KNOWLEDGE_DIR
-    import json as _json, math
+    import json as _json
     tdir = KNOWLEDGE_DIR / project_slug / "training"
     if not tdir.exists():
-        return ""
+        return [], {}, 0
+    try:
+        files = sorted(tdir.glob("*.json"))
+        sig = tuple((f.name, f.stat().st_mtime_ns) for f in files)
+    except Exception:
+        files, sig = [], ()
+    with _training_pairs_lock:
+        hit = _TRAINING_PAIRS_CACHE.get(project_slug)
+        if hit and hit[0] == sig:
+            return hit[1], hit[2], hit[3]
     pairs = []
-    for f in tdir.glob("*.json"):
+    for f in files:
         try:
             with open(f) as _fp:
                 data = _json.load(_fp)
@@ -90,14 +103,28 @@ def _rank_training_qa(project_slug: str, question: str, k: int = 3) -> str:
                 q, sql = qa.get("question", ""), qa.get("sql", "")
                 if q and sql:
                     pairs.append((q, sql, qa.get("answer_template", "")))
-    if not pairs:
-        return ""
-    # document frequency for rare-term weighting
-    df = {}
+    df: dict = {}
     for q, _s, _a in pairs:
         for t in _qa_tokens(q):
             df[t] = df.get(t, 0) + 1
     n = len(pairs)
+    with _training_pairs_lock:
+        _TRAINING_PAIRS_CACHE[project_slug] = (sig, pairs, df, n)
+    return pairs, df, n
+
+
+def _rank_training_qa(project_slug: str, question: str, k: int = 3) -> str:
+    """Rank this project's trained Q→SQL pairs by relevance to `question` and
+    return a compact 'RELEVANT PROVEN QUERIES' block of the top-k matches.
+
+    Lexical relevance (rare-term-weighted token overlap) — $0, no latency, no
+    embedding call. Lets a short prompt retrieve the proven SQL for its metric
+    even though session-level instructions can't see the live question.
+    """
+    import math
+    pairs, df, n = _load_training_pairs(project_slug)
+    if not pairs:
+        return ""
     qtok = _qa_tokens(question)
     if not qtok:
         return ""
@@ -1090,6 +1117,15 @@ async def project_chat(slug: str, request: Request):
     # are NOT independently classifiable — they only make sense in context.
     # If session has any prior on-topic turn, skip the gate.
     _skip_scope_gate = False
+    # Chitchat (greeting / "who are you" / "what can you do") is never off-topic
+    # and is answered in plain prose anyway — don't spend a classifier LLM call
+    # (even a cache MISS is ~500-800ms) gating it.
+    try:
+        from app.main import _is_chitchat as _isc_pre
+        if _isc_pre(message):
+            _skip_scope_gate = True
+    except Exception:
+        pass
     try:
         _msg_lc = (message or "").strip().lower()
         _wc = len(_msg_lc.split())
@@ -1523,8 +1559,14 @@ async def project_chat(slug: str, request: Request):
             # Opt out with REASONING_FLOOR=0.
             import os as _os_rf
             _floor_on = _os_rf.getenv("REASONING_FLOOR", "1").strip().lower() not in ("0", "false", "no", "off")
+            # Cheap tiers (TRIVIAL/LOOKUP = simple stock/drug lookups) don't need a
+            # streamed thinking trace — flooring reasoning_effort there just adds
+            # ~400ms with no analytical benefit. Floor only kicks in on
+            # ANALYSIS/AGENTIC/REASONING where step-by-step actually helps.
+            _tier = (_router_decision or {}).get("tier") or ""
+            _cheap_tier = _tier in ("TRIVIAL", "LOOKUP")
             _re = {"low": "low", "medium": "medium", "high": "high", "max": "high"}.get(effort)
-            if _re is None and _floor_on:
+            if _re is None and _floor_on and not _cheap_tier:
                 _re = "low"
             _mk = {"id": _enforce_id, "temperature": 0.1,
                    # Opt into OpenRouter providers that may train on inputs — without
