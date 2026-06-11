@@ -103,6 +103,21 @@ def promote(
     if expected_value is not None:
         entry["expected_value"] = str(expected_value)[:200]
 
+    # [P0] Stamp the source-table schema fingerprint at pin time so the serve
+    # path can detect schema drift and refuse a now-misaligned pinned SQL.
+    # Fail-soft: a missing/empty hash just leaves the entry un-gated (legacy
+    # behaviour), never blocks promotion.
+    try:
+        from dash.learning.schema_guard import sql_source_tables, live_schema_hash
+        tbls = sql_source_tables(sql)
+        sh = live_schema_hash(slug, tbls)
+        if tbls:
+            entry["source_tables"] = tbls
+        if sh:
+            entry["schema_hash"] = sh
+    except Exception as _e:  # noqa: BLE001
+        logger.debug("golden promote schema-stamp skipped for %s: %s", slug, _e)
+
     entries.append(entry)
     _save(slug, entries)
     return {"ok": True, "total_goldens": len(_load(slug)), "promoted": entry}

@@ -143,7 +143,8 @@ def try_metric_shortcut(project_slug: str, question: str) -> dict | None:
         tdir = KNOWLEDGE_DIR / project_slug / "training"
         if not tdir.exists():
             return None
-        pairs: list[tuple[str, str]] = []
+        # (q, sql, schema_hash) — schema_hash is "" for legacy/auto-QA pairs.
+        pairs: list[tuple[str, str, str]] = []
         for f in tdir.glob("*.json"):
             try:
                 data = _json.load(open(f))
@@ -153,11 +154,11 @@ def try_metric_shortcut(project_slug: str, question: str) -> dict | None:
                 for qa in data:
                     q, sql = qa.get("question", ""), qa.get("sql", "")
                     if q and sql:
-                        pairs.append((q, sql))
+                        pairs.append((q, sql, qa.get("schema_hash") or ""))
         if not pairs:
             return None
         df: dict = {}
-        for q, _s in pairs:
+        for q, _s, _h in pairs:
             for t in _tokens(q):
                 df[t] = df.get(t, 0) + 1
         n = len(pairs)
@@ -165,16 +166,16 @@ def try_metric_shortcut(project_slug: str, question: str) -> dict | None:
         if not qtok:
             return None
         best = None
-        for q, sql in pairs:
+        for q, sql, shash in pairs:
             overlap = qtok & _tokens(q)
             if len(overlap) < 3:               # STRONGER than grading (≥2)
                 continue
             score = sum(math.log((n + 1) / df.get(t, 1)) for t in overlap)
             if best is None or score > best[0]:
-                best = (score, q, sql)
+                best = (score, q, sql, shash)
         if not best:
             return None
-        score, proven_q, sql = best
+        score, proven_q, sql, stored_schema_hash = best
         # 2026-05-26: tightened acceptance — weak echo matches (e.g. score 26
         # on a partially-overlapping question) were producing skinny "fast"
         # cached answers that bypassed the full STANDARD-tier exec card.
@@ -198,6 +199,24 @@ def try_metric_shortcut(project_slug: str, question: str) -> dict | None:
                 sim, n_overlap, score, MIN_SHORTCUT_SCORE,
             )
             return None
+        # [P0] Schema-drift guard: if this pair was pinned with a schema hash and
+        # the live source-table schema has moved since, the pinned SQL may be
+        # silently misaligned — skip the shortcut and let the agent re-plan.
+        # Only gates pairs that carry a stored hash (newly-promoted goldens);
+        # legacy/auto-QA pairs (no hash) are unaffected. Kill switch:
+        # METRIC_SHORTCUT_SCHEMA_GUARD=0.
+        if stored_schema_hash and _os_thr.getenv("METRIC_SHORTCUT_SCHEMA_GUARD", "1") != "0":
+            try:
+                from dash.learning.schema_guard import schema_hash_for_sql
+                live_sh = schema_hash_for_sql(project_slug, sql)
+                if live_sh and live_sh != stored_schema_hash:
+                    logger.info(
+                        "metric_shortcut skipped: schema drift on %s (pinned %s != live %s) — falling to agent",
+                        project_slug, stored_schema_hash[:8], live_sh[:8],
+                    )
+                    return None
+            except Exception:
+                pass  # fail-open: never block a serve on the guard itself
         run = _run_rows(project_slug, sql, limit=20)
         if not run or run.get("value") is None:
             return None

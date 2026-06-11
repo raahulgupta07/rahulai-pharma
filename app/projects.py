@@ -1307,6 +1307,73 @@ async def project_chat(slug: str, request: Request):
             return StreamingResponse(_trivial_stream(), media_type="text/event-stream")
         return {"content": _reply, "session_id": session_id, "router_decision": _router_decision}
 
+    # ── Answer-cache short-circuit (P1) ──────────────────────────────────
+    # When the question SEMANTICALLY matches a pinned full answer (cosine NN in
+    # dash_vectors namespace='qcache', sim ≥ ANSWER_CACHE_MIN_SIM) AND the source
+    # schema is unchanged, serve the saved AnswerCard verbatim — zero LLM, no SQL
+    # re-run. Paraphrases hit. Falls through on miss/drift. Kill: ANSWER_CACHE_DISABLED=1.
+    import os as _os_ac
+    if (model_pref in ("", "auto")
+            and _os_ac.getenv("ANSWER_CACHE_DISABLED", "").strip().lower() not in ("1", "true", "yes")):
+        try:
+            from dash.learning.answer_cache import try_answer_cache
+            _ac = await try_answer_cache(slug, message)
+        except Exception:
+            _ac = None
+        if _ac and _ac.get("content"):
+            _ac_answer = _ac["content"]
+            _ac_elapsed = int(_ac.get("elapsed_ms") or 0)
+            _ac_sim = float(_ac.get("similarity") or 0.0)
+            import logging as _ac_log
+            _ac_log.getLogger(__name__).info(
+                "answer_cache hit for %s · sim=%.3f · id=%s · %dms · 0 LLM",
+                slug, _ac_sim, _ac.get("id"), _ac_elapsed)
+
+            # Learning loop still records this turn (judge + verified reward).
+            def _ac_bg(_q: str, _a: str, _slug: str, _sid: str):
+                try:
+                    from dash.tools.judge import judge_response
+                    judge_response(_slug, _sid, _q, _a)
+                except Exception:
+                    pass
+                try:
+                    from dash.learning.verified_reward import score_verified
+                    score_verified(_slug, _q, _a, _sid)
+                except Exception:
+                    pass
+            import threading as _th_ac
+            _th_ac.Thread(target=_ac_bg, args=(message, _ac_answer, slug, session_id or ""),
+                          daemon=True).start()
+
+            _ac_trace = {
+                "id": f"answercache_{session_id or 'ac'}",
+                "title": "Served from answer cache",
+                "content": (f"Matched a pinned answer by meaning (cosine {_ac_sim:.3f} ≥ "
+                            f"{_os_ac.getenv('ANSWER_CACHE_MIN_SIM', '0.93')}). "
+                            f"Returned the saved answer — 0 LLM tokens, {_ac_elapsed}ms."),
+                "agent": "answer_cache",
+                "model": "cached",
+                "tier": "cached_answer",
+                "tokens": 0,
+                "cost_usd": 0,
+                "duration_ms": _ac_elapsed,
+            }
+            if stream:
+                from fastapi.responses import StreamingResponse
+                from dash.utils.sse import emit_event_sync as _emit_ac
+                async def _ac_stream():
+                    _sid = session_id or ""
+                    try:
+                        yield _emit_ac("ReasoningStep", _ac_trace, session_id=_sid, project_slug=slug)
+                    except Exception:
+                        pass
+                    yield _emit_ac("TeamRunContent", {"content": _ac_answer}, session_id=_sid, project_slug=slug)
+                    yield _emit_ac("TeamRunCompleted", {}, session_id=_sid, project_slug=slug)
+                return StreamingResponse(_ac_stream(), media_type="text/event-stream")
+            return {"content": _ac_answer, "session_id": session_id,
+                    "cached_answer": True, "similarity": _ac_sim,
+                    "elapsed_ms": _ac_elapsed, "trace": [_ac_trace]}
+
     # ── Metric-fallback short-circuit ────────────────────────────────────
     # When the question STRONGLY matches a verified proven Q&A pair (≥3
     # shared rare-term tokens), serve the metric engine's locked answer
