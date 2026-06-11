@@ -1149,32 +1149,29 @@
 {#if showNotifications}
   <div class="pw-agents-backdrop" onclick={() => showNotifications = false}></div>
   <aside class="pw-agents-drawer" onclick={(e) => e.stopPropagation()}>
-    <button class="pw-agents-close" onclick={() => showNotifications = false} aria-label="Close"><Icon name="x" size={14} /></button>
-
-    <!-- segment toggle: Activity (notifications) | What's new (releases) -->
-    <div class="pw-feed-seg">
-      <button class="pw-feed-segbtn" class:pw-feed-segbtn-active={feedTab === 'activity'} onclick={() => feedTab = 'activity'}>
-        Activity{#if unreadCount > 0}<span class="pw-feed-segcount">{unreadCount > 99 ? '99+' : unreadCount}</span>{/if}
-      </button>
-      <button class="pw-feed-segbtn" class:pw-feed-segbtn-active={feedTab === 'whatsnew'} onclick={() => { feedTab = 'whatsnew'; }}>
-        What's new{#if versionIsNew}<span class="pw-feed-segdot"></span>{/if}
-      </button>
+    <!-- header: tabs (left) + close (right) on ONE aligned row -->
+    <div class="pw-feed-head">
+      <div class="pw-feed-seg">
+        <button class="pw-feed-segbtn" class:pw-feed-segbtn-active={feedTab === 'activity'} onclick={() => feedTab = 'activity'}>
+          Activity{#if unreadCount > 0}<span class="pw-feed-segcount">{unreadCount > 99 ? '99+' : unreadCount}</span>{/if}
+        </button>
+        <button class="pw-feed-segbtn" class:pw-feed-segbtn-active={feedTab === 'whatsnew'} onclick={() => { feedTab = 'whatsnew'; }}>
+          What's new{#if versionIsNew}<span class="pw-feed-segdot"></span>{/if}
+        </button>
+      </div>
+      <button class="pw-feed-x" onclick={() => showNotifications = false} aria-label="Close"><Icon name="x" size={15} /></button>
     </div>
 
     {#if feedTab === 'activity'}
-    <div class="pw-agents-hero">
-      <div class="pw-agents-hero-glow"></div>
-      <div class="pw-agents-hero-num">{unreadCount}</div>
-      <div class="pw-agents-hero-label">unread events</div>
-      <div class="pw-agents-hero-meta">
-        <span class="pw-pulse-green"></span> live · {notifications.length} total · auto-poll 30s
-      </div>
-      <div class="pw-agents-hero-stats">
-        <div class="pw-agents-stat"><span class="pw-agents-stat-num">{notifications.filter(n=>n.type==='success').length}</span><span class="pw-agents-stat-lbl">success</span></div>
-        <div class="pw-agents-stat"><span class="pw-agents-stat-num">{notifications.filter(n=>n.type==='info').length}</span><span class="pw-agents-stat-lbl">info</span></div>
-        <div class="pw-agents-stat"><span class="pw-agents-stat-num">{notifications.filter(n=>n.type==='warn').length}</span><span class="pw-agents-stat-lbl">warn</span></div>
-        <div class="pw-agents-stat"><span class="pw-agents-stat-num">{notifications.filter(n=>n.type==='error').length}</span><span class="pw-agents-stat-lbl">error</span></div>
-      </div>
+    <!-- slim summary strip (replaces the heavy dark hero) -->
+    <div class="pw-feed-strip">
+      <span class="pw-feed-strip-live"><span class="pw-pulse-green"></span> live</span>
+      <span class="pw-feed-strip-main"><b>{unreadCount}</b> unread</span>
+      <span class="pw-feed-strip-sep">·</span>
+      <span class="pw-feed-strip-stat pw-fs-ok">{notifications.filter(n=>n.type==='success').length} ✓</span>
+      <span class="pw-feed-strip-stat pw-fs-warn">{notifications.filter(n=>n.type==='warn').length} ⚠</span>
+      <span class="pw-feed-strip-stat pw-fs-err">{notifications.filter(n=>n.type==='error').length} ✕</span>
+      <span class="pw-feed-strip-tot">{notifications.length} total</span>
     </div>
 
     <div class="pw-feed-toolbar">
@@ -1192,8 +1189,8 @@
       {#if feedFiltered().length > 0}
         {#each feedFiltered() as n}
           <div class="pw-feed-card" style="--feed-accent: {ntypeColor(n.type)};">
-            <div class="pw-feed-icon" style="background: {ntypeColor(n.type)};">
-              {n.type === 'success' ? '' : n.type === 'warn' ? '!' : n.type === 'error' ? '' : 'i'}
+            <div class="pw-feed-icon" style="color: {ntypeColor(n.type)}; background: color-mix(in srgb, {ntypeColor(n.type)} 14%, transparent);">
+              {n.type === 'success' ? '✓' : n.type === 'warn' ? '⚠' : n.type === 'error' ? '✕' : 'i'}
             </div>
             <div class="pw-feed-card-text">
               <div class="pw-feed-card-top">
@@ -1886,16 +1883,21 @@
  }
  @keyframes pw-fade-in { from { opacity: 0; } to { opacity: 1; } }
  .pw-agents-drawer {
- position: fixed; top: 0; right: 0;
- width: 540px; max-width: 100vw; height: 100vh;
- background: linear-gradient(180deg, #faf9f5 0%, #f3eee5 100%);
- border-left: 1px solid var(--pw-border);
- box-shadow: -16px 0 48px rgba(40,20,10,0.18);
+ position: fixed; top: 12px; right: 12px; bottom: 12px;
+ width: 430px; max-width: calc(100vw - 24px); height: auto;
+ background: var(--pw-bg, #fff);
+ border: 1px solid var(--pw-border);
+ border-radius: 16px;
+ box-shadow: 0 24px 64px rgba(40,20,10,0.22);
  z-index: 9999;
- display: flex; flex-direction: column;
- animation: pw-slide-in 0.28s cubic-bezier(0.22, 0.94, 0.32, 1.0);
+ display: flex; flex-direction: column; overflow: hidden;
+ animation: pw-slide-in 0.26s cubic-bezier(0.22, 0.94, 0.32, 1.0);
  }
- @keyframes pw-slide-in { from { transform: translateX(40px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+ @keyframes pw-slide-in { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+ /* mobile: full-bleed sheet */
+ @media (max-width: 640px) {
+   .pw-agents-drawer { top: 0; right: 0; bottom: 0; width: 100vw; max-width: 100vw; border-radius: 0; border: none; }
+ }
  .pw-agents-close {
  position: absolute; top: 14px; right: 16px; z-index: 2;
  width: 32px; height: 32px; border-radius: 50%;
@@ -2037,10 +2039,9 @@
  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
  }
  .pw-feed-icon {
- width: 28px; height: 28px; border-radius: 0;
+ width: 30px; height: 30px; border-radius: 50%;
  display: flex; align-items: center; justify-content: center;
- color: #fff; font-weight: 700; font-size: 12px; flex-shrink: 0;
- box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+ font-weight: 700; font-size: 14px; line-height: 1; flex-shrink: 0;
  }
  .pw-feed-card-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
  .pw-feed-card-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
@@ -2693,9 +2694,39 @@
  width: 8px; height: 8px; border-radius: 50%;
  background: var(--pw-accent); margin-left: 1px;
  }
+ /* drawer header: tabs + close, one aligned row */
+ .pw-feed-head {
+ display: flex; align-items: center; gap: 10px;
+ padding: 12px 12px 10px 14px;
+ border-bottom: 1px solid var(--pw-border);
+ }
+ .pw-feed-x {
+ flex-shrink: 0;
+ width: 32px; height: 32px; border-radius: 8px;
+ display: inline-flex; align-items: center; justify-content: center;
+ background: none; border: none; cursor: pointer;
+ color: var(--pw-muted, #8a847c);
+ transition: background .15s, color .15s;
+ }
+ .pw-feed-x:hover { background: var(--pw-bg-alt, #f5f1ea); color: var(--pw-ink, #2a2622); }
+ /* slim summary strip (replaces dark hero) */
+ .pw-feed-strip {
+ display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+ padding: 10px 16px; font-size: 12px; color: var(--pw-ink-soft, #5a5550);
+ background: var(--pw-bg-alt, #faf7f2);
+ border-bottom: 1px solid var(--pw-border);
+ }
+ .pw-feed-strip-live { display: inline-flex; align-items: center; gap: 5px; color: var(--pw-muted, #8a847c); }
+ .pw-feed-strip-main b { font-size: 13px; color: var(--pw-ink, #2a2622); }
+ .pw-feed-strip-sep { opacity: .35; }
+ .pw-feed-strip-stat { font-weight: 600; }
+ .pw-fs-ok { color: #1f7a4d; }
+ .pw-fs-warn { color: #b8860b; }
+ .pw-fs-err { color: #b3382c; }
+ .pw-feed-strip-tot { margin-left: auto; color: var(--pw-dim, #9a948c); font-size: 11px; }
  /* drawer segment toggle: Activity | What's new */
  .pw-feed-seg {
- display: flex; gap: 4px; margin: 0 16px 8px;
+ flex: 1; display: flex; gap: 4px;
  background: var(--pw-bg-alt, #f5f1ea);
  border-radius: 10px; padding: 4px;
  }
