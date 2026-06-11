@@ -2,6 +2,8 @@
   import Icon from '$lib/Icon.svelte';
   import FloatingRobot from '$lib/FloatingRobot.svelte';
   import VersionBadge from '$lib/VersionBadge.svelte';
+  import VersionCard from '$lib/VersionCard.svelte';
+  import { versionInfo, loadVersion } from '$lib/stores/version';
  import '../app.css';
  import { page } from '$app/state';
  import { onMount } from 'svelte';
@@ -187,6 +189,27 @@
  let unreadCount = $state(0);
  let showNotifications = $state(false);
  let feedFilter = $state<'all' | 'unread' | 'training' | 'ml' | 'alerts'>('all');
+
+ // Feed drawer = Activity (notifications) + What's new (releases), one bell.
+ let feedTab = $state<'activity' | 'whatsnew'>('activity');
+ let seenVersion = $state('');
+ // dot lights when there's an unseen new version
+ let versionIsNew = $derived(!!$versionInfo && !!$versionInfo.version && $versionInfo.version !== seenVersion);
+ // single bell dot = unread events OR an unseen version
+ let bellHasDot = $derived(unreadCount > 0 || versionIsNew);
+
+ function openFeed(tab: 'activity' | 'whatsnew' = 'activity') {
+   feedTab = tab;
+   showNotifications = true;
+   loadNotifications();
+   loadVersion();
+ }
+ function markVersionSeen() {
+   const v = $versionInfo?.version;
+   if (v) { seenVersion = v; try { localStorage.setItem('cp_seen_version', v); } catch {} }
+ }
+ // when the user opens the What's-new tab, clear the version part of the dot
+ $effect(() => { if (showNotifications && feedTab === 'whatsnew') markVersionSeen(); });
 
  function relativeTime(iso: string | undefined): string {
  if (!iso) return '';
@@ -967,8 +990,10 @@
  isAdmin = data.is_admin || data.is_super || false;
  // Refresh active scope chip from localStorage (set by scope-picker)
  activeScope = getActiveScope();
- // Load notifications
+ // Load notifications + build version (for the merged feed bell)
  loadNotifications();
+ try { seenVersion = localStorage.getItem('cp_seen_version') || ''; } catch {}
+ loadVersion();
  // Load projects for dashboard nav
  try {
  const pRes = await fetch('/api/user-projects-brief', { headers: { Authorization: `Bearer ${token}` } });
@@ -1125,6 +1150,18 @@
   <div class="pw-agents-backdrop" onclick={() => showNotifications = false}></div>
   <aside class="pw-agents-drawer" onclick={(e) => e.stopPropagation()}>
     <button class="pw-agents-close" onclick={() => showNotifications = false} aria-label="Close"><Icon name="x" size={14} /></button>
+
+    <!-- segment toggle: Activity (notifications) | What's new (releases) -->
+    <div class="pw-feed-seg">
+      <button class="pw-feed-segbtn" class:pw-feed-segbtn-active={feedTab === 'activity'} onclick={() => feedTab = 'activity'}>
+        Activity{#if unreadCount > 0}<span class="pw-feed-segcount">{unreadCount > 99 ? '99+' : unreadCount}</span>{/if}
+      </button>
+      <button class="pw-feed-segbtn" class:pw-feed-segbtn-active={feedTab === 'whatsnew'} onclick={() => { feedTab = 'whatsnew'; }}>
+        What's new{#if versionIsNew}<span class="pw-feed-segdot"></span>{/if}
+      </button>
+    </div>
+
+    {#if feedTab === 'activity'}
     <div class="pw-agents-hero">
       <div class="pw-agents-hero-glow"></div>
       <div class="pw-agents-hero-num">{unreadCount}</div>
@@ -1180,6 +1217,12 @@
     <div class="pw-agents-footer">
       <a href="/ui/notifications" onclick={() => showNotifications = false} class="pw-feed-link">View all events →</a>
     </div>
+    {:else}
+    <!-- What's new tab: build/version + data freshness + release notes -->
+    <div class="pw-agents-body pw-feed-wn">
+      <VersionCard />
+    </div>
+    {/if}
   </aside>
 {/if}
 
@@ -1436,12 +1479,14 @@
         </button>
         {/if}
 
-        <!-- Feed bell -->
-        <button onclick={(e) => { e.stopPropagation(); showNotifications = !showNotifications; if (showNotifications) loadNotifications(); }} class="pw-feed-btn" title="Notifications">
+        <!-- Feed bell — Activity (notifications) + What's new (releases) -->
+        <button onclick={(e) => { e.stopPropagation(); if (showNotifications) { showNotifications = false; } else { openFeed('activity'); } }} class="pw-feed-btn" title="Notifications & what's new">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
           <span>Feed</span>
           {#if unreadCount > 0}
             <span class="pw-feed-count">{unreadCount > 99 ? '99+' : unreadCount}</span>
+          {:else if versionIsNew}
+            <span class="pw-feed-dot" title="New version"></span>
           {/if}
         </button>
 
@@ -1452,9 +1497,6 @@
             <span>Show terminal</span>
           </button>
         {/if}
-
-        <!-- Build version chip → What's-new modal -->
-        <VersionBadge variant="nav" />
 
         <!-- User chip (role folded in as sub-line — replaces standalone tier pill) -->
         <div class="pw-nav-group">
@@ -2646,6 +2688,36 @@
  align-items: center;
  justify-content: center;
  }
+ /* bell unread DOT (no count) — used when only a new version is unseen */
+ .pw-feed-dot {
+ width: 8px; height: 8px; border-radius: 50%;
+ background: var(--pw-accent); margin-left: 1px;
+ }
+ /* drawer segment toggle: Activity | What's new */
+ .pw-feed-seg {
+ display: flex; gap: 4px; margin: 0 16px 8px;
+ background: var(--pw-bg-alt, #f5f1ea);
+ border-radius: 10px; padding: 4px;
+ }
+ .pw-feed-segbtn {
+ flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+ padding: 7px 10px; border: none; border-radius: 7px;
+ background: none; cursor: pointer;
+ font-size: 12.5px; font-weight: 600; color: var(--pw-muted, #8a847c);
+ transition: background .15s, color .15s;
+ }
+ .pw-feed-segbtn:hover { color: var(--pw-ink, #2a2622); }
+ .pw-feed-segbtn-active {
+ background: var(--pw-bg, #fff); color: var(--pw-ink, #2a2622);
+ box-shadow: 0 1px 3px rgba(0,0,0,.08);
+ }
+ .pw-feed-segcount {
+ background: var(--pw-accent); color: #fff; font-size: 10px; font-weight: 700;
+ min-width: 16px; height: 16px; padding: 0 5px; border-radius: 999px;
+ display: inline-flex; align-items: center; justify-content: center;
+ }
+ .pw-feed-segdot { width: 7px; height: 7px; border-radius: 50%; background: var(--pw-accent); }
+ .pw-feed-wn { padding: 4px 16px 24px; }
 
  /* ───── Activity Feed dropdown ───── */
  .pw-feed-panel {
