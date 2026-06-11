@@ -109,33 +109,81 @@ def _smart_truncate(out: str, max_chars: int) -> tuple[str, bool]:
     return (trimmed + " …"), True
 
 
+# Follow-up suggestion twins — EN + Burmese (MY) so the chips mirror the
+# conversation language. Keyed by the heuristic branch.
+_FOLLOWUPS = {
+    "price": {
+        "en": ["Which of these are in stock?",
+               "Show me cheaper alternatives",
+               "What are substitutes for the first one?"],
+        "my": ["ဒီထဲက ဘယ်ဟာတွေ စတော့ရှိလဲ?",
+               "ဈေးသက်သာတဲ့ အစားထိုးဆေးတွေ ပြပါ",
+               "ပထမတစ်ခုအတွက် အစားထိုးဆေးတွေ ဘာတွေလဲ?"],
+    },
+    "stock": {
+        "en": ["Which branch has the most?",
+               "Show me what's running low",
+               "Suggest substitutes for out-of-stock items"],
+        "my": ["ဘယ်ဆိုင်မှာ အများဆုံးရှိလဲ?",
+               "လက်ကျန်နည်းနေတဲ့ ဆေးတွေ ပြပါ",
+               "ပြတ်နေတဲ့ ဆေးတွေအတွက် အစားထိုးဆေး အကြံပြုပါ"],
+    },
+    "substitute": {
+        "en": ["Which substitutes are in stock?",
+               "Compare their prices",
+               "What is this used for?"],
+        "my": ["ဘယ်အစားထိုးဆေးတွေ စတော့ရှိလဲ?",
+               "ဈေးနှုန်းတွေ နှိုင်းယှဉ်ပြပါ",
+               "ဒါက ဘာအတွက် သုံးတာလဲ?"],
+    },
+    "indication": {
+        "en": ["What are the alternatives?",
+               "Any interactions to watch for?",
+               "Which of these do you stock?"],
+        "my": ["အစားထိုးဆေးတွေက ဘာတွေလဲ?",
+               "သတိထားရမယ့် ဆေးတွဲဖက်မှုများ ရှိလား?",
+               "ဒီထဲက ဘယ်ဟာတွေ သင့်ဆိုင်မှာ ရှိလဲ?"],
+    },
+    "default": {
+        "en": ["Show me the top products in this category",
+               "What's in stock right now?",
+               "Find substitutes for a product"],
+        "my": ["ဒီအမျိုးအစားထဲက ထိပ်တန်းဆေးတွေ ပြပါ",
+               "အခု ဘာတွေ စတော့ရှိလဲ?",
+               "ဆေးတစ်ခုအတွက် အစားထိုးဆေး ရှာပါ"],
+    },
+}
+
+
+def _is_burmese(s: str) -> bool:
+    """True if the text contains Burmese-script characters (U+1000–U+109F)."""
+    return any("က" <= c <= "႟" for c in (s or ""))
+
+
 def _consumer_followups(question: str, answer: str, max_n: int = 3) -> list[str]:
     """Cheap, no-LLM contextual follow-up suggestions for the embed widget.
-    Heuristic on the question/answer shape — keeps latency at zero."""
+    Heuristic on the question/answer shape — keeps latency at zero. Chips are
+    returned in Burmese when the question is Burmese, else English."""
     q = (question or "").lower()
     a = (answer or "").lower()
-    out: list[str] = []
     listy = bool(_re.search(r"(?m)^\s*(?:[-*•]|\d+[.)])\s+", answer or "")) or "top " in q
+    # Burmese has no English keywords → fall back to the question's own intent
+    # words where possible, else 'default'. Branch detection stays EN-keyword
+    # based (works for EN); Burmese questions mostly land on 'default'/'stock'.
     if any(w in q for w in ("expensive", "cheapest", "price", "cost", "top ")) and listy:
-        out += ["Which of these are in stock?",
-                "Show me cheaper alternatives",
-                "What are substitutes for the first one?"]
-    elif any(w in q for w in ("stock", "available", "inventory", "shelf")):
-        out += ["Which branch has the most?",
-                "Show me what's running low",
-                "Suggest substitutes for out-of-stock items"]
-    elif any(w in q for w in ("substitute", "alternative", "instead of")):
-        out += ["Which substitutes are in stock?",
-                "Compare their prices",
-                "What is this used for?"]
+        branch = "price"
+    elif any(w in q for w in ("stock", "available", "inventory", "shelf")) \
+            or any(w in question for w in ("ရှိ", "စတော့", "လက်ကျန်")):
+        branch = "stock"
+    elif any(w in q for w in ("substitute", "alternative", "instead of")) \
+            or "အစားထိုး" in question:
+        branch = "substitute"
     elif any(w in (q + a) for w in ("indication", "symptom", "used for", "treat", "fever", "pain")):
-        out += ["What are the alternatives?",
-                "Any interactions to watch for?",
-                "Which of these do you stock?"]
+        branch = "indication"
     else:
-        out += ["Show me the top products in this category",
-                "What's in stock right now?",
-                "Find substitutes for a product"]
+        branch = "default"
+    lang = "my" if _is_burmese(question) else "en"
+    out = _FOLLOWUPS[branch][lang]
     # de-dupe, cap
     seen: set[str] = set()
     uniq = [x for x in out if not (x in seen or seen.add(x))]
