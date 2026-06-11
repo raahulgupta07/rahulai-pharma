@@ -2,6 +2,23 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-11 (latest+61) — AnswerCard "Rich context" redesign (analyst BI card) (LOCAL, LIVE)
+
+**Ask.** "improve the chat" — the structured `/api/super-chat` analyst card (`AnswerCard.svelte`, the exec-view band path: band → KPI tile → WHY → So-what → Evidence → Related). Screenshot showed a **lone giant `200` KPI tile** wasting width, bare WHY text, one-line Evidence, flat Related pills. Picked the **"Rich context"** design (CLI mockup shown first per UI rule) over "Dense dashboard".
+
+**Built (frontend-deterministic — works regardless of what the model emits):**
+1. **KPI grid → responsive** `repeat(auto-fit, minmax(150px,1fr))` — no more lonely huge tile; tiles flow into a contextual metric row. Added optional **`sublabel`** (one-line context under the value).
+2. **KPI tag 4th field** (`answer-tags.ts` `parseKpis`): `[KPI: value|label|change|sublabel]` — **trailing-optional, old 3-field tags still parse** (contract-safe, field order unchanged).
+3. **WHY → collapsible SQL.** New `▸ Show SQL` toggle under the WHY bullets, sourced from `msg.sqlQueries` (already passed whole into the card), dark `<pre>` + copy button + query count chip. Hidden by default.
+4. **Evidence footer enriched.** `articles_clean · N rows · fresh <date>` + green `✓ verified`. Row count from `msg.data`/`msg.rowCount`; freshness = newest non-NULL `[FRESHNESS:]` tag; verified = `msg.verified.verified==='pass'`. **Graceful** — only renders parts that exist.
+5. **Related → full-width arrow rows** (was flat pills): clickable cards w/ `→` + hover nudge. Mono branch kept its chips.
+
+**Backend nudge (soft).** `instructions.py` STANDARD tier: for COUNT/TOTAL/"how many" answers, the 3 KPIs MUST be **count + denominator + derived rate/share %** with sublabels (turns "200" into "200 active · 247 catalog · 81% rate"). **Compliance varies run-to-run** (known model-variance ceiling) — verified the count query emitted 2 KPIs (`Total Products 200` + `Data Coverage 100%`) → renders as a contextual row, not a lone tile. The frontend wins are deterministic; the triple is best-effort.
+
+**Verify.** Frontend build clean (28s), image rebuilt, daemon-leader cleared, force-recreated, `/api/flags` → 200. Files: `frontend/src/lib/chat/AnswerCard.svelte`, `frontend/src/lib/answer-tags.ts`, `dash/instructions.py`. Deploy = image rebuild (no hot-copy).
+
+---
+
 ### Session 2026-06-11 (latest+60) — Query speed: stock fast-path (no-LLM) + reasoning off + tool discipline + embed opening-chips/Burmese-greeting/gear-robot (LOCAL)
 
 **The "make queries fast" investigation.** Measured the chat hot path; corrected an over-claim (the entry pipeline is NOT 3 serial slow LLM calls — scope classifier is the only per-request LLM and it is already 300s-cached). Real cost = **the agent loop itself**: every turn runs the SAME model (`LITE_MODEL == CHAT_MODEL == google/gemini-3-flash-preview` — LITE was deliberately set to flash because 3.1-flash-lite is weak on Burmese), and each OpenRouter round-trip is ~5-6s. A tool-using answer needs ≥2 round-trips ≈ 12s. Trace proof: pharma tools execute in **13-36ms** (not the bottleneck); a single "do we have X" turn was firing **4-6 tools** (stock_check + drug_profile + substitutes + alternatives + run_sql + search_all) = 6 sequential LLM round-trips = the ~17s.

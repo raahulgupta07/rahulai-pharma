@@ -19,6 +19,7 @@
     parseLead,
     parseWhy,
     parseSource,
+    parseFreshness,
     stripLegacyTags,
     scrubTags
   } from '$lib/answer-tags';
@@ -356,6 +357,52 @@
       : _evidenceRaw || bandSource
   );
 
+  // ── Rich provenance: SQL behind the answer, row count, freshness ──────
+  // The agent's SQL (collapsible under WHY) — drives the "Show SQL" toggle.
+  const sqlList = $derived.by(() => {
+    const raw = msg?.sqlQueries;
+    if (!Array.isArray(raw)) return [];
+    return raw.map((s) => String(s || '').trim()).filter(Boolean);
+  });
+  const showSql = $derived(sqlList.length > 0);
+  let sqlOpen = $state(false);
+  let sqlCopied = $state(false);
+  function copySql() {
+    try {
+      navigator.clipboard.writeText(sqlList.join('\n\n'));
+      sqlCopied = true;
+      setTimeout(() => (sqlCopied = false), 1400);
+    } catch (e) { /* clipboard blocked — silent */ }
+  }
+
+  // Row count — from returned tabular data (msg.data) or rendered tables.
+  const rowCount = $derived.by(() => {
+    const d = msg?.data;
+    if (Array.isArray(d) && d.length) return d.length;
+    const rc = Number(msg?.rowCount ?? msg?.row_count);
+    return Number.isFinite(rc) && rc > 0 ? rc : 0;
+  });
+
+  // Freshness — newest [FRESHNESS:] tag with a real (non-NULL) as_of.
+  const freshnessText = $derived.by(() => {
+    const items = parseFreshness(content || '').items || [];
+    const real = items
+      .map((f) => String(f.as_of || '').trim())
+      .filter((v) => v && v.toUpperCase() !== 'NULL');
+    return real.length ? real.sort().slice(-1)[0] : '';
+  });
+
+  // Verified glyph — show ✓ when a pinned-truth check passed.
+  const isVerified = $derived(!!(msg?.verified && msg.verified.verified === 'pass'));
+
+  // Assembled evidence parts → "articles_clean · 200 rows · fresh 2026-05-25"
+  const evidenceParts = $derived.by(() => {
+    const parts = [evidenceText].filter(Boolean);
+    if (rowCount > 0) parts.push(`${rowCount.toLocaleString()} ${rowCount === 1 ? 'row' : 'rows'}`);
+    if (freshnessText) parts.push(`fresh ${freshnessText}`);
+    return parts;
+  });
+
   // Is there ANY structured signal? If not (pure prose / chitchat) we skip the
   // band entirely and render plain markdown — no empty band for chitchat.
   const hasStructure = $derived(
@@ -605,6 +652,9 @@
         <div class="kpi-tile kpi-{color}">
           <div class="kpi-label">{kpi.label || ''}</div>
           <div class="kpi-value">{kpi.value ?? ''}</div>
+          {#if kpi.sublabel}
+            <div class="kpi-sublabel">{kpi.sublabel}</div>
+          {/if}
           <div class="kpi-meta">
             {#if hasRealDelta(kpi)}
               <span class="kpi-delta kpi-delta-{color}">{kpi.delta || kpi.change}</span>
@@ -618,14 +668,35 @@
     </div>
   {/if}
 
-  {#if whyItems.length}
+  {#if whyItems.length || showSql}
     <div class="why-block">
       <div class="why-label">Why</div>
-      <ul class="why-list">
-        {#each whyItems as w}
-          <li>{@html formatInline(w)}</li>
-        {/each}
-      </ul>
+      {#if whyItems.length}
+        <ul class="why-list">
+          {#each whyItems as w}
+            <li>{@html formatInline(w)}</li>
+          {/each}
+        </ul>
+      {/if}
+      {#if showSql}
+        <div class="sql-toggle-row">
+          <button class="sql-toggle" onclick={() => (sqlOpen = !sqlOpen)} aria-expanded={sqlOpen}>
+            <span class="sql-caret" class:open={sqlOpen}>▸</span>
+            {sqlOpen ? 'Hide SQL' : 'Show SQL'}
+            <span class="sql-count">{sqlList.length} {sqlList.length === 1 ? 'query' : 'queries'}</span>
+          </button>
+          {#if sqlOpen}
+            <button class="sql-copy" onclick={copySql}>{sqlCopied ? 'copied ✓' : 'copy'}</button>
+          {/if}
+        </div>
+        {#if sqlOpen}
+          <div class="sql-body">
+            {#each sqlList as q}
+              <pre class="sql-pre">{q}</pre>
+            {/each}
+          </div>
+        {/if}
+      {/if}
     </div>
   {/if}
 
@@ -639,8 +710,15 @@
     </div>
   {/if}
 
-  {#if showBand && evidenceText}
-    <div class="evidence-row" title="Grounding">▸ Evidence&nbsp;&nbsp;{evidenceText}</div>
+  {#if showBand && evidenceParts.length}
+    <div class="evidence-row" title="Grounding">
+      <span class="ev-arrow">▸</span>
+      <span class="ev-key">Evidence</span>
+      {#each evidenceParts as p, i}
+        <span class="ev-part">{p}</span>{#if i < evidenceParts.length - 1}<span class="ev-sep">·</span>{/if}
+      {/each}
+      {#if isVerified}<span class="ev-verified">✓ verified</span>{/if}
+    </div>
   {/if}
 
   {#if showTrend}
@@ -813,10 +891,13 @@
 
   {#if showRelated}
     <hr />
-    <div class="block-label">Related questions</div>
-    <div class="chips">
+    <div class="block-label">Related</div>
+    <div class="related-rows">
       {#each relatedItems as q}
-        <button class="chip" onclick={() => onAction('related', q)}>{q}</button>
+        <button class="related-row" onclick={() => onAction('related', q)}>
+          <span class="related-q">{q}</span>
+          <span class="related-arrow" aria-hidden="true">→</span>
+        </button>
       {/each}
     </div>
   {/if}
@@ -942,11 +1023,63 @@
   .sowhat-action { font-weight: 600; }
   .sowhat-meta { color: #8a7a66; font-size: 12.5px; }
   .evidence-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 5px;
     margin: 10px 0 2px;
     font-size: 12px;
     color: #8a7a66;
     font-variant-numeric: tabular-nums;
   }
+  .evidence-row .ev-arrow { color: #9a4a2f; }
+  .evidence-row .ev-key { font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; font-size: 10px; }
+  .evidence-row .ev-sep { opacity: 0.5; }
+  .evidence-row .ev-verified { margin-left: auto; color: #16a34a; font-weight: 700; }
+
+  /* SQL collapsible under WHY */
+  .sql-toggle-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .sql-toggle {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: transparent; border: none; cursor: pointer;
+    font-size: 11px; font-weight: 600; color: #9a4a2f;
+    padding: 2px 0; font-family: inherit;
+  }
+  .sql-caret { display: inline-block; transition: transform 0.15s ease; font-size: 10px; }
+  .sql-caret.open { transform: rotate(90deg); }
+  .sql-count {
+    font-size: 10px; font-weight: 600; color: var(--pw-ink-muted, #7a6f60);
+    background: #f3ece1; border-radius: 999px; padding: 1px 7px;
+  }
+  .sql-copy {
+    margin-left: auto; background: transparent;
+    border: 1px solid rgba(122,111,96,0.3); border-radius: 3px;
+    padding: 2px 8px; font-size: 10px; cursor: pointer; color: var(--pw-ink-muted);
+  }
+  .sql-body { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+  .sql-pre {
+    margin: 0; padding: 10px 12px;
+    background: #1a1614; color: #e8e3d6;
+    border-radius: 4px; overflow-x: auto;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+  }
+
+  /* Related — full-width clickable arrow rows */
+  .related-rows { display: flex; flex-direction: column; gap: 6px; }
+  .related-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    width: 100%; text-align: left;
+    background: var(--pw-bg-alt, #f6ecda);
+    border: 1px solid rgba(0,0,0,0.06);
+    border-radius: 6px; padding: 9px 13px;
+    font-size: 13px; color: var(--pw-ink); cursor: pointer;
+    font-family: inherit; transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  .related-row:hover { background: rgba(154,74,47,0.07); border-color: rgba(154,74,47,0.3); }
+  .related-q { min-width: 0; }
+  .related-arrow { color: #9a4a2f; flex-shrink: 0; font-weight: 700; }
+  .related-row:hover .related-arrow { transform: translateX(2px); }
 
   .tier-badge {
     position: absolute;
@@ -1065,7 +1198,7 @@
   /* KPI */
   .kpi-strip {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 10px;
   }
   .kpi-tile {
@@ -1073,6 +1206,13 @@
     border-left: 3px solid #bbb;
     border-radius: 4px;
     padding: 10px 12px;
+    min-width: 0;
+  }
+  .kpi-sublabel {
+    font-size: 11px;
+    color: var(--pw-ink-muted, #7a6f60);
+    margin-top: 3px;
+    line-height: 1.3;
   }
   .kpi-green { border-left-color: #16a34a; }
   .kpi-amber { border-left-color: #a06000; }

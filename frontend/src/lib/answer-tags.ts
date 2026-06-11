@@ -40,6 +40,7 @@ export interface KpiItem {
   value: string;
   label: string;
   change: string;
+  sublabel: string; // optional 4th field — one-line context under the value
 }
 export function parseKpis(content: string): { items: KpiItem[]; stripped: string } {
   const re = /\[KPI:\s*([^\]]+)\]/g;
@@ -49,8 +50,9 @@ export function parseKpis(content: string): { items: KpiItem[]; stripped: string
   while ((m = re.exec(content)) !== null) {
     const raw = (m[1] || '').trim();
     if (!raw) continue;
-    const [value, label, change] = _parts(raw, 3);
-    items.push({ value, label, change });
+    // Trailing-optional 4th field (sublabel) — older 3-field tags still parse.
+    const [value, label, change, sublabel] = _parts(raw, 4);
+    items.push({ value, label, change, sublabel: sublabel || '' });
   }
   return { items, stripped: _strip(content, re) };
 }
