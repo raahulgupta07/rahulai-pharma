@@ -2,6 +2,20 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-11 (latest+68) — Feed bell MERGE + drawer redesign + embed consumer fixes
+
+**One bell, not two.** The nav had two bells (Feed notifications + the new What's-new badge). Merged: the **Feed bell** drawer (`+layout.svelte`) now has a segment toggle **Activity | What's new**. Activity = existing notifications (unchanged); What's new = `VersionCard` (build + data freshness + releases). Removed the separate nav badge. Bell dot = unread events OR an unseen version (`versionIsNew` vs `localStorage cp_seen_version`, set on opening the What's-new tab). `openFeed(tab)` + `feedTab` state + `loadVersion()` on auth init.
+
+**Drawer redesign** (user: "looks dead, ✕ not aligned, do we need full screen?"). Three fixes: (1) **✕ now in the tab header row** (`.pw-feed-head` flex, was `position:absolute` → misaligned). (2) **Slim light summary strip** (`.pw-feed-strip`: `● live · N unread · 27✓ 3⚠ 0✕ · total`) replaced the heavy 72px dark serif hero. (3) **Event icons render real glyphs ✓/⚠/✕/i** on a soft tinted circle (`color-mix` 14%) — were empty colored squares (the "dead" look; code emitted `''` for success). Drawer is now a **floating rounded panel** (430px, 12px inset, radius 16, shadow); mobile <640px goes full-bleed.
+
+**Embed consumer fixes** (from live store-YGN03 widget screenshots):
+- **Internal tool-name leak** — the strip showed "Delegate Task To Member" (Agno team delegation tool, title-cased by `_step_label`'s fallback; the reasoning-collapse only caught `Reasoning*` events, not tool calls). Fix: consumer mode is **whitelist-only for tool steps** — any tool not in `_STEP_TOOL_MAP` collapses to one generic `🧠 Thinking` via new `_tool_name_of(data)`. Whitelisted tools keep friendly labels. Analyst embeds unchanged.
+- **English follow-ups in a Burmese chat** — `_consumer_followups` returned hardcoded English. Now EN+MY twins (`_FOLLOWUPS` map per branch) + `_is_burmese(question)` picks the language; branch detection learned Burmese intent words (`ရှိ`/`စတော့`/`လက်ကျန်`/`အစားထိုး`). Opening starter chips were already Burmese (`embed_default_starters`) — these are the per-answer ones.
+
+All backend changes deploy via image rebuild + force-recreate (leader deleted first); frontend vite-baked. Verified health 200 each round.
+
+---
+
 ### Session 2026-06-11 (latest+67) — Version + What's-new surfaced AFTER login (nav · footer · Admin Overview · Profile)
 
 **Goal:** the login-screen version chip (latest+66) only showed pre-auth. Surface the same build/version + What's-new feed in the app AFTER login, in all four places the user asked for.

@@ -511,6 +511,26 @@ curl http://127.0.0.1:8011/api/health                 # → {"status":"ok"}
 - **Frontend changed?** `cd frontend && npm run build` first (or let the docker multi-stage build do it).
 - **Rollback** = check out the previous tag/commit and rebuild the same way. DB migrations are additive (forward-only); a rollback keeps the new columns (harmless to old code).
 
+### Versioning & "What's new" feed
+
+Operators can see, at a glance, **whether an upgrade actually landed** and **what each release added** — on the login screen and inside the app.
+
+- **`VERSION`** (repo root, one line e.g. `1.12.0`) — bump it when you cut a release. Baked into the image; surfaced as the app version.
+- **`docs/CHANGELOG.json`** — curated, customer-facing "What's new" feed (newest-first `releases[]`, each `{version,date,title,items[]}`). Plain language, no internal table/tool names. Add a block per release.
+- **`GET /api/version`** (public, no auth) — returns `{version, commit, built_at, image_age_hours, stale, data, changelog}`. `data` = live freshness (last upload, catalog/stock counts, `shop_flat` link-status). Powers every surface below.
+
+**Where it shows:** login screen (version chip + What's-new panel), the **Feed bell** (top nav → drawer with **Activity | What's new** tabs), the app **footer** (`· v1.12.0`), Admin → Overview (**Build & Release** card), and Profile → **About** tab. The Feed-bell dot lights for unread events **or** an unseen new version; opening "What's new" marks it seen.
+
+**Release flow:** edit `VERSION` → add a `CHANGELOG.json` block → rebuild (stamp provenance):
+```bash
+APP_VERSION=$(cat VERSION) BUILD_COMMIT=$(git rev-parse --short HEAD) \
+  BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+  docker compose -f compose.yaml build dash-api
+```
+Stale check: the version chip turns **amber "⚠ stale"** when the running image is >24h old or version is `dev` → instant "did the deploy land?" signal.
+
+> **Landmine:** `.dockerignore` excludes `docs/` wholesale; the changelog is re-included via `docs/*` + `!docs/CHANGELOG.json`. Docker can't re-include a child of a *fully*-excluded parent — exclude the dir's **contents**, not the dir. Reverting to a bare `docs` line drops the changelog from the image → empty feed.
+
 ---
 
 ## Deploy (rebuild the image — NEVER hot-copy)
