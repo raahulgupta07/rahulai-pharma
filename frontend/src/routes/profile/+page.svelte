@@ -1,14 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/state';
+  import VersionCard from '$lib/VersionCard.svelte';
 
   let profile = $state<any>(null);
   let loading = $state(true);
   let saving = $state(false);
   let saveMsg = $state('');
 
-  // tab: profile | account | password
-  let tab = $state<'profile' | 'account' | 'password'>('profile');
+  // tab: profile | account | password | about
+  let tab = $state<'profile' | 'account' | 'password' | 'about'>('profile');
 
   // Editable profile fields
   let firstName = $state('');
@@ -45,6 +46,7 @@
     { id: 'profile', label: 'Profile' },
     { id: 'account', label: 'Account' },
     { id: 'password', label: 'Password' },
+    { id: 'about', label: 'About' },
   ] as const;
 
   onMount(async () => {
@@ -231,6 +233,14 @@
               <button type="button" class="ps-btn-primary" onclick={changePassword} disabled={cpBusy}>{cpBusy ? 'Updating…' : 'Update password'}</button>
             </div>
           </div>
+        </div>
+      {/if}
+
+      <!-- ───────── ABOUT TAB ───────── -->
+      {#if tab === 'about'}
+        <div class="ps-card" style="padding:0; background:none; border:none;">
+          <div class="ps-section-title" style="margin-bottom:10px;">Build &amp; release</div>
+          <VersionCard />
         </div>
       {/if}
 

@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte';
   import FloatingRobot from '$lib/FloatingRobot.svelte';
+  import VersionBadge from '$lib/VersionBadge.svelte';
  import '../app.css';
  import { page } from '$app/state';
  import { onMount } from 'svelte';
@@ -1452,6 +1453,9 @@
           </button>
         {/if}
 
+        <!-- Build version chip → What's-new modal -->
+        <VersionBadge variant="nav" />
+
         <!-- User chip (role folded in as sub-line — replaces standalone tier pill) -->
         <div class="pw-nav-group">
           <button class="pw-user-chip" onclick={() => toggleMenu('user')} title="Account">
@@ -1693,7 +1697,10 @@
           <span>System active</span>
         {/if}
       </div>
-      <div style="color: var(--pw-muted);">{productName} Analyst can make mistakes. Verify critical information. · © 2026 {productName}</div>
+      <div style="color: var(--pw-muted); display: flex; align-items: center; gap: 4px;">
+        <span>{productName} Analyst can make mistakes. Verify critical information. · © 2026 {productName}</span>
+        <VersionBadge variant="footer" />
+      </div>
     </footer>
   </div>
 {/if}

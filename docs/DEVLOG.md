@@ -2,6 +2,22 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-11 (latest+67) — Version + What's-new surfaced AFTER login (nav · footer · Admin Overview · Profile)
+
+**Goal:** the login-screen version chip (latest+66) only showed pre-auth. Surface the same build/version + What's-new feed in the app AFTER login, in all four places the user asked for.
+
+**One shared fetch + 3 reusable components** (no per-page duplication):
+- **`frontend/src/lib/stores/version.ts`** (new) — `versionInfo` writable + `loadVersion()` (fetch-once, in-flight de-dup) off the public `GET /api/version`; helpers `shortCommit`/`builtLabel`/`ageLabel`. Fail-soft → stays null.
+- **`frontend/src/lib/WhatsNew.svelte`** (new) — shared modal (Esc/backdrop close): build line (up-to-date/⚠stale · built date · commit) + data-freshness line (last upload · catalog · stock · cat-only/stock-only mismatch) + every release's items. `bind:open`.
+- **`frontend/src/lib/VersionBadge.svelte`** (new) — compact chip, two variants: `nav` (warm pill, green dot, amber when stale) and `footer` (subtle `· v1.12.0 ⌄` inline link). Click → WhatsNew modal.
+- **`frontend/src/lib/VersionCard.svelte`** (new) — full "Build & Release" card: big version + commit + age, up-to-date/stale badge, data-freshness row, inline What's-new (latest expanded, "See all (N)" toggles the rest).
+
+**Mounted in 4 surfaces** (`+layout.svelte`): nav chip just before the user chip; footer chip appended to the "© 2026" bar (the exact bar from the screenshot). `command-center/+page.svelte`: `⊕ BUILD & RELEASE` panel at the TOP of the merged Overview (above ① SYSTEM HEALTH). `profile/+page.svelte`: new **About** tab → VersionCard.
+
+**Verified live** (rebuild + force-recreate, leader deleted first): health 200, `/api/version` → v1.12.0 · dfe0426 · stale false · 3 releases. Frontend built clean (vite). Same warm theme as the login chip; modal/card reuse the store so it fetches once per page-load.
+
+---
+
 ### Session 2026-06-11 (latest+66) — Version + What's-new feed on the login screen (public /api/version)
 
 **Goal (product owner):** see at a glance that an upgrade actually deployed (version + build) AND that the latest data is loaded, plus a feed of what features each release added — all on the LOGIN screen (pre-auth).

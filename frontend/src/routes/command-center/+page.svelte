@@ -16,6 +16,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  import GatewayPanel from '$lib/admin/GatewayPanel.svelte';
  import AuthAdminPanel from '$lib/admin/AuthAdminPanel.svelte';
  import ObservabilityPanel from '$lib/admin/ObservabilityPanel.svelte';
+ import VersionCard from '$lib/VersionCard.svelte';
 
  /* ─── state ─── */
  let activeTab = $state('cockpit');
@@ -3108,6 +3109,12 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
     <div class="ccc-kpi"><span class="ccc-n">{cockpit.metrics?.brain_entries ?? '—'}</span><span class="ccc-l">Brain</span></div>
     <div class="ccc-kpi"><span class="ccc-n">{cockpit.gw?.totals?.calls ?? '—'}</span><span class="ccc-l">GW calls 7d</span></div>
   </div>
+  <section class="ccc-panel">
+    <div class="ccc-h-row">
+      <div class="ccc-h">⊕ BUILD &amp; RELEASE</div>
+    </div>
+    <VersionCard />
+  </section>
   <section class="ccc-panel">
     <div class="ccc-h-row">
       <div class="ccc-h">① SYSTEM HEALTH</div>
