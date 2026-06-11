@@ -444,6 +444,24 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
         import logging as _ce_log
         _ce_log.getLogger(__name__).warning(f"chemist_eval not started: {_e}")
 
+    # Cache Curator daemon (24h). Answer-cache P3 — leader judges frequent
+    # questions + auto-promotes stable ones into dash.dash_answer_cache.
+    # DEFAULT OFF (writes to cache): enable with CACHE_CURATOR_ENABLED=1.
+    try:
+        import os as _os_cc
+        if _os_cc.environ.get("CACHE_CURATOR_ENABLED") not in ("1", "true", "TRUE", "yes"):
+            raise RuntimeError("cache curator daemon disabled (default OFF)")
+        if not _should_run_daemons():
+            raise RuntimeError("daemons disabled")
+        import asyncio as _asyncio_cc
+        from dash.cron.cache_curator_daemon import cache_curator_loop as _cache_curator_loop
+        _asyncio_cc.create_task(_cache_curator_loop())
+        import logging as _cc_log
+        _cc_log.getLogger(__name__).info("cache_curator daemon started (24h)")
+    except Exception as _e:
+        import logging as _cc_log
+        _cc_log.getLogger(__name__).warning(f"cache_curator not started: {_e}")
+
     # Ontology auto-cluster daemon (~6h cadence). Mirrors reembed_loop pattern.
     # default OFF (Phase-1 trim: pure-burn daemon, output not consumed). Set ONTOLOGY_CLUSTER_ENABLED=1 to re-enable.
     # Opt-out via ONTOLOGY_CLUSTER_DISABLED=1 (also honored inside the loop).
@@ -1558,6 +1576,14 @@ try:
 except Exception as _e:
     import logging as _logging
     _logging.warning(f"usage_api not loaded: {_e}")
+
+# Cache Curator API — answer-cache P3 (leader-driven curate + stats + clusters)
+try:
+    from app.cache_curator_api import router as cache_curator_router
+    app.include_router(cache_curator_router)
+except Exception as _e:
+    import logging as _logging
+    _logging.warning(f"cache_curator_api not loaded: {_e}")
 
 # Connector subsystem (admin CRUD + user-facing query) — connectors_contract §8
 try:
