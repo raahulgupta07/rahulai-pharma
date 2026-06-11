@@ -2,6 +2,16 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.19.0",
+      "date": "2026-06-11",
+      "title": "Training log now shows full date & time + history",
+      "items": [
+        "Every line in the training log now carries the real date and time, and the view always stays pinned to the newest line.",
+        "New History tab in the training panel groups past training activity by day and by run, so you can scroll back through everything the assistant has learned.",
+        "Fresh installs now start completely clean — no sample data is loaded automatically (you can still load demo data on demand)."
+      ]
+    },
+    {
       "version": "1.18.0",
       "date": "2026-06-11",
       "title": "Tune the system live from the admin console",

@@ -5661,27 +5661,8 @@ function signUserJWT($user) {
    if (o === 'derived') return { label: 'Derived', icon: '⚙️', cls: 'dsx-orig-derived' };
    return { label: 'Uploaded', icon: '📤', cls: 'dsx-orig-uploaded' };
  }
- let dsSeeding = $state(false);
- async function dsSeedDemo() {
-   const hasData = (dsData?.tables || []).some((t: any) => t.name !== 'shop_flat');
-   const msg = hasData
-     ? 'Replace ALL current tables with synthetic demo pharma data (200 drugs × 8 stores)? This cannot be undone.'
-     : 'Load synthetic demo pharma data (200 drugs × 8 stores) into this project?';
-   if (!confirm(msg)) return;
-   dsSeeding = true;
-   try {
-     const r = await fetch(`/api/projects/${slug}/seed-demo${hasData ? '?force=1' : ''}`, { method: 'POST', headers: _h() });
-     const d = await r.json().catch(() => ({}));
-     if (!r.ok) { alert(d?.detail || 'Seed failed'); return; }
-     try { window.dispatchEvent(new CustomEvent('dash-cli-log', { detail: `▸ demo data loaded (${d.rows || 0} rows) — training…` })); } catch {}
-     await loadDataSource();
-     dsTrainAll();  // kick training via the normal path → live console
-   } catch (e) {
-     alert('Seed failed: ' + e);
-   } finally {
-     dsSeeding = false;
-   }
- }
+ // Demo-data seeding removed 2026-06-11 — this is a clean tool; no synthetic
+ // data path in the UI. Fresh installs stay empty (DEMO_SEED_ON_EMPTY off).
  function dsExpandAll() { dsOpen = {}; }
  function dsCollapseAll() { const m: Record<string, boolean> = {}; for (const t of (dsData?.tables || [])) m[t.name] = false; dsOpen = m; }
  let dsSort = $state<'health'|'rows'|'name'|'trained'>('health');
@@ -7671,7 +7652,6 @@ function signUserJWT($user) {
       <div class="dsx-ring"><div class="dsx-ring-n">{_ds.vectors ?? 0}</div><div class="dsx-ring-l">vectors</div></div>
       <div class="dsx-ring" class:dsx-ring-warn={(_ds.issues ?? 0) > 0}><div class="dsx-ring-n">{_ds.issues ?? 0}</div><div class="dsx-ring-l">issues</div></div>
       <div class="dsx-rings-sp"></div>
-      {#if canEdit}<button class="dsx-btn dsx-seedbtn" onclick={dsSeedDemo} disabled={dsSeeding} title="Populate this project with synthetic demo pharma data">{dsSeeding ? '◐ loading…' : '⚗ Load demo data'}</button>{/if}
       {#if canEdit}<button class="dsx-upbtn" onclick={() => dsUploadOpen = !dsUploadOpen}>＋ Upload data {dsUploadOpen ? '▴' : '▾'}</button>{/if}
     </div>
     {/if}

@@ -7,7 +7,7 @@
   let open = $state(false);
   let atStatus = $state<any>(null);
   let training = $state(false);
-  let logs = $state<{ i: number; ts: string; msg: string; table?: string }[]>([]);
+  let logs = $state<{ i: number; ts: string; msg: string; table?: string; tsabs?: number }[]>([]);
   let logCursor = $state(-1);
   let _poll: any = null;
   let _pollMs = 0;
@@ -26,18 +26,92 @@
 
   async function streamLogs() {
     const d = await _j(`/api/projects/${slug}/auto-train/log?since=${logCursor}&limit=200`);
-    const ev = (d?.events || []) as { i: number; ts: string; msg: string; table?: string }[];
+    const ev = (d?.events || []) as { i: number; ts: string; msg: string; table?: string; tsabs?: number }[];
     const fresh = ev.filter((e) => e.i > logCursor);
     if (fresh.length) {
       logs = [...logs, ...fresh].slice(-400);
       logCursor = fresh[fresh.length - 1].i;
       await tick();
-      if (consoleEl) consoleEl.scrollTop = consoleEl.scrollHeight;
+      if (consoleTab === 'log' && consoleEl) consoleEl.scrollTop = consoleEl.scrollHeight;
     }
   }
 
+  // ── timestamp helpers (real local date + time off the absolute epoch) ──
+  function _epoch(l: any): number {
+    let e = Number(l?.tsabs) || 0;
+    if (e > 1e12) e = e / 1000; // tolerate ms epochs
+    return e;
+  }
+  function fmtClock(l: any): string {
+    const e = _epoch(l);
+    if (e > 0) return new Date(e * 1000).toLocaleTimeString([], { hour12: false });
+    return l?.ts || '';
+  }
+  function fmtFull(l: any): string {
+    const e = _epoch(l);
+    if (e > 0) return new Date(e * 1000).toLocaleString([], { hour12: false });
+    return l?.ts || '';
+  }
+  function dayLabel(epochSec: number): string {
+    return new Date(epochSec * 1000).toLocaleDateString([], {
+      weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
+    });
+  }
+
+  // Live log annotated with day-divider rows when the calendar date changes.
+  const liveRows = $derived.by(() => {
+    const out: any[] = [];
+    let lastDay = '';
+    for (const l of logs) {
+      const e = _epoch(l);
+      const dk = e > 0 ? new Date(e * 1000).toDateString() : '';
+      if (dk && dk !== lastDay) {
+        out.push({ _day: true, key: 'd' + l.i, label: dayLabel(e) });
+        lastDay = dk;
+      }
+      out.push({ _day: false, key: l.i, l });
+    }
+    return out;
+  });
+
+  // ── HISTORY tab: full retained log, grouped by local date → run ──
+  let history = $state<any[]>([]);
+  let historyLoading = $state(false);
+  async function loadHistory() {
+    historyLoading = true;
+    const d = await _j(`/api/projects/${slug}/auto-train/log-history?runs=50`);
+    history = (d?.runs || []) as any[];
+    historyLoading = false;
+  }
+  const historyDays = $derived.by(() => {
+    const days = new Map<string, any>();
+    for (const run of history) {
+      for (const ev of (run.events || [])) {
+        let e = Number(ev.tsabs) || 0;
+        if (e > 1e12) e = e / 1000;
+        const eff = e > 0 ? e : (Number(run.started_epoch) || 0);
+        if (!eff) continue;
+        const dk = new Date(eff * 1000).toDateString();
+        if (!days.has(dk)) days.set(dk, { label: dayLabel(eff), epoch: eff, runs: new Map() });
+        const day = days.get(dk);
+        if (eff > day.epoch) day.epoch = eff;
+        if (!day.runs.has(run.run_id)) day.runs.set(run.run_id, { run_id: run.run_id, status: run.status, lines: [] });
+        day.runs.get(run.run_id).lines.push({ ...ev, tsabs: e });
+      }
+    }
+    const arr = [...days.values()].sort((a, b) => b.epoch - a.epoch);
+    for (const day of arr) day.runList = [...day.runs.values()].sort((a: any, b: any) => b.run_id - a.run_id);
+    return arr;
+  });
+
+  // Always pin the live log to the latest line — on new lines AND on tab switch.
+  $effect(() => {
+    logs.length; // track
+    if (consoleTab === 'log' && consoleEl) consoleEl.scrollTop = consoleEl.scrollHeight;
+  });
+
   // Autonomy journal (heartbeat T3 intents + budget events). Read-only tab.
-  let consoleTab = $state<'log' | 'autonomy'>('log');
+  let consoleTab = $state<'log' | 'history' | 'autonomy'>('log');
   let autonomy = $state<{ id: number; ts: string; tier: string; signal: string; action: string; tokens: number }[]>([]);
   async function loadAutonomy() {
     const d = await _j(`/api/projects/${slug}/autonomy/journal?limit=50`);
@@ -435,6 +509,7 @@
       <!-- log meta strip + tab toggle -->
       <div class="fr-meta">
         <button class="fr-tab" class:fr-tab-on={consoleTab === 'log'} onclick={() => (consoleTab = 'log')}>LIVE LOG</button>
+        <button class="fr-tab" class:fr-tab-on={consoleTab === 'history'} onclick={() => { consoleTab = 'history'; loadHistory(); }}>HISTORY</button>
         <button class="fr-tab" class:fr-tab-on={consoleTab === 'autonomy'} onclick={() => { consoleTab = 'autonomy'; loadAutonomy(); }}>WATCHING</button>
         {#if consoleTab === 'log'}
           {#if runMeta.id}· run #{runMeta.id}{/if}
@@ -454,14 +529,34 @@
               <div class="fr-log"><span class="fr-ts">{a.tier}</span> {a.signal} · {a.action}{#if a.tokens}<span class="fr-ts"> · {a.tokens} tok</span>{/if}</div>
             {/each}
           {/if}
+        {:else if consoleTab === 'history'}
+          {#if historyLoading && !historyDays.length}
+            <div class="fr-log-empty">loading history…</div>
+          {:else if !historyDays.length}
+            <div class="fr-log-empty">no training history yet.</div>
+          {:else}
+            {#each historyDays as day (day.label)}
+              <div class="fr-day">— {day.label} —</div>
+              {#each day.runList as run (run.run_id)}
+                <div class="fr-runhdr">▸ run #{run.run_id} · {run.status}</div>
+                {#each run.lines as l (run.run_id + '-' + l.i)}
+                  <div class="fr-log {lineClass(l.msg)}" title={fmtFull(l)}><span class="fr-ts">{fmtClock(l)}</span> {l.msg}</div>
+                {/each}
+              {/each}
+            {/each}
+          {/if}
         {:else if !logs.length}
           <div class="fr-log-empty">no recent training activity — robot is watching for new data…</div>
         {:else}
-          {#each logs as l (l.i)}
-            <div class="fr-log {lineClass(l.msg)}"><span class="fr-ts">{l.ts}</span> {l.msg}</div>
+          {#each liveRows as row (row.key)}
+            {#if row._day}
+              <div class="fr-day">— {row.label} —</div>
+            {:else}
+              <div class="fr-log {lineClass(row.l.msg)}" title={fmtFull(row.l)}><span class="fr-ts">{fmtClock(row.l)}</span> {row.l.msg}</div>
+            {/if}
           {/each}
         {/if}
-        <div class="fr-cursor">▌</div>
+        {#if consoleTab === 'log'}<div class="fr-cursor">▌</div>{/if}
       </div>
     </div>
   {/if}
@@ -700,13 +795,15 @@
   .fr-console { height: 300px; max-height: 50vh; overflow-y: auto; padding: 9px 11px; background: #16131a; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; line-height: 1.55; }
   .fr-console::-webkit-scrollbar { width: 6px; }
   .fr-console::-webkit-scrollbar-thumb { background: #3a3346; border-radius: 3px; }
-  .fr-log { white-space: pre-wrap; word-break: break-word; }
+  .fr-log { white-space: pre-wrap; word-break: break-word; color: #e8e2f2; }
   .fr-ts { color: #5d566e; margin-right: 6px; }
   .l-ok { color: #6fe09a; }
   .l-err { color: #ff8b7e; }
   .l-warn { color: #e6b35c; }
   .l-dim { color: #b3aac6; }
   .fr-log-empty { color: #6b6478; font-style: italic; font-size: 11px; padding: 6px 0; }
+  .fr-day { position: sticky; top: -9px; z-index: 1; margin: 8px 0 4px; padding: 3px 0; text-align: center; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; color: #c9a6f0; background: #16131a; border-top: 1px dashed #2c2638; border-bottom: 1px dashed #2c2638; }
+  .fr-runhdr { margin: 5px 0 2px; font-size: 10.5px; font-weight: 700; color: #7fb0ff; }
   .fr-cursor { color: #c96342; animation: fr-blink 1s steps(2) infinite; }
 
   @keyframes fr-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }

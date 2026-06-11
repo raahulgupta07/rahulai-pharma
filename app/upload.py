@@ -11662,6 +11662,12 @@ async def seed_demo_data(slug: str, request: Request):
     if not check_project_permission(user, slug, required_role="editor"):
         raise HTTPException(403, "Editor access required")
 
+    # Demo seeding DISABLED 2026-06-11 — this is a clean tool; synthetic data is
+    # never injected. Hard opt-in escape hatch only: ALLOW_DEMO_SEED=1 in env.
+    from os import getenv as _getenv
+    if _getenv("ALLOW_DEMO_SEED", "0") not in ("1", "true", "True", "yes"):
+        raise HTTPException(410, "Demo data seeding is disabled — this is a clean install.")
+
     force = False
     try:
         _qf = request.query_params.get("force")
@@ -11678,8 +11684,6 @@ async def seed_demo_data(slug: str, request: Request):
 
     try:
         from scripts.seed_pharma_demo import seed_demo
-        # train=False — frontend kicks /retrain with the user's token so the
-        # FloatingRobot training console streams live.
         res = seed_demo(slug, force=force, train=False)
         return res
     except Exception as e:

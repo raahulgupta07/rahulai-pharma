@@ -2,6 +2,27 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-11 (latest+77) — v1.19.0: training log real date+time, always-scroll, HISTORY-by-date tab
+
+**Ask.** Training live-log panel (`FloatingRobot.svelte`) showed time-only (`14:20:54`). Want: real date+time, always scroll to latest, history grouped by date in the CLI console.
+
+**Done (frontend only — backend already provided the data).** Backend already emits per-event `tsabs` (epoch sec, written by `_master_log` in `app/upload.py:3576`) + a `/auto-train/log-history` endpoint (newest run first, per-event `tsabs`, `started_epoch`). Frontend wasn't using either.
+- **Real date+time:** added `tsabs` to the `logs` type + streamLogs mapping; helpers `_epoch`/`fmtClock`/`fmtFull`/`dayLabel`. Lines render local `HH:MM:SS` off `tsabs` (fallback `l.ts`), `title=` hover = full local datetime.
+- **Day dividers:** `liveRows` derived inserts a sticky `— Wed, Jun 11, 2026 —` divider row whenever the calendar date changes between consecutive log lines.
+- **Always-scroll:** `$effect` pins `consoleEl.scrollTop = scrollHeight` on every `logs.length` change AND on tab switch (reads `consoleTab`); streamLogs scroll now gated to the log tab. Cursor `▌` only on log tab.
+- **HISTORY tab:** new `consoleTab='history'` → `loadHistory()` hits `/auto-train/log-history?runs=50`; `historyDays` derived groups all events by local date (desc) → run (desc), rendered as date divider → `▸ run #N · status` subheader → lines. Composite key `run_id-i` (avoids per-run `i` collision).
+- CSS `.fr-day` (sticky purple divider) + `.fr-runhdr` (blue run subheader).
+
+Shipped: VERSION 1.18.0→1.19.0, CHANGELOG v1.19.0 block. Rebuilt image + force-recreated cp-api (daemon-leader cleared first). svelte-check: 0 errors in FloatingRobot. Note: history shows real timestamps only for runs created AFTER this — old runs were wiped in the clean-slate; `tsabs` has been written all along so any new run is fully dated.
+
+**Follow-ups (same v1.19.0):**
+- **WATCHING tab text unreadable.** Base `.fr-log` had no `color` → inherited dark page text; only live-log lines got coloured `l-*` classes, so the autonomy/WATCHING lines rendered near-black on the dark console. Fix: `.fr-log { color: #e8e2f2; }` (the `l-ok/err/warn/dim` classes still override).
+- **CLEAN INSTALL — killed auto demo-seed (the real reason wipes kept reverting).** `app/main.py` boot ran `seed_pharma_demo.seed_demo("citypharma", force=False, train=True)` whenever `DEMO_SEED_ON_EMPTY` (default `"1"`) and the install was empty → every `force-recreate` on an empty DB re-injected 4,892-SKU synthetic pharma data + retrained. That's why the post-wipe recreate brought the dashboard back. **Flipped the default to OFF** (`getenv("DEMO_SEED_ON_EMPTY","0") in ("1","true","True","yes")`) so a fresh install is a clean empty tool; opt back in with `DEMO_SEED_ON_EMPTY=1`. The manual `POST /projects/{slug}/seed-demo` button (`app/upload.py:11680`) is untouched. Documented in `.env.example`. Verified: boot emits no "demo seed" log line, DB stays empty after recreate. Then re-wiped the leftover seed data (DB + disk artifacts + redis) → 0 everywhere.
+- **Missed vector table.** Wipe rounds 1-3 missed `dash.dash_vectors` (pgvector RAG store, slug-scoped, 4,935 rows for citypharma) → dashboard still showed "4,935 vec" after the data tables were gone. Truncated it. Added `dash.dash_vectors` to the canonical wipe-target set. (The 5 stray embeds were a UI-fired `POST /embeds/backfill`, not a seed.)
+- **Removed the "Load demo data" UI button + disabled the endpoint.** Per "no more demo data": dropped the `⚗ Load demo data` button + `dsSeedDemo`/`dsSeeding` from `settings/+page.svelte`, and `POST /projects/{slug}/seed-demo` (`app/upload.py`) now returns **410** unless `ALLOW_DEMO_SEED=1` (hard opt-in escape hatch). So neither install nor UI can ever inject synthetic data. Verified 410 + DB stays 0.
+
+---
+
 ### Session 2026-06-11 (latest+76) — v1.18.0: 11 operational env knobs → live UI control (Command Center · Admin settings · SYSTEM/RUNTIME)
 
 **Ask.** Tune operational config from the UI instead of `.env`; keep the vars in `.env` but commented, settings changeable from the admin console.
