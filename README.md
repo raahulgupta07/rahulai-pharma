@@ -401,6 +401,26 @@ No DB migration needed (`auth_provider`/`external_id`/`site_code` columns alread
 
 ---
 
+## Access control (role → surface) — v1.16, super-admin configurable
+
+Three tiers: **super admin** (username == `SUPER_ADMIN`), **admin** (`dash_users.role='admin'`), **user** (default). A super admin decides, per role, which of **7 surfaces** each tier can reach — set once in **Command Center → Admin Settings → ACCESS CONTROL** (checkbox matrix). Super admin is always full and locked.
+
+| Surface | super | admin (default) | user (default) |
+|---|---|---|---|
+| Dashboard | ✓ 🔒 | ✓ | ✓ |
+| Chat | ✓ 🔒 | ✓ | ✓ |
+| Workspace | ✓ 🔒 | ✓ | ✗ |
+| Integration (Gateway + Embed) | ✓ 🔒 | ✓ | ✗ |
+| Admin Console (governance) | ✓ 🔒 | ✗ | ✗ |
+| Users & Access | ✓ 🔒 | ✓ | ✗ |
+| Usage & Cost | ✓ 🔒 | ✓ | ✗ |
+
+- **Storage** — one JSON setting `rbac_surface_access` in `dash_admin_settings` (no migration). `app/auth.py:surfaces_for(user)` resolves it; `surfaces` rides in `/api/auth/login` + `/api/auth/check`.
+- **Enforced both ways** — nav hides the surface **and** the backend returns **403**. Nav gating in `+layout.svelte` (`canDashboard/canChat/canWorkspace/canIntegration/canAdminConsole/canUsers/canUsage`); backend via `_require_surface` (users → `users_access`, usage → `usage_cost`, governance → `admin_console`) **plus** an `AuthMiddleware` prefix gate (`_SURFACE_API_GATES`: workspace → upload/brain/training/rules/scores, chat → super-chat) so a restricted user can't reach data APIs by typing the URL. Super always passes; fail-open on unmapped paths.
+- **Landmine** — never gate user-management or usage endpoints with the old `_require_admin` (it now means `admin_console`, which admins lack by default → they'd 403). `create_user` ignores its `role` param (always creates `user`); role elevation is **super-only** via `set_user_role` — an admin can't mint another admin.
+
+---
+
 ## Install (fresh box / AWS) — two commands, zero errors
 
 A brand-new install is **two commands**. The database schema seeds itself on the
@@ -515,9 +535,9 @@ curl http://127.0.0.1:8011/api/health                 # → {"status":"ok"}
 
 Operators can see, at a glance, **whether an upgrade actually landed** and **what each release added** — on the login screen and inside the app.
 
-**Rule: every change cuts a new version.** Each shipped change bumps `VERSION` **and** adds a `CHANGELOG.json` block — never deploy a behaviour change on the old version number. Current: `1.14.2`.
+**Rule: every change cuts a new version.** Each shipped change bumps `VERSION` **and** adds a `CHANGELOG.json` block — never deploy a behaviour change on the old version number. Current: `1.16.1`.
 
-- **`VERSION`** (repo root, one line e.g. `1.14.2`) — bump it on **every** release/change. Baked into the image; surfaced as the app version.
+- **`VERSION`** (repo root, one line e.g. `1.16.1`) — bump it on **every** release/change. Baked into the image; surfaced as the app version.
 - **`docs/CHANGELOG.json`** — curated, customer-facing "What's new" feed (newest-first `releases[]`, each `{version,date,title,items[]}`). Plain language, no internal table/tool names. Add a block per release.
 - **`GET /api/version`** (public, no auth) — returns `{version, commit, built_at, image_age_hours, stale, data, changelog}`. `data` = live freshness (last upload, catalog/stock counts, `shop_flat` link-status). Powers every surface below.
 
@@ -525,9 +545,9 @@ Operators can see, at a glance, **whether an upgrade actually landed** and **wha
 
 **Visible on Docker too.** The build stamps OCI labels + a version image tag so an operator can confirm the release straight from Docker without hitting the API:
 ```bash
-docker inspect citypharma:latest --format '{{json .Config.Labels}}'   # → org.opencontainers.image.version=1.14.2
-docker images citypharma                                              # → citypharma:1.14.2 + :latest
-docker exec cp-api printenv APP_VERSION                               # → 1.14.2
+docker inspect citypharma:latest --format '{{json .Config.Labels}}'   # → org.opencontainers.image.version=1.16.1
+docker images citypharma                                              # → citypharma:1.16.1 + :latest
+docker exec cp-api printenv APP_VERSION                               # → 1.16.1
 ```
 
 **Release flow:** bump `VERSION` → add a `CHANGELOG.json` block → rebuild (stamps provenance into ENV **and** OCI labels) → tag the image with the version → redeploy:
