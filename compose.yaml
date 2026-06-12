@@ -256,6 +256,10 @@ services:
       - LITE_FALLBACKS=${LITE_FALLBACKS:-}
       - SUPER_ADMIN=${SUPER_ADMIN:?SUPER_ADMIN required}
       - SUPER_ADMIN_PASS=${SUPER_ADMIN_PASS:?SUPER_ADMIN_PASS required}
+      # Set to 1 to force-resync the super-admin password from SUPER_ADMIN_PASS on
+      # every boot (use if the password was lost). Default 0 = a password changed in
+      # the UI survives reboots. The account is always ensured + promoted to role=super.
+      - SUPER_ADMIN_RESET_PASS=${SUPER_ADMIN_RESET_PASS:-0}
       # Blank is a VALID value: app falls back to PUBLIC_URL, else allows all
       # origins without credentials. Use :- (default empty), NOT :? (which
       # rejects an empty string and breaks cold installs shipping a blank .env).

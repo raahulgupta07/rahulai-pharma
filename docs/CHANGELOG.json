@@ -2,6 +2,14 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.35.3",
+      "date": "2026-06-12",
+      "title": "Upload + train just work on a fresh install",
+      "items": [
+        "On a new install the admin account you set at deploy now always has full Workspace access — the Upload data and Force Train All buttons show up immediately, with no manual setup. The Data Source page no longer hangs on \"loading…\" when there's no data yet."
+      ]
+    },
+    {
       "version": "1.35.2",
       "date": "2026-06-12",
       "title": "Admins can upload and train too",

@@ -2,6 +2,19 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-12 (latest+96) — v1.35.3: bulletproof super-admin seed (fresh-install upload/train)
+
+**Symptom (prod, AWS box `52.220.37.93:8002`).** Even after deploying 1.35.2, super-admin `admin` STILL saw Workspace Data Source stuck "loading…", 0 tables, no Upload / Force-Train-All. Operator can only set env (OPENROUTER key + `SUPER_ADMIN` + `SUPER_ADMIN_PASS`) and `docker compose` — no DB surgery.
+
+**Root cause (deeper than 1.35.1/2).** `is_super`/`is_admin` are computed at request time in `validate_token` purely from `username == SUPER_ADMIN` env, with `is_admin` additionally `dash_users.role ∈ (admin,super)`. But `_create_default_admin` (a) only ran when `count==0` and (b) **never set `role`** → the seeded super-admin's DB role stayed `'user'`. So if the login username ever differed from the `SUPER_ADMIN` env value (env changed after first boot, account pre-existed, etc.), `is_super=False` AND `is_admin=False` → `check_project_permission` falls through → `GET /projects/{slug}` 403 → `userRole` stuck `viewer` → buttons hidden. The 1.35.1/2 fixes were correct but sat downstream of flags that were never True.
+
+**Fix — harden every weak link so any env-only deploy works:**
+1. `_create_default_admin` is now **self-healing on every boot**: ensures the `SUPER_ADMIN` env account EXISTS and has `role='super'`. Missing → INSERT with env password + role super; exists with lower role → promote to super; password only (re)set on create, or on existing when `SUPER_ADMIN_RESET_PASS=1` (so UI password changes survive reboots).
+2. `is_super` now derives from `username==SUPER_ADMIN` **OR `role=='super'`** (both `validate_token` and `login`); `is_admin` = super or `role=='admin'`. Survives an env-username vs DB mismatch.
+3. `GET /{slug}/datasource` wrapped: auth still strict (401/403), but any post-auth build error returns an empty-but-valid payload instead of 500 → Data Source view shows its empty state, never sticks on "loading…". Body moved into `_build_datasource`.
+
+**Chain now:** seed guarantees role=super → is_super True → check_project_permission → owner → `/projects/{slug}` 200 `user_role=owner` → `canEdit` → Upload + Force Train All visible. Operator sets only env + deploys; no SQL.
+
 ### Session 2026-06-12 (latest+95) — v1.35.2: non-super admins also get project edit rights
 
 Follow-on to 1.35.1 (user: admins should upload/train too). `app/auth.py check_project_permission` now adds a branch: `user.get("is_admin")` (non-super system admin) → returns role `'admin'` (level 2) on every project. admin(2) ≥ required_role editor(1) so upload/train pass, and canEdit/canAdmin show, but admin < owner(100) so project-destructive ops stay super-only (also still guarded by guard_no_project_management in single-agent). Branch order: super→owner first, then is_admin→admin, else share check. Verified: super→owner, non-super admin→admin, viewer→None. Matrix now: any super-admin OR system admin can upload+train out of the box; viewers and unshared regular users cannot.

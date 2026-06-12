@@ -289,9 +289,26 @@ def _active_run(conn, slug: str) -> dict | None:
 def datasource(slug: str, request: Request, quality: bool = True, preview: bool = True):
     """Aggregated Data Source view. quality/preview can be disabled for speed."""
     user = _get_user(request)
-    _check_access(user, slug)
+    _check_access(user, slug)  # raises 401/403 — auth stays strict
 
     schema = _schema_for(slug)
+    # Past auth: never 500 this page. The frontend leaves the table list on
+    # "loading..." forever when this endpoint errors, so any build failure (fresh
+    # DB, missing optional table, etc.) returns an empty-but-valid payload and the
+    # view falls back to its empty state instead of sticking.
+    try:
+        return _build_datasource(slug, schema, quality, preview)
+    except Exception:
+        logger.exception("datasource: build failed for %s — returning empty payload", slug)
+        return {"slug": slug, "schema": schema, "tables": [], "degraded": True,
+                "summary": {"tables": 0, "rows": 0,
+                            "origins": {"uploaded": 0, "ai": 0, "derived": 0},
+                            "sites": 0, "join_warnings": [], "trained_tables": 0,
+                            "trained_pct": 0, "qa": 0, "vectors": 0, "triples": 0,
+                            "issues": 0, "is_training": False, "active_run": None}}
+
+
+def _build_datasource(slug: str, schema: str, quality: bool, preview: bool):
     engine = _sa_create_engine(db_url, poolclass=NullPool)
     insp = inspect(engine)
     try:

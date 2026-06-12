@@ -671,17 +671,51 @@ def _bootstrap_tables_locked():
 
 
 def _create_default_admin():
-    """Create admin user if no users exist. Username and password from env vars."""
+    """Ensure the SUPER_ADMIN env account exists AND is privileged (role='super').
+
+    Self-healing on EVERY boot so a fresh AWS deploy where the operator only sets
+    SUPER_ADMIN / SUPER_ADMIN_PASS in env (no manual SQL) gets a working super-admin
+    with Upload + Force-Train rights immediately. Upload/train visibility derives from
+    the project role, which derives from is_super/is_admin, which derives from this
+    account being role='super' — so if the seed isn't privileged, the buttons vanish.
+
+    - Account missing       -> create with env password + role='super'.
+    - Account exists, role<super -> promote to 'super' (heals an old 'user'-role seed).
+    - Password is only (re)set on create. To force-resync it from env on an existing
+      account (e.g. operator forgot it), set SUPER_ADMIN_RESET_PASS=1 — otherwise a
+      password changed in the UI survives reboots.
+    """
     import os
     admin_user = os.getenv("SUPER_ADMIN", "admin")
     admin_pass = os.getenv("SUPER_ADMIN_PASS", admin_user)  # default password = username
-    with _engine.connect() as conn:
-        count = conn.execute(text("SELECT COUNT(*) FROM public.dash_users")).scalar()
-        if count == 0:
-            conn.execute(text(
-                "INSERT INTO public.dash_users (username, password_hash) VALUES (:u, :p)"
-            ), {"u": admin_user, "p": _hash_password(admin_pass)})
+    reset_pass = os.getenv("SUPER_ADMIN_RESET_PASS", "0").strip().lower() in ("1", "true", "yes")
+    try:
+        with _engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT id, COALESCE(role, 'user') FROM public.dash_users WHERE username = :u"
+            ), {"u": admin_user}).fetchone()
+            if not row:
+                conn.execute(text(
+                    "INSERT INTO public.dash_users (username, password_hash, role) "
+                    "VALUES (:u, :p, 'super')"
+                ), {"u": admin_user, "p": _hash_password(admin_pass)})
+                conn.commit()
+                logger.info("auth: seeded super-admin '%s' (role=super)", admin_user)
+                return
+            uid, role = row[0], row[1]
+            if role != "super":
+                conn.execute(text(
+                    "UPDATE public.dash_users SET role = 'super' WHERE id = :i"
+                ), {"i": uid})
+                logger.info("auth: promoted '%s' to role=super (was '%s')", admin_user, role)
+            if reset_pass:
+                conn.execute(text(
+                    "UPDATE public.dash_users SET password_hash = :p WHERE id = :i"
+                ), {"i": uid, "p": _hash_password(admin_pass)})
+                logger.info("auth: reset super-admin '%s' password from env", admin_user)
             conn.commit()
+    except Exception:
+        logger.exception("auth: ensure super-admin failed")
 
 
 def init_auth():
@@ -740,8 +774,11 @@ def validate_token(token: str) -> Optional[dict]:
                 "WHERE t.token = :t"
             ), {"t": token}).fetchone()
             if row and row[2] > time.time():
-                _is_super = row[1] == SUPER_ADMIN
-                _is_admin = _is_super or (row[3] in ("admin", "super"))
+                # Super = the SUPER_ADMIN env username OR anyone holding DB role
+                # 'super' (self-heal seed guarantees the env account has it). This
+                # makes upload/train rights survive an env-username vs DB mismatch.
+                _is_super = (row[1] == SUPER_ADMIN) or (row[3] == "super")
+                _is_admin = _is_super or (row[3] == "admin")
                 info = {"user_id": row[0], "username": row[1], "expiry": row[2], "is_super": _is_super, "is_admin": _is_admin, "aad_groups": _extract_aad_groups(token), "cached_at": time.time()}
                 with _token_cache_lock:
                     # Enforce size limit BEFORE inserting
@@ -1025,8 +1062,8 @@ def login(req: LoginRequest):
             ), {"t": token, "uid": row[0], "u": row[1], "e": expiry})
             conn.commit()
 
-            is_super = row[1] == SUPER_ADMIN
-            is_admin = is_super or (row[3] in ("admin", "super"))
+            is_super = (row[1] == SUPER_ADMIN) or (row[3] == "super")
+            is_admin = is_super or (row[3] == "admin")
             _token_cache[token] = {"user_id": row[0], "username": row[1], "expiry": expiry, "is_super": is_super, "is_admin": is_admin, "cached_at": time.time()}
 
             _surfaces = surfaces_for({"is_super": is_super, "is_admin": is_admin})
