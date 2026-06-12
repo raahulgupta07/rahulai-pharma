@@ -4290,11 +4290,11 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  .intg-back { border: 1px solid var(--pw-bg-alt); background: var(--pw-bg-alt); padding: 6px 12px; cursor: pointer; font-size: 12px; font-weight: 700; margin-bottom: 16px; }
  .intg-back:hover { background: var(--pw-surface); }
  /* connector config popup */
- .intg-modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: flex-start; justify-content: center; z-index: 150; padding: 48px 24px; overflow-y: auto; }
- .intg-modal { background: var(--pw-surface, #fff); border: 2px solid var(--pw-ink); width: 880px; max-width: 100%; max-height: calc(100vh - 96px); display: flex; flex-direction: column; box-shadow: 8px 8px 0 var(--pw-ink); }
- .intg-modal-h { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 2px solid var(--pw-ink); font-size: 16px; font-weight: 900; text-transform: uppercase; }
- .intg-x { border: 1px solid var(--pw-ink); background: var(--pw-surface); width: 30px; height: 30px; cursor: pointer; font-size: 14px; line-height: 1; }
- .intg-x:hover { background: var(--pw-bg-alt); }
+ .intg-modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 150; padding: 24px; overflow-y: auto; }
+ .intg-modal { background: var(--pw-surface, #fff); border: 1px solid var(--pw-bg-alt); border-radius: 16px; width: 880px; max-width: 100%; max-height: calc(100vh - 48px); margin: auto; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.25); overflow: hidden; }
+ .intg-modal-h { display: flex; align-items: center; justify-content: space-between; padding: 16px 22px; border-bottom: 1px solid var(--pw-bg-alt); font-size: 16px; font-weight: 800; }
+ .intg-x { border: 1px solid var(--pw-bg-alt); border-radius: 8px; background: var(--pw-surface); width: 32px; height: 32px; cursor: pointer; font-size: 14px; line-height: 1; color: var(--pw-muted); transition: background 0.15s; }
+ .intg-x:hover { background: var(--pw-bg-alt); color: var(--pw-ink); }
  .intg-modal-body { padding: 20px; overflow-y: auto; }
  .intg-sub2 { font-size: 12px; color: var(--pw-muted); margin-bottom: 14px; }
  .intg-add { font-size: 11px; font-weight: 700; color: var(--pw-ink); }
@@ -4318,17 +4318,31 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  /* S3 form (inside popup) */
  .ffl { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; margin: 10px 0 3px; }
  .ffopt { color: var(--pw-muted); font-weight: 400; text-transform: none; }
- .ffin { width: 100%; box-sizing: border-box; border: 2px solid var(--pw-ink); padding: 6px 10px; font-family: var(--pw-font-body, ui-monospace, monospace); font-size: 11px; background: var(--pw-bg); }
+ .ffin { width: 100%; box-sizing: border-box; border: 1px solid var(--pw-bg-alt); border-radius: 10px; padding: 9px 12px; font-family: var(--pw-font-body, ui-monospace, monospace); font-size: 12px; background: var(--pw-surface); transition: border-color 0.15s; }
+ .ffin:focus { border-color: var(--pw-muted); outline: none; }
  .ff2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
  .ffhd { font-size: 11px; font-weight: 900; text-transform: uppercase; margin: 16px 0 8px; display: flex; align-items: center; gap: 10px; }
  .ffrule { display: grid; grid-template-columns: 1.3fr 1fr 0.9fr auto; gap: 8px; margin-bottom: 6px; align-items: center; }
  .ffrule.rhd { font-size: 10px; color: var(--pw-muted); font-weight: 700; }
  .ffchk { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
- .fftest { border: 2px solid var(--pw-ink); background: var(--pw-bg-alt); padding: 8px 12px; font-size: 11px; margin-top: 12px; word-break: break-word; font-family: var(--pw-font-body, monospace); }
- .fffoot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; border-top: 2px solid var(--pw-ink); padding-top: 12px; }
- .ibtn { border: 2px solid var(--pw-ink); background: var(--pw-accent, #c96342); color: #fff; padding: 7px 16px; font-size: 11px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
- .ibtn.ghost { background: var(--pw-surface); color: var(--pw-ink); }
- .ibtn.xs { padding: 3px 9px; font-size: 10px; border-width: 1px; }
- .ibtn:hover { box-shadow: 2px 2px 0 var(--pw-ink); }
- .ibtn:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
+ .fftest { border: 1px solid var(--pw-bg-alt); border-radius: 10px; background: var(--pw-bg-alt); padding: 9px 12px; font-size: 11px; margin-top: 12px; word-break: break-word; font-family: var(--pw-font-body, monospace); }
+ .fffoot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; border-top: 1px solid var(--pw-bg-alt); padding-top: 14px; }
+ .ibtn { border: 1px solid var(--pw-accent, #c96342); border-radius: 10px; background: var(--pw-accent, #c96342); color: #fff; padding: 9px 18px; font-size: 12px; font-weight: 700; cursor: pointer; transition: filter 0.15s, box-shadow 0.15s; }
+ .ibtn.ghost { background: var(--pw-surface); color: var(--pw-ink); border-color: var(--pw-bg-alt); }
+ .ibtn.xs { padding: 4px 10px; font-size: 10px; }
+ .ibtn:hover { filter: brightness(0.95); box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+ .ibtn.ghost:hover { background: var(--pw-bg-alt); filter: none; }
+ .ibtn:disabled { opacity: 0.45; cursor: default; box-shadow: none; filter: none; }
+
+ /* ── soften legacy inline-bordered forms inside the popup (DB / OAuth) ── */
+ .intg-modal-body :global(input[type=text]),
+ .intg-modal-body :global(input[type=password]),
+ .intg-modal-body :global(input[type=number]),
+ .intg-modal-body :global(input:not([type])),
+ .intg-modal-body :global(select),
+ .intg-modal-body :global(textarea) { border: 1px solid var(--pw-bg-alt) !important; border-radius: 10px !important; background: var(--pw-surface) !important; padding: 9px 12px !important; font-size: 12px !important; }
+ .intg-modal-body :global(input:focus),
+ .intg-modal-body :global(select:focus),
+ .intg-modal-body :global(textarea:focus) { border-color: var(--pw-muted) !important; outline: none !important; }
+ .intg-modal-body :global(.ink-border) { border: 1px solid var(--pw-bg-alt) !important; border-radius: 14px !important; box-shadow: none !important; }
 </style>
