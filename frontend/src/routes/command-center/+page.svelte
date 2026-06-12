@@ -4318,8 +4318,8 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  /* S3 form (inside popup) */
  .ffl { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; margin: 10px 0 3px; }
  .ffopt { color: var(--pw-muted); font-weight: 400; text-transform: none; }
- .ffin { width: 100%; box-sizing: border-box; border: 1px solid var(--pw-bg-alt); border-radius: 10px; padding: 9px 12px; font-family: var(--pw-font-body, ui-monospace, monospace); font-size: 12px; background: var(--pw-surface); transition: border-color 0.15s; }
- .ffin:focus { border-color: var(--pw-muted); outline: none; }
+ .ffin { width: 100%; box-sizing: border-box; border: 1px solid var(--pw-muted); border-radius: 10px; padding: 9px 12px; font-family: var(--pw-font-body, ui-monospace, monospace); font-size: 12px; background: var(--pw-surface); transition: border-color 0.15s; }
+ .ffin:focus { border-color: var(--pw-ink); outline: none; }
  .ff2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
  .ffhd { font-size: 11px; font-weight: 900; text-transform: uppercase; margin: 16px 0 8px; display: flex; align-items: center; gap: 10px; }
  .ffrule { display: grid; grid-template-columns: 1.3fr 1fr 0.9fr auto; gap: 8px; margin-bottom: 6px; align-items: center; }
@@ -4340,9 +4340,9 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  .intg-modal-body :global(input[type=number]),
  .intg-modal-body :global(input:not([type])),
  .intg-modal-body :global(select),
- .intg-modal-body :global(textarea) { border: 1px solid var(--pw-bg-alt) !important; border-radius: 10px !important; background: var(--pw-surface) !important; padding: 9px 12px !important; font-size: 12px !important; }
+ .intg-modal-body :global(textarea) { border: 1px solid var(--pw-muted) !important; border-radius: 10px !important; background: var(--pw-surface) !important; padding: 9px 12px !important; font-size: 12px !important; }
  .intg-modal-body :global(input:focus),
  .intg-modal-body :global(select:focus),
- .intg-modal-body :global(textarea:focus) { border-color: var(--pw-muted) !important; outline: none !important; }
+ .intg-modal-body :global(textarea:focus) { border-color: var(--pw-ink) !important; outline: none !important; }
  .intg-modal-body :global(.ink-border) { border: 1px solid var(--pw-bg-alt) !important; border-radius: 14px !important; box-shadow: none !important; }
 </style>
