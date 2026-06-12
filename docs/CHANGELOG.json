@@ -2,6 +2,14 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.38.2",
+      "date": "2026-06-12",
+      "title": "Single home for integrations",
+      "items": [
+        "Removed the separate Integrations menu from the top bar — every integration now lives in one place under Admin → Integrations."
+      ]
+    },
+    {
       "version": "1.38.1",
       "date": "2026-06-12",
       "title": "Consistent integration design",
