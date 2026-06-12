@@ -2,6 +2,14 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.40.0",
+      "date": "2026-06-12",
+      "title": "Add connections from a tile, manage them in one table",
+      "items": [
+        "Integrations redesigned: click a data-source tile to open a popup and add a connection directly — no extra buttons or sub-screens. Every configured connection (across all sources) now appears in a single table below the tiles with its details, status and actions (sync, edit, delete). Add as many S3 buckets or databases as you need."
+      ]
+    },
+    {
       "version": "1.39.0",
       "date": "2026-06-12",
       "title": "Connector logos + multi-account setup",

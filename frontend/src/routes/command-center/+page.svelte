@@ -17,14 +17,41 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  import AuthAdminPanel from '$lib/admin/AuthAdminPanel.svelte';
  import ObservabilityPanel from '$lib/admin/ObservabilityPanel.svelte';
  import VersionCard from '$lib/VersionCard.svelte';
- import S3SyncPanel from '$lib/admin/S3SyncPanel.svelte';
 
  /* ─── state ─── */
  let activeTab = $state('cockpit');
  // Unified Integrations hub: 'hub' = card grid, else a connector id shown in a popup modal.
  let intgView = $state('hub');
- const _intgTitles = { s3: '☁ S3 Sync', sharepoint: '▦ SharePoint', gdrive: '▲ Google Drive', onedrive: '☁ OneDrive', database: '⛁ Database' };
- let intgTitle = $derived(_intgTitles[intgView] || 'Integration');
+ const _intgTitles = { s3: '🟥 S3 Sync', sharepoint: '🟦 SharePoint', gdrive: '🟢 Google Drive', onedrive: '🔵 OneDrive', database: '🟣 Database' };
+ let intgTitle = $derived(intgView === 's3' ? (s3Form?.id ? '🟥 Edit S3 bucket' : '🟥 New S3 bucket') : (_intgTitles[intgView] || 'Integration'));
+
+ // ── S3 connections (unified integrations table + popup form) ──
+ let s3List = $state<any[]>([]);
+ let s3Form = $state<any>(null);
+ let s3Busy = $state(false);
+ let s3Test = $state('');
+ function _ih() { const t = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null; return t ? { Authorization: 'Bearer ' + t } : {}; }
+ function _ihj() { return { 'Content-Type': 'application/json', ..._ih() }; }
+ async function loadS3() { try { const r = await fetch('/api/s3/sources', { headers: _ih() }); if (r.ok) s3List = (await r.json()).sources || []; } catch {} }
+ function s3New() { s3Test = ''; s3Form = { id: 0, name: '', bucket: '', prefix: '', region: 'us-east-1', endpoint_url: '', access_key: '', secret_key: '', file_map: [{ pattern: '', table: '', action: 'replace' }], schedule_seconds: 300, retrain_after: true, enabled: false }; intgView = 's3'; }
+ function s3Edit(s: any) { s3Test = ''; s3Form = { id: s.id, name: s.name, bucket: s.bucket, prefix: s.prefix, region: s.region, endpoint_url: s.endpoint_url || '', access_key: '', secret_key: '', file_map: s.file_map?.length ? JSON.parse(JSON.stringify(s.file_map)) : [{ pattern: '', table: '', action: 'replace' }], schedule_seconds: s.schedule_seconds, retrain_after: s.retrain_after, enabled: s.enabled }; intgView = 's3'; }
+ function s3AddRule() { s3Form.file_map = [...s3Form.file_map, { pattern: '', table: '', action: 'replace' }]; }
+ function s3DelRule(i: number) { s3Form.file_map = s3Form.file_map.filter((_: any, k: number) => k !== i); }
+ async function s3Save() {
+   s3Busy = true;
+   try {
+     const b = { name: s3Form.name, bucket: s3Form.bucket, prefix: s3Form.prefix, region: s3Form.region, endpoint_url: s3Form.endpoint_url || null, access_key: s3Form.access_key || null, secret_key: s3Form.secret_key || null, file_map: s3Form.file_map.filter((r: any) => r.pattern && r.table), schedule_seconds: Number(s3Form.schedule_seconds) || 300, retrain_after: !!s3Form.retrain_after, enabled: !!s3Form.enabled };
+     const url = s3Form.id ? '/api/s3/sources/' + s3Form.id : '/api/s3/sources';
+     const r = await fetch(url, { method: s3Form.id ? 'PUT' : 'POST', headers: _ihj(), body: JSON.stringify(b) });
+     if (r.ok) { s3Form = null; intgView = 'hub'; await loadS3(); } else { s3Test = 'Save failed: ' + (await r.text()); }
+   } finally { s3Busy = false; }
+ }
+ async function s3TestConn() { s3Busy = true; s3Test = 'TESTING…'; try { if (!s3Form.id) { s3Test = 'Save first, then Test.'; return; } const r = await fetch('/api/s3/sources/' + s3Form.id + '/test', { method: 'POST', headers: _ih() }); const d = await r.json(); s3Test = d.ok ? `✓ ${d.objects} object(s), ${d.matched} match your patterns` : '✗ ' + d.error; } finally { s3Busy = false; } }
+ async function s3Sync(id: number, force = false) { await fetch('/api/s3/sources/' + id + '/sync?force=' + (force ? 1 : 0), { method: 'POST', headers: _ih() }); setTimeout(loadS3, 1500); }
+ async function s3Delete(id: number) { if (!confirm('Delete this S3 connection? (Loaded data stays.)')) return; await fetch('/api/s3/sources/' + id, { method: 'DELETE', headers: _ih() }); await loadS3(); }
+ function s3Sched(s: number) { if (s % 86400 === 0) return s / 86400 + 'd'; if (s % 3600 === 0) return s / 3600 + 'h'; if (s % 60 === 0) return s / 60 + 'm'; return s + 's'; }
+ function s3Dot(st: string) { return st === 'ok' ? 'on' : st === 'error' ? 'err' : 'off'; }
+ let totalConfigured = $derived(s3List.length + dbAllSources.length + (spAdminConfig.configured ? 1 : 0) + (gdAdminConfig.configured ? 1 : 0) + (odAdminConfig.configured ? 1 : 0));
  let loading = $state(false);
 
  /* ─── auth helper ─── */
@@ -1429,6 +1456,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  }
 
  async function loadIntegrations() {
+ loadS3();
  try {
  const res = await fetch('/api/sharepoint/admin/config', { headers: _ccHdr() });
  if (res.ok) {
@@ -2253,25 +2281,71 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
         <svg viewBox="0 0 24 24" width="34" height="34"><ellipse cx="12" cy="6" rx="7" ry="3" fill="#336791"/><path d="M5 6v12c0 1.66 3.13 3 7 3s7-1.34 7-3V6" fill="#336791"/><path d="M5 9.5c0 1.66 3.13 3 7 3s7-1.34 7-3M5 13.5c0 1.66 3.13 3 7 3s7-1.34 7-3" stroke="#fff" stroke-width="0.8" fill="none" opacity=".7"/></svg>
       {/if}
     {/snippet}
-    {#snippet intgCard(id, icon, color, title, sub, status, stat)}
-      <button class="intg-card" onclick={() => { intgView = id; }}>
+    {#snippet intgCard(id, title, sub, count)}
+      <button class="intg-card" onclick={() => { if (id === 's3') s3New(); else intgView = id; }}>
         <div class="intg-logo">{@render brandLogo(id)}</div>
         <div class="intg-name">{title}</div>
         <div class="intg-sub">{sub}</div>
-        <div class="intg-foot">
-          <span class="intg-dot {status}"></span>{stat}
-        </div>
+        <div class="intg-foot"><span class="intg-add">＋ add{count ? ' · ' + count : ''}</span></div>
       </button>
     {/snippet}
 
-    <div class="intg-group">DATA SOURCES</div>
+    <div class="intg-sub2">Click a tile to add a connection — all configured sources appear in the table below.</div>
     <div class="intg-grid">
-      {@render intgCard('s3', '☁', '#2a6db5', 'S3 Sync', 'Auto-pull from S3 → retrain', 'off', 'Configure')}
-      {@render intgCard('sharepoint', '▦', '#0a7c42', 'SharePoint', 'Microsoft 365 documents', spAdminConfig.configured ? 'on' : 'off', spAdminConfig.configured ? 'Configured' : 'Not set')}
-      {@render intgCard('gdrive', '▲', '#d2a300', 'Google Drive', 'Drive files & folders', gdAdminConfig.configured ? 'on' : 'off', gdAdminConfig.configured ? 'Configured' : 'Not set')}
-      {@render intgCard('onedrive', '⛅', '#1b66c9', 'OneDrive', 'Personal / business files', odAdminConfig.configured ? 'on' : 'off', odAdminConfig.configured ? 'Configured' : 'Not set')}
-      {@render intgCard('database', '⛁', '#5a4b8a', 'Database', 'PostgreSQL / MySQL tables', dbAllSources.length ? 'on' : 'off', dbAllSources.length ? dbAllSources.length + ' connected' : 'Not set')}
+      {@render intgCard('s3', 'S3 Sync', 'Auto-pull from S3 → retrain', s3List.length)}
+      {@render intgCard('sharepoint', 'SharePoint', 'Microsoft 365 documents', spAdminConfig.configured ? 1 : 0)}
+      {@render intgCard('gdrive', 'Google Drive', 'Drive files & folders', gdAdminConfig.configured ? 1 : 0)}
+      {@render intgCard('onedrive', 'OneDrive', 'Personal / business files', odAdminConfig.configured ? 1 : 0)}
+      {@render intgCard('database', 'Database', 'PostgreSQL / MySQL tables', dbAllSources.length)}
     </div>
+
+    {#snippet typeBadge(label, id)}
+      <span class="tbadge"><span class="tbadge-ic">{@render brandLogo(id)}</span>{label}</span>
+    {/snippet}
+
+    <div class="intg-group" style="margin-top:26px;">CONFIGURED CONNECTIONS ({totalConfigured})</div>
+    {#if !totalConfigured}
+      <div style="font-size:12px;color:var(--pw-muted);padding:14px 0;">No connections yet. Click a tile above to add one.</div>
+    {:else}
+      <table class="ctab">
+        <thead><tr><th>TYPE</th><th>NAME</th><th>DETAIL</th><th>SCHEDULE</th><th>STATUS</th><th class="ar">ACTIONS</th></tr></thead>
+        <tbody>
+          {#each s3List as s (s.id)}
+            <tr>
+              <td>{@render typeBadge('S3', 's3')}</td>
+              <td class="b">{s.name}</td>
+              <td class="mono">s3://{s.bucket}/{s.prefix}</td>
+              <td>{s.enabled ? 'every ' + s3Sched(s.schedule_seconds) : 'manual'}</td>
+              <td><span class="cdot {s3Dot(s.last_status)}"></span>{s.last_status || 'never'}</td>
+              <td class="ca">
+                <button class="cico" title="Sync now" onclick={() => s3Sync(s.id)}>⟳</button>
+                <button class="cico" title="Edit" onclick={() => s3Edit(s)}>✎</button>
+                <button class="cico danger" title="Delete" onclick={() => s3Delete(s.id)}>✕</button>
+              </td>
+            </tr>
+          {/each}
+          {#each dbAllSources as d}
+            <tr>
+              <td>{@render typeBadge('DB', 'database')}</td>
+              <td class="b">{d.database || d.db_name || '-'}</td>
+              <td class="mono">{(d.type || d.db_type || '').toUpperCase()} · {d.host || '-'} · {d.tables ?? d.table_count ?? '?'} tbl</td>
+              <td>—</td>
+              <td><span class="cdot on"></span>{d.status || 'connected'}</td>
+              <td class="ca"><button class="cico" title="Manage" onclick={() => { intgView = 'database'; }}>✎</button></td>
+            </tr>
+          {/each}
+          {#if spAdminConfig.configured}
+            <tr><td>{@render typeBadge('SharePoint', 'sharepoint')}</td><td class="b">SharePoint</td><td class="mono">Microsoft 365 · {spAllSources.length} site(s)</td><td>—</td><td><span class="cdot on"></span>configured</td><td class="ca"><button class="cico" title="Edit" onclick={() => { intgView = 'sharepoint'; }}>✎</button></td></tr>
+          {/if}
+          {#if gdAdminConfig.configured}
+            <tr><td>{@render typeBadge('Drive', 'gdrive')}</td><td class="b">Google Drive</td><td class="mono">OAuth client configured</td><td>—</td><td><span class="cdot on"></span>configured</td><td class="ca"><button class="cico" title="Edit" onclick={() => { intgView = 'gdrive'; }}>✎</button></td></tr>
+          {/if}
+          {#if odAdminConfig.configured}
+            <tr><td>{@render typeBadge('OneDrive', 'onedrive')}</td><td class="b">OneDrive</td><td class="mono">OAuth client configured</td><td>—</td><td><span class="cdot on"></span>configured</td><td class="ca"><button class="cico" title="Edit" onclick={() => { intgView = 'onedrive'; }}>✎</button></td></tr>
+          {/if}
+        </tbody>
+      </table>
+    {/if}
   {/if}
 
   {#if intgView !== 'hub'}
@@ -2283,7 +2357,50 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
         </div>
         <div class="intg-modal-body">
     {#if intgView === 's3'}
-      <S3SyncPanel />
+      {#if s3Form}
+      <div class="s3form">
+        <label class="ffl">NAME</label>
+        <input class="ffin" bind:value={s3Form.name} placeholder="Pharma exports" />
+        <div class="ff2">
+          <div><label class="ffl">BUCKET</label><input class="ffin" bind:value={s3Form.bucket} placeholder="my-pharma-data" /></div>
+          <div><label class="ffl">PREFIX (FOLDER)</label><input class="ffin" bind:value={s3Form.prefix} placeholder="exports/" /></div>
+        </div>
+        <div class="ff2">
+          <div><label class="ffl">REGION</label><input class="ffin" bind:value={s3Form.region} placeholder="ap-southeast-1" /></div>
+          <div><label class="ffl">ENDPOINT URL <span class="ffopt">(optional · MinIO)</span></label><input class="ffin" bind:value={s3Form.endpoint_url} /></div>
+        </div>
+        <div class="ff2">
+          <div><label class="ffl">ACCESS KEY {#if s3Form.id}<span class="ffopt">(blank = keep)</span>{/if}</label><input class="ffin" autocomplete="off" bind:value={s3Form.access_key} /></div>
+          <div><label class="ffl">SECRET KEY {#if s3Form.id}<span class="ffopt">(blank = keep)</span>{/if}</label><input class="ffin" type="password" autocomplete="off" bind:value={s3Form.secret_key} /></div>
+        </div>
+        <div class="ffhd">FILE → TABLE RULES <button class="ibtn ghost xs" onclick={s3AddRule}>＋ rule</button></div>
+        <div class="ffrule rhd"><span>FILE PATTERN</span><span>→ TABLE</span><span>MODE</span><span></span></div>
+        {#each s3Form.file_map as r, i}
+          <div class="ffrule">
+            <input class="ffin" bind:value={r.pattern} placeholder="articles_*.csv" />
+            <input class="ffin" bind:value={r.table} placeholder="articles_list" />
+            <select class="ffin" bind:value={r.action}><option value="replace">replace</option><option value="append">append</option><option value="upsert">upsert</option></select>
+            <button class="cico danger" onclick={() => s3DelRule(i)}>✕</button>
+          </div>
+        {/each}
+        <div style="font-size:10px;color:var(--pw-muted);margin-top:4px;">"replace" = drop the old table and load the new file (full refresh).</div>
+        <div class="ff2" style="margin-top:12px;">
+          <div><label class="ffl">CHECK EVERY</label>
+            <select class="ffin" bind:value={s3Form.schedule_seconds}><option value={300}>5 minutes</option><option value={900}>15 minutes</option><option value={3600}>1 hour</option><option value={21600}>6 hours</option><option value={86400}>1 day</option></select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;justify-content:flex-end;padding-bottom:4px;">
+            <label class="ffchk"><input type="checkbox" bind:checked={s3Form.retrain_after} /> RETRAIN AFTER A CHANGE</label>
+            <label class="ffchk"><input type="checkbox" bind:checked={s3Form.enabled} /> ENABLE AUTO SYNC</label>
+          </div>
+        </div>
+        {#if s3Test}<div class="fftest">{s3Test}</div>{/if}
+        <div class="fffoot">
+          <button class="ibtn ghost" onclick={() => { s3Form = null; intgView = 'hub'; }}>CANCEL</button>
+          <button class="ibtn ghost" onclick={s3TestConn} disabled={s3Busy || !s3Form.id}>TEST CONNECTION</button>
+          <button class="ibtn" onclick={s3Save} disabled={s3Busy || !s3Form.name || !s3Form.bucket}>{s3Form.id ? 'SAVE' : 'CREATE'}</button>
+        </div>
+      </div>
+      {/if}
     {:else if intgView === 'sharepoint'}
   <!-- SharePoint Configuration -->
   <div style="font-size: 16px; font-weight: 900; text-transform: uppercase; margin-bottom: 16px;">SharePoint Connector</div>
@@ -4095,4 +4212,38 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  .intg-x { border: 1px solid var(--pw-ink); background: var(--pw-surface); width: 30px; height: 30px; cursor: pointer; font-size: 14px; line-height: 1; }
  .intg-x:hover { background: var(--pw-bg-alt); }
  .intg-modal-body { padding: 20px; overflow-y: auto; }
+ .intg-sub2 { font-size: 12px; color: var(--pw-muted); margin-bottom: 14px; }
+ .intg-add { font-size: 11px; font-weight: 700; color: var(--pw-ink); }
+ /* configured-connections table */
+ .ctab { width: 100%; border-collapse: collapse; font-size: 12px; }
+ .ctab th { text-align: left; padding: 7px 10px; border-bottom: 2px solid var(--pw-ink); text-transform: uppercase; font-size: 10px; font-weight: 700; }
+ .ctab th.ar { text-align: right; }
+ .ctab td { padding: 8px 10px; border-bottom: 1px solid var(--pw-bg-alt); vertical-align: middle; }
+ .ctab td.b { font-weight: 700; }
+ .ctab td.mono { font-family: var(--pw-font-body, ui-monospace, monospace); color: var(--pw-muted); }
+ .tbadge { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 11px; }
+ .tbadge-ic { width: 18px; height: 18px; display: inline-flex; }
+ .tbadge-ic :global(svg) { width: 18px; height: 18px; }
+ .cdot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; background: #bbb; }
+ .cdot.on { background: #3a9e4d; } .cdot.err { background: #d24a4a; } .cdot.off { background: #c9c4ba; }
+ .ca { text-align: right; white-space: nowrap; }
+ .cico { border: 1px solid var(--pw-ink); background: var(--pw-surface); width: 26px; height: 26px; cursor: pointer; font-size: 12px; line-height: 1; margin-left: 3px; }
+ .cico:hover { background: var(--pw-bg-alt); }
+ .cico.danger { color: #c0392b; border-color: #c0392b; }
+ /* S3 form (inside popup) */
+ .ffl { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; margin: 10px 0 3px; }
+ .ffopt { color: var(--pw-muted); font-weight: 400; text-transform: none; }
+ .ffin { width: 100%; box-sizing: border-box; border: 2px solid var(--pw-ink); padding: 6px 10px; font-family: var(--pw-font-body, ui-monospace, monospace); font-size: 11px; background: var(--pw-bg); }
+ .ff2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+ .ffhd { font-size: 11px; font-weight: 900; text-transform: uppercase; margin: 16px 0 8px; display: flex; align-items: center; gap: 10px; }
+ .ffrule { display: grid; grid-template-columns: 1.3fr 1fr 0.9fr auto; gap: 8px; margin-bottom: 6px; align-items: center; }
+ .ffrule.rhd { font-size: 10px; color: var(--pw-muted); font-weight: 700; }
+ .ffchk { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
+ .fftest { border: 2px solid var(--pw-ink); background: var(--pw-bg-alt); padding: 8px 12px; font-size: 11px; margin-top: 12px; word-break: break-word; font-family: var(--pw-font-body, monospace); }
+ .fffoot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; border-top: 2px solid var(--pw-ink); padding-top: 12px; }
+ .ibtn { border: 2px solid var(--pw-ink); background: var(--pw-ink); color: #fff; padding: 7px 16px; font-size: 11px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
+ .ibtn.ghost { background: var(--pw-surface); color: var(--pw-ink); }
+ .ibtn.xs { padding: 3px 9px; font-size: 10px; border-width: 1px; }
+ .ibtn:hover { box-shadow: 2px 2px 0 var(--pw-ink); }
+ .ibtn:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
 </style>
