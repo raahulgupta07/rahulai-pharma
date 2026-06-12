@@ -2,6 +2,14 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.29.0",
+      "date": "2026-06-12",
+      "title": "Learned shortcuts are double-checked before they're trusted",
+      "items": [
+        "Before the assistant auto-trusts a learned shortcut for instant answers, it now independently works the answer out a second way and only trusts it if both agree — so a shortcut that quietly computes the wrong number is caught and held for a person to review."
+      ]
+    },
+    {
       "version": "1.28.0",
       "date": "2026-06-12",
       "title": "Safer automatic learning",

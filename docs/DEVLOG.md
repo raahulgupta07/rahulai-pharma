@@ -2,6 +2,22 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-12 (latest+87) — v1.29.0: curator CORRECTNESS cross-check (fix "writer changes trust unattended")
+
+**Ask.** Actually fix the residual con — the v1.28.0 gates are demand-based (uses≥3, no downvote, cap), but the daemon still can't tell if a stored SQL is SEMANTICALLY wrong. "Verify" only proves the SQL runs + returns a number; a wrong SQL still returns *a* number.
+
+**Fix — independent re-derivation gate (`_independent_value` in `dash/learning/query_curator.py`).** Before auto-promote, derive the answer a SECOND, independent way: `generate_sql_safe` (LLM writes a FRESH read-only SQL for the question, validated) → run it → compare its value to the stored SQL's value via `verified_reward._matches` (REL_TOL 1.5% + ABS_TOL 1.0, tolerates stock drift between the two runs). AGREE → promote; DISAGREE or can't re-derive → **hold** ("needs review"). A semantically-wrong stored SQL won't match a fresh derivation → caught. Fail-safe: no independent value → hold (never promote on uncertainty). Env `QUERY_CURATOR_CROSSCHECK=1` (default ON; off = v1.28.0 demand-gates only). Cost: 1 LLM (training/LITE model) call per promote-eligible candidate, ≤MAX_PROMOTE/cycle, once/24h → negligible.
+
+**LANDMINE fixed mid-build:** `_independent_value` used `_is_read_only` but that name is imported LOCALLY inside `_exec` (line 104, `from dash.learning.cache_curator import _is_read_only`), not module-level → first run silently "could not re-derive" (NameError caught → None → hold). Added the local import. Always grep where a helper is actually imported in this module — several are function-local, not top-level.
+
+**VERIFIED live (curate dry_run=false):**
+- correct SQL (313, total stock) → fresh derivation agrees → **promote** ("verified + uses=3 + cross-checked").
+- WRONG SQL injected (id 315: `COUNT(*)`=108,110 for a "total units" question) → fresh derivation = 1,360,217 → mismatch → **hold** ("cross-check disagreed (stored=108110 vs fresh=1360217)"), stays candidate, never served.
+
+Test row deleted; bank left with 3 real proven patterns. Shipped v1.29.0, committed + pushed. Knob in `.env`+`compose.yaml`.
+
+---
+
 ### Session 2026-06-12 (latest+86) — v1.28.0: curator auto-promote safety gates (keep daemon ON safely)
 
 **Ask.** Keep the curator daemon ON but make unattended auto-promote safe (it's a writer that grants zero-LLM Mode-1 serve on a pharma agent — wrong SQL that still returns a number can't be caught by "verify runs").

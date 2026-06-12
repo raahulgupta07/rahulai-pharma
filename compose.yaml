@@ -193,6 +193,9 @@ services:
       # promotions per cycle; any 👎 on the question blocks auto-promote.
       - QUERY_CURATOR_MIN_USES=${QUERY_CURATOR_MIN_USES:-3}
       - QUERY_CURATOR_MAX_PROMOTE=${QUERY_CURATOR_MAX_PROMOTE:-10}
+      # Correctness gate: independently re-derive the answer (fresh LLM SQL) and
+      # require it to AGREE before auto-promote. Off = demand-gates only.
+      - QUERY_CURATOR_CROSSCHECK=${QUERY_CURATOR_CROSSCHECK:-1}
       - QUERY_BANK_EMB_TTL=${QUERY_BANK_EMB_TTL:-300}
       # Gateway chat-body logging → dash_apigw_messages (powers per-key Questions
       # drill-down + auto-learn harvest). PII: keep on only with consent.

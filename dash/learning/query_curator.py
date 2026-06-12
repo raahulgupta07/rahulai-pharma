@@ -44,6 +44,42 @@ def _max_promote_per_cycle() -> int:
         return 10
 
 
+def _crosscheck_on() -> bool:
+    return str(os.getenv("QUERY_CURATOR_CROSSCHECK", "1")).strip().lower() in ("1", "true", "yes")
+
+
+def _independent_value(slug: str, question: str):
+    """Independently RE-DERIVE the answer: ask the LLM to write a FRESH SQL for
+    the question (not the stored one), run it read-only, return its numeric value.
+
+    This is the real correctness gate — the daemon's plain verify only proves the
+    stored SQL *runs and returns a number*, not that the number is RIGHT. A
+    semantically-wrong stored SQL still returns a number, so "verified" alone is
+    not trustworthy enough to grant zero-LLM serve on a pharma agent. By deriving
+    the answer a SECOND, independent way and requiring agreement, a wrong stored
+    SQL is caught (its number won't match a fresh derivation). Returns None if it
+    can't derive one (→ caller HOLDS rather than promotes — fail-safe)."""
+    try:
+        from dash.tools.llm_sql_helper import generate_sql_safe
+        from dash.learning import verified_reward as _vr
+        from dash.learning.cache_curator import _is_read_only
+        gen = generate_sql_safe(
+            f"Write ONE read-only SQL query that answers this question, using the "
+            f"current pharmacy tables: {question}",
+            slug, task="extraction", max_retries=1,
+        )
+        sql = (gen or {}).get("sql")
+        if not sql or not _is_read_only(sql):
+            return None
+        run = _vr._run_rows(slug, sql, limit=20)
+        if not run:
+            return None
+        return run.get("value")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("independent_value failed: %s", exc)
+        return None
+
+
 def _downvoted_norms(slug: str) -> set[str]:
     """Normalized questions that ever got a 👎 (any down rating). Auto-promote is
     BLOCKED for these — a thumbs-down is enough to withhold zero-LLM trust until
@@ -194,10 +230,28 @@ def run_query_curator(slug: str, *, limit: int = 50, dry_run: bool = False) -> d
                                            "reason": f"promote cap {max_promote}/cycle reached"})
                 continue
             if uses >= min_uses:
+                # SAFETY GATE 3 — CORRECTNESS cross-check. Independently re-derive
+                # the answer (fresh LLM-written SQL) and require agreement before
+                # granting zero-LLM serve. Catches semantically-wrong stored SQL
+                # that "verifies" only because it returns *a* number.
+                learned_val = run.get("value")
+                if _crosscheck_on():
+                    indep = _independent_value(slug, question)
+                    from dash.learning import verified_reward as _vr
+                    if indep is None:
+                        summary["kept"] += 1
+                        summary["details"].append({"id": pid, "action": "hold",
+                            "reason": "cross-check could not re-derive — needs review"})
+                        continue
+                    if not (learned_val is not None and _vr._matches(float(learned_val), float(indep))):
+                        summary["kept"] += 1
+                        summary["details"].append({"id": pid, "action": "hold",
+                            "reason": f"cross-check disagreed (stored={learned_val} vs fresh={indep}) — needs review"})
+                        continue
                 summary["promoted"] += 1
                 summary["details"].append({"id": pid, "action": "promote",
-                                           "reason": f"verified + uses={uses}",
-                                           "value": run.get("value")})
+                                           "reason": f"verified + uses={uses} + cross-checked",
+                                           "value": learned_val})
                 if not dry_run:
                     _set_status(slug, pid, "proven", refresh_hash=True)
             else:
