@@ -2,6 +2,22 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-12 (latest+78) — v1.20.0: robot launcher on embed widget
+
+**Ask.** "Instead of the circle [chat-bubble launcher icon] use our robot." Embed widget's floating launcher bubble (60px accent circle, bottom-right) showed a generic chat-bubble SVG (`CHAT_ICON`).
+
+**Done (`dash/embed/widget.js`, vanilla JS shadow-DOM, no build-system change).**
+- New `bubbleBotSvg()` — same robot character as the chat message avatar (`avatarContent()`), white body on the accent bubble, antenna + two eyes + mouth. Logo override preserved (`logoUrl` → `<img class="bubble-logo">`).
+- Launcher swapped: `bubble.innerHTML = CHAT_ICON` → `bubbleBotSvg()`; dead `CHAT_ICON` removed.
+- Idle personality via CSS keyframes: `bubble-bob` (3s float, speeds to 1.2s on hover), `bubble-ant-pulse` (antenna), `bubble-blink` (eyes). `.bubble svg` 28→34px + `overflow:visible` so the antenna isn't clipped.
+- Launcher still hides when panel opens (no icon-swap to X needed — close button lives in the panel header). The message avatar + `thinkBotSvg()` thinking-strip robot were already shipped earlier — this only changes the LAUNCHER.
+
+**Deploy.** `widget.js` is served from disk (`app/embed_public.py:_WIDGET_PATH=/app/dash/embed/widget.js`, mtime-cached) — but durable path = rebuild image. `compose build dash-api` → `DELETE FROM dash.dash_daemon_leader` → force-recreate → `/api/health` 200 → served `widget.js` (56935 B) confirmed `bubbleBotSvg`/`bubble-bot`/animations present. Browser caches widget 300s — hard-refresh embedded page to see it.
+
+**Gotcha (not a bug).** rtk-proxied `curl | grep`/`wc` truncated the response to a stub (`[full output: …log]`) → false "0 matches / 597 bytes". `content-length` header (56935) + `curl -o file` then grep the file showed the real full widget. When verifying a served asset under rtk, save to a file first, don't pipe.
+
+---
+
 ### Session 2026-06-11 (latest+77) — v1.19.0: training log real date+time, always-scroll, HISTORY-by-date tab
 
 **Ask.** Training live-log panel (`FloatingRobot.svelte`) showed time-only (`14:20:54`). Want: real date+time, always scroll to latest, history grouped by date in the CLI console.

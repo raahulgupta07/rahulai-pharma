@@ -154,7 +154,15 @@
     }
     .bubble:hover { transform: scale(1.08) translateY(-2px); box-shadow: 0 10px 28px rgba(0,0,0,0.22); }
     .bubble:active { transform: scale(0.96); }
-    .bubble svg { width: 28px; height: 28px; }
+    .bubble svg { width: 34px; height: 34px; overflow: visible; }
+    .bubble-logo { width: 60%; height: 60%; border-radius: 50%; object-fit: cover; }
+    .bubble-bot { animation: bubble-bob 3s ease-in-out infinite; }
+    .bubble:hover .bubble-bot { animation: bubble-bob 1.2s ease-in-out infinite; }
+    .bubble-ant { animation: bubble-ant-pulse 1.8s ease-in-out infinite; transform-origin: center; }
+    .bubble-eye { animation: bubble-blink 4s ease-in-out infinite; transform-origin: center; }
+    @keyframes bubble-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+    @keyframes bubble-ant-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.8); } }
+    @keyframes bubble-blink { 0%,92%,100% { transform: scaleY(1); } 96% { transform: scaleY(0.1); } }
 
     .panel {
       width: 380px; height: 580px; max-height: calc(100vh - 60px);
@@ -426,15 +434,27 @@
   `;
   sr.appendChild(style);
 
-  // Chat bubble SVG icon
-  var CHAT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
   var CLOSE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
   var SEND_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>';
+
+  // Launcher robot — same character as the chat avatar, white on the accent
+  // bubble, scaled up with idle personality (bob + blink + antenna pulse).
+  function bubbleBotSvg() {
+    if (logoUrl) { return '<img class="bubble-logo" src="' + escapeHtml(logoUrl) + '" alt="">'; }
+    return '<svg class="bubble-bot" viewBox="0 0 32 32" aria-hidden="true">'
+      + '<line x1="16" y1="9" x2="16" y2="4.5" stroke="#fff" stroke-width="2" stroke-linecap="round"/>'
+      + '<circle class="bubble-ant" cx="16" cy="3.6" r="2" fill="#fff"/>'
+      + '<rect x="5" y="9" width="22" height="15" rx="4.5" fill="#fff"/>'
+      + '<rect class="bubble-eye" x="10.5" y="13.5" width="3.5" height="3.5" rx="1" fill="' + t.accent + '"/>'
+      + '<rect class="bubble-eye" x="18" y="13.5" width="3.5" height="3.5" rx="1" fill="' + t.accent + '"/>'
+      + '<rect x="12" y="20" width="8" height="1.6" rx="0.8" fill="' + t.accent + '"/>'
+      + '</svg>';
+  }
 
   var bubble = document.createElement('div');
   bubble.className = 'bubble';
   bubble.title = title;
-  bubble.innerHTML = CHAT_ICON;
+  bubble.innerHTML = bubbleBotSvg();
   sr.appendChild(bubble);
 
   function escapeHtml(s) {

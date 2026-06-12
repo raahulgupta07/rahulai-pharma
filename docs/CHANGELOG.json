@@ -2,6 +2,15 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.20.0",
+      "date": "2026-06-12",
+      "title": "Friendly robot assistant on the chat widget",
+      "items": [
+        "The chat widget button now shows our little assistant robot instead of a plain chat bubble — it gently bobs, blinks, and waves so visitors know help is one tap away.",
+        "Your uploaded logo still takes over the button when you've set one."
+      ]
+    },
+    {
       "version": "1.19.0",
       "date": "2026-06-11",
       "title": "Training log now shows full date & time + history",
