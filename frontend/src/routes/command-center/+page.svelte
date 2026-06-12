@@ -17,9 +17,13 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  import AuthAdminPanel from '$lib/admin/AuthAdminPanel.svelte';
  import ObservabilityPanel from '$lib/admin/ObservabilityPanel.svelte';
  import VersionCard from '$lib/VersionCard.svelte';
+ import S3SyncPanel from '$lib/admin/S3SyncPanel.svelte';
+ import EmbedPanel from '$lib/admin/EmbedPanel.svelte';
 
  /* ─── state ─── */
  let activeTab = $state('cockpit');
+ // Unified Integrations hub: 'hub' = card grid, else a connector id drilled into.
+ let intgView = $state('hub');
  let loading = $state(false);
 
  /* ─── auth helper ─── */
@@ -1004,7 +1008,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  if (id === 'chatLogs') await loadChatLogs();
  if (id === 'health') { await loadHealth(); loadDriftStatus(); }
  if (id === 'stats') await loadStats();
- if (id === 'integrations') await loadIntegrations();
+ if (id === 'integrations') { intgView = 'hub'; await loadIntegrations(); }
  if (id === 'architecture') await loadArchitecture();
  if (id === 'drift') await loadAllDrift();
  if (id === 'branding') await loadBranding();
@@ -2228,11 +2232,48 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
   <div class="cli-terminal" style="margin-bottom: 16px; padding: 8px 14px;">
     <div class="cli-line">
       <span class="cli-prompt">$</span>
-      <span class="cli-command">dash admin --integrations</span>
+      <span class="cli-command">dash admin --integrations {intgView === 'hub' ? '' : '--' + intgView}</span>
       <span style="margin-left: auto; font-size: 11px; opacity: 0.6;">external connectors</span>
     </div>
   </div>
 
+  {#if intgView === 'hub'}
+    <!-- ── Unified integration hub (card grid) ── -->
+    {#snippet intgCard(id, icon, color, title, sub, status, stat)}
+      <button class="intg-card" onclick={() => { intgView = id; }}>
+        <div class="intg-ic" style="background:{color}">{icon}</div>
+        <div class="intg-name">{title}</div>
+        <div class="intg-sub">{sub}</div>
+        <div class="intg-foot">
+          <span class="intg-dot {status}"></span>{stat}
+        </div>
+      </button>
+    {/snippet}
+
+    <div class="intg-group">DATA SOURCES</div>
+    <div class="intg-grid">
+      {@render intgCard('s3', '☁', '#2a6db5', 'S3 Sync', 'Auto-pull from S3 → retrain', 'off', 'Configure')}
+      {@render intgCard('sharepoint', '▦', '#0a7c42', 'SharePoint', 'Microsoft 365 documents', spAdminConfig.configured ? 'on' : 'off', spAdminConfig.configured ? 'Configured' : 'Not set')}
+      {@render intgCard('gdrive', '▲', '#d2a300', 'Google Drive', 'Drive files & folders', gdAdminConfig.configured ? 'on' : 'off', gdAdminConfig.configured ? 'Configured' : 'Not set')}
+      {@render intgCard('onedrive', '⛅', '#1b66c9', 'OneDrive', 'Personal / business files', odAdminConfig.configured ? 'on' : 'off', odAdminConfig.configured ? 'Configured' : 'Not set')}
+      {@render intgCard('database', '⛁', '#5a4b8a', 'Database', 'PostgreSQL / MySQL tables', dbAllSources.length ? 'on' : 'off', dbAllSources.length ? dbAllSources.length + ' connected' : 'Not set')}
+    </div>
+
+    <div class="intg-group">ACCESS &amp; CHANNELS</div>
+    <div class="intg-grid">
+      {@render intgCard('gateway', '⚡', '#b5571d', 'API Gateway', 'OpenAI-compatible REST API', 'on', 'Manage')}
+      {@render intgCard('embed', '💬', '#2c7a3d', 'Embed', 'Chat widget for websites', 'on', 'Manage')}
+    </div>
+  {:else}
+    <button class="intg-back" onclick={() => { intgView = 'hub'; }}>← All integrations</button>
+
+    {#if intgView === 's3'}
+      <S3SyncPanel />
+    {:else if intgView === 'gateway'}
+      <GatewayPanel embedded />
+    {:else if intgView === 'embed'}
+      <EmbedPanel />
+    {:else if intgView === 'sharepoint'}
   <!-- SharePoint Configuration -->
   <div style="font-size: 16px; font-weight: 900; text-transform: uppercase; margin-bottom: 16px;">SharePoint Connector</div>
 
@@ -2311,8 +2352,9 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
     <div style="font-size: 11px; color: var(--pw-muted);">No SharePoint sources connected yet. Users can connect from their project Settings &rarr; SOURCES tab.</div>
   {/if}
 
+    {:else if intgView === 'gdrive'}
   <!-- Google Drive Configuration -->
-  <div style="font-size: 16px; font-weight: 900; text-transform: uppercase; margin-top: 30px; margin-bottom: 16px;">Google Drive Connector</div>
+  <div style="font-size: 16px; font-weight: 900; text-transform: uppercase; margin-bottom: 16px;">Google Drive Connector</div>
 
   <div class="ink-border" style="padding: 16px; background: var(--pw-surface); margin-bottom: 16px;">
     <div style="font-size: 11px; font-weight: 900; text-transform: uppercase; margin-bottom: 12px;">GOOGLE OAUTH SETUP</div>
@@ -2346,8 +2388,9 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
     </div>
   </div>
 
+    {:else if intgView === 'onedrive'}
   <!-- OneDrive Configuration -->
-  <div style="font-size: 16px; font-weight: 900; text-transform: uppercase; margin-top: 30px; margin-bottom: 16px;">OneDrive Connector</div>
+  <div style="font-size: 16px; font-weight: 900; text-transform: uppercase; margin-bottom: 16px;">OneDrive Connector</div>
 
   <div class="ink-border" style="padding: 16px; background: var(--pw-surface); margin-bottom: 16px;">
     <div style="font-size: 11px; font-weight: 900; text-transform: uppercase; margin-bottom: 12px;">AZURE APP REGISTRATION (ONEDRIVE)</div>
@@ -2398,8 +2441,9 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
     </div>
   </div>
 
+    {:else if intgView === 'database'}
   <!-- Database Connectors -->
-  <div style="font-size: 16px; font-weight: 900; text-transform: uppercase; margin-top: 30px; margin-bottom: 16px;">Database Connectors</div>
+  <div style="font-size: 16px; font-weight: 900; text-transform: uppercase; margin-bottom: 16px;">Database Connectors</div>
 
   {#if dbAdminStep === 'idle'}
     <!-- DB type picker -->
@@ -2555,6 +2599,8 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
       </div>
     </div>
   </div>
+    {/if}
+  {/if}
 
 {:else if activeTab === 'branding'}
   <div class="cli-terminal" style="margin-bottom: 16px; padding: 8px 14px;">
@@ -4012,4 +4058,19 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  .ccc-switch:disabled { opacity: 0.5; cursor: wait; }
  .ccc-knob { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: transform 0.15s; }
  .ccc-switch.on .ccc-knob { transform: translateX(20px); }
+
+ /* ── Unified integrations hub ── */
+ .intg-group { font-size: 11px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pw-muted); margin: 20px 0 10px; }
+ .intg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+ .intg-card { text-align: left; border: 2px solid var(--pw-ink); background: var(--pw-surface); padding: 14px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; transition: transform 0.1s, box-shadow 0.1s; }
+ .intg-card:hover { transform: translateY(-2px); box-shadow: 4px 4px 0 var(--pw-ink); }
+ .intg-ic { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #fff; border-radius: 6px; }
+ .intg-name { font-size: 14px; font-weight: 900; }
+ .intg-sub { font-size: 11px; color: var(--pw-muted); line-height: 1.3; }
+ .intg-foot { font-size: 11px; color: var(--pw-muted); display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+ .intg-dot { width: 8px; height: 8px; border-radius: 50%; background: #bbb; display: inline-block; }
+ .intg-dot.on { background: #3a9e4d; }
+ .intg-dot.off { background: #c9c4ba; }
+ .intg-back { border: 1px solid var(--pw-bg-alt); background: var(--pw-bg-alt); padding: 6px 12px; cursor: pointer; font-size: 12px; font-weight: 700; margin-bottom: 16px; }
+ .intg-back:hover { background: var(--pw-surface); }
 </style>

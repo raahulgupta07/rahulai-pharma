@@ -2,6 +2,14 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.38.0",
+      "date": "2026-06-12",
+      "title": "One place for every integration",
+      "items": [
+        "Admin → Integrations is now a single hub: a card grid for S3 Sync, SharePoint, Google Drive, OneDrive, Database, API Gateway and Embed, each opening its own setup panel. Connect any external system from one screen."
+      ]
+    },
+    {
       "version": "1.37.0",
       "date": "2026-06-12",
       "title": "Auto-sync data from S3",

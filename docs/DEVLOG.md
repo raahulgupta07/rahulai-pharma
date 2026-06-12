@@ -2,6 +2,12 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-12 (latest+102) — v1.38.0: unified Integrations hub (Admin → Integrations)
+
+**Ask.** "One integration page in Admin Console with all types." Chose Design A (card grid → drill-in).
+
+**Change (`frontend/src/routes/command-center/+page.svelte`, the Admin → Integrations tab).** Restructured the integrations tab (was a long stacked SharePoint/GoogleDrive/OneDrive/Database form scroll) into a hub: `intgView` state ('hub' = card grid, else a connector id). Hub = two category groups (DATA SOURCES: S3 Sync, SharePoint, Google Drive, OneDrive, Database; ACCESS & CHANNELS: API Gateway, Embed) rendered via a `{#snippet intgCard(...)}` with icon/status-dot/stat. Clicking a card sets `intgView` → drill-in shows that connector's panel: S3=`<S3SyncPanel/>`, gateway=`<GatewayPanel embedded/>`, embed=`<EmbedPanel/>`, sharepoint/gdrive/onedrive/database = the existing inline forms (wrapped in `{:else if intgView===...}` branches, markup unchanged). `← All integrations` back button. `intgView` resets to 'hub' on tab entry. S3SyncPanel + EmbedPanel imported. Removed the standalone S3 Sync entry from the top-nav Integrations dropdown (reverted `+layout.svelte` to gateway/embed-only) — S3 now lives only in the admin hub. Orphan route `/ui/s3-sync` kept (harmless deep-link). Hub CSS `.intg-*` added. Verified: build compiles clean, page serves 200, v1.38.0 live. LANDMINE: the connector inline forms keep their own local state/handlers (spAdmin*/gdAdmin*/odAdmin*/dbAdmin*) — only wrapped in conditionals, not moved.
+
 ### Session 2026-06-12 (latest+101) — v1.37.0: S3 auto-sync pipeline (poll → replace → retrain)
 
 **Ask.** "Team wants data pulled from S3 automatically whenever a file changes — delete old data, load new, retrain." Chose: polling daemon + dynamic file→table mapping + admin UI in Integrations.
