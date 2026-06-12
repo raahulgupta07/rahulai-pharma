@@ -4261,9 +4261,9 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  .conn-search:focus-within { border-color: var(--pw-ink); }
  .conn-search input { border: 0; outline: 0; background: transparent; font: inherit; font-size: 13px; width: 100%; color: var(--pw-ink); }
  .conn-pills { display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }
- .conn-pill { border: 1px solid var(--pw-muted); background: var(--pw-surface); padding: 7px 18px; border-radius: 999px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--pw-ink); transition: background 0.15s, border-color 0.15s; }
+ .conn-pill { border: 1px solid var(--pw-bg-alt); background: var(--pw-surface); padding: 7px 18px; border-radius: 999px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--pw-ink); transition: background 0.15s, border-color 0.15s; }
  .conn-pill:hover { background: var(--pw-bg-alt); }
- .conn-pill.on { background: var(--pw-ink); border-color: var(--pw-ink); color: var(--pw-surface); }
+ .conn-pill.on { background: var(--pw-bg-alt); border-color: var(--pw-bg-alt); }
  .conn-group { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pw-muted); margin: 22px 0 12px; }
  .conn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
  .conn-card { text-align: left; display: flex; align-items: center; gap: 14px; border: 1px solid var(--pw-muted); border-radius: 14px; background: var(--pw-surface); padding: 18px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.04); transition: box-shadow 0.16s, border-color 0.16s, transform 0.16s; }
