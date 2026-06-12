@@ -1635,7 +1635,6 @@ $effect(() => {
  let verticalsLoadedOnce = $state(false);
  let showVerticalModal = $state(false);
  let selectedVertical = $state<any>(null);
- let verticalAlsoSeedData = $state(false);
  let verticalApplying = $state(false);
  let verticalError = $state('');
  let verticalResult = $state<any>(null);
@@ -1657,7 +1656,6 @@ $effect(() => {
  method: 'POST', headers: { ..._h(), 'content-type': 'application/json' },
  body: JSON.stringify({
  vertical_name: selectedVertical.name,
- also_seed_data: verticalAlsoSeedData,
  })
  });
  if (r.ok) {
@@ -13867,10 +13865,6 @@ function signUserJWT($user) {
                 · <strong>{selectedVertical.workflow_count}</strong> workflows (stockout, expiry, slow-mover, margin, reorder, audit, …)<br>
                 · pharmacy <strong>visibility template</strong> (per-audience field redaction)
               </div>
-              <label style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:11px;">
-                <input type="checkbox" bind:checked={verticalAlsoSeedData} />
-                Also load sample demo data (idempotent, optional)
-              </label>
             </div>
 
             {#if verticalResult}

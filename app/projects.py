@@ -3600,35 +3600,10 @@ async def apply_vertical(slug: str, request: Request):
                     pass
         workflows_seeded = len(inserted_ids)
 
-    # 4. Optional sample data (best-effort, skipped if file missing).
+    # 4. Sample/synthetic data loading has been REMOVED from the product — a
+    # vertical pack only seeds brain + workflows + visibility template (config),
+    # never fake catalog/stock rows. The `also_seed_data` flag is ignored.
     sample_data_loaded = False
-    if also_seed_data:
-        sql_path = bundle.get("sample_data_sql_path")
-        if sql_path:
-            import os
-            try:
-                from dash import paths as _paths
-                root = getattr(_paths, "REPO_ROOT", None) or os.getcwd()
-            except Exception:
-                root = os.getcwd()
-            full_path = os.path.join(root, sql_path)
-            if os.path.exists(full_path):
-                try:
-                    with open(full_path) as f:
-                        sql_text = f.read()
-                    schema_row = None
-                    with _engine.connect() as conn:
-                        schema_row = conn.execute(text(
-                            "SELECT schema_name FROM public.dash_projects WHERE slug = :s"
-                        ), {"s": slug}).fetchone()
-                    if schema_row and schema_row[0]:
-                        with _engine.connect() as conn:
-                            conn.execute(text(f'SET search_path TO "{schema_row[0]}", public'))
-                            conn.execute(text(sql_text))
-                            conn.commit()
-                        sample_data_loaded = True
-                except Exception:
-                    pass
 
     return {
         "vertical_name": vertical_name,

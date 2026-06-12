@@ -11648,47 +11648,9 @@ def column_map(slug: str, table: str, request: Request):
 
 @router.post("/projects/{slug}/seed-demo")
 async def seed_demo_data(slug: str, request: Request):
-    """Load synthetic pharma demo data into the project (admin button).
-
-    Query/body ``force=1`` REPLACES existing source tables with the demo set;
-    without force it no-ops when the project already has data. Loads tables only
-    — the caller triggers retrain via the normal path so the live training
-    console shows. Editor role required.
-    """
-    user = getattr(getattr(request, 'state', None), 'user', None)
-    if not user:
-        raise HTTPException(401, "Not authenticated")
-    from app.auth import check_project_permission
-    if not check_project_permission(user, slug, required_role="editor"):
-        raise HTTPException(403, "Editor access required")
-
-    # Demo seeding DISABLED 2026-06-11 — this is a clean tool; synthetic data is
-    # never injected. Hard opt-in escape hatch only: ALLOW_DEMO_SEED=1 in env.
-    from os import getenv as _getenv
-    if _getenv("ALLOW_DEMO_SEED", "0") not in ("1", "true", "True", "yes"):
-        raise HTTPException(410, "Demo data seeding is disabled — this is a clean install.")
-
-    force = False
-    try:
-        _qf = request.query_params.get("force")
-        if _qf and str(_qf).strip().lower() in ("1", "true", "yes"):
-            force = True
-    except Exception:
-        pass
-    try:
-        body = await request.json()
-        if isinstance(body, dict) and body.get("force"):
-            force = True
-    except Exception:
-        pass
-
-    try:
-        from scripts.seed_pharma_demo import seed_demo
-        res = seed_demo(slug, force=force, train=False)
-        return res
-    except Exception as e:
-        _upload_lg.warning(f"seed-demo failed: {e}")
-        raise HTTPException(500, f"Seed failed: {e}")
+    """Demo/synthetic data seeding has been REMOVED from the product. This
+    endpoint is retained only to return a clear 410 to any old client/bookmark."""
+    raise HTTPException(410, "Demo data seeding has been removed — upload real data instead.")
 
 
 @router.post("/projects/{slug}/retrain")

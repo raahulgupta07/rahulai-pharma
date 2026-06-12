@@ -2,6 +2,14 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.30.0",
+      "date": "2026-06-12",
+      "title": "Demo data generation removed",
+      "items": [
+        "The product no longer ships or generates any sample/demo data — a fresh install stays completely empty until you upload your own catalog and stock. The 'load demo data' option and its generator have been removed."
+      ]
+    },
+    {
       "version": "1.29.0",
       "date": "2026-06-12",
       "title": "Learned shortcuts are double-checked before they're trusted",

@@ -2,6 +2,21 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-12 (latest+88) — v1.30.0: REMOVE demo/synthetic data generation entirely
+
+**Ask.** "i do not want demo data and code to generate it — remove from the project."
+
+**Removed all 5 demo-data surfaces:**
+1. **Generator script** — `scripts/seed_pharma_demo.py` **DELETED** (was 200 SKUs × 8 stores synthetic).
+2. **Boot hook** — `app/main.py` lifespan `DEMO_SEED_ON_EMPTY` block removed (no auto-seed on empty install).
+3. **Seed endpoint** — `app/upload.py` `POST /projects/{slug}/seed-demo` now returns **410** ("removed — upload real data instead"); the old body (role check + force parse + `seed_demo` import) deleted.
+4. **Vertical-pack sample data** — `app/projects.py apply_vertical` `if also_seed_data:` block (loaded `sample_data_sql_path`) removed → `sample_data_loaded` always False; vertical packs now seed **config only** (brain + workflows + visibility template). `dash/verticals/pharma/__init__.py` dropped `SAMPLE_DATA_SQL_PATH` (pointed at a non-existent `pharma_seed_data/pharma_seed.sql` anyway).
+5. **UI** — settings page: removed the "Also load sample demo data" checkbox + `verticalAlsoSeedData` state + the `also_seed_data` field in the `applyVertical` POST body.
+
+**Net:** a fresh install is **empty by design** — no seed script, no boot seed, no flag, no button, no endpoint. Load real data via Upload + Force-Train. VERIFIED: `/seed-demo` → 410, boot logs show no demo seed, `/api/version` = 1.30.0. README "Demo data" section rewritten to "No demo data — empty by design". Shipped, committed + pushed.
+
+---
+
 ### Session 2026-06-12 (latest+87) — v1.29.0: curator CORRECTNESS cross-check (fix "writer changes trust unattended")
 
 **Ask.** Actually fix the residual con — the v1.28.0 gates are demand-based (uses≥3, no downvote, cap), but the daemon still can't tell if a stored SQL is SEMANTICALLY wrong. "Verify" only proves the SQL runs + returns a number; a wrong SQL still returns *a* number.

@@ -286,20 +286,9 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
     except Exception as _bp_e:
         import logging as _bp_log
         _bp_log.getLogger(__name__).warning(f"rls_blueprints seed skipped: {_bp_e}")
-    # Demo seed: OPT-IN only. A clean install stays empty — no synthetic data is
-    # injected on boot. Set DEMO_SEED_ON_EMPTY=1 to auto-seed synthetic pharma
-    # data + a locked project row on an empty install (idempotent, force=False,
-    # WORKER_RANK==0 only). Default OFF so `install` = clean tool. The manual
-    # POST /projects/{slug}/seed-demo endpoint is unaffected (explicit action).
-    if getenv("WORKER_RANK", "0") == "0" and getenv("DEMO_SEED_ON_EMPTY", "0") in ("1", "true", "True", "yes"):
-        try:
-            from scripts.seed_pharma_demo import seed_demo as _seed_demo
-            _seed_res = _seed_demo("citypharma", force=False, train=True)
-            import logging as _sd_log
-            _sd_log.getLogger(__name__).info(f"demo seed: {_seed_res}")
-        except Exception as _sd_e:
-            import logging as _sd_log
-            _sd_log.getLogger(__name__).warning(f"demo seed skipped: {_sd_e}")
+    # Demo/synthetic data generation has been REMOVED from the product — a fresh
+    # install stays empty until the operator uploads real data. (No boot seed, no
+    # seed endpoint, no seed script.)
     try:
         from app.connectors import init_connectors
         init_connectors()

@@ -106,19 +106,14 @@ question ─▶ scope gate ─▶ answer cache / stock fast-path / golden shortc
 
 ---
 
-## Demo data (out-of-box)
+## No demo data — empty by design
 
-A brand-new / empty install populates itself with realistic synthetic pharma data so the product demos immediately — **200 drug SKUs × 8 stores (1600 stock rows)**, generated from 62 real generics (multi-brand so substitutes resolve; `article_code` kept as text to avoid Excel `1E+12` corruption).
+The product ships **no sample/demo data and no generator for it** (removed in v1.30.0). A fresh install comes up **completely empty** — just the locked `citypharma` project row + auth. Load your own data the normal way:
 
-Three ways it loads (all reuse the normal ingest + training pipeline — it builds `shop_flat`, trains, and answers chat just like uploaded data):
+1. **Data Source → Upload** your catalog + stock (CSV/XLSX).
+2. **Force-Train** so the agent learns the schema + builds `shop_flat`.
 
-| Trigger | How |
-|---|---|
-| **Auto, on empty boot** | `app/main.py` lifespan seeds when the project has no data. Env `DEMO_SEED_ON_EMPTY=1` (default on; set `0` to disable). Also creates the locked `dash_projects` row (fixes fresh-install "Project not found"). |
-| **Admin button** | Data Source → **⚗ Load demo data** (`POST /api/projects/{slug}/seed-demo?force=1`). Confirms before replacing existing data. |
-| **CLI** | `python scripts/seed_pharma_demo.py [--force] [--no-train]` |
-
-`force=false` is a no-op when the project already has data (safe). `force=true` **replaces** the source tables. To wipe a live install back to demo, back up first: `docker exec cp-db pg_dump -U ai -d ai -n citypharma -Fc -f /tmp/backup.dump` (restore with `pg_restore --clean --if-exists -n citypharma`).
+That's it — no seed step, no `DEMO_SEED_ON_EMPTY` flag, no `seed-demo` endpoint (returns 410), no seed script. Vertical packs still seed *config only* (brain entries + workflows + visibility template), never synthetic catalog/stock rows.
 
 ### Training-flow display obfuscation (env `FLOW_OBFUSCATE`, default on)
 
@@ -139,7 +134,7 @@ Primary persona = **pharmacy counter staff**. The chat answers branch-scoped med
 | "X is out of stock — alternatives to `<brand>`?" | **`catalog_search`** / `find_substitutes` |
 | "tell me about `<drug>` and related" | `drug_relationships` / `drug_profile` |
 
-- **Branch scoping:** each login is bound to a branch (`dash_users.site_code`); the chat injects `## SHOP CONTEXT` so "stock" = their branch, with other branches shown as a transfer hint. 53 sites in the demo data.
+- **Branch scoping:** each login is bound to a branch (`dash_users.site_code`); the chat injects `## SHOP CONTEXT` so "stock" = their branch, with other branches shown as a transfer hint. Branches come from whatever stock data you upload.
 - **All drug-relationship tools are RELATIONAL** over the catalog (drugs sharing `generic_name` = substitutes; `indication` ILIKE = therapeutic alternatives). No Apache AGE dependency — survives any cp-db recreate. Tables auto-detected (data lands as `*_07052026`). Tools in `dash/tools/pharma_graph_tool.py` + `pharma_shop_tool.py`.
 - **Output = shop medicine-finder** (name · salt · branch stock · cost · substitutes), not analyst KPI cards — for stock/find/substitute queries.
 - **Semantic catalog search** (`dash/tools/catalog_search.py`): advisory/find/"what for `<symptom>`"/fuzzy/similar runs **hybrid vector + keyword (RRF)** over 4,886 embedded products (`dash.dash_vectors`, `namespace='catalog'`, built by `scripts/build_catalog_vectors.py`, refreshed on training). Counts + per-store stock stay SQL — vectors only FIND, SQL COUNTS. Catalog is Tier-3 global (no store scope). Beats ILIKE on synonyms/intent (e.g. "high blood pressure" → real antihypertensives, not vitamins).
