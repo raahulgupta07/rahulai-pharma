@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.production.example
 *.key
 *.pem
 # service keys / test fixtures with live keys + result data
