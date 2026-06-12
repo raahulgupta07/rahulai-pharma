@@ -4257,16 +4257,17 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  .conn-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
  .conn-h1 { font-size: 26px; font-weight: 900; letter-spacing: -0.01em; }
  .conn-h2 { font-size: 13px; color: var(--pw-muted); margin-top: 4px; }
- .conn-search { display: flex; align-items: center; gap: 8px; border: 2px solid var(--pw-ink); background: var(--pw-surface); padding: 8px 14px; min-width: 300px; }
+ .conn-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--pw-bg-alt); border-radius: 12px; background: var(--pw-surface); padding: 9px 16px; min-width: 300px; transition: border-color 0.15s; }
+ .conn-search:focus-within { border-color: var(--pw-muted); }
  .conn-search input { border: 0; outline: 0; background: transparent; font: inherit; font-size: 13px; width: 100%; color: var(--pw-ink); }
  .conn-pills { display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }
- .conn-pill { border: 2px solid var(--pw-ink); background: var(--pw-surface); padding: 6px 16px; border-radius: 999px; cursor: pointer; font-size: 12px; font-weight: 700; }
+ .conn-pill { border: 1px solid var(--pw-bg-alt); background: var(--pw-surface); padding: 7px 18px; border-radius: 999px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--pw-ink); transition: background 0.15s, border-color 0.15s; }
  .conn-pill:hover { background: var(--pw-bg-alt); }
- .conn-pill.on { background: var(--pw-ink); color: var(--pw-surface); }
- .conn-group { font-size: 11px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pw-muted); margin: 22px 0 12px; }
- .conn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
- .conn-card { text-align: left; display: flex; align-items: center; gap: 14px; border: 2px solid var(--pw-ink); background: var(--pw-surface); padding: 16px; cursor: pointer; transition: transform 0.1s, box-shadow 0.1s; }
- .conn-card:hover { transform: translateY(-2px); box-shadow: 4px 4px 0 var(--pw-ink); }
+ .conn-pill.on { background: var(--pw-bg-alt); border-color: var(--pw-bg-alt); }
+ .conn-group { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pw-muted); margin: 22px 0 12px; }
+ .conn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+ .conn-card { text-align: left; display: flex; align-items: center; gap: 14px; border: 1px solid var(--pw-bg-alt); border-radius: 14px; background: var(--pw-surface); padding: 18px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.04); transition: box-shadow 0.16s, border-color 0.16s, transform 0.16s; }
+ .conn-card:hover { box-shadow: 0 6px 18px rgba(0,0,0,0.09); border-color: var(--pw-muted); transform: translateY(-1px); }
  .conn-logo { width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
  .conn-logo svg { display: block; }
  .conn-body { flex: 1; min-width: 0; }
@@ -4299,7 +4300,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  .intg-add { font-size: 11px; font-weight: 700; color: var(--pw-ink); }
  /* configured-connections table */
  .ctab { width: 100%; border-collapse: collapse; font-size: 12px; }
- .ctab th { text-align: left; padding: 7px 10px; border-bottom: 2px solid var(--pw-ink); text-transform: uppercase; font-size: 10px; font-weight: 700; }
+ .ctab th { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--pw-bg-alt); text-transform: uppercase; font-size: 10px; font-weight: 700; color: var(--pw-muted); }
  .ctab th.ar { text-align: right; }
  .ctab td { padding: 8px 10px; border-bottom: 1px solid var(--pw-bg-alt); vertical-align: middle; }
  .ctab td.b { font-weight: 700; }
@@ -4310,8 +4311,9 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  .cdot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; background: #bbb; }
  .cdot.on { background: #3a9e4d; } .cdot.err { background: #d24a4a; } .cdot.off { background: #c9c4ba; }
  .ca { text-align: right; white-space: nowrap; }
- .cico { border: 1px solid var(--pw-ink); background: var(--pw-surface); width: 26px; height: 26px; cursor: pointer; font-size: 12px; line-height: 1; margin-left: 3px; }
- .cico:hover { background: var(--pw-bg-alt); }
+ .cico { border: 1px solid var(--pw-bg-alt); border-radius: 8px; background: var(--pw-surface); width: 28px; height: 28px; cursor: pointer; font-size: 12px; line-height: 1; margin-left: 4px; color: var(--pw-ink); transition: background 0.15s, border-color 0.15s; }
+ .cico:hover { background: var(--pw-bg-alt); border-color: var(--pw-muted); }
+ .cico.danger:hover { border-color: #d24a4a; color: #d24a4a; }
  .cico.danger { color: #c0392b; border-color: #c0392b; }
  /* S3 form (inside popup) */
  .ffl { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; margin: 10px 0 3px; }
