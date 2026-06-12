@@ -2,6 +2,14 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.35.5",
+      "date": "2026-06-12",
+      "title": "Everyone on the team can upload and train",
+      "items": [
+        "In this single-agent product, every account that can log in now has the Workspace with Upload data + Force Train All — it no longer depends on which admin you are or any setup. Account management, the admin console, and usage/cost stay limited to admins."
+      ]
+    },
+    {
       "version": "1.35.4",
       "date": "2026-06-12",
       "title": "Fresh install is ready to use immediately",

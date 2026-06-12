@@ -2,6 +2,16 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-12 (latest+98) — v1.35.5: PERMANENT — single-agent grants upload/train to any login
+
+**Ask.** "Fix it permanently, upload always available, not depend on the account." User chose (AskUserQuestion) **"Any logged-in user"** over "admins+super only".
+
+**Change.** Decouple Upload/Force-Train from is_super / is_admin / SUPER_ADMIN env / DB role entirely in single-agent mode:
+1. `app/auth.py check_project_permission` — after the `if not row` guard, if `is_single_agent() and slug == locked_slug()` return role `'owner'` for ANY authenticated user. Project-destructive ops still blocked by `guard_no_project_management`, so owner here is safe.
+2. `app/auth.py surfaces_for` — in single-agent mode grant the WORK surfaces (dashboard, chat, workspace, integration) to every authenticated user; keep admin_console / users_access / usage_cost role-gated (don't expose user-management to plain logins). This one map feeds BOTH the backend surface 403 gate (main.py) AND the frontend nav, so Workspace nav + APIs open together. Super still gets all surfaces; this only LIFTS non-super work access, never lowers.
+
+**Result.** Any account that can log in: Workspace visible, `/projects/{slug}` 200 user_role=owner, `/datasource` 200, Upload + Force-Train shown — independent of env/role/account. Admin console + user management + usage/cost remain admin/super only. Combined with 1.35.4 (project always seeded) + 1.35.3 (super-admin always exists) = zero-setup, account-independent. Verified local with a throwaway non-admin user: surfaces.workspace true, project owner, datasource 200.
+
 ### Session 2026-06-12 (latest+97) — v1.35.4: THE real fix — seed the locked project on boot
 
 **Symptom.** Prod on 1.35.3 (super-admin seed + is_super-from-role + datasource fail-soft all live) STILL stuck: Workspace "loading…", 0 tables, no Upload/Force-Train. Badge correctly showed `admin` = SUPER ADMIN (so `/api/auth/check` returns is_super=True — auth was fine).

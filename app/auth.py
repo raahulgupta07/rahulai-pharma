@@ -929,6 +929,18 @@ def check_project_permission(user: dict, slug: str, required_role: str = "viewer
         if not row:
             return None
 
+        # Single-tenant admin tool: the one locked project is shared by everyone who
+        # can log in. ANY authenticated user is treated as owner so Upload + Force-
+        # Train are always available — no dependency on the SUPER_ADMIN env value, the
+        # DB role, or a per-project share. (Project-destructive ops are still blocked
+        # by guard_no_project_management in single-agent mode, so 'owner' here is safe.)
+        try:
+            from dash.single_agent import is_single_agent, locked_slug
+            if is_single_agent() and slug == locked_slug():
+                return {"project_id": row[0], "role": "owner", "agent_name": row[2]}
+        except Exception:
+            pass
+
         # Owner has full access. ANY super-admin is treated as owner of every
         # project (single-tenant admin tool) — not only the one account whose
         # username matches the SUPER_ADMIN env. Without the is_super check, a
@@ -1175,6 +1187,25 @@ def surfaces_for(user: Optional[dict]) -> dict:
         return {s: False for s in _SURFACES}
     if user.get("is_super"):
         return dict(_ALL_SURFACES)
+    # Single-tenant admin tool: there is ONE shared agent/project. Every account
+    # that can log in is operational staff, so grant the work surfaces (dashboard,
+    # chat, workspace, integration) to any authenticated user — this makes Upload +
+    # Force-Train always reachable regardless of which account / role / env. The
+    # genuinely admin-only surfaces (admin console, user management, usage/cost) stay
+    # role-gated below.
+    try:
+        from dash.single_agent import is_single_agent
+        if is_single_agent():
+            base = {s: False for s in _SURFACES}
+            for s in ("dashboard", "chat", "workspace", "integration"):
+                base[s] = True
+            key_admin = "admin" if (user.get("is_admin") or user.get("is_super")) else "user"
+            dflt_admin = _SURFACE_DEFAULTS[key_admin]
+            for s in ("admin_console", "users_access", "usage_cost"):
+                base[s] = bool(dflt_admin.get(s, False))
+            return base
+    except Exception:
+        pass
     key = "admin" if user.get("is_admin") else "user"
     cfg = None
     try:
