@@ -27,7 +27,7 @@ logger = logging.getLogger("dash.query_capture")
 _NAMESPACE = "qbank"
 # Serve threshold the shadow uses to decide "would_serve" (Mode-1 bypass would use
 # this someday). Kept in sync with answer_cache's default; tunable via env.
-_SERVE_SIM = float(os.getenv("QUERY_BANK_SERVE_SIM", "0.96"))
+_SERVE_SIM = float(os.getenv("QUERY_BANK_SERVE_SIM", "0.93"))  # tuned (Q4)
 _SHADOW_SIM_FLOOR = float(os.getenv("QUERY_BANK_SHADOW_FLOOR", "0.80"))
 
 

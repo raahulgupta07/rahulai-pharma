@@ -28,17 +28,18 @@ _NAMESPACE = "qbank"
 
 
 def _serve_sim() -> float:
+    # Default tuned on dev (Q4): paraphrases cluster 0.81-0.95; 0.96 caught none.
     try:
-        return float(os.getenv("QUERY_BANK_SERVE_SIM", "0.96"))
+        return float(os.getenv("QUERY_BANK_SERVE_SIM", "0.93"))
     except Exception:
-        return 0.96
+        return 0.93
 
 
 def _recall_sim() -> float:
     try:
-        return float(os.getenv("QUERY_BANK_RECALL_SIM", "0.85"))
+        return float(os.getenv("QUERY_BANK_RECALL_SIM", "0.80"))
     except Exception:
-        return 0.85
+        return 0.80
 
 
 def _vec_literal(emb: list[float]) -> str:

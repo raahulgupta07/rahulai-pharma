@@ -595,7 +595,7 @@ curl http://127.0.0.1:8011/api/health                 # → {"status":"ok"}
 
 Operators can see, at a glance, **whether an upgrade actually landed** and **what each release added** — on the login screen and inside the app.
 
-**Rule: every change cuts a new version.** Each shipped change bumps `VERSION` **and** adds a `CHANGELOG.json` block — never deploy a behaviour change on the old version number. Current: `1.23.0`.
+**Rule: every change cuts a new version.** Each shipped change bumps `VERSION` **and** adds a `CHANGELOG.json` block — never deploy a behaviour change on the old version number. Current: `1.24.0`.
 
 - **`VERSION`** (repo root, one line e.g. `1.16.1`) — bump it on **every** release/change. Baked into the image; surfaced as the app version.
 - **`docs/CHANGELOG.json`** — curated, customer-facing "What's new" feed (newest-first `releases[]`, each `{version,date,title,items[]}`). Plain language, no internal table/tool names. Add a block per release.

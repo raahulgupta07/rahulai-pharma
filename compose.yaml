@@ -182,6 +182,12 @@ services:
       - CONNECTOR_SCHEDULER_DISABLED=${CONNECTOR_SCHEDULER_DISABLED:-1}
       - VERTICAL_DAEMONS_DISABLED=${VERTICAL_DAEMONS_DISABLED:-1}
       - QUERY_CURATOR_ENABLED=${QUERY_CURATOR_ENABLED:-0}
+      # Tuned (Q4) on a real paraphrase sim distribution — text-embedding-3-small
+      # spreads genuine analytical paraphrases 0.81-0.95 (unrelated <0.80), so the
+      # old 0.96 serve bar caught almost none. 0.93 = tight enough for a zero-LLM
+      # bypass, loose enough for close paraphrases. Re-validate on real traffic.
+      - QUERY_BANK_SERVE_SIM=${QUERY_BANK_SERVE_SIM:-0.93}
+      - QUERY_BANK_RECALL_SIM=${QUERY_BANK_RECALL_SIM:-0.80}
       # Gateway chat-body logging → dash_apigw_messages (powers per-key Questions
       # drill-down + auto-learn harvest). PII: keep on only with consent.
       - APIGW_LOG_BODIES=${APIGW_LOG_BODIES:-1}

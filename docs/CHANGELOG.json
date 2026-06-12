@@ -2,6 +2,14 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.24.0",
+      "date": "2026-06-12",
+      "title": "Faster answers for reworded repeat questions",
+      "items": [
+        "The assistant now recognises a question it has answered before even when it's worded differently, and replies instantly with fresh numbers — not just on exact repeats."
+      ]
+    },
+    {
       "version": "1.23.0",
       "date": "2026-06-12",
       "title": "Smarter query reuse + self-correction",

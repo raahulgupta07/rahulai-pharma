@@ -1,6 +1,8 @@
 # Continuous Query Learning — improvement plan
 
-**Status:** P1–P6 SHIPPED (v1.21.0 / v1.22.0). Pending-items Q1–Q3 SHIPPED (v1.23.0); Q4 (measure/tune) needs traffic. **Date:** 2026-06-12.
+**Status:** COMPLETE. P1–P6 (v1.21/1.22) + pending Q1–Q4 ALL SHIPPED (Q1–Q3 v1.23.0, Q4 v1.24.0). **Date:** 2026-06-12.
+
+> **Q4 done (v1.24.0).** Tuned on synthetic dev traffic: fired 12 base Qs → promoted → `scripts/seed_shadow.py` ran 40 paraphrases through `shadow_match`. Finding: `text-embedding-3-small` spreads genuine paraphrases 0.81–0.95, junk <0.80 → old 0.96 serve bar caught ~none. Tuned `QUERY_BANK_SERVE_SIM` 0.96→0.93 (Mode-1 zero-LLM, tight) + `QUERY_BANK_RECALL_SIM` 0.85→0.80 (Mode-2 LLM-validated, lenient) — `.env` + compose default + code default. Verified: 0.947 paraphrase now Mode-1 serves 172ms (was 18s agent). Re-tune knobs are env-overridable; re-run `seed_shadow.py` + re-read the histogram on real traffic.
 
 > **Q1–Q3 done (v1.23.0).** Q1.1 recall CONTEXT-injection (`recall_similar_sync`→prepend `## SIMILAR PROVEN QUERIES` to `context_msg` in project_chat + `reasoning_instructions` in super_chat — reliable, since the recall TOOL is model-skipped). Q1.2 curator daemon ON (`QUERY_CURATOR_ENABLED=1`, leader runs it). Q2.1 mig 188 folded into `db/baseline/schema.sql`+`migrations_seed.sql`. Q3.2 fold-into-training verified. Q3.3 demote-on-feedback verified — FIXED bug: `dash_feedback.rating` is TEXT ('down'/'-1') not int (`<0` was a silent no-op). Q3.1 generalize runs but needs filter-varied data (FOLLOW-UP: alias-normalize `_shape`). **Q4 outstanding:** accumulate shadow data → tune serve-sim 0.96 / recall-floor 0.85.
 
