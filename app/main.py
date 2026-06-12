@@ -2925,6 +2925,34 @@ async def super_chat(request: Request):
         except Exception:
             pass
 
+    # Continuous query learning (Mode-1 BYPASS) — super_chat path. Exact-enough
+    # hit on a PROVEN learned query → re-run its SQL live (fresh numbers) + render
+    # in code, ZERO LLM. Mirrors project_chat. Auto/fast only; fail-soft.
+    if reasoning in ("auto", "", "fast"):
+        try:
+            from dash.single_agent import locked_slug as _qb_ls
+            _qb_slug2 = routed_slug or _qb_ls()
+        except Exception:
+            _qb_slug2 = routed_slug
+        _qb2 = None
+        if _qb_slug2:
+            try:
+                from dash.learning.query_bank import try_query_bank_serve as _qb_serve
+                _qb2 = _qb_serve(_qb_slug2, message)
+            except Exception:
+                _qb2 = None
+        if _qb2 and _qb2.get("content"):
+            _qb2_ans = _qb2["content"]
+            if stream:
+                def _qb2_stream():
+                    yield f"event: Routing\ndata: {_json.dumps(routing_info, default=str)}\n\n"
+                    yield f"event: OriginalMessage\ndata: {_json.dumps({'message': message}, default=str)}\n\n"
+                    yield f"event: TeamRunContent\ndata: {_json.dumps({'content': _qb2_ans})}\n\n"
+                    yield f"event: TeamRunCompleted\ndata: {_json.dumps({})}\n\n"
+                return StreamingResponse(_qb2_stream(), media_type="text/event-stream")
+            return {"content": _qb2_ans, "session_id": session_id, "routing": routing_info,
+                    "learned": True, "sql": _qb2.get("sql")}
+
     if stream:
         def event_generator():
             import time

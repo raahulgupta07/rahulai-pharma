@@ -602,29 +602,11 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
         _patch_obj(introspect, "introspect_schema", project_slug)
         tools.append(introspect)
 
-        # Continuous query learning (P2, Mode 2): recall proven SQL the agent has
-        # written for similar past questions, so it can ADAPT instead of writing
-        # from scratch. LLM stays in control — returns hints, never executes.
-        # Gated; non-store-locked only (returns raw SQL, like run_sql_query).
-        import os as _os_qr
-        if project_slug and _os_qr.getenv("QUERY_RECALL_DISABLED", "0") not in ("1", "true", "True", "yes"):
-            @tool(name="recall_similar_queries", description="Before writing analytical SQL, call this to recall the SQL that previously answered SIMILAR questions (learned from past chats, verified). Returns up to 3 {question, sql, status, uses}. If a returned query fits, ADAPT it (swap the filter/value) and run it via run_sql_query — faster and more reliable than writing from scratch. If nothing fits or the list is empty, write your own SQL. Args: question (str — the user's current question).")
-            def _recall_tool(question: str = "") -> str:
-                import json as _rj
-                _meta = {"agent": "analyst", "tool": "recall_similar_queries",
-                         "args": _preview_args(question)}
-                with _trace_span("chat.analyst.recall_similar_queries", kind="chat",
-                                 project_slug=project_slug, meta=_meta):
-                    try:
-                        from dash.learning.query_bank import recall_similar_sync
-                        _hits = recall_similar_sync(project_slug, question, limit=3)
-                        _meta["row_count"] = len(_hits)
-                        if not _hits:
-                            return _rj.dumps({"hits": [], "note": "No similar proven query — write your own SQL."})
-                        return _rj.dumps({"hits": _hits})
-                    except Exception as _re:
-                        return _rj.dumps({"hits": [], "error": str(_re)[:120]})
-            tools.append(_recall_tool)
+        # Continuous query learning Mode-2: proven similar queries are injected
+        # directly into the agent's context every turn (app/projects.py +
+        # app/main.py, "## SIMILAR PROVEN QUERIES" block via recall_similar_sync) —
+        # reliable, since a recall_similar_queries TOOL was model-discretion and
+        # rarely fired. The tool was removed; context-injection is the path.
         if _tcfg.get("forecast", True):
             tools.append(forecast_tool)
         if _tcfg.get("anomaly", True):

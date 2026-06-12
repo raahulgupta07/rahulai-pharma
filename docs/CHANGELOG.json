@@ -2,6 +2,15 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.25.0",
+      "date": "2026-06-12",
+      "title": "Query reuse polish",
+      "items": [
+        "Reworded-repeat fast answers now also work in the global chat, not just the project workspace.",
+        "Internal cleanup so the assistant reuses learned queries more consistently."
+      ]
+    },
+    {
       "version": "1.24.0",
       "date": "2026-06-12",
       "title": "Faster answers for reworded repeat questions",

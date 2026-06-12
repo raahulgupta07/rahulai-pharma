@@ -26,6 +26,7 @@ def _shape(sql: str) -> str:
     s = (sql or "").lower()
     s = re.sub(r"'[^']*'", "'?'", s)                 # string literals
     s = re.sub(r"\b\d+(\.\d+)?\b", "?", s)            # numbers
+    s = re.sub(r"\bas\s+[a-z_][a-z0-9_]*", "as ?", s)  # column aliases (total_qty vs total_quantity)
     s = re.sub(r"\s+", " ", s).strip()
     return s
 

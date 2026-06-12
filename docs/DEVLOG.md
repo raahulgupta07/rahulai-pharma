@@ -2,6 +2,21 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-12 (latest+83) — v1.25.0: query-learning refinements (#2 alias, #3 tool-removal, #4 super_chat Mode-1) + data clean
+
+**Ask.** Close the 3 quick refinement/observation items.
+- **#2 generalize alias-normalize** — `query_generalize._shape` now also blanks `AS <alias>` (`as ?`) so `SUM(x) AS total_qty` and `SUM(x) AS total_quantity` cluster as the same shape. Was breaking clustering on identical queries with different SELECT aliases.
+- **#3 remove the dead recall TOOL** — `recall_similar_queries` (model-discretion, rarely fired) deleted from `dash/tools/build.py`; the reliable path is the **## SIMILAR PROVEN QUERIES** context-injection (Q1.1, every turn). `instructions.py` nudge rewritten to reference the injected block, not the tool.
+- **#4 Mode-1 bypass in super_chat** — the global `/api/super-chat` path now also gets the zero-LLM serve lane (was project_chat-only). Inserted before the `if stream:` branch, mirrors project_chat, emits raw-SSE `Routing/OriginalMessage/TeamRunContent/TeamRunCompleted` for stream + `{content,learned,sql}` for non-stream. VERIFIED: promote a pattern → re-ask via super_chat → `learned:true`, 3s (was 20s agent).
+
+**Data clean** — wiped synthetic Q4 seed data (`dash_query_patterns WHERE source='chat'`, `dash_vectors ns='qbank'`, `dash_query_bank_shadow`, the folded training_qa rows + test feedback). Bank back to empty for real use.
+
+**Known nuance (pre-existing, not introduced):** `cache_curator._build_card` takes the FIRST scalar as the headline value, so a `GROUP BY` proven query ("categories, COUNT(*)") shows the top row's count as the headline (e.g. 1231) rather than the row count (101). Affects metric_shortcut + answer_cache too; data tab still has all rows. Follow-up if it matters: detect GROUP-BY/multi-row and headline the row count.
+
+**Remaining (genuinely can't shortcut):** re-validate the 0.93/0.80 thresholds on REAL traffic (synthetic = starting value); curator daemon's scheduled 24h loop unproven over time (logic tested via manual endpoint). Everything else closed.
+
+---
+
 ### Session 2026-06-12 (latest+82) — v1.24.0: Q4 threshold tuning on synthetic dev traffic
 
 **Ask.** "Achieve Q4 (measure + tune thresholds) on dev." No real users → synthesized traffic, measured the real similarity distribution, tuned the two knobs.
