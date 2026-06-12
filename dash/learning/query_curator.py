@@ -27,10 +27,40 @@ _NAMESPACE = "qbank"
 
 
 def _promote_min_uses() -> int:
+    # Raised 2 -> 3 (2026-06-12): auto-promote = zero-LLM Mode-1 serve on a
+    # pharma agent, so demand the question recur a bit more before trusting it.
     try:
-        return int(os.getenv("QUERY_CURATOR_MIN_USES", "2"))
+        return int(os.getenv("QUERY_CURATOR_MIN_USES", "3"))
     except Exception:
-        return 2
+        return 3
+
+
+def _max_promote_per_cycle() -> int:
+    # Cap auto-promotes per scan so a bad batch can't flood the served bank in
+    # one cycle (the rest stay candidate, promote next cycle / on review).
+    try:
+        return int(os.getenv("QUERY_CURATOR_MAX_PROMOTE", "10"))
+    except Exception:
+        return 10
+
+
+def _downvoted_norms(slug: str) -> set[str]:
+    """Normalized questions that ever got a 👎 (any down rating). Auto-promote is
+    BLOCKED for these — a thumbs-down is enough to withhold zero-LLM trust until
+    a human reviews. Best-effort (empty set on error)."""
+    from sqlalchemy import text as _text
+    from db.session import get_sql_engine
+    try:
+        with get_sql_engine().connect() as conn:
+            rows = conn.execute(_text(
+                "SELECT DISTINCT lower(regexp_replace(COALESCE(question,''),'\\s+',' ','g')) "
+                "FROM public.dash_feedback "
+                "WHERE (rating = 'down' OR rating LIKE '-%') AND COALESCE(question,'') <> ''"
+            )).fetchall()
+        return {r[0] for r in rows if r[0]}
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("downvoted_norms failed: %s", exc)
+        return set()
 
 
 def _exec(slug: str, sql: str):
@@ -131,14 +161,17 @@ def run_query_curator(slug: str, *, limit: int = 50, dry_run: bool = False) -> d
     try:
         with get_sql_engine().connect() as conn:
             rows = conn.execute(_text(
-                "SELECT id, question, sql, uses, status FROM public.dash_query_patterns "
+                "SELECT id, question, sql, uses, status, question_norm FROM public.dash_query_patterns "
                 "WHERE project_slug = :s AND source = 'chat' AND status = 'candidate' "
                 "ORDER BY uses DESC, last_used DESC LIMIT :k"
             ), {"s": slug, "k": limit}).fetchall()
 
         min_uses = _promote_min_uses()
+        max_promote = _max_promote_per_cycle()
+        downvoted = _downvoted_norms(slug)
         for r in rows:
             pid, question, sql, uses, status = int(r[0]), r[1], r[2], int(r[3] or 0), r[4]
+            qnorm = r[5] or ""
             summary["scanned"] += 1
             run = _exec(slug, sql)
             verified = bool(run and run.get("value") is not None)
@@ -147,6 +180,18 @@ def run_query_curator(slug: str, *, limit: int = 50, dry_run: bool = False) -> d
                 summary["details"].append({"id": pid, "action": "demote", "reason": "verify failed"})
                 if not dry_run:
                     _set_status(slug, pid, "demoted")
+                continue
+            # SAFETY GATE 1 — never auto-promote a pattern that ever got a 👎.
+            if qnorm and qnorm in downvoted:
+                summary["kept"] += 1
+                summary["details"].append({"id": pid, "action": "hold",
+                                           "reason": "has negative feedback — needs human review"})
+                continue
+            # SAFETY GATE 2 — per-cycle promote cap (a bad batch can't flood).
+            if uses >= min_uses and summary["promoted"] >= max_promote:
+                summary["kept"] += 1
+                summary["details"].append({"id": pid, "action": "hold",
+                                           "reason": f"promote cap {max_promote}/cycle reached"})
                 continue
             if uses >= min_uses:
                 summary["promoted"] += 1

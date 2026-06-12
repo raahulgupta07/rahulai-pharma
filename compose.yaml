@@ -188,6 +188,12 @@ services:
       # bypass, loose enough for close paraphrases. Re-validate on real traffic.
       - QUERY_BANK_SERVE_SIM=${QUERY_BANK_SERVE_SIM:-0.93}
       - QUERY_BANK_RECALL_SIM=${QUERY_BANK_RECALL_SIM:-0.80}
+      # Curator auto-promote safety: a candidate must recur >= MIN_USES times
+      # before the daemon promotes it to zero-LLM serve; at most MAX_PROMOTE
+      # promotions per cycle; any 👎 on the question blocks auto-promote.
+      - QUERY_CURATOR_MIN_USES=${QUERY_CURATOR_MIN_USES:-3}
+      - QUERY_CURATOR_MAX_PROMOTE=${QUERY_CURATOR_MAX_PROMOTE:-10}
+      - QUERY_BANK_EMB_TTL=${QUERY_BANK_EMB_TTL:-300}
       # Gateway chat-body logging → dash_apigw_messages (powers per-key Questions
       # drill-down + auto-learn harvest). PII: keep on only with consent.
       - APIGW_LOG_BODIES=${APIGW_LOG_BODIES:-1}

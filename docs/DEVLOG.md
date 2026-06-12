@@ -2,6 +2,23 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-12 (latest+86) — v1.28.0: curator auto-promote safety gates (keep daemon ON safely)
+
+**Ask.** Keep the curator daemon ON but make unattended auto-promote safe (it's a writer that grants zero-LLM Mode-1 serve on a pharma agent — wrong SQL that still returns a number can't be caught by "verify runs").
+
+**Three gates added to `run_query_curator` (`dash/learning/query_curator.py`):**
+1. **Higher recur bar** — `_promote_min_uses` default **2 → 3** (env `QUERY_CURATOR_MIN_USES`). A candidate must recur 3+ times before auto-promote.
+2. **Downvote block** — `_downvoted_norms(slug)` (distinct `question_norm` with any `rating='down'`/`-%` in `dash_feedback`); a candidate whose normalized question ever got a 👎 → action **hold** (stays candidate, "needs human review"), NEVER auto-promoted. Complements `demote_on_negative_feedback` (which needs a correction text — this catches BARE downvotes too).
+3. **Per-cycle cap** — `_max_promote_per_cycle` default **10** (env `QUERY_CURATOR_MAX_PROMOTE`); once N promoted in a scan, the rest hold for next cycle. A bad batch can't flood the served bank at once.
+
+Manual admin promote (the review tab) is unchanged — a human click IS the review, so it overrides the gates. Env knobs added to `.env` + `compose.yaml` (`QUERY_CURATOR_MIN_USES`, `QUERY_CURATOR_MAX_PROMOTE`, plus `QUERY_BANK_EMB_TTL` which was code-default-only).
+
+**VERIFIED live (curate dry_run=false):** uses=3 + bare 👎 → **hold** (candidate, "has negative feedback"); 👎+correction → **demote** (via demote_on_negative_feedback); remove feedback, re-curate → **promote** (uses=3, value 1,360,217). min_uses=3 confirmed (uses=2 no longer promotes).
+
+**Daemon-ON guidance (in memory):** keep ON while the bank is young + you watch the admin Query Bank tab; gates now make unattended promotion conservative. Shipped v1.28.0, committed + pushed.
+
+---
+
 ### Session 2026-06-12 (latest+85) — v1.27.0: close ALL pending (cross-worker cache, GROUP-BY headline, curator-cycle proof, threshold histogram) + commit/push
 
 **Ask.** "do all and fix" — clear the whole pending list.

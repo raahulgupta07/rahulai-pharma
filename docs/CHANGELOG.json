@@ -2,6 +2,15 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.28.0",
+      "date": "2026-06-12",
+      "title": "Safer automatic learning",
+      "items": [
+        "The assistant now needs a question to recur a few times before it auto-trusts a learned shortcut for it, and it will never auto-trust a question anyone gave a thumbs-down — those wait for a person to review.",
+        "A safety cap limits how many learned shortcuts can be auto-approved at once."
+      ]
+    },
+    {
       "version": "1.27.0",
       "date": "2026-06-12",
       "title": "Clearer breakdown answers + faster cold repeats",
