@@ -22,7 +22,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  let activeTab = $state('cockpit');
  // Unified Integrations hub: 'hub' = card grid, else a connector id shown in a popup modal.
  let intgView = $state('hub');
- const _intgTitles = { s3: '🟥 S3 Sync', sharepoint: '🟦 SharePoint', gdrive: '🟢 Google Drive', onedrive: '🔵 OneDrive', database: '🟣 Database' };
+ const _intgTitles = { s3: '🟥 S3 Sync', sharepoint: '🟦 SharePoint', gdrive: '🟢 Google Drive', onedrive: '🔵 OneDrive', database: '🟣 Database', postgresql: 'PostgreSQL', mysql: 'MySQL' };
  let intgTitle = $derived(intgView === 's3' ? (s3Form?.id ? '🟥 Edit S3 bucket' : '🟥 New S3 bucket') : (_intgTitles[intgView] || 'Integration'));
 
  // ── S3 connections (unified integrations table + popup form) ──
@@ -52,6 +52,8 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  function s3Sched(s: number) { if (s % 86400 === 0) return s / 86400 + 'd'; if (s % 3600 === 0) return s / 3600 + 'h'; if (s % 60 === 0) return s / 60 + 'm'; return s + 's'; }
  function s3Dot(st: string) { return st === 'ok' ? 'on' : st === 'error' ? 'err' : 'off'; }
  let totalConfigured = $derived(s3List.length + dbAllSources.length + (spAdminConfig.configured ? 1 : 0) + (gdAdminConfig.configured ? 1 : 0) + (odAdminConfig.configured ? 1 : 0));
+ // open the Database popup pre-set to a specific engine (PostgreSQL / MySQL tiles)
+ function dbOpen(type: string) { dbAdminType = type; dbAdminPort = type === 'mysql' ? '3306' : '5432'; dbAdminStep = 'form'; intgView = type; }
  let loading = $state(false);
 
  /* ─── auth helper ─── */
@@ -2277,12 +2279,16 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
         <svg viewBox="0 0 87.3 78" width="32" height="30"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0-1.2 4.5h27.5z" fill="#00ac47"/><path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 11.5z" fill="#ea4335"/><path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/><path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/><path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/></svg>
       {:else if id === 'onedrive'}
         <svg viewBox="0 0 24 24" width="34" height="34"><path d="M10.4 18.6h8.5a3.2 3.2 0 0 0 .45-6.36 4.8 4.8 0 0 0-8.9-1.6 3.85 3.85 0 0 0-3.65 3.95 3.65 3.65 0 0 0 3.65 4.01z" fill="#0078D4"/><path d="M7.2 14.4a3.3 3.3 0 0 1 3-3.3 4.6 4.6 0 0 1 .9-1.7 3.5 3.5 0 0 0-5.2 2.1 2.9 2.9 0 0 0 .3 4.3 3.6 3.6 0 0 1 1-1.4z" fill="#28A8EA"/></svg>
+      {:else if id === 'postgresql'}
+        <svg viewBox="0 0 24 24" width="34" height="34"><ellipse cx="12" cy="6" rx="7" ry="3" fill="#336791"/><path d="M5 6v12c0 1.66 3.13 3 7 3s7-1.34 7-3V6" fill="#336791"/><path d="M5 9.5c0 1.66 3.13 3 7 3s7-1.34 7-3M5 13.5c0 1.66 3.13 3 7 3s7-1.34 7-3" stroke="#fff" stroke-width="0.9" fill="none" opacity=".8"/><text x="12" y="14.5" font-size="6" font-weight="700" fill="#fff" text-anchor="middle" font-family="Arial">Pg</text></svg>
+      {:else if id === 'mysql'}
+        <svg viewBox="0 0 24 24" width="34" height="34"><ellipse cx="12" cy="6" rx="7" ry="3" fill="#00758F"/><path d="M5 6v12c0 1.66 3.13 3 7 3s7-1.34 7-3V6" fill="#00758F"/><ellipse cx="12" cy="6" rx="7" ry="3" fill="#F29111" opacity=".55"/><path d="M5 9.5c0 1.66 3.13 3 7 3s7-1.34 7-3M5 13.5c0 1.66 3.13 3 7 3s7-1.34 7-3" stroke="#fff" stroke-width="0.9" fill="none" opacity=".8"/></svg>
       {:else}
-        <svg viewBox="0 0 24 24" width="34" height="34"><ellipse cx="12" cy="6" rx="7" ry="3" fill="#336791"/><path d="M5 6v12c0 1.66 3.13 3 7 3s7-1.34 7-3V6" fill="#336791"/><path d="M5 9.5c0 1.66 3.13 3 7 3s7-1.34 7-3M5 13.5c0 1.66 3.13 3 7 3s7-1.34 7-3" stroke="#fff" stroke-width="0.8" fill="none" opacity=".7"/></svg>
+        <svg viewBox="0 0 24 24" width="34" height="34"><ellipse cx="12" cy="6" rx="7" ry="3" fill="#5a4b8a"/><path d="M5 6v12c0 1.66 3.13 3 7 3s7-1.34 7-3V6" fill="#5a4b8a"/><path d="M5 9.5c0 1.66 3.13 3 7 3s7-1.34 7-3M5 13.5c0 1.66 3.13 3 7 3s7-1.34 7-3" stroke="#fff" stroke-width="0.8" fill="none" opacity=".7"/></svg>
       {/if}
     {/snippet}
     {#snippet intgCard(id, title, sub, count)}
-      <button class="intg-card" onclick={() => { if (id === 's3') s3New(); else intgView = id; }}>
+      <button class="intg-card" onclick={() => { if (id === 's3') s3New(); else if (id === 'postgresql' || id === 'mysql') dbOpen(id); else intgView = id; }}>
         <div class="intg-logo">{@render brandLogo(id)}</div>
         <div class="intg-name">{title}</div>
         <div class="intg-sub">{sub}</div>
@@ -2296,7 +2302,8 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
       {@render intgCard('sharepoint', 'SharePoint', 'Microsoft 365 documents', spAdminConfig.configured ? 1 : 0)}
       {@render intgCard('gdrive', 'Google Drive', 'Drive files & folders', gdAdminConfig.configured ? 1 : 0)}
       {@render intgCard('onedrive', 'OneDrive', 'Personal / business files', odAdminConfig.configured ? 1 : 0)}
-      {@render intgCard('database', 'Database', 'PostgreSQL / MySQL tables', dbAllSources.length)}
+      {@render intgCard('postgresql', 'PostgreSQL', 'Connect PostgreSQL tables', dbAllSources.filter((d) => (d.type || d.db_type) === 'postgresql').length)}
+      {@render intgCard('mysql', 'MySQL', 'Connect MySQL tables', dbAllSources.filter((d) => (d.type || d.db_type) === 'mysql').length)}
     </div>
 
     {#snippet typeBadge(label, id)}
@@ -2326,12 +2333,12 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
           {/each}
           {#each dbAllSources as d}
             <tr>
-              <td>{@render typeBadge('DB', 'database')}</td>
+              <td>{@render typeBadge((d.type || d.db_type) === 'mysql' ? 'MySQL' : 'PostgreSQL', (d.type || d.db_type) === 'mysql' ? 'mysql' : 'postgresql')}</td>
               <td class="b">{d.database || d.db_name || '-'}</td>
-              <td class="mono">{(d.type || d.db_type || '').toUpperCase()} · {d.host || '-'} · {d.tables ?? d.table_count ?? '?'} tbl</td>
+              <td class="mono">{d.host || '-'} · {d.tables ?? d.table_count ?? '?'} tbl</td>
               <td>—</td>
               <td><span class="cdot on"></span>{d.status || 'connected'}</td>
-              <td class="ca"><button class="cico" title="Manage" onclick={() => { intgView = 'database'; }}>✎</button></td>
+              <td class="ca"><button class="cico" title="Manage" onclick={() => dbOpen((d.type || d.db_type) === 'mysql' ? 'mysql' : 'postgresql')}>✎</button></td>
             </tr>
           {/each}
           {#if spAdminConfig.configured}
@@ -2569,7 +2576,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
     </div>
   </div>
 
-    {:else if intgView === 'database'}
+    {:else if intgView === 'database' || intgView === 'postgresql' || intgView === 'mysql'}
   <!-- Database Connectors -->
   <div style="font-size: 16px; font-weight: 900; text-transform: uppercase; margin-bottom: 16px;">Database Connectors</div>
 
@@ -4241,7 +4248,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  .ffchk { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
  .fftest { border: 2px solid var(--pw-ink); background: var(--pw-bg-alt); padding: 8px 12px; font-size: 11px; margin-top: 12px; word-break: break-word; font-family: var(--pw-font-body, monospace); }
  .fffoot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; border-top: 2px solid var(--pw-ink); padding-top: 12px; }
- .ibtn { border: 2px solid var(--pw-ink); background: var(--pw-ink); color: #fff; padding: 7px 16px; font-size: 11px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
+ .ibtn { border: 2px solid var(--pw-ink); background: var(--pw-accent, #c96342); color: #fff; padding: 7px 16px; font-size: 11px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
  .ibtn.ghost { background: var(--pw-surface); color: var(--pw-ink); }
  .ibtn.xs { padding: 3px 9px; font-size: 10px; border-width: 1px; }
  .ibtn:hover { box-shadow: 2px 2px 0 var(--pw-ink); }
