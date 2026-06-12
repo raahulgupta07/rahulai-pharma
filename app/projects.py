@@ -1609,6 +1609,42 @@ async def project_chat(slug: str, request: Request):
                                     "result": {"value": _v, "cached": True,
                                                "rows": _ms_rows, "columns": _ms_cols}}]}
 
+    # Continuous query learning (P4, Mode 1 BYPASS): exact-enough hit on a PROVEN
+    # learned query → re-run its SQL live (fresh numbers) + render in code. ZERO
+    # LLM. Only fires for verbatim-ish repeats of a verified question; everything
+    # else falls through to recall-hint (P2) + the agent. Gated, auto-only.
+    if model_pref in ("", "auto"):
+        try:
+            from dash.learning.query_bank import try_query_bank_serve
+            _qb = try_query_bank_serve(slug, message)
+        except Exception:
+            _qb = None
+        if _qb and _qb.get("content"):
+            _qb_answer = _qb["content"]
+            _qb_sid = session_id or ""
+            _qb_trace = {"step": "query_bank", "label": "Reused a learned query",
+                         "matched": _qb.get("matched_q", ""), "sim": _qb.get("sim"),
+                         "elapsed_ms": _qb.get("elapsed_ms")}
+            _qb_tool = {"name": "run_sql_query", "args": {"query": _qb.get("sql", "")},
+                        "result": {"value": _qb.get("value"), "learned": True,
+                                   "rows": _qb.get("rows", []), "columns": _qb.get("columns", [])}}
+            if stream:
+                from fastapi.responses import StreamingResponse
+                from dash.utils.sse import emit_event_sync as _emit
+                async def _qb_stream():
+                    try:
+                        yield _emit("ReasoningStep", _qb_trace, session_id=_qb_sid, project_slug=slug)
+                    except Exception:
+                        pass
+                    yield _emit("TeamRunContent", {"content": _qb_answer}, session_id=_qb_sid, project_slug=slug)
+                    yield _emit("TeamRunCompleted", {}, session_id=_qb_sid, project_slug=slug)
+                return StreamingResponse(_qb_stream(), media_type="text/event-stream")
+            return {"content": _qb_answer, "session_id": session_id,
+                    "sql": _qb.get("sql"), "rows": _qb.get("rows"),
+                    "columns": _qb.get("columns"), "row_count": _qb.get("row_count"),
+                    "elapsed_ms": _qb.get("elapsed_ms"), "learned": True,
+                    "trace": [_qb_trace], "tool_calls": [_qb_tool]}
+
     # Continuous query learning (P1 shadow): both shortcuts missed and we're about
     # to run the full agent. Log whether this question WOULD have hit the query
     # bank — measurement only, serves nothing. Fire-and-forget (own embed call), so

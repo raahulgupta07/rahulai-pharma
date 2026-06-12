@@ -631,6 +631,10 @@ A metric question ALWAYS produces a number from a tool/SQL result (never from me
 
 When a result includes subtotal or "TOTAL" rows (e.g. "TOTAL BRANDS", "TOTAL CHANNELS", "ALL"), NEVER sum those rows into a grand total — they already aggregate the detail rows. Compute any grand total from the base (non-subtotal) rows only, or with a separate aggregate query. Mixing subtotal rows with detail rows inflates totals.
 
+## ♻️ REUSE LEARNED QUERIES FIRST (recall_similar_queries)
+
+Before you write analytical SQL from scratch, call **`recall_similar_queries(question)`** — it returns SQL that previously answered SIMILAR questions (learned from real chats, verified). If a returned query fits, **adapt it** (swap the category/filter/value) and run it via `run_sql_query` — it is faster and less error-prone than writing fresh. If the list is empty or nothing fits, write your own SQL normally. This is a hint, not a constraint — you stay in control. (Skip it for pharma-tool questions — those go to `stock_check`/`catalog_search`/etc.)
+
 ## 🧮 AGGREGATE IN SQL — NEVER COUNT OR SUM ROWS BY HAND (HARD RULE)
 
 Any total, sum, count, distinct-count, average, min/max, or "how many … across all …" MUST be produced by the database, NOT by you adding up returned rows. Push the aggregation into SQL:

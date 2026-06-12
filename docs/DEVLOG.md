@@ -2,6 +2,26 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-12 (latest+80) — v1.22.0: continuous query learning P2–P6 (recall + serve + curator + generalize + fold)
+
+**Ask.** "I want all tools and tech build." → built the remaining 5 phases on top of P1 (capture+shadow). Plan: `docs/plans/continuous_query_learning.md`.
+
+**Built.**
+- **`dash/learning/query_bank.py`** — `recall_similar`/`recall_similar_sync` (Mode-2: top-3 proven/candidate SQL for similar Qs as a HINT, schema-ok only, NOT executed) + `try_query_bank_serve` (Mode-1 bypass: NN → schema-guard → re-run stored SQL LIVE via `verified_reward._run_rows` → render via `cache_curator._build_card`; thread-isolated NN because the chat endpoint loop is async).
+- **P2 recall tool** — `recall_similar_queries` wired in `dash/tools/build.py` (non-store-locked branch, `tools.append`) + nudge in `instructions.py` ("call recall before analytical SQL, adapt a proven query if it fits"). **BEST-EFFORT** — the agent chooses; in testing it often skipped (every soft nudge has this ceiling). The tool is registered + mechanically sound (same `_nn` as Mode-1).
+- **P4 Mode-1 serve lane** — `app/projects.py project_chat` after metric_shortcut: exact proven hit (sim≥0.96) → re-run live → serve. VERIFIED: "total stock quantity across every site" → 36ms live re-run, fresh numbers, zero agent LLM, `learned:true`.
+- **P3 curator + review gate** — `dash/learning/query_curator.py` (approve/reject/promote/demote, `run_query_curator` verifies+promotes candidates, `demote_on_negative_feedback`, `bank_stats`, `list_patterns`, `fold_proven_into_training`) + `app/query_bank_api.py` (super-admin: stats/patterns/approve/reject/promote/demote/curate/generalize/fold-training) + daemon `dash/cron/query_curator_daemon.py` (default OFF, `QUERY_CURATOR_ENABLED=1`, leader-gated, wired in main.py lifespan) + **UsagePanel "Query Bank" tab** (repeat-rate/would-serve/avg-sim/pending KPIs + status-filtered learned-queries table with approve/reject/promote/demote + curate-preview/apply + generalize-preview buttons).
+- **P5 generalize** — `dash/learning/query_generalize.py` `propose_generalizations`: cluster proven chat patterns by (first table, SQL shape with literals/numbers blanked) → LLM emits ONE parameterized {slot, question, sql} → write as pending (review-gated). The agent fills the slot via Mode-2 recall — NO template engine needed.
+- **P6 fold-into-training** — `fold_proven_into_training` hooked into `app/upload.py` training-complete (after shop_flat): proven `source='chat'` patterns → `dash_training_qa` (idempotent, dedupe by question).
+
+**2 bugs caught in live test (both my new code).** (1) `build.py:609` recall guard referenced `_os` before its import at line 621 (the pharma block's `import os as _os`) → `UnboundLocalError` → **every** team build 500'd. Fix: local `import os as _os_qr`. RULE: never reference a module alias defined later in the same function; import locally at the guard. (2) `try_query_bank_serve` called `asyncio.run(_nn(...))` from inside the async chat loop → `RuntimeError: asyncio.run cannot be called from a running event loop` → Mode-1 never served. Fix: run the NN on a private loop in a `ThreadPoolExecutor` worker (same pattern as `recall_similar_sync`). Also forgot `tools.append(_recall_tool)` first pass (defined the tool, never registered it).
+
+**Lifecycle verified live.** capture (pending) → approve (candidate) → promote (verify SQL → value 1,360,217 → proven) → Mode-1 serve (36ms, fresh). Endpoints stats/curate/generalize all 200. Daemons default OFF.
+
+**FOLLOW-UPS.** recall-tool firing is model-discretion (low) — if it stays low, inject top proven patterns into per-turn context instead of relying on the nudge. Fold mig 188 into baseline. Mode-1 is `project_chat`-only (main UI path); `super_chat` (global chat) has neither shortcuts nor Mode-1 — acceptable.
+
+---
+
 ### Session 2026-06-12 (latest+79) — v1.21.0: continuous query learning P1 (capture + shadow)
 
 **Ask.** "Make replies fast without hardcoding — keep the LLM. Learn from every question, build a reusable query bank, make it part of learning." Plan written to `docs/plans/continuous_query_learning.md` (6 phases). User: "ok start" → built **P1 (capture + shadow only — serves nothing yet)**.

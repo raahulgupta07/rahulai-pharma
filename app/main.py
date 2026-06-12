@@ -463,6 +463,24 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
         import logging as _cc_log
         _cc_log.getLogger(__name__).warning(f"cache_curator not started: {_e}")
 
+    # Query-bank curator daemon (continuous query learning P3) — verifies +
+    # promotes admin-approved candidate chat patterns to 'proven'. DEFAULT OFF
+    # (mutates pattern status). Leader-gated. Set QUERY_CURATOR_ENABLED=1.
+    try:
+        import os as _os_qc
+        if _os_qc.environ.get("QUERY_CURATOR_ENABLED") not in ("1", "true", "TRUE", "yes"):
+            raise RuntimeError("query curator daemon disabled (default OFF)")
+        if not _should_run_daemons():
+            raise RuntimeError("daemons disabled")
+        import asyncio as _asyncio_qc
+        from dash.cron.query_curator_daemon import query_curator_loop as _query_curator_loop
+        _asyncio_qc.create_task(_query_curator_loop())
+        import logging as _qc_log
+        _qc_log.getLogger(__name__).info("query_curator daemon started (24h)")
+    except Exception as _e:
+        import logging as _qc_log
+        _qc_log.getLogger(__name__).warning(f"query_curator not started: {_e}")
+
     # Ontology auto-cluster daemon (~6h cadence). Mirrors reembed_loop pattern.
     # default OFF (Phase-1 trim: pure-burn daemon, output not consumed). Set ONTOLOGY_CLUSTER_ENABLED=1 to re-enable.
     # Opt-out via ONTOLOGY_CLUSTER_DISABLED=1 (also honored inside the loop).
@@ -1601,6 +1619,13 @@ try:
 except Exception as _e:
     import logging as _logging
     _logging.warning(f"cache_curator_api not loaded: {_e}")
+
+try:
+    from app.query_bank_api import router as query_bank_router
+    app.include_router(query_bank_router)
+except Exception as _e:
+    import logging as _logging
+    _logging.warning(f"query_bank_api not loaded: {_e}")
 
 # Connector subsystem (admin CRUD + user-facing query) — connectors_contract §8
 try:

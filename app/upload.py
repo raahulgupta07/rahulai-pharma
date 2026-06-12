@@ -13223,6 +13223,18 @@ async def retrain_project(slug: str, request: Request):
             _l.getLogger(__name__).warning(f"shop_flat skipped for {slug}: {_sfe}")
             _master_log(f"⚠ shop_flat skipped: {str(_sfe)[:80]}", "", total_tables)
 
+        # ─── Continuous query learning (P6) — fold 'proven' chat-learned query
+        # patterns into the training corpus so they harden (survive retrain +
+        # feed retrieval). Idempotent, fail-soft.
+        try:
+            from dash.learning.query_curator import fold_proven_into_training as _fold_qb
+            _fq = _fold_qb(slug)
+            if _fq.get("folded"):
+                _master_log(f"✓ query bank: {_fq['folded']} learned queries folded into training", "", total_tables)
+        except Exception as _fqe:
+            import logging as _l
+            _l.getLogger(__name__).debug(f"query-bank fold skipped for {slug}: {_fqe}")
+
         # ─── Engineer semantic-layer matviews — REFRESH every registered view
         # so reads reflect the just-loaded data. CONCURRENTLY (no read lock);
         # falls back to plain refresh if the unique index is missing. Fail-soft.

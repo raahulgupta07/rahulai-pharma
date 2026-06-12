@@ -2,6 +2,16 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.22.0",
+      "date": "2026-06-12",
+      "title": "The assistant reuses what it has learned — faster repeat answers",
+      "items": [
+        "Repeat data questions can now be answered in a fraction of a second by re-running a previously-learned query against today's numbers — no waiting for the assistant to think it through again.",
+        "The assistant can recall queries it wrote for similar past questions and adapt them, so it answers more reliably.",
+        "New admin Query Bank screen (Usage & Cost) to review what the assistant has learned, approve or reject each learned query, and see how often questions repeat."
+      ]
+    },
+    {
       "version": "1.21.0",
       "date": "2026-06-12",
       "title": "The assistant now learns from real questions",

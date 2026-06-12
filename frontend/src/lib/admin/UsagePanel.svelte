@@ -12,6 +12,7 @@
     { label: 'People', items: [['people', 'People', 'people2']] },
     { label: 'Analytics', items: [['tools', 'Tools', 'wrench'], ['security', 'Security', 'shield'], ['entities', 'Entities', 'users']] },
     { label: 'Answer Cache', items: [['cache', 'Answer Cache', 'vector']] },
+    { label: 'Query Bank', items: [['querybank', 'Query Bank', 'wrench']] },
     { label: 'Billing', items: [['billing', 'Billing', 'receipt'], ['live', 'Live', 'bolt']] },
   ] as { label: string; items: [string, string, string][] }[];
   const ICONS: Record<string, string> = {
@@ -74,6 +75,53 @@
   let cacheRows: any[] = $state([]);
   let cacheBusy = $state('');          // question/id currently acting on
   let cacheMsg = $state('');
+
+  // ── Query Bank (continuous query learning) ──────────────────────────────
+  let qbStats: any = $state(null);
+  let qbPatterns: any[] = $state([]);
+  let qbFilter = $state('pending');    // pending | candidate | proven | demoted | ''
+  let qbBusy = $state('');
+  let qbMsg = $state('');
+  async function loadQueryBank() {
+    if (!cacheSlug) {
+      try { const f = await jget('/api/flags'); cacheSlug = f?.locked_slug || f?.slug || 'citypharma'; }
+      catch { cacheSlug = 'citypharma'; }
+    }
+    const base = `/api/projects/${cacheSlug}/query-bank`;
+    const [s, p] = await Promise.all([
+      jget(`${base}/stats`),
+      jget(`${base}/patterns?${qbFilter ? 'status=' + qbFilter + '&' : ''}limit=200`),
+    ]);
+    qbStats = s; qbPatterns = p?.patterns ?? [];
+  }
+  async function qbAct(id: number, action: string) {
+    qbBusy = String(id) + action; qbMsg = '';
+    try {
+      const r = await jpost(`/api/projects/${cacheSlug}/query-bank/${id}/${action}`, {});
+      qbMsg = r?.ok ? `#${id} → ${r.status}` : `#${id} ${action} failed — ${r?.error || ''}`;
+      await loadQueryBank();
+    } catch (e: any) { qbMsg = `Failed: ${e.message}`; }
+    qbBusy = '';
+  }
+  async function qbCurate(dry: boolean) {
+    qbBusy = 'curate'; qbMsg = '';
+    try {
+      const r = await jpost(`/api/projects/${cacheSlug}/query-bank/curate?dry_run=${dry}`, {});
+      qbMsg = `Curate (${dry ? 'preview' : 'applied'}): scanned ${r.scanned ?? 0}, promote ${r.promoted ?? 0}, demote ${r.demoted ?? 0}, keep ${r.kept ?? 0}`;
+      if (!dry) await loadQueryBank();
+    } catch (e: any) { qbMsg = `Failed: ${e.message}`; }
+    qbBusy = '';
+  }
+  async function qbGeneralize(dry: boolean) {
+    qbBusy = 'gen'; qbMsg = '';
+    try {
+      const r = await jpost(`/api/projects/${cacheSlug}/query-bank/generalize?dry_run=${dry}`, {});
+      qbMsg = `Generalize (${dry ? 'preview' : 'written'}): ${r.clusters ?? 0} clusters, ${r.proposed ?? 0} templates${dry ? '' : ', ' + (r.written ?? 0) + ' written for review'}`;
+      if (!dry) await loadQueryBank();
+    } catch (e: any) { qbMsg = `Failed: ${e.message}`; }
+    qbBusy = '';
+  }
+  function qbSetFilter(f: string) { qbFilter = f; loadQueryBank(); }
   let curatePreview: any[] | null = $state(null);
   let curateBusy = $state(false);
 
@@ -228,6 +276,8 @@
         entUsers = u?.breakdown ?? []; entStores = s?.breakdown ?? [];
       } else if (t === 'cache') {
         await loadCache();
+      } else if (t === 'querybank') {
+        await loadQueryBank();
       }
       loaded[t] = true; loaded = { ...loaded };
     } catch (e: any) { error = e?.message || String(e); }
@@ -1009,6 +1059,62 @@
       </tbody></table>
     </div>
     <p class="u-hint">Cached answers serve verbatim with zero LLM. The leader auto-promotes via the curator daemon (default OFF — env <code>CACHE_CURATOR_ENABLED=1</code>); "Cache this" / "Run curation" promote on demand. A cached answer auto-evicts when its source-table schema drifts.</p>
+  {/if}
+
+  {#if tab === 'querybank'}
+    <div class="u-frow" style="margin-bottom:.75rem; align-items:center; flex-wrap:wrap; gap:.4rem">
+      <button class="u-btn ghost" onclick={() => loadTab('querybank', true)}>↻ refresh</button>
+      <button class="u-btn" onclick={() => qbCurate(true)} disabled={qbBusy === 'curate'}>{qbBusy === 'curate' ? 'running…' : '▶ Curate preview'}</button>
+      <button class="u-btn ghost" onclick={() => qbCurate(false)} disabled={qbBusy === 'curate'}>Apply curation</button>
+      <button class="u-btn ghost" onclick={() => qbGeneralize(true)} disabled={qbBusy === 'gen'}>{qbBusy === 'gen' ? '…' : '✨ Generalize preview'}</button>
+      {#if qbMsg}<span class="u-st">{qbMsg}</span>{/if}
+    </div>
+
+    {#if qbStats}
+      <div class="u-kpis">
+        <div class="u-kpi"><span class="k">REPEAT RATE</span><b>{Math.round((qbStats.shadow?.repeat_rate ?? 0) * 100)}%</b></div>
+        <div class="u-kpi"><span class="k">WOULD-SERVE</span><b>{Math.round((qbStats.shadow?.serve_rate ?? 0) * 100)}%</b></div>
+        <div class="u-kpi"><span class="k">AVG SIM</span><b>{qbStats.shadow?.avg_sim ?? '—'}</b></div>
+        <div class="u-kpi"><span class="k">LEARNED (CHAT)</span><b>{qbStats.total_chat ?? 0}</b></div>
+        <div class="u-kpi"><span class="k">PROVEN</span><b>{qbStats.by_status?.proven ?? 0}</b></div>
+        <div class="u-kpi" class:bad={(qbStats.by_status?.pending ?? 0) > 0}><span class="k">PENDING REVIEW</span><b>{qbStats.by_status?.pending ?? 0}</b></div>
+      </div>
+      <p class="u-hint" style="margin-top:.3rem">Shadow window = 30d. <b>Repeat rate</b> = live questions that found a near-match in the bank; <b>would-serve</b> = those that would clear the bypass bar (sim ≥ 0.96 + proven). Use these to decide how much to lean on the bank.</p>
+    {/if}
+
+    <div class="u-card">
+      <div class="u-ctitle">Learned queries
+        <span style="float:right; display:flex; gap:.3rem">
+          {#each ['pending','candidate','proven','demoted',''] as f}
+            <button class="u-chip" class:on={qbFilter === f} onclick={() => qbSetFilter(f)}>{f || 'all'}</button>
+          {/each}
+        </span>
+      </div>
+      <table class="u-tbl"><thead><tr><th>question</th><th>status</th><th>uses</th><th>rows</th><th>SQL</th><th></th></tr></thead><tbody>
+        {#each qbPatterns as p}
+          <tr class:dim={p.status === 'demoted'}>
+            <td>{p.question}</td>
+            <td><span class="u-st">{p.status}</span></td>
+            <td class="num">{p.uses}</td>
+            <td class="num">{p.rows_returned ?? '—'}</td>
+            <td class="mono dim" style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title={p.sql}>{p.sql}</td>
+            <td style="text-align:right; white-space:nowrap">
+              {#if p.status === 'pending'}
+                <button class="u-btn ghost sm" onclick={() => qbAct(p.id, 'approve')} disabled={qbBusy === p.id + 'approve'}>Approve</button>
+                <button class="u-btn ghost sm" onclick={() => qbAct(p.id, 'reject')} disabled={qbBusy === p.id + 'reject'}>Reject</button>
+              {:else if p.status === 'candidate'}
+                <button class="u-btn ghost sm" onclick={() => qbAct(p.id, 'promote')} disabled={qbBusy === p.id + 'promote'}>Promote</button>
+                <button class="u-btn ghost sm" onclick={() => qbAct(p.id, 'demote')} disabled={qbBusy === p.id + 'demote'}>Demote</button>
+              {:else if p.status === 'proven'}
+                <button class="u-btn ghost sm" onclick={() => qbAct(p.id, 'demote')} disabled={qbBusy === p.id + 'demote'}>Demote</button>
+              {/if}
+            </td>
+          </tr>
+        {/each}
+        {#if !qbPatterns.length}<tr><td colspan="6" class="u-empty">no {qbFilter || ''} learned queries yet — ask the assistant analytical questions to fill the bank</td></tr>{/if}
+      </tbody></table>
+    </div>
+    <p class="u-hint">The assistant captures the SQL it writes in live chat (<code>pending</code>). Approve → <code>candidate</code> (used as a hint the agent adapts); Promote → <code>proven</code> (re-served verbatim with fresh numbers, zero LLM). 👎+correction auto-demotes. Curator daemon auto-verifies candidates (default OFF — <code>QUERY_CURATOR_ENABLED=1</code>). Generalize turns a family of similar proven queries into one parameterized template (review-gated).</p>
   {/if}
 
   </div><!-- /u-main -->
