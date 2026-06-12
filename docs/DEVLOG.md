@@ -2,6 +2,39 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-12 (latest+85) — v1.27.0: close ALL pending (cross-worker cache, GROUP-BY headline, curator-cycle proof, threshold histogram) + commit/push
+
+**Ask.** "do all and fix" — clear the whole pending list.
+
+**#5 — cross-worker embed cache (was per-worker).** v1.26.0's `_embed_cached` was an in-proc dict → each of N gunicorn workers warmed independently (N cold embeds before warm). Added an **L2 Redis layer** in `dash/learning/query_bank.py`: `_get_emb_redis()` (lazy singleton, `redis://dash-redis:6379`, fail-soft → L1-only if Redis down), key `qbank:emb:{model}|{norm-question}` (model-scoped so an embed-model swap can't serve stale vectors), TTL `QUERY_BANK_EMB_TTL=300s`. `_embed_cached` now L1 dict → L2 Redis → embed-once-write-both. The FIRST worker to embed a question warms it for ALL. VERIFIED: COLD 30-concurrent **13s → 2.74s** (was the v1.26.0 cold number); 1 Redis key for 30 identical Qs; warm re-run 0.35s.
+
+**#4 — `_build_card` GROUP-BY headline bug.** `value` = first numeric cell of the first row (verified_reward._run_rows) — right for a single-row scalar ("4892 SKUs"), WRONG for a multi-row breakdown (GROUP BY category → headlined the TOP group's count, not the answer). Also `rc=len(rows)` under-reported (rows[] capped at 20). Fix in `dash/learning/cache_curator.py _build_card`: new `row_count` param (true total, threaded from `run.get("row_count")` in both callers — query_bank + curate); multi-row → headline the COUNT with a pluralized group label (`category`→`categories` via y→ies rule) + demote the top scalar to a "Top category" secondary KPI. Single-row path unchanged. VERIFIED: "how many products in each category" now cards **"50 categories"** headline + "1,231 Top category" secondary (was "1231 | Category").
+
+**#3 — curator 24h-loop proven live (not just manual).** Walked a candidate through the EXACT path the daemon runs: fire Q → capture (pending) → approve (candidate) → `run_query_curator(dry_run=false)`. First pass: scanned 1, verified SQL, **kept** (trust gate `uses=1 < min_uses=2`). Re-fired Q (capture UPSERT `uses→2`) → re-curate → **promoted** (verified value 1,360,217, persisted candidate→proven). NOTE: the `/curate` endpoint defaults `dry_run=True` (preview — reports promote but does NOT write); the daemon calls `dry_run=False`. Not a bug — confirmed the live write path persists.
+
+**#2 — threshold histogram (best-effort; real-traffic validation still pending by nature).** Cleared load-test-polluted shadow (177 identical-Q rows, avg 0.999) → ran `scripts/seed_shadow.py` (40 varied paraphrases). Distribution vs the 2-3 proven patterns: 35 rows <0.70 (unrelated, correctly excluded), 4 @ 0.70-0.75, **1 @ 0.846** (a genuine paraphrase of a proven pattern → above recall 0.80, below serve 0.93 = Mode-2 HINT, no false Mode-1 serve). Confirms thresholds SANE (junk stays out, the one real near-match is hint-only). True validation still needs a populated bank from real users — a 2-3-pattern bank gives paraphrases almost nothing to match. Conclusion unchanged but now data-backed.
+
+**#1 — committed + pushed** (v1.26.0 + v1.27.0). Bank left with 3 real verified proven patterns (SKU count / category breakdown / total stock) so real users get instant answers from day one; synthetic shadow cleared.
+
+Shipped v1.27.0, image rebuilt + recreated, `/api/version` = 1.27.0.
+
+---
+
+### Session 2026-06-12 (latest+84) — v1.26.0: Mode-1 bypass concurrency fix (43s → 1.65s under 30-outlet load)
+
+**Ask.** "test like 30 outlets doing same time and check the score."
+
+**Load test (30 concurrent super_chat hits, same PROVEN question, `learned:true` each):**
+- v1.25.0 baseline: **wall 43s, p50 43s** — all 30 served Mode-1 but SERIALIZED.
+- Root cause: the super_chat Mode-1 bypass lane (#4, v1.25.0) sat AFTER `create_project_team` + routing. Every served hit still paid full team construction, which serializes under concurrency (single-agent lock / per-tier model rebuild / router). Zero-LLM serve, but not zero-work.
+- **Fix 1 — move bypass BEFORE team build.** New EARLY lane in `app/main.py super_chat`, right after the `_chit`/reasoning_instructions block, before the smart-routing-hint + `create_project_team`. Single-tenant → slug = `locked_slug()`, minimal `routing_info` (`tier:instant`). On a hit: skip routing + team entirely, return stream/non-stream. Gated `not _chit AND reasoning in (auto,'',fast)`, fail-soft. The late lane stays as a fallback. → **wall 13s, p50 9s.**
+- **Fix 2 — per-worker TTL embedding cache.** The remaining serial cost was the embed API round-trip in `_nn` (NN needs the question vector; 30 identical Qs = 30 embeds on one key). Added `_embed_cached()` in `dash/learning/query_bank.py` — bounded (`_EMB_MAX=512`) TTL (`QUERY_BANK_EMB_TTL=300s`) dict keyed on the normalized question; `_nn` calls it instead of `embed_text` directly. Collapses repeat questions to ONE embed. → **warm wall 1.65s, p50 0.28s, min 0.21s** (0.21s = pure SQL re-run, no embed, no LLM).
+- Cache is per-worker (in-process) → first hit per worker is a miss; sustained repeat traffic + the load-test's identical-question burst both benefit. Cold mixed traffic still gets Fix-1's 13s→ improvement.
+
+**Net: 43s → 1.65s** for 30 simultaneous outlets on a learned query. Both gates still hold (below-threshold paraphrase falls through to the agent; no false serve). Shipped v1.26.0, image rebuilt + recreated, `/api/version` = 1.26.0.
+
+---
+
 ### Session 2026-06-12 (latest+83) — v1.25.0: query-learning refinements (#2 alias, #3 tool-removal, #4 super_chat Mode-1) + data clean
 
 **Ask.** Close the 3 quick refinement/observation items.

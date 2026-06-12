@@ -2,6 +2,23 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.27.0",
+      "date": "2026-06-12",
+      "title": "Clearer breakdown answers + faster cold repeats",
+      "items": [
+        "Breakdown questions (e.g. 'sales by category') now headline the number of groups instead of the top row's figure, so the instant-answer card reads correctly.",
+        "Instant repeat answers now warm up across all server workers at once, so the very first asks after a restart are quick too."
+      ]
+    },
+    {
+      "version": "1.26.0",
+      "date": "2026-06-12",
+      "title": "Instant repeat answers stay fast under load",
+      "items": [
+        "Reworded-repeat fast answers in the global chat now skip the full assistant setup, so many outlets asking the same question at once all get an instant reply instead of queueing."
+      ]
+    },
+    {
       "version": "1.25.0",
       "date": "2026-06-12",
       "title": "Query reuse polish",

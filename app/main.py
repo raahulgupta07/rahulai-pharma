@@ -2740,6 +2740,42 @@ async def super_chat(request: Request):
     else:
         reasoning_instructions = _apply_reasoning_mode("", reasoning, analysis_type)
 
+    # Continuous query learning (Mode-1 BYPASS) — EARLY lane, BEFORE team build.
+    # An exact-enough hit on a PROVEN learned query re-runs its SQL live (fresh
+    # numbers) + renders in code: ZERO LLM and ZERO team construction. The late
+    # post-routing lane paid full team-build cost on every served hit, which
+    # serialized badly under concurrency (30 outlets -> p50 43s). Serving here
+    # skips routing + create_project_team entirely. Auto/fast only, not chitchat,
+    # fail-soft. Single-tenant: slug is always the locked slug.
+    if not _chit and reasoning in ("auto", "", "fast"):
+        _qb_eslug = None
+        try:
+            from dash.single_agent import locked_slug as _qb_els
+            _qb_eslug = _qb_els()
+        except Exception:
+            _qb_eslug = None
+        _qb_e = None
+        if _qb_eslug and len((message or "").strip()) >= 8:
+            try:
+                from dash.learning.query_bank import try_query_bank_serve as _qb_eserve
+                _qb_e = _qb_eserve(_qb_eslug, message)
+            except Exception:
+                _qb_e = None
+        if _qb_e and _qb_e.get("content"):
+            _qb_e_ans = _qb_e["content"]
+            _qb_e_routing = {"routed_to": "Analyst", "slug": _qb_eslug,
+                             "reason": "learned query (instant)", "tier": "instant",
+                             "learned": True}
+            if stream:
+                def _qb_e_stream():
+                    yield f"event: Routing\ndata: {_json.dumps(_qb_e_routing, default=str)}\n\n"
+                    yield f"event: OriginalMessage\ndata: {_json.dumps({'message': message}, default=str)}\n\n"
+                    yield f"event: TeamRunContent\ndata: {_json.dumps({'content': _qb_e_ans})}\n\n"
+                    yield f"event: TeamRunCompleted\ndata: {_json.dumps({})}\n\n"
+                return StreamingResponse(_qb_e_stream(), media_type="text/event-stream")
+            return {"content": _qb_e_ans, "session_id": session_id, "routing": _qb_e_routing,
+                    "learned": True, "sql": _qb_e.get("sql")}
+
     # Smart routing hint (skip for chitchat — no data/context routing needed)
     routing_hint = "data" if _chit else _detect_routing_hint(message)
     if routing_hint == "both":

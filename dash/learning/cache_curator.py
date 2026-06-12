@@ -201,7 +201,7 @@ def _fmt_value(v) -> str:
 
 
 def _build_card(question: str, value, rows: list, cols: list,
-                sql: str, tables: list[str]) -> str:
+                sql: str, tables: list[str], row_count: int | None = None) -> str:
     """Render a compact, valid AnswerCard tag-string from a verified result.
 
     Tag vocabulary (matches frontend/src/lib/chat/AnswerCard.svelte +
@@ -213,18 +213,50 @@ def _build_card(question: str, value, rows: list, cols: list,
       [CONFIDENCE:HIGH]
       [FRESHNESS:<table>|NULL]         — one per source table
       <short markdown sentence>
+
+    HEADLINE RULE: `value` = first numeric cell of the FIRST row (verified_reward
+    ._run_rows). That is the right headline only for a SINGLE-ROW scalar answer
+    ("how many SKUs" → 4892). For a MULTI-ROW breakdown (GROUP BY: categories +
+    count) the first-row scalar is just the TOP group's number, NOT the answer —
+    the meaningful headline is the ROW COUNT (101 categories). So multi-row
+    results headline the count and demote the top-row scalar to a sublabel.
+    `row_count` is the TRUE total (rows[] is capped at the serve limit, so
+    len(rows) under-reports — always pass the real count through).
     """
-    val = _fmt_value(value)
     label = (cols[0] if cols else "Result")
     label = re.sub(r"[_\s]+", " ", str(label)).strip().title()[:48] or "Result"
-    rc = len(rows or [])
+    rc = int(row_count if row_count is not None else len(rows or []))
     q_short = (question or "").strip().rstrip("?.!")[:90]
 
     parts: list[str] = []
+    if rc > 1:
+        # Multi-row breakdown → headline the COUNT, not the first scalar.
+        group = re.sub(r"[_\s]+", " ", str(cols[0] if cols else "row")).strip().lower() or "row"
+        if group.endswith("s"):
+            group_plural = group
+        elif re.search(r"[^aeiou]y$", group):   # category -> categories
+            group_plural = group[:-1] + "ies"
+        else:
+            group_plural = group + "s"
+        rc_disp = _fmt_value(rc)
+        parts.append(f"[ACTION_TITLE: {rc_disp} {group_plural} — {q_short}]")
+        parts.append(f"[KPI: {rc_disp}|{group_plural.title()} 🟢|—|distinct rows returned]")
+        if value is not None:
+            parts.append(f"[KPI: {_fmt_value(value)}|Top {group} 🟢|—|highest value]")
+        parts.append("[CONFIDENCE:HIGH]")
+        for t in (tables or []):
+            if t:
+                parts.append(f"[FRESHNESS:{t}|NULL]")
+        parts.append(
+            f"The verified answer is a breakdown of **{rc_disp} {group_plural}** "
+            f"from the current pharmacy data (see the data table for every row)."
+        )
+        return "\n".join(parts)
+
+    # Single-row scalar answer → the first numeric cell IS the answer.
+    val = _fmt_value(value)
     parts.append(f"[ACTION_TITLE: {val} — {q_short}]")
     parts.append(f"[KPI: {val}|{label} 🟢|—|verified result]")
-    if rc > 1:
-        parts.append(f"[KPI: {_fmt_value(rc)}|Rows returned|—|matching records]")
     parts.append("[CONFIDENCE:HIGH]")
     for t in (tables or []):
         if t:
@@ -284,7 +316,8 @@ async def curate_one(project_slug: str, question: str, *, dry_run: bool = False)
             out["reason"] = "would promote"
             return out
 
-        card = _build_card(rep, value, rows, cols, sql, tables)
+        card = _build_card(rep, value, rows, cols, sql, tables,
+                           row_count=run.get("row_count"))
         from dash.learning.answer_cache import promote_answer
         promo = await promote_answer(
             project_slug, question=rep, content=card, canonical_sql=sql,

@@ -46,6 +46,95 @@ def _vec_literal(emb: list[float]) -> str:
     return "[" + ",".join(f"{x:.6f}" for x in emb) + "]"
 
 
+# Two-level TTL cache for question embeddings. Collapses repeat/identical
+# questions (e.g. 30 outlets asking the same thing at once) to ONE embed API
+# call instead of N — the embed round-trip was the remaining serial cost on the
+# Mode-1 bypass once team-build was removed.
+#   L1 = per-worker dict (fastest, but each of the N gunicorn workers warms
+#        independently → N cold embeds before fully warm).
+#   L2 = Redis (cross-worker) → the FIRST worker to embed a question warms it
+#        for ALL workers. Fail-soft: Redis down → L1-only, never breaks serve.
+# Keyed on the normalized question (+ embedding model, so a model swap can't
+# serve stale vectors).
+_EMB_CACHE: dict[str, tuple[float, list[float]]] = {}
+_EMB_TTL = float(os.getenv("QUERY_BANK_EMB_TTL", "300"))
+_EMB_MAX = 512
+_EMB_REDIS_PREFIX = "qbank:emb:"
+
+_emb_redis = None
+_emb_redis_tried = False
+
+
+def _get_emb_redis():
+    """Lazy Redis singleton for the embedding L2 cache. None on any error."""
+    global _emb_redis, _emb_redis_tried
+    if _emb_redis is not None or _emb_redis_tried:
+        return _emb_redis
+    _emb_redis_tried = True
+    try:
+        import redis  # type: ignore
+        url = os.getenv("REDIS_URL", "redis://dash-redis:6379")
+        c = redis.Redis.from_url(url, decode_responses=True,
+                                 socket_connect_timeout=2, socket_timeout=2)
+        c.ping()
+        _emb_redis = c
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("query_bank emb redis unavailable (%s) — L1-only", exc)
+        _emb_redis = None
+    return _emb_redis
+
+
+def _emb_key(question: str) -> str:
+    try:
+        from dash.settings import get_embedding_model as _gm
+        model = _gm() or ""
+    except Exception:
+        model = ""
+    norm = re.sub(r"\s+", " ", (question or "").strip().lower())
+    return f"{model}|{norm}"
+
+
+def _l1_put(key: str, emb: list[float]) -> None:
+    if len(_EMB_CACHE) >= _EMB_MAX:  # cheap bound — evict oldest ~half
+        for k in sorted(_EMB_CACHE, key=lambda k: _EMB_CACHE[k][0])[: _EMB_MAX // 2]:
+            _EMB_CACHE.pop(k, None)
+    _EMB_CACHE[key] = (time.time(), emb)
+
+
+async def _embed_cached(question: str) -> list[float]:
+    """Embed with a two-level (in-proc + Redis) TTL cache. Fail-soft → []."""
+    key = _emb_key(question)
+    now = time.time()
+    # L1
+    hit = _EMB_CACHE.get(key)
+    if hit and (now - hit[0]) < _EMB_TTL:
+        return hit[1]
+    # L2 (Redis, cross-worker)
+    import json as _json
+    rc = _get_emb_redis()
+    if rc is not None:
+        try:
+            raw = rc.get(_EMB_REDIS_PREFIX + key)
+            if raw:
+                emb = _json.loads(raw)
+                if emb:
+                    _l1_put(key, emb)
+                    return emb
+        except Exception:
+            pass
+    # Miss → embed once, write both levels.
+    from dash.tools.embeddings_helper import embed_text
+    emb = await embed_text(question)
+    if emb:
+        _l1_put(key, emb)
+        if rc is not None:
+            try:
+                rc.setex(_EMB_REDIS_PREFIX + key, int(_EMB_TTL), _json.dumps(emb))
+            except Exception:
+                pass
+    return emb or []
+
+
 def _has_bank(project_slug: str) -> bool:
     try:
         from sqlalchemy import text as _text
@@ -75,11 +164,10 @@ def _schema_ok(project_slug: str, schema_hash: str | None, tables_csv: str | Non
 
 async def _nn(project_slug: str, question: str, limit: int, statuses: tuple[str, ...]):
     """Embed the question, return nearest qbank rows (joined to patterns)."""
-    from dash.tools.embeddings_helper import embed_text
     from sqlalchemy import text as _text
     from db.session import get_sql_engine
 
-    emb = await embed_text(question)
+    emb = await _embed_cached(question)
     if not emb:
         return []
     vec = _vec_literal(emb)
@@ -189,7 +277,8 @@ def try_query_bank_serve(project_slug: str, question: str) -> dict | None:
         from dash.learning.schema_guard import sql_source_tables
         tables = sql_source_tables(sql)
         from dash.learning.cache_curator import _build_card
-        card = _build_card(q, value, rows_out, cols, sql, tables)
+        card = _build_card(q, value, rows_out, cols, sql, tables,
+                           row_count=run.get("row_count"))
         elapsed = int((time.monotonic() - t0) * 1000)
         # Bump hit telemetry on the pattern (fail-soft).
         try:
@@ -207,7 +296,7 @@ def try_query_bank_serve(project_slug: str, question: str) -> dict | None:
         return {
             "content": f"{card}\n[VERIFIED:{elapsed}ms · learned]",
             "sql": sql, "rows": rows_out, "columns": cols, "value": value,
-            "row_count": len(rows_out), "elapsed_ms": elapsed,
+            "row_count": run.get("row_count") or len(rows_out), "elapsed_ms": elapsed,
             "pattern_id": int(r[0]), "matched_q": r[1], "sim": round(sim, 3),
         }
     except Exception as exc:  # noqa: BLE001
