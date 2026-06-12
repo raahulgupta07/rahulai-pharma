@@ -18,7 +18,6 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  import ObservabilityPanel from '$lib/admin/ObservabilityPanel.svelte';
  import VersionCard from '$lib/VersionCard.svelte';
  import S3SyncPanel from '$lib/admin/S3SyncPanel.svelte';
- import EmbedPanel from '$lib/admin/EmbedPanel.svelte';
 
  /* ─── state ─── */
  let activeTab = $state('cockpit');
@@ -2258,21 +2257,11 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
       {@render intgCard('onedrive', '⛅', '#1b66c9', 'OneDrive', 'Personal / business files', odAdminConfig.configured ? 'on' : 'off', odAdminConfig.configured ? 'Configured' : 'Not set')}
       {@render intgCard('database', '⛁', '#5a4b8a', 'Database', 'PostgreSQL / MySQL tables', dbAllSources.length ? 'on' : 'off', dbAllSources.length ? dbAllSources.length + ' connected' : 'Not set')}
     </div>
-
-    <div class="intg-group">ACCESS &amp; CHANNELS</div>
-    <div class="intg-grid">
-      {@render intgCard('gateway', '⚡', '#b5571d', 'API Gateway', 'OpenAI-compatible REST API', 'on', 'Manage')}
-      {@render intgCard('embed', '💬', '#2c7a3d', 'Embed', 'Chat widget for websites', 'on', 'Manage')}
-    </div>
   {:else}
     <button class="intg-back" onclick={() => { intgView = 'hub'; }}>← All integrations</button>
 
     {#if intgView === 's3'}
       <S3SyncPanel />
-    {:else if intgView === 'gateway'}
-      <GatewayPanel embedded />
-    {:else if intgView === 'embed'}
-      <EmbedPanel />
     {:else if intgView === 'sharepoint'}
   <!-- SharePoint Configuration -->
   <div style="font-size: 16px; font-weight: 900; text-transform: uppercase; margin-bottom: 16px;">SharePoint Connector</div>
