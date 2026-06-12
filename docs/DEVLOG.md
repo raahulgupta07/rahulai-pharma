@@ -2,6 +2,16 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-12 (latest+99) — v1.36.0: access split — plain user = CHAT ONLY, admins manage data
+
+**Ask.** "User can only use chat, no other feature." Revises 1.35.5 (which gave every login full work access) to a clear 3-tier split, while KEEPING the 1.35.1–1.35.4 bulletproofing so admin/super buttons never vanish.
+
+**Change (app/auth.py).**
+1. `check_project_permission` — removed the single-agent "any authed user → owner" block. Order now: super → owner, is_admin → admin, then a single-agent fallback returning role **'viewer'** for any other authed user on the locked project (so a plain user can CHAT — viewer ≥ required viewer — but viewer < editor so Upload/Force-Train are blocked). Share check unchanged below.
+2. `surfaces_for` — single-agent: admin/super → work surfaces (dashboard, chat, workspace, integration) + governance (users_access, usage_cost; admin_console per admin default); **plain user → `{chat: true}` only**, everything else false. (super still returns all-true earlier.) This one map drives both the backend surface-403 gate and the frontend nav, so a plain user literally cannot reach Workspace/Dashboard/Integration APIs or nav — only Chat.
+
+**Matrix (single-agent).** Dashboard/Workspace/Integration + Upload + Force-Train: **admin + super only**. Users&Access / Usage&Cost: admin + super. Admin Console: super (admin default off, super-configurable). Chat: **everyone**. Project delete: nobody (guard). Plain user = chat and nothing else. Buttons still never vanish for admins because the project is always seeded (1.35.4) and admins always resolve to role 'admin' (1.35.3). Verified live: super→all + owner, admin→work + admin role, plain user→chat-only surface + viewer role (chat works, /datasource 403, workspace nav hidden).
+
 ### Session 2026-06-12 (latest+98) — v1.35.5: PERMANENT — single-agent grants upload/train to any login
 
 **Ask.** "Fix it permanently, upload always available, not depend on the account." User chose (AskUserQuestion) **"Any logged-in user"** over "admins+super only".

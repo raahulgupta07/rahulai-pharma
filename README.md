@@ -435,13 +435,25 @@ Three tiers: **super admin** (username == `SUPER_ADMIN`), **admin** (`dash_users
 - **Enforced both ways** — nav hides the surface **and** the backend returns **403**. Nav gating in `+layout.svelte` (`canDashboard/canChat/canWorkspace/canIntegration/canAdminConsole/canUsers/canUsage`); backend via `_require_surface` (users → `users_access`, usage → `usage_cost`, governance → `admin_console`) **plus** an `AuthMiddleware` prefix gate (`_SURFACE_API_GATES`: workspace → upload/brain/training/rules/scores, chat → super-chat) so a restricted user can't reach data APIs by typing the URL. Super always passes; fail-open on unmapped paths.
 - **Landmine** — never gate user-management or usage endpoints with the old `_require_admin` (it now means `admin_console`, which admins lack by default → they'd 403). As of **v1.17.0** `create_user` honors its `role` param, but `role=admin` requires the **super admin** (an admin gets 403) — an admin still can't mint another admin.
 
-**Upload + train rights (v1.35.1→1.35.5) — zero-setup, account-independent.** This is a single-agent product, so Upload data + Force Train All are **always available to anyone who can log in**, with no manual setup. Three boot-time guarantees make it bulletproof on a fresh install:
+**Access tiers (v1.36.0) — zero-setup, bulletproof on a fresh install.** Three roles in this single-agent product:
 
+| Page / action | Super-admin | Admin | Regular user |
+|---|:---:|:---:|:---:|
+| **Chat** | ✓ | ✓ | ✓ |
+| Dashboard · Workspace · Integrations | ✓ | ✓ | ✗ |
+| **Upload data · Force Train All** | ✓ | ✓ | ✗ |
+| Users & Access · Usage & Cost | ✓ | ✓ | ✗ |
+| Admin Console | ✓ | ✗\* | ✗ |
+| Delete project | ✗ | ✗ | ✗ (blocked in single-tenant) |
+
+\* admin default off, super-admin can enable per-role. **A regular user can only use Chat** — no Workspace, no upload, no training. Admins + super-admins manage the data.
+
+Three boot-time guarantees make admin/super access never break:
 1. **Super-admin always exists** (v1.35.3) — `_create_default_admin` self-heals every boot: the `SUPER_ADMIN` env account is created/promoted to `role='super'`. `is_super = username==SUPER_ADMIN OR role=='super'`.
-2. **The project always exists** (v1.35.4) — `ensure_locked_project()` seeds the locked `citypharma` project + schema on boot if missing (a fresh install otherwise has no project row at all → every access check 404/403s before the super branch).
-3. **Any login gets edit access** (v1.35.5) — in single-agent mode `check_project_permission` returns `owner` for any authenticated user on the locked project, and `surfaces_for` grants the work surfaces (dashboard/chat/workspace/integration) to every login. **Account management, the admin console, and usage/cost stay admin/super-only** — they are NOT exposed to plain logins.
+2. **The project always exists** (v1.35.4) — `ensure_locked_project()` seeds the locked `citypharma` project + schema on boot if missing (otherwise a fresh install has no project row → every access check 404/403s before the super branch).
+3. **Roles resolve cleanly** (v1.36.0) — `check_project_permission`: super→owner, admin→admin, any other login→viewer (chat only). `surfaces_for`: admin/super → work + governance surfaces; plain user → chat only.
 
-So the operator only sets `OPENROUTER_API_KEY` + `SUPER_ADMIN` + `SUPER_ADMIN_PASS` and runs `docker compose` — no SQL, no per-project shares. Forgot the password? Set `SUPER_ADMIN_RESET_PASS=1` for one boot. Project deletion is still blocked entirely in single-agent mode. The Data Source page returns an empty-but-valid view (never hangs on "loading…") when there's no data yet.
+Operator sets only `OPENROUTER_API_KEY` + `SUPER_ADMIN` + `SUPER_ADMIN_PASS` and runs `docker compose` — no SQL, no shares. Forgot the password? Set `SUPER_ADMIN_RESET_PASS=1` for one boot. The Data Source page returns an empty-but-valid view (never hangs on "loading…") when there's no data yet.
 
 ---
 

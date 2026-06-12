@@ -2,6 +2,14 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.36.0",
+      "date": "2026-06-12",
+      "title": "Regular users get Chat only; admins manage the data",
+      "items": [
+        "Access is now clearly split: a regular user can only use Chat — they cannot see the Workspace, upload data, or train. Admins and super-admins keep full access including Upload data + Force Train All. User management stays super-admin only."
+      ]
+    },
+    {
       "version": "1.35.5",
       "date": "2026-06-12",
       "title": "Everyone on the team can upload and train",
