@@ -2,6 +2,20 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-12 (latest+100) — v1.36.1: close project-scoped workspace leak + 3-user matrix test
+
+**Found by a full 3-user feature matrix test** (super=demo, admin=role'admin', plain user). One leak: plain user got 200 on `GET /api/projects/{slug}/auto-train/status` — the surface gate caught the `/api/auto-train` prefix but NOT the project-scoped `/api/projects/{slug}/auto-train/…` path. Fix (`app/main.py`): added a workspace-surface project-leaf gate (mirrors the dashboard-leaf one) — `/api/projects/{slug}/…` containing `/auto-train`, `/training`, `/brain`, `/rules`, `/retrain`, `/scores`, `/suggested_rules`, `/learn` → 403 unless `surfaces_for(user).workspace`. Chat-support leaves (followups/feedback/messages/history) are NOT in the list, so chat still works.
+
+**Verified live 1.36.1 — full matrix:**
+| Feature | super | admin | plain user |
+|---|---|---|---|
+| Chat (real round-trip) | 200 answer | 200 | **200 answer** ("Dash" replies) |
+| Project detail | ok | ok | ok (viewer, for chat) |
+| Workspace/Data, Training, Upload, Brain, Dashboards, Users, Usage | ok | ok | **403 BLOCK** |
+| admin_console surface | true | false | false |
+
+Plain user reaches ONLY Chat + project-detail (chat needs it); every data/training/admin surface 403s. Admin gets work + governance (users_access/usage_cost true, admin_console false). Super gets everything. Real chat by the plain user returned a genuine agent answer (HTTP 200), confirming chat works end-to-end, not just the gate.
+
 ### Session 2026-06-12 (latest+99) — v1.36.0: access split — plain user = CHAT ONLY, admins manage data
 
 **Ask.** "User can only use chat, no other feature." Revises 1.35.5 (which gave every login full work access) to a clear 3-tier split, while KEEPING the 1.35.1–1.35.4 bulletproofing so admin/super buttons never vanish.

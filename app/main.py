@@ -1852,6 +1852,21 @@ class AuthMiddleware(BaseHTTPMiddleware):
                                 {"detail": "dashboard access not permitted for your role"},
                                 status_code=403,
                             )
+                    # Project-scoped WORKSPACE (data-management) views live under the
+                    # same /api/projects/{slug}/… prefix. A chat-only user must not read
+                    # training/brain/rules/scores for the locked project either. (Chat-
+                    # support leaves — followups/feedback/messages/history — are NOT in
+                    # this list, so plain users can still chat.)
+                    elif path.startswith("/api/projects/") and any(
+                        _leaf in path for _leaf in
+                        ("/auto-train", "/training", "/brain", "/rules",
+                         "/retrain", "/scores", "/suggested_rules", "/learn")
+                    ):
+                        if not surfaces_for(user).get("workspace"):
+                            return JSONResponse(
+                                {"detail": "workspace access not permitted for your role"},
+                                status_code=403,
+                            )
         except Exception:
             pass
 

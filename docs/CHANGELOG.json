@@ -2,6 +2,14 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.36.1",
+      "date": "2026-06-12",
+      "title": "Tighten regular-user access",
+      "items": [
+        "Closed a gap where a regular user could still read the training status of the agent. Regular users are now strictly limited to Chat; all data, training, and admin views are admin-only."
+      ]
+    },
+    {
       "version": "1.36.0",
       "date": "2026-06-12",
       "title": "Regular users get Chat only; admins manage the data",
