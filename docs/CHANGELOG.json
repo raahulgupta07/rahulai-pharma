@@ -2,6 +2,72 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.35.2",
+      "date": "2026-06-12",
+      "title": "Admins can upload and train too",
+      "items": [
+        "Admin users (not only super-admins) can now open the Workspace and use Upload data + Force Train All without needing a special per-project invite. Viewers still cannot change data, and only super-admins can delete a project."
+      ]
+    },
+    {
+      "version": "1.35.1",
+      "date": "2026-06-12",
+      "title": "Fix: all admins can upload and train (not just the first one)",
+      "items": [
+        "A second super-admin account could not open the Workspace, upload data, or train — only the original admin could. Now every super-admin has full owner access, so the Upload data and Force Train All buttons appear for all of them."
+      ]
+    },
+    {
+      "version": "1.35.0",
+      "date": "2026-06-12",
+      "title": "Wider 'what else can I offer' suggestions",
+      "items": [
+        "Ask 'what's related to X' or 'what else could I offer instead of X' and the assistant now returns a wider set — direct substitutes, drugs that treat the same condition, and same-category options — each with stock and shop.",
+        "Powered by a drug knowledge graph built from your catalog; if it's ever unavailable the assistant quietly falls back to the standard substitutes lookup."
+      ]
+    },
+    {
+      "version": "1.34.0",
+      "date": "2026-06-12",
+      "title": "Faster answers when the same question is asked about a different shop",
+      "items": [
+        "When staff ask a question the assistant has answered before for one shop, it can now instantly reuse that proven approach for a different shop — fresh numbers, no waiting.",
+        "Off by default and safe: while off, it quietly measures how often it would help so you can switch it on once you see the benefit on real usage."
+      ]
+    },
+    {
+      "version": "1.33.0",
+      "date": "2026-06-12",
+      "title": "The assistant learns durable lessons from corrections",
+      "items": [
+        "When staff thumb-down an answer and explain the fix, a background process can now distil the general lesson into a short remembered fact for next time.",
+        "Each distilled lesson waits for admin approval before the assistant uses it — nothing is trusted automatically.",
+        "Off by default; switch on per-install."
+      ]
+    },
+    {
+      "version": "1.32.0",
+      "date": "2026-06-12",
+      "title": "The assistant can now surface insights on its own",
+      "items": [
+        "A new background process quietly studies your data and what staff ask, then proposes short insights — products stocked at no outlet, categories concentrated in a few shops, the most-asked questions, and facts that look out of date.",
+        "Every proposed insight waits for an admin to approve it before the assistant will ever mention it — nothing is trusted automatically.",
+        "Stored knowledge that hasn't been used in months is flagged for review so the assistant doesn't repeat stale facts.",
+        "Off by default — switch it on per-install when you're ready."
+      ]
+    },
+    {
+      "version": "1.31.0",
+      "date": "2026-06-12",
+      "title": "Find a medicine across shops + in-stock substitutes in one step",
+      "items": [
+        "Ask 'how many shops have Paracetamol' and get the outlet count plus the shop list.",
+        "Ask 'an alternative to X that's in stock and where' and the assistant finds the substitute, checks stock, and names the shops in a single answer.",
+        "Other shops are now shown by friendly name (Shop 1, Shop 2, …) instead of internal outlet codes.",
+        "Store-scoped widgets still never reveal another shop's quantities — only whether an item is available there."
+      ]
+    },
+    {
       "version": "1.30.0",
       "date": "2026-06-12",
       "title": "Demo data generation removed",

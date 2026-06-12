@@ -13185,6 +13185,22 @@ async def retrain_project(slug: str, request: Request):
             _l.getLogger(__name__).warning(f"shop_flat skipped for {slug}: {_sfe}")
             _master_log(f"⚠ shop_flat skipped: {str(_sfe)[:80]}", "", total_tables)
 
+        # ─── Apache AGE knowledge graph (drug_network multi-hop tool). Rebuilds
+        # the citypharma_kg graph from the fresh catalog. Fail-soft + gated: a
+        # missing AGE image / disabled flag just skips it (drug_network falls back
+        # to relational find_substitutes). Off with PHARMA_GRAPH_BUILD_DISABLED=1.
+        try:
+            import os as _gos
+            if _gos.getenv("PHARMA_GRAPH_BUILD_DISABLED") == "1":
+                raise RuntimeError("graph build disabled")
+            from scripts.build_pharma_graph import main as _build_graph
+            _build_graph()
+            _master_log("✓ knowledge graph rebuilt", "", total_tables)
+        except Exception as _ge:
+            import logging as _l
+            _l.getLogger(__name__).warning(f"pharma graph build skipped for {slug}: {_ge}")
+            _master_log(f"⚠ knowledge graph skipped: {str(_ge)[:80]}", "", total_tables)
+
         # ─── Continuous query learning (P6) — fold 'proven' chat-learned query
         # patterns into the training corpus so they harden (survive retrain +
         # feed retrieval). Idempotent, fail-soft.

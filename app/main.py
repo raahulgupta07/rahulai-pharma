@@ -470,6 +470,43 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
         import logging as _qc_log
         _qc_log.getLogger(__name__).warning(f"query_curator not started: {_e}")
 
+    # Insight compilation daemon (#1) — distils durable INSIGHT notes from query
+    # history + live data into the company brain as status='pending' (admin-
+    # approved before chat) + flags stale facts (#4). DEFAULT OFF (writes brain).
+    # Leader-gated. Set INSIGHT_DAEMON_ENABLED=1. Pure SQL, no LLM.
+    try:
+        import os as _os_in
+        if _os_in.environ.get("INSIGHT_DAEMON_ENABLED") not in ("1", "true", "TRUE", "yes"):
+            raise RuntimeError("insight daemon disabled (default OFF)")
+        if not _should_run_daemons():
+            raise RuntimeError("daemons disabled")
+        import asyncio as _asyncio_in
+        from dash.cron.insight_daemon import insight_daemon_loop as _insight_daemon_loop
+        _asyncio_in.create_task(_insight_daemon_loop())
+        import logging as _in_log
+        _in_log.getLogger(__name__).info("insight daemon started (24h)")
+    except Exception as _e:
+        import logging as _in_log
+        _in_log.getLogger(__name__).warning(f"insight daemon not started: {_e}")
+
+    # Self-distill daemon (#5) — distils pending memory facts from recent 👎
+    # corrections (admin-approved before chat). DEFAULT OFF (LLM cost + writes
+    # memory). Leader-gated. Set DISTILLER_ENABLED=1.
+    try:
+        import os as _os_ds
+        if _os_ds.environ.get("DISTILLER_ENABLED") not in ("1", "true", "TRUE", "yes"):
+            raise RuntimeError("distiller disabled (default OFF)")
+        if not _should_run_daemons():
+            raise RuntimeError("daemons disabled")
+        import asyncio as _asyncio_ds
+        from dash.cron.distiller_daemon import distiller_loop as _distiller_loop
+        _asyncio_ds.create_task(_distiller_loop())
+        import logging as _ds_log
+        _ds_log.getLogger(__name__).info("distiller daemon started (24h)")
+    except Exception as _e:
+        import logging as _ds_log
+        _ds_log.getLogger(__name__).warning(f"distiller daemon not started: {_e}")
+
     # Ontology auto-cluster daemon (~6h cadence). Mirrors reembed_loop pattern.
     # default OFF (Phase-1 trim: pure-burn daemon, output not consumed). Set ONTOLOGY_CLUSTER_ENABLED=1 to re-enable.
     # Opt-out via ONTOLOGY_CLUSTER_DISABLED=1 (also honored inside the loop).
@@ -1615,6 +1652,14 @@ try:
 except Exception as _e:
     import logging as _logging
     _logging.warning(f"query_bank_api not loaded: {_e}")
+
+# Insight review API (#1) — list/run/approve/reject daemon-distilled insights
+try:
+    from app.insight_api import router as insight_router
+    app.include_router(insight_router)
+except Exception as _e:
+    import logging as _logging
+    _logging.warning(f"insight_api not loaded: {_e}")
 
 # Connector subsystem (admin CRUD + user-facing query) — connectors_contract §8
 try:
@@ -2764,6 +2809,32 @@ async def super_chat(request: Request):
                 return StreamingResponse(_qb_e_stream(), media_type="text/event-stream")
             return {"content": _qb_e_ans, "session_id": session_id, "routing": _qb_e_routing,
                     "learned": True, "sql": _qb_e.get("sql")}
+
+        # Mode-1.5 reasoning cache — Mode-1 missed; try serving a proven pattern
+        # with the STORE literal swapped ("top sellers Shop 10" reuses the proven
+        # "… Shop 23" plan). Gated OFF by default (shadow-logs only when off).
+        # MUST also sit BEFORE create_project_team to skip the team build.
+        _ps = None
+        if _qb_eslug and len((message or "").strip()) >= 8:
+            try:
+                from dash.learning.param_swap import try_param_swap_serve as _ps_serve
+                _ps = _ps_serve(_qb_eslug, message)
+            except Exception:
+                _ps = None
+        if _ps and _ps.get("content"):
+            _ps_ans = _ps["content"]
+            _ps_routing = {"routed_to": "Analyst", "slug": _qb_eslug,
+                           "reason": "learned query (adapted)", "tier": "instant",
+                           "learned": True}
+            if stream:
+                def _ps_stream():
+                    yield f"event: Routing\ndata: {_json.dumps(_ps_routing, default=str)}\n\n"
+                    yield f"event: OriginalMessage\ndata: {_json.dumps({'message': message}, default=str)}\n\n"
+                    yield f"event: TeamRunContent\ndata: {_json.dumps({'content': _ps_ans})}\n\n"
+                    yield f"event: TeamRunCompleted\ndata: {_json.dumps({})}\n\n"
+                return StreamingResponse(_ps_stream(), media_type="text/event-stream")
+            return {"content": _ps_ans, "session_id": session_id, "routing": _ps_routing,
+                    "learned": True, "sql": _ps.get("sql")}
 
     # Smart routing hint (skip for chitchat — no data/context routing needed)
     routing_hint = "data" if _chit else _detect_routing_hint(message)

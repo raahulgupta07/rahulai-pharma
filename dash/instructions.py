@@ -663,6 +663,8 @@ example formats shown elsewhere in these instructions.
   - availability / quantity / "do we have X" / "is X in stock" / "how many X" → `stock_check` **ONLY**. Do NOT also call drug_profile, substitutes, find_nearby_stock, or catalog_search.
   - "substitutes / alternatives for X" / "what can replace X" → `find_substitutes` (or `substitutes`) **ONLY**.
   - "who else has X" / "which branch has X" / "other outlets" → `find_nearby_stock` **ONLY**.
+  - "how many outlets/shops have X" / "which shops carry X" / "how widely is X stocked" → `outlets_carrying` **ONLY**.
+  - "alternative to X **in stock** / **and where**" / "X is out — what else can I sell and where" → `substitutes_in_stock(drug=X, outlet=<site_code>)` **ONLY** (does the substitute→stock→location chain in one call; do NOT also call find_substitutes + stock_check).
   - "what is X for / side effects / dosage / composition" → `drug_profile` **ONLY**.
   - "what do you have for <symptom>" / fuzzy / similar → `catalog_search` **ONLY**.
 Call a SECOND tool ONLY when the user's ONE question explicitly asks for two distinct things (e.g. "do we have X **and** what are the alternatives"). A plain availability question = ONE `stock_check` → answer. Never call drug_profile just to fill a monograph card on a stock question (see MONOGRAPH rule — it is optional for pure stock/availability answers).
@@ -675,8 +677,11 @@ The user is counter staff at ONE branch (see SHOP CONTEXT for their `site_code`)
   - "X is out of stock, alternatives?", "what can replace X" → `find_substitutes(brand_name or article_code, site_code, in_stock_only=true)`
   - "what do we have for <condition/indication>" → `alternatives_for_indication(indication, site_code, in_stock_only=true)`
   - **ADVISORY / SEMANTIC / FUZZY** — "what do you have for fever", "alternatives to X", "drugs for high blood pressure", a misspelled/partial name, or "something similar to X" → `catalog_search(query)`. Hybrid vector+keyword over the GLOBAL catalog (Tier-3, no store scope) — best for symptom/condition browse and fuzzy/similar lookups. Keep `stock_check` for EXACT branch stock/quantity and `run_sql_query` for counts/totals.
-  - **WHERE TO FIND IT / CROSS-BRANCH** — "where can I find X", "which branch has X", "X is out/low at my store — who has it", "transfer X", "who has stock of X" → `find_nearby_stock(query=X, my_store=<SHOP CONTEXT site_code>)`. Returns your branch qty + a low flag + other branches that hold it ranked by quantity.
+  - **WHERE TO FIND IT / CROSS-BRANCH** — "where can I find X", "which branch has X", "X is out/low at my store — who has it", "transfer X", "who has stock of X" → `find_nearby_stock(query=X, my_store=<SHOP CONTEXT site_code>)`. Returns your branch qty + a low flag + other branches that hold it ranked by quantity. Each branch carries a human `shop` label ("Shop 1, 2, …") AND its `site` code — when answering staff, name the shop (e.g. "also at Shop 3 and Shop 7"), not the raw site_code.
+  - **HOW MANY OUTLETS HAVE IT** — "how many shops/outlets have X", "which shops carry X", "how widely is X stocked" → `outlets_carrying(query=X)`. Returns the total outlet count, how many hold it in stock now, and the shop list (display labels). Count + presence only — no quantities.
+  - **SUBSTITUTE THAT IS IN STOCK / AND WHERE** — "alternative to X in stock", "X is out — what else can I sell and where", "substitute for X nearby" → `substitutes_in_stock(drug=X, outlet=<SHOP CONTEXT site_code>)`. One call returns each in-stock substitute with your-branch qty + the shops that hold it (labels). Do NOT hand-chain find_substitutes → stock_check for this; this tool already does it.
   - "tell me about <drug> and related" → `drug_relationships(brand_name or article_code)`
+  - **WHAT ELSE / BROADER ALTERNATIVES** — "what's related to X", "broader alternatives to X", "what else could I offer instead of X" (WIDER than same-molecule substitutes) → `drug_network(brand_name=X, site_code=<SHOP CONTEXT site_code>)`. One graph walk returns direct substitutes + same-condition drugs + same-category neighbours, each with stock. Use `find_substitutes` for strict same-molecule only; `drug_network` for the wider therapeutic neighbourhood.
 ALWAYS pass the SHOP CONTEXT `site_code` so stock = their branch. Branch-wide aggregates ("our TOTAL stock", "how many SKUs do we carry", "inventory value", "low-stock list") → `store_stock_summary` (own-branch only). Cross-branch management reports / trends use `run_sql_query`.
 
 **STORE-LOCKED KEY — `run_sql_query` IS UNAVAILABLE.** If SHOP CONTEXT shows a single bound `site_code` (API gateway store key), raw SQL tools are NOT loaded. NEVER attempt `run_sql_query` / `introspect_schema` — they will error with "unknown sources" / "Function not found". Answer EVERY question through the pharma tools (`stock_check`, `store_stock_summary`, `find_substitutes`, `alternatives_for_indication`, `drug_profile`). A quantity question = `stock_check` (named drug) or `store_stock_summary` (branch aggregate), never SQL.
@@ -2269,6 +2274,10 @@ def _build_self_learning_context(project_slug: str, actual_user_id: int | None =
                 "SELECT fact FROM public.dash_memories "
                 "WHERE ((project_slug = :s AND scope = 'project') OR scope = 'global') "
                 "AND (archived IS NULL OR archived = FALSE) "
+                # Review gate: distilled facts (source='distilled') land as
+                # status='pending' and must NOT inject until an admin approves.
+                # NULL = legacy row pre-mig-189 → active. (mig 189)
+                "AND (status IS NULL OR status = 'active') "
                 "AND (source_id IS NULL OR source_id = ANY(:sids)) "
                 + _lang_clause("public.dash_memories") +
                 " ORDER BY created_at DESC LIMIT 10"

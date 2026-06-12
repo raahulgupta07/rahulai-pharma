@@ -385,6 +385,25 @@ If drug↔stock questions return "can't link", the fix is a **clean re-export of
 
 ---
 
+## "Second brain" — proactive advisor layer (v1.31–1.35)
+
+Beyond reactive lookups, the assistant can learn and volunteer. **Every background process is OFF by default; everything it learns waits for admin approval before it influences an answer (the review gate).**
+
+**Counter tools (always on):**
+- `outlets_carrying` — "how many shops have Paracetamol" → outlet count + shop list (presence only; safe for store-scoped widgets).
+- `substitutes_in_stock` — "an alternative to X that's in stock, and where" → finds the substitute, checks stock, names the shops, in one step.
+- `drug_network` — "what else could I offer instead of X" → wider set via the drug knowledge graph: direct substitutes + same-condition drugs + same-category options. Falls back to the standard substitutes lookup if the graph is unavailable.
+- Other shops are shown by friendly name (**Shop 1, Shop 2, …**), never the internal outlet code.
+
+**Opt-in learning (set the env var, then it runs):**
+- `INSIGHT_DAEMON_ENABLED=1` — studies your data + what staff ask, proposes insights (products stocked nowhere, lop-sided category coverage, frequent questions, stale facts). Admin approves before the assistant mentions them.
+- `DISTILLER_ENABLED=1` — when staff thumb-down an answer and explain the fix, distils the general lesson into a remembered fact (admin-approved).
+- `QUERY_PARAM_SWAP_ENABLED=1` — reuses a proven answer's approach when the same question is asked about a different shop (instant, fresh numbers). While off, it quietly logs how often it *would* help so you can validate before switching on.
+
+Stores: insights/facts in `dash_company_brain` + `dash_memories` (with a `status` review gate, migration 189); the knowledge graph `citypharma_kg` via Apache AGE (migration 190, rebuilt on training). All fail-soft — a missing graph or a disabled daemon never breaks chat.
+
+---
+
 ## Authentication (local + LDAP + OIDC/SSO)
 
 Local username/password is always on. **LDAP** and **OIDC/SSO** are optional, off by default, OpenWebUI-modeled (`app/auth_federation.py`):
@@ -415,6 +434,8 @@ Three tiers: **super admin** (username == `SUPER_ADMIN`), **admin** (`dash_users
 - **Storage** — one JSON setting `rbac_surface_access` in `dash_admin_settings` (no migration). `app/auth.py:surfaces_for(user)` resolves it; `surfaces` rides in `/api/auth/login` + `/api/auth/check`.
 - **Enforced both ways** — nav hides the surface **and** the backend returns **403**. Nav gating in `+layout.svelte` (`canDashboard/canChat/canWorkspace/canIntegration/canAdminConsole/canUsers/canUsage`); backend via `_require_surface` (users → `users_access`, usage → `usage_cost`, governance → `admin_console`) **plus** an `AuthMiddleware` prefix gate (`_SURFACE_API_GATES`: workspace → upload/brain/training/rules/scores, chat → super-chat) so a restricted user can't reach data APIs by typing the URL. Super always passes; fail-open on unmapped paths.
 - **Landmine** — never gate user-management or usage endpoints with the old `_require_admin` (it now means `admin_console`, which admins lack by default → they'd 403). As of **v1.17.0** `create_user` honors its `role` param, but `role=admin` requires the **super admin** (an admin gets 403) — an admin still can't mint another admin.
+
+**Upload + train rights (v1.35.1/1.35.2).** Surface access lets you *see* the Workspace; *changing* data (Upload, Force Train All) needs an **editor-or-higher project role**. `app/auth.py check_project_permission`: **any super-admin → owner**, **system admin (`is_admin`) → admin**, project share editor/admin/owner → edit, viewer/unshared → read-only. Enforced both ways — every upload/retrain endpoint requires `required_role="editor"` and the buttons render only when `canEdit`. (Earlier only the single `username==SUPER_ADMIN` account got owner; a second super-admin or a plain admin was locked out → Workspace stuck "loading", buttons hidden. Fixed.) `admin` is level 2 (< owner 100) so project deletion stays super-only.
 
 ---
 

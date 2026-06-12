@@ -1645,6 +1645,39 @@ async def project_chat(slug: str, request: Request):
                     "elapsed_ms": _qb.get("elapsed_ms"), "learned": True,
                     "trace": [_qb_trace], "tool_calls": [_qb_tool]}
 
+        # Mode-1.5 reasoning cache — Mode-1 missed; reuse a proven plan with the
+        # STORE literal swapped. Gated OFF by default (shadow-logs only when off).
+        try:
+            from dash.learning.param_swap import try_param_swap_serve as _ps_serve
+            _ps = _ps_serve(slug, message)
+        except Exception:
+            _ps = None
+        if _ps and _ps.get("content"):
+            _ps_answer = _ps["content"]
+            _ps_sid = session_id or ""
+            _ps_trace = {"step": "query_bank", "label": "Reused a learned query (adapted)",
+                         "matched": _ps.get("matched_q", ""), "shape": _ps.get("shape"),
+                         "elapsed_ms": _ps.get("elapsed_ms")}
+            _ps_tool = {"name": "run_sql_query", "args": {"query": _ps.get("sql", "")},
+                        "result": {"value": _ps.get("value"), "learned": True,
+                                   "rows": _ps.get("rows", []), "columns": _ps.get("columns", [])}}
+            if stream:
+                from fastapi.responses import StreamingResponse
+                from dash.utils.sse import emit_event_sync as _emit
+                async def _ps_stream():
+                    try:
+                        yield _emit("ReasoningStep", _ps_trace, session_id=_ps_sid, project_slug=slug)
+                    except Exception:
+                        pass
+                    yield _emit("TeamRunContent", {"content": _ps_answer}, session_id=_ps_sid, project_slug=slug)
+                    yield _emit("TeamRunCompleted", {}, session_id=_ps_sid, project_slug=slug)
+                return StreamingResponse(_ps_stream(), media_type="text/event-stream")
+            return {"content": _ps_answer, "session_id": session_id,
+                    "sql": _ps.get("sql"), "rows": _ps.get("rows"),
+                    "columns": _ps.get("columns"), "row_count": _ps.get("row_count"),
+                    "elapsed_ms": _ps.get("elapsed_ms"), "learned": True,
+                    "trace": [_ps_trace], "tool_calls": [_ps_tool]}
+
     # Inject proven similar queries into the agent context so the model reliably
     # reuses verified SQL (the recall_similar_queries tool is often skipped).
     # Mirrors the training-qa rank block above (prepend to context_msg). Fail-soft,

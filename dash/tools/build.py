@@ -729,6 +729,53 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
                         pass
                     return _pgj.dumps(_res)
 
+            from dash.tools.pharma_outlet_count import outlets_carrying as _pg_outlets
+
+            @tool(name="outlets_carrying", description="OUTLET COVERAGE: how many shops stock a medicine, and which ones. Use for 'how many outlets/shops have X', 'which shops carry X', 'how widely is X stocked'. Args: query (str — brand or salt), limit (int, optional). Returns the total outlet count, how many currently hold it in stock, and the shop list (display labels 'Shop 1, 2, …'). NON-SENSITIVE — count + presence only, never quantity, so it is safe for store keys.")
+            def _outlets_tool(query: str = "", limit: int = 60) -> str:
+                _meta = {"agent": "analyst", "tool": "outlets_carrying",
+                         "args": _preview_args(query, limit)}
+                with _trace_span("chat.analyst.outlets_carrying", kind="chat",
+                                 project_slug=project_slug, meta=_meta):
+                    _res = _pg_outlets(query, limit)
+                    try:
+                        _meta["row_count"] = _res.get("outlets_with_stock") if isinstance(_res, dict) else None
+                    except Exception:
+                        pass
+                    return _pgj.dumps(_res)
+
+            from dash.tools.pharma_substitutes_in_stock import substitutes_in_stock as _pg_subs_stock
+
+            @tool(name="substitutes_in_stock", description="SUBSTITUTE + LOCATION in one step: alternatives (same generic molecule) for a drug that are IN STOCK, and which shop has them. Use for 'alternative to X in stock', 'X is out — what else can I sell and where', 'substitute for X nearby'. Args: drug (str — brand or salt of the out-of-stock medicine), outlet (str — the staff branch from SHOP CONTEXT), limit (int, optional). Returns each substitute with your-branch stock, in-stock flag, and other shops that hold it (display labels). Prefer this over chaining find_substitutes + stock_check when the question is 'alternative AND where'.")
+            def _subs_stock_tool(drug: str = "", outlet: str = "", limit: int = 20) -> str:
+                _meta = {"agent": "analyst", "tool": "substitutes_in_stock",
+                         "args": _preview_args(drug, outlet, limit)}
+                with _trace_span("chat.analyst.substitutes_in_stock", kind="chat",
+                                 project_slug=project_slug, meta=_meta):
+                    _res = _pg_subs_stock(drug, outlet, limit)
+                    try:
+                        _meta["row_count"] = _res.get("count") if isinstance(_res, dict) else None
+                    except Exception:
+                        pass
+                    return _pgj.dumps(_res)
+
+            from dash.tools.pharma_network_tool import drug_network as _pg_network
+
+            @tool(name="drug_network", description="GRAPH MULTI-HOP: related drugs for a brand in one knowledge-graph walk — direct substitutes (same molecule) PLUS drugs that treat the SAME CONDITION PLUS same-category neighbours, each with live stock. Use for 'what's related to X', 'broader alternatives to X', 'what else could I offer instead of X' (wider than find_substitutes, which is same-molecule only). Args: brand_name (str), site_code (str — the branch from SHOP CONTEXT), limit (int, optional). Falls back to find_substitutes if the graph is unavailable.")
+            def _network_tool(brand_name: str = "", site_code: str = "", limit: int = 8) -> str:
+                _meta = {"agent": "analyst", "tool": "drug_network",
+                         "args": _preview_args(brand_name, site_code, limit)}
+                with _trace_span("chat.analyst.drug_network", kind="chat",
+                                 project_slug=project_slug, meta=_meta):
+                    _res = _pg_network(brand_name, site_code, limit)
+                    try:
+                        if isinstance(_res, dict):
+                            _meta["row_count"] = sum(len(_res.get(k, [])) for k in
+                                ("direct_substitutes", "same_indication", "same_category"))
+                    except Exception:
+                        pass
+                    return _pgj.dumps(_res)
+
             tools.append(_stock_tool)
             tools.append(_summary_tool)
             tools.append(_subs_tool)
@@ -736,8 +783,11 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
             tools.append(_rel_tool)
             tools.append(_catalog_search_tool)
             tools.append(_nearby_tool)
+            tools.append(_outlets_tool)
+            tools.append(_subs_stock_tool)
+            tools.append(_network_tool)
             import logging as _pgl
-            _pgl.getLogger(__name__).info("pharma graph+shop tools enabled: +7 (stock_check, store_stock_summary, find_substitutes, alternatives_for_indication, drug_relationships, catalog_search, find_nearby_stock)")
+            _pgl.getLogger(__name__).info("pharma graph+shop tools enabled: +10 (stock_check, store_stock_summary, find_substitutes, alternatives_for_indication, drug_relationships, catalog_search, find_nearby_stock, outlets_carrying, substitutes_in_stock, drug_network)")
         except Exception as _pge:
             import logging as _pgl
             _pgl.getLogger(__name__).warning(f"pharma graph tools not loaded: {_pge}")

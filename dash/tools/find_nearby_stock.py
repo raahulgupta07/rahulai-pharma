@@ -141,13 +141,16 @@ def find_nearby_stock(query: str = "", my_store: str = "", low_threshold: int = 
                         WHERE art_key = ANY(%s) AND stock_qty > 0
                         ORDER BY stock_qty DESC""",
                     (art_keys,))
+            from dash.tools.shop_labels import shop_label
             for ak, sc, qty in cur.fetchall():
                 other.setdefault(ak, [])
                 if len(other[ak]) < 5:
                     if _locked:
-                        other[ak].append({"site": sc, "available": True})
+                        other[ak].append({"site": sc, "shop": shop_label(sc),
+                                          "available": True})
                     else:
-                        other[ak].append({"site": sc, "qty": int(qty)})
+                        other[ak].append({"site": sc, "shop": shop_label(sc),
+                                          "qty": int(qty)})
 
             # 4) assemble
             results = []

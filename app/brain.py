@@ -601,15 +601,22 @@ def get_brain_context(for_agent: str = "analyst", project_slug: str = "", user_i
         with _engine.connect() as conn:
             q = ("SELECT category, name, definition, metadata, project_slug, user_id, source_id "
                  "FROM public.dash_company_brain")
+            # NOTE: a status filter is appended after the scope/lang clauses below
+            # so only ACTIVE rows inject — daemon-distilled insights land as
+            # status='pending' and stay out of chat until an admin approves them.
             params: dict = {}
 
             if project_slug:
                 # Source-scoped row > project row > global row. ORDER ensures we
                 # see source rows first so the dedupe-by-name keeps highest priority.
+                # NB: the OR-group MUST be wrapped in an outer paren — AND binds
+                # tighter than OR, so without it the lang + status filters appended
+                # below would only apply to the last OR branch and project/source
+                # rows would bypass them (latent bug exposed by the status gate).
                 q += (
-                    " WHERE (source_id = ANY(:sids))"
+                    " WHERE ((source_id = ANY(:sids))"
                     " OR (project_slug = :slug)"
-                    " OR (project_slug IS NULL AND source_id IS NULL)"
+                    " OR (project_slug IS NULL AND source_id IS NULL))"
                 )
                 params["slug"] = project_slug
                 params["sids"] = _provider_source_ids
@@ -635,6 +642,12 @@ def get_brain_context(for_agent: str = "analyst", project_slug: str = "", user_i
                 )
             else:
                 q += f" {_conj} (lang IS NULL OR lang = 'en')"
+
+            # Review gate: only ACTIVE rows reach chat. 'pending' (daemon-distilled
+            # insights / distilled facts awaiting admin approval) + 'rejected' are
+            # excluded. NULL = legacy row before mig 189 → treat as active. The lang
+            # branch above always added a WHERE, so AND is always safe here.
+            q += " AND (status IS NULL OR status = 'active')"
 
             # Highest-priority rows first: source > project > global. Within a
             # tier, sort by category, name for stable output.
@@ -765,6 +778,15 @@ def get_brain_context(for_agent: str = "analyst", project_slug: str = "", user_i
             if extras:
                 line += "  (" + ", ".join(extras) + ")"
             parts.append(line)
+
+    # Insights — daemon-distilled, admin-APPROVED observations from query history
+    # + live data ("category X concentrated in 3 outlets", "N products stocked
+    # nowhere"). Only active rows reach here (pending ones are filtered above).
+    # Capped for context budget; freshest decision signal so it leads the tail.
+    if "insight" in grouped:
+        parts.append("\nDATA INSIGHTS (observed patterns — verify before acting):")
+        for e in grouped["insight"][:8]:
+            parts.append(f"  {_scope_tag(e)} {e['name']}: {e['definition']}")
 
     # Org
     if "org" in grouped:

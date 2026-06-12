@@ -197,6 +197,21 @@ services:
       # require it to AGREE before auto-promote. Off = demand-gates only.
       - QUERY_CURATOR_CROSSCHECK=${QUERY_CURATOR_CROSSCHECK:-1}
       - QUERY_BANK_EMB_TTL=${QUERY_BANK_EMB_TTL:-300}
+      # Mode-1.5 reasoning cache (#2) — reuse a proven query plan with the STORE
+      # literal swapped. DEFAULT OFF: when off it SHADOW-logs what it would serve
+      # (dash_query_bank_shadow) so you can validate on real traffic before
+      # flipping it on. Shape-match gate = QUERY_PARAM_SWAP_MIN.
+      - QUERY_PARAM_SWAP_ENABLED=${QUERY_PARAM_SWAP_ENABLED:-0}
+      - QUERY_PARAM_SWAP_MIN=${QUERY_PARAM_SWAP_MIN:-0.92}
+      # Insight compilation daemon (#1) + fact freshness (#4). DEFAULT OFF —
+      # distils pending brain insights from query history + live data and flags
+      # facts unused for STALE_DAYS. Opt in with INSIGHT_DAEMON_ENABLED=1.
+      - INSIGHT_DAEMON_ENABLED=${INSIGHT_DAEMON_ENABLED:-0}
+      - INSIGHT_STALE_DAYS=${INSIGHT_STALE_DAYS:-120}
+      # Self-distill daemon (#5) — distils pending memory facts from 👎 corrections
+      # (admin-approved before chat). DEFAULT OFF (LLM cost). MAX caps per cycle.
+      - DISTILLER_ENABLED=${DISTILLER_ENABLED:-0}
+      - DISTILLER_MAX_PER_CYCLE=${DISTILLER_MAX_PER_CYCLE:-5}
       # Gateway chat-body logging → dash_apigw_messages (powers per-key Questions
       # drill-down + auto-learn harvest). PII: keep on only with consent.
       - APIGW_LOG_BODIES=${APIGW_LOG_BODIES:-1}

@@ -892,9 +892,22 @@ def check_project_permission(user: dict, slug: str, required_role: str = "viewer
         if not row:
             return None
 
-        # Owner has full access
-        if row[1] == user["user_id"] or user.get("username") == SUPER_ADMIN:
+        # Owner has full access. ANY super-admin is treated as owner of every
+        # project (single-tenant admin tool) — not only the one account whose
+        # username matches the SUPER_ADMIN env. Without the is_super check, a
+        # second super-admin (e.g. 'admin') got no access to the locked project
+        # → /api/projects/{slug} 403 → Workspace stuck "loading", Upload/Force-
+        # Train-All hidden (canEdit derives from this role).
+        if row[1] == user["user_id"] or user.get("username") == SUPER_ADMIN \
+                or user.get("is_super") or user.get("is_super_admin"):
             return {"project_id": row[0], "role": "owner", "agent_name": row[2]}
+
+        # Non-super system ADMINS also get edit rights on every project (single-
+        # tenant admin tool) — role 'admin' (level 2) is enough to upload/train
+        # (required_role 'editor'=1) and shows the canEdit/canAdmin buttons, but
+        # is below 'owner' so project-level destructive ops stay super-only.
+        if user.get("is_admin"):
+            return {"project_id": row[0], "role": "admin", "agent_name": row[2]}
 
         # Check shared access
         share = conn.execute(text(

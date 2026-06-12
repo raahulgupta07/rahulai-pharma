@@ -2,6 +2,94 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-12 (latest+95) — v1.35.2: non-super admins also get project edit rights
+
+Follow-on to 1.35.1 (user: admins should upload/train too). `app/auth.py check_project_permission` now adds a branch: `user.get("is_admin")` (non-super system admin) → returns role `'admin'` (level 2) on every project. admin(2) ≥ required_role editor(1) so upload/train pass, and canEdit/canAdmin show, but admin < owner(100) so project-destructive ops stay super-only (also still guarded by guard_no_project_management in single-agent). Branch order: super→owner first, then is_admin→admin, else share check. Verified: super→owner, non-super admin→admin, viewer→None. Matrix now: any super-admin OR system admin can upload+train out of the box; viewers and unshared regular users cannot.
+
+### Session 2026-06-12 (latest+94) — v1.35.1: FIX second super-admin locked out of Workspace
+
+**Symptom (prod).** Logged-in super-admin `admin` saw Workspace stuck "loading…", 0 tables, and NO "Upload data" / "Force Train All" buttons — while local `demo` (also SUPER ADMIN) had them.
+
+**Root cause.** `app/auth.py check_project_permission` granted `owner` only to `row.user_id == user_id OR user.username == SUPER_ADMIN` — i.e. the ONE account whose username matches the `SUPER_ADMIN` env (`demo`). A *second* super-admin (`admin`, `is_super=True`, different username) matched neither → fell to the share check → no share row on the locked `citypharma` project → returned None → `GET /api/projects/{slug}` 403 → frontend `loadDetail` `pRes.ok=false` → `userRole` stayed its `$state('viewer')` initial → `canEdit = userRole∈{editor,admin,owner}` false (super NOT in that list) → Upload/Force-Train-All hidden + detail never populated ("loading").
+
+**Fix (one line).** `check_project_permission` now also returns owner when `user.get('is_super') or user.get('is_super_admin')` — ANY super-admin is owner of every project (correct for a single-tenant admin tool). Fixes the 403/stuck-loading AND the hidden buttons (canEdit derives from the now-'owner' role). Verified: 2nd super-admin {username:'admin',is_super:True} → role 'owner'; non-super no-share → still None (unchanged, secure). Also covers `/detail` + other endpoints sharing this check.
+
+### Session 2026-06-12 (latest+93) — v1.35.0: AGE graph multi-hop — drug_network (#3)
+
+**Ask.** Karpathy roadmap #3, last item ("continue build and test").
+
+**Lower risk than feared — NO container recreate.** cp-db is ALREADY on `cp-db-age:pg18` and AGE is available; `LOAD 'age'` works per-session (tools use direct cp-db connections, not pgbouncer), so `shared_preload_libraries` (empty) is NOT needed and no restart was required. `CREATE EXTENSION age` done (persists) + verified cypher create/match/drop end-to-end.
+
+**Graph built** via `scripts/build_pharma_graph.py` (unchanged, idempotent): graph `citypharma_kg` — Article 4892 / Generic 1002 / Category 101 / Indication 1524 / Composition 2324; edges HAS_GENERIC 3326 / IN_CATEGORY 4779 / TREATS 4877 / HAS_COMPOSITION 3997 / **SUBSTITUTE_OF 43298**. Lives in the cp-db PGDATA volume (persists).
+
+**`dash/tools/pharma_network_tool.py drug_network(brand_name, site_code, limit)`** (NEW). ONE multi-hop cypher walk → 3 buckets: `direct_substitutes` (SUBSTITUTE_OF, same molecule), `same_indication` (TREATS→Indication←TREATS, e.g. Ibuprofen for a Paracetamol query — a real therapeutic neighbour SQL-substitutes can't reach), `same_category` (IN_CATEGORY bridge), deduped across buckets, then live stock joined relationally from shop_flat + Tier-2 masking + shop labels. Own direct conn, `LOAD 'age'` per session. **FAIL-SOFT:** AGE/graph missing → returns `{ok:false, fallback:'find_substitutes'}` so the agent uses the relational tool — graph is an enhancement, never a hard dependency. `_ag()` parses agtype via json.loads.
+
+**Registration** (`dash/tools/build.py`): added to the pharma block (+9→+10), gated `PHARMA_GRAPH_DISABLED`. **Instructions:** tool picker entry distinguishing it (wider therapeutic neighbourhood) from `find_substitutes` (same-molecule only).
+
+**Durability:** migration **190_age_extension.sql** (`CREATE EXTENSION IF NOT EXISTS age` in a fail-soft DO block — a plain-postgres image won't break the migration run). Graph REBUILD hooked into training-complete in `app/upload.py` right after `build_shop_flat` (fail-soft, gated `PHARMA_GRAPH_BUILD_DISABLED`) so a data re-upload refreshes the graph like shop_flat. Fresh install: extension via migration, graph on first Force-Train.
+
+**Verified live (hot-copy):** `drug_network('BIOGESIC')` → 8 direct substitutes + 8 same-indication (incl IBUPROFEN) + 7 same-category, each with stock. Store-locked (20063): 23 rows, other-branch qty leak = False.
+
+### Session 2026-06-12 (latest+92) — v1.34.0: Mode-1.5 reasoning cache — param-swap (#2)
+
+**Ask.** Karpathy roadmap #2 ("continue build and test"). Reuse a proven query PLAN with a swapped value: "top sellers at Shop 10" and "… Shop 23" should share one plan instead of two separate learned rows + two team builds.
+
+**Key design win — NO migration.** The code map said stored SQL is a frozen literal with no param slots and there's no store-name map. Instead of building a param-template layer at capture time, this does it at SERVE time, dynamically, reusing the existing NN recall + the shadow table. Store aliases derived LIVE from shop_flat (site_code + "Shop N" label), cached 300s.
+
+**`dash/learning/param_swap.py`** (NEW). `try_param_swap_serve(slug, question)`: (1) `_detect_store(q)` — word-boundary match of a known alias ("shop 52" beats "shop 5"); bail if no store named. (2) recall 5 proven candidates via `query_bank._nn`. (3) for each, `_mask` both questions (store→`<store>`) and require `difflib.SequenceMatcher` ratio ≥ `QUERY_PARAM_SWAP_MIN` (0.92) = genuinely the same question, different store. (4) candidate SQL must literally contain its own site_code → `str.replace(cand_site, inc_site)` → schema-guard → `verified_reward._run_rows` live → `cache_curator._build_card`. Fresh numbers, zero LLM, no team build.
+
+**Wiring:** inserted as a Mode-1.5 lane in BOTH chat endpoints right after the Mode-1 `try_query_bank_serve` miss and BEFORE `create_project_team` (app/main.py super_chat + app/projects.py project_chat). Same stream/blocking return shape, routing reason "learned query (adapted)".
+
+**Safety / validation:** DEFAULT OFF (`QUERY_PARAM_SWAP_ENABLED`). When OFF it still SHADOW-logs `would_serve=true` + matched pattern + shape into `dash_query_bank_shadow` — so the param-swap value is measurable on REAL traffic before flipping serve on (the validation I flagged the thresholds need). compose: `QUERY_PARAM_SWAP_ENABLED:-0` + `QUERY_PARAM_SWAP_MIN:-0.92`.
+
+**Verified live (hot-copy test):** 108 aliases built; boundary-safe ("shop 5" ≠ "shop 52"); masked shapes identical (ratio 1.0). Seeded a proven "top sellers at Shop 10" pattern + qbank embedding → asked "… Shop 23" → ENABLED: served the Shop-23-swapped SQL live (148ms, fresh rows, swapped 20014-CCJMT→20031-CCHD). DISABLED: returned None but wrote a `would_serve=true` shadow row. Seed + test shadow rows cleaned.
+
+### Session 2026-06-12 (latest+91) — v1.33.0: Self-distill loop + review gate (#5)
+
+**Ask.** Karpathy roadmap Batch 2. User chose the LOW-RISK variant: "distil from existing captured data" (no chat hot-path changes, no new migration) + "LLM distiller default OFF + small cap". Reactive→proactive memory without touching the streaming response path.
+
+**Distiller** (`dash/learning/distiller.py`, NEW). `run_distiller(slug, dry_run)` reads ALREADY-captured `dash_feedback` 👎 rows with a non-empty `correction` that haven't been distilled yet (`NOT EXISTS` a memory `created_by='distiller:fb<id>'`), LLM-extracts ONE durable generalisable fact per correction via `dash.settings.training_llm_call(task='extraction')` (LITE model, budget-gated, fail-soft → None), writes `dash_memories(source='distilled', status='pending', created_by='distiller:fb<id>')`. Caps at `DISTILLER_MAX_PER_CYCLE` (5). Non-generalisable corrections get a `status='rejected'` stub so they aren't re-LLM'd every cycle (idempotent). Complementary to the feedback→golden loop (that promotes the corrected Q→SQL pair; this captures the general fact/preference as a memory HINT). NO migration — `status`/`created_by` on dash_memories came with mig 189.
+
+**Injection gate** (`dash/instructions.py`): the AGENT MEMORIES loader query gained `AND (status IS NULL OR status='active')` so pending distilled facts never reach chat until approved (NULL = legacy active). The langextract/grounded loader is source-scoped so untouched.
+
+**Daemon** (`dash/cron/distiller_daemon.py`, NEW): copy of the curator skeleton, DEFAULT OFF (`DISTILLER_ENABLED`), hard-off `DISTILLER_DISABLED`, leader-gated, 24h, 210s stagger. Wired into `app/main.py` lifespan next to insight daemon. compose: `DISTILLER_ENABLED:-0` + `DISTILLER_MAX_PER_CYCLE:-5`.
+
+**Review API** (`app/insight_api.py`, extended): `GET /api/projects/{slug}/distilled` (pending), `POST /api/memories/{id}/approve` (→active=injected), `POST /api/memories/{id}/reject`.
+
+**Verified live (hot-copy test then durable):** seeded one synthetic 👎 correction ("article_code must be compared as text") → distiller LLM-extracted a clean durable fact → wrote pending → chat memory query (with status gate) returned 0 visible → approve → 1 visible. Test data cleaned, pristine install.
+
+**Trust:** Intern Rule end-to-end. Daemon proposes pending; admin approves before any distilled fact influences an answer.
+
+### Session 2026-06-12 (latest+90) — v1.32.0: Insight compilation daemon (#1) + fact freshness (#4)
+
+**Ask.** Continuing the Karpathy-2nd-brain roadmap (user: "everything, full sequence", daemons "default OFF, opt-in"). This is **Batch 1** = #1 insight + #4 freshness (shared brain schema). Reactive lookup tool → proactive advisor: distil durable observations from query history + live data, inject into chat (admin-gated).
+
+**Migration 189** (`189_brain_intelligence.sql`): `dash_company_brain` += `status`(active|pending|rejected, default active) / `source` / `citation_count` / `last_cited_at` / `needs_reverify`; `dash_memories` += `status` / `created_by` (citation_count/last_cited_at already from mig 002). New `public.dash_insights` audit table (kind/title/detail/evidence jsonb/brain_id/status). Idempotent ADD-IF-NOT-EXISTS; existing rows default 'active' so nothing currently injected vanishes. Test-applied to live DB clean (exit 0) before bake.
+
+**Distiller** (`dash/learning/insight_curator.py`, NEW). `run_insight_curator(slug, dry_run)` — PURE SQL, no LLM, own autocommit cp-db conn. 4 generators over `shop_flat` + `dash_query_patterns`: blind_spot (catalog_only count = stocked nowhere), concentration (high-volume category held by ≤30% of outlets), coverage (outlet with fewest in-stock SKUs, named via shop_labels), demand_theme (top chat questions uses≥3). **#4 freshness pass:** flags `dash_company_brain`/`dash_memories` facts older than `INSIGHT_STALE_DAYS` (120) with no recent citation → `needs_reverify=true` + a "N stored facts may be stale" insight. Writes each insight as `dash_company_brain(category='insight', status='pending', source='insight_daemon')` + a `dash_insights` audit row. Idempotent: each cycle DELETEs only its own *pending* rows (approved 'active' insights survive) then re-proposes the current snapshot.
+
+**Injection (FREE, already wired):** `app/brain.py get_brain_context` — added (a) a blanket `AND (status IS NULL OR status='active')` filter so PENDING insights NEVER reach chat until approved, and (b) a new "DATA INSIGHTS" render block (category='insight', cap 8) after BENCHMARK. Approved insights surface in every system prompt ≤300s (team cache TTL).
+
+**Daemon** (`dash/cron/insight_daemon.py`, NEW). Copy of query_curator skeleton — DEFAULT OFF (`INSIGHT_DAEMON_ENABLED`), hard-off `INSIGHT_DAEMON_DISABLED`, leader-gated, 24h, 180s stagger. Wired into `app/main.py` lifespan next to query_curator (try/except, `_should_run_daemons()` gate). compose.yaml: `INSIGHT_DAEMON_ENABLED:-0` + `INSIGHT_STALE_DAYS:-120`.
+
+**Review API** (`app/insight_api.py`, NEW, super-admin). `GET /api/projects/{slug}/insights` (pending+approved), `POST .../insights/run?dry_run=` (manual, dry default True), `POST /api/insights/{id}/approve` (→ brain active = injected), `POST /api/insights/{id}/reject`. Registered in main.py.
+
+**Trust:** Intern Rule — daemon proposes, admin approves. Nothing the daemon writes reaches chat until an admin clicks approve. Pure-SQL heuristics (no LLM cost, no hallucination surface); LLM distillation is reserved for #5.
+
+### Session 2026-06-12 (latest+89) — v1.31.0: Tier-1 embed tools — outlet coverage + in-stock substitutes + friendly shop labels
+
+**Ask.** Karpathy-2nd-brain gap analysis → user picked "everything, full sequence" of the 8-feature roadmap (3 embed quick-wins + 5 intelligence features), shop names "auto-number from site_code". This is **Tier-1** (the embed quick-wins A/B/C); tiers 2-6 (#1 insight daemon, #4 freshness, #5 self-distill, #2 reasoning cache, #3 AGE) tracked next.
+
+**A — `outlets_carrying(query, limit)`** (`dash/tools/pharma_outlet_count.py`, NEW). Answers "how many shops have X / which outlets carry X". `COUNT(DISTINCT site_code)` over `shop_flat` (in-stock, qty>0) + total-outlet denominator + per-outlet SKU count + shop labels. NON-SENSITIVE (count + presence only, no qty/cost) → safe for store-locked keys. Distinguishes catalog-only (out everywhere) from not-in-catalog.
+
+**B — friendly shop labels** (`dash/tools/shop_labels.py`, NEW). `shop_label(site_code)` → "Shop N" by sorting distinct `shop_flat.site_code` alphabetically, numbering 1..N. 300s module cache (`SHOP_LABEL_TTL`), own short read-only conn, fail-soft to raw code. Wired into `find_nearby_stock` other_branches (each entry now `{site, shop, qty|available}`) + the two new tools. Auto-numbered, zero config; numbering stable while outlet set stable (user accepted shift-on-insert). site_code stays canonical id internally.
+
+**C — `substitutes_in_stock(drug, outlet, limit)`** (`dash/tools/pharma_substitutes_in_stock.py`, NEW). The "alternative to X **and where**" killer in ONE call: resolves generic(s) of X over `shop_flat` → same-generic substitute art_keys (excl. X) → own-branch SUM(stock_qty) + other-branch presence/qty → drops truly-unavailable subs → ranks by own stock then reach. Replaces the 3-tool hand-chain (find_substitutes→stock_check→find_nearby_stock) the agent used to drop a hop on. Store-lock 1:1 with siblings (bound_stores forced, other branches availability-only, mask_row).
+
+**Registration** (`dash/tools/build.py`): both new tools added in the pharma block (OUTSIDE the raw-SQL gate, so store keys get them), `+7 → +9`. **Instructions** (`dash/instructions.py`): added to the ONE-TOOL FAST PATH list + the tool picker; nudge to name the `shop` label (not raw site_code) and to prefer `substitutes_in_stock` over hand-chaining.
+
+**Security unchanged + re-verified by code audit:** store-locked embed still cannot see other-shop qty — 5 gates (binding override, SQL-tool drop, stock_check own-store force, find_nearby presence-only, mask_row 14-field null). New tools inherit the same `is_store_locked`/`bound_stores`/`mask_row` path; outlet count is presence-only by design.
+
 ### Session 2026-06-12 (latest+88) — v1.30.0: REMOVE demo/synthetic data generation entirely
 
 **Ask.** "i do not want demo data and code to generate it — remove from the project."
