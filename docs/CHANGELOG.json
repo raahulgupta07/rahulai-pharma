@@ -2,6 +2,14 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.41.0",
+      "date": "2026-06-12",
+      "title": "New Connectors page",
+      "items": [
+        "Integrations redesigned into a clean Connectors page: a search box, Discover / All / Connected / Available filters, and connectors grouped into sections with a short description each. A checkmark shows what's already connected; everything you've set up is listed under Connected with sync, edit and delete actions."
+      ]
+    },
+    {
       "version": "1.40.0",
       "date": "2026-06-12",
       "title": "Add connections from a tile, manage them in one table",

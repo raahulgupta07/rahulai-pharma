@@ -2,6 +2,16 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-12 (latest+104) — v1.41.0: Connectors page (Perplexity-style)
+
+Redesigned the Integrations hub (`command-center/+page.svelte`, `activeTab==='integrations'`, `intgView==='hub'`) from a tile-grid+table into a **Perplexity-style Connectors page**:
+- **Header**: "Connectors" title + subtitle + right-aligned search box (`.conn-head`/`.conn-h1`/`.conn-search`, binds `intgSearch`).
+- **Filter pills**: Discover / All / Connected / Available (`.conn-pills`, `intgFilter` state). Connected = `_connCount>0`, Available = `==0`.
+- **Catalog-driven**: new `_connCatalog` array (id/title/desc/group/dev) → `_connFiltered` (search + pill filter) → `_connGroups` sections. `_connCount(id)` reads live `s3List`/`dbAllSources`/`sp|gd|odAdminConfig`. `intgOpen(id)` routes s3→s3New, postgresql/mysql→dbOpen, else→intgView=id.
+- **Cards** (`.conn-card`): horizontal logo + title + description + ✓ (connected, accent colour) or ＋. Grouped under section headings ("Data sources", "Microsoft & Google").
+- **Connected section**: kept the unified `.ctab` table (s3 + db + oauth rows, per-row sync/edit/delete) under a "Connected (N)" heading.
+- Reuses existing `brandLogo`/`typeBadge` snippets, popup modal + all forms/handlers unchanged. Build clean (bun). No backend change.
+
 ### Session 2026-06-12 (latest+103) — v1.38.1: S3 panel restyled to match admin (brutalist)
 
 S3SyncPanel drill-in looked clean/rounded while SharePoint/GoogleDrive/the whole admin console are brutalist (2px black `--pw-ink` borders, UPPERCASE labels, mono inputs, square `[BUTTONS]`, ●/○ status dots). User wanted ONE consistent style (chose Option A — match admin). Rewrote `frontend/src/lib/admin/S3SyncPanel.svelte` template + `<style>` to use `--pw-*` tokens and the brutalist look (logic/fetch/state unchanged). Form is now an inline panel (not a modal): name/bucket/prefix/region/endpoint/keys, file→table rules grid, Test connection, schedule + retrain/enable toggles. Cards = ink-box with ●ON/○OFF pill + status dot + square action buttons. Log = dark terminal block + synced-objects table. Build clean (2 a11y label warnings, non-fatal), page 200, v1.38.1 live.

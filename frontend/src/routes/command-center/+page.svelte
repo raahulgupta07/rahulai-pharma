@@ -24,6 +24,38 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  let intgView = $state('hub');
  const _intgTitles = { s3: '🟥 S3 Sync', sharepoint: '🟦 SharePoint', gdrive: '🟢 Google Drive', onedrive: '🔵 OneDrive', database: '🟣 Database', postgresql: 'PostgreSQL', mysql: 'MySQL' };
  let intgTitle = $derived(intgView === 's3' ? (s3Form?.id ? '🟥 Edit S3 bucket' : '🟥 New S3 bucket') : (_intgTitles[intgView] || 'Integration'));
+ // Perplexity-style connectors page: filter pills + search.
+ let intgFilter = $state('discover');
+ let intgSearch = $state('');
+ // connector catalog (id matches brandLogo + intgCard routing)
+ const _connCatalog = [
+   { id: 's3',         title: 'S3 Sync',      desc: 'Auto-pull files from an S3 bucket, replace tables, and retrain.', group: 'Data sources', dev: 'AWS' },
+   { id: 'postgresql', title: 'PostgreSQL',   desc: 'Connect PostgreSQL tables directly into the agent.',            group: 'Data sources', dev: 'PostgreSQL' },
+   { id: 'mysql',      title: 'MySQL',        desc: 'Connect MySQL tables directly into the agent.',                 group: 'Data sources', dev: 'Oracle' },
+   { id: 'sharepoint', title: 'SharePoint',   desc: 'Search and import Microsoft 365 SharePoint documents.',         group: 'Microsoft & Google', dev: 'Microsoft' },
+   { id: 'gdrive',     title: 'Google Drive', desc: 'Access Drive files and folders via OAuth.',                     group: 'Microsoft & Google', dev: 'Google' },
+   { id: 'onedrive',   title: 'OneDrive',     desc: 'Personal or business OneDrive files via OAuth.',                group: 'Microsoft & Google', dev: 'Microsoft' },
+ ];
+ // live connected-count per connector id
+ function _connCount(id: string): number {
+   if (id === 's3') return s3List.length;
+   if (id === 'postgresql') return dbAllSources.filter((d: any) => (d.type || d.db_type) === 'postgresql').length;
+   if (id === 'mysql') return dbAllSources.filter((d: any) => (d.type || d.db_type) === 'mysql').length;
+   if (id === 'sharepoint') return spAdminConfig.configured ? 1 : 0;
+   if (id === 'gdrive') return gdAdminConfig.configured ? 1 : 0;
+   if (id === 'onedrive') return odAdminConfig.configured ? 1 : 0;
+   return 0;
+ }
+ function intgOpen(id: string) { if (id === 's3') s3New(); else if (id === 'postgresql' || id === 'mysql') dbOpen(id); else intgView = id; }
+ // catalog filtered by pill + search box
+ let _connFiltered = $derived(_connCatalog.filter((c) => {
+   const q = intgSearch.trim().toLowerCase();
+   if (q && !(c.title.toLowerCase().includes(q) || c.desc.toLowerCase().includes(q))) return false;
+   if (intgFilter === 'connected') return _connCount(c.id) > 0;
+   if (intgFilter === 'available') return _connCount(c.id) === 0;
+   return true;
+ }));
+ let _connGroups = $derived(Array.from(new Set(_connFiltered.map((c) => c.group))));
 
  // ── S3 connections (unified integrations table + popup form) ──
  let s3List = $state<any[]>([]);
@@ -2287,32 +2319,55 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
         <svg viewBox="0 0 24 24" width="34" height="34"><ellipse cx="12" cy="6" rx="7" ry="3" fill="#5a4b8a"/><path d="M5 6v12c0 1.66 3.13 3 7 3s7-1.34 7-3V6" fill="#5a4b8a"/><path d="M5 9.5c0 1.66 3.13 3 7 3s7-1.34 7-3M5 13.5c0 1.66 3.13 3 7 3s7-1.34 7-3" stroke="#fff" stroke-width="0.8" fill="none" opacity=".7"/></svg>
       {/if}
     {/snippet}
-    {#snippet intgCard(id, title, sub, count)}
-      <button class="intg-card" onclick={() => { if (id === 's3') s3New(); else if (id === 'postgresql' || id === 'mysql') dbOpen(id); else intgView = id; }}>
-        <div class="intg-logo">{@render brandLogo(id)}</div>
-        <div class="intg-name">{title}</div>
-        <div class="intg-sub">{sub}</div>
-        <div class="intg-foot"><span class="intg-add">＋ add{count ? ' · ' + count : ''}</span></div>
+    {#snippet connCard(c)}
+      <button class="conn-card" onclick={() => intgOpen(c.id)}>
+        <div class="conn-logo">{@render brandLogo(c.id)}</div>
+        <div class="conn-body">
+          <div class="conn-title">{c.title}</div>
+          <div class="conn-desc">{c.desc}</div>
+        </div>
+        {#if _connCount(c.id) > 0}
+          <span class="conn-check" title="{_connCount(c.id)} connected">✓</span>
+        {:else}
+          <span class="conn-plus" title="Add">＋</span>
+        {/if}
       </button>
     {/snippet}
-
-    <div class="intg-sub2">Click a tile to add a connection — all configured sources appear in the table below.</div>
-    <div class="intg-grid">
-      {@render intgCard('s3', 'S3 Sync', 'Auto-pull from S3 → retrain', s3List.length)}
-      {@render intgCard('sharepoint', 'SharePoint', 'Microsoft 365 documents', spAdminConfig.configured ? 1 : 0)}
-      {@render intgCard('gdrive', 'Google Drive', 'Drive files & folders', gdAdminConfig.configured ? 1 : 0)}
-      {@render intgCard('onedrive', 'OneDrive', 'Personal / business files', odAdminConfig.configured ? 1 : 0)}
-      {@render intgCard('postgresql', 'PostgreSQL', 'Connect PostgreSQL tables', dbAllSources.filter((d) => (d.type || d.db_type) === 'postgresql').length)}
-      {@render intgCard('mysql', 'MySQL', 'Connect MySQL tables', dbAllSources.filter((d) => (d.type || d.db_type) === 'mysql').length)}
-    </div>
-
     {#snippet typeBadge(label, id)}
       <span class="tbadge"><span class="tbadge-ic">{@render brandLogo(id)}</span>{label}</span>
     {/snippet}
 
-    <div class="intg-group" style="margin-top:26px;">CONFIGURED CONNECTIONS ({totalConfigured})</div>
+    <!-- ── Perplexity-style connectors header ── -->
+    <div class="conn-head">
+      <div>
+        <div class="conn-h1">Connectors</div>
+        <div class="conn-h2">Connect services so the agent can access and act on your data</div>
+      </div>
+      <div class="conn-search">
+        <span>🔍</span><input placeholder="Search all connectors" bind:value={intgSearch} />
+      </div>
+    </div>
+    <div class="conn-pills">
+      {#each [['discover','Discover'],['all','All'],['connected','Connected'],['available','Available']] as [k, lbl]}
+        <button class="conn-pill {intgFilter === k ? 'on' : ''}" onclick={() => intgFilter = k}>{lbl}</button>
+      {/each}
+    </div>
+
+    {#if !_connFiltered.length}
+      <div style="font-size:12px;color:var(--pw-muted);padding:20px 0;">No connectors match “{intgSearch}”.</div>
+    {/if}
+    {#each _connGroups as g}
+      <div class="conn-group">{g}</div>
+      <div class="conn-grid">
+        {#each _connFiltered.filter((c) => c.group === g) as c (c.id)}
+          {@render connCard(c)}
+        {/each}
+      </div>
+    {/each}
+
+    <div class="conn-group" style="margin-top:30px;">Connected ({totalConfigured})</div>
     {#if !totalConfigured}
-      <div style="font-size:12px;color:var(--pw-muted);padding:14px 0;">No connections yet. Click a tile above to add one.</div>
+      <div style="font-size:12px;color:var(--pw-muted);padding:14px 0;">Nothing connected yet. Pick a connector above to get started.</div>
     {:else}
       <table class="ctab">
         <thead><tr><th>TYPE</th><th>NAME</th><th>DETAIL</th><th>SCHEDULE</th><th>STATUS</th><th class="ar">ACTIONS</th></tr></thead>
@@ -4198,6 +4253,27 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  .ccc-switch.on .ccc-knob { transform: translateX(20px); }
 
  /* ── Unified integrations hub ── */
+ /* Perplexity-style connectors header + pills + cards */
+ .conn-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
+ .conn-h1 { font-size: 26px; font-weight: 900; letter-spacing: -0.01em; }
+ .conn-h2 { font-size: 13px; color: var(--pw-muted); margin-top: 4px; }
+ .conn-search { display: flex; align-items: center; gap: 8px; border: 2px solid var(--pw-ink); background: var(--pw-surface); padding: 8px 14px; min-width: 300px; }
+ .conn-search input { border: 0; outline: 0; background: transparent; font: inherit; font-size: 13px; width: 100%; color: var(--pw-ink); }
+ .conn-pills { display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }
+ .conn-pill { border: 2px solid var(--pw-ink); background: var(--pw-surface); padding: 6px 16px; border-radius: 999px; cursor: pointer; font-size: 12px; font-weight: 700; }
+ .conn-pill:hover { background: var(--pw-bg-alt); }
+ .conn-pill.on { background: var(--pw-ink); color: var(--pw-surface); }
+ .conn-group { font-size: 11px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pw-muted); margin: 22px 0 12px; }
+ .conn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+ .conn-card { text-align: left; display: flex; align-items: center; gap: 14px; border: 2px solid var(--pw-ink); background: var(--pw-surface); padding: 16px; cursor: pointer; transition: transform 0.1s, box-shadow 0.1s; }
+ .conn-card:hover { transform: translateY(-2px); box-shadow: 4px 4px 0 var(--pw-ink); }
+ .conn-logo { width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+ .conn-logo svg { display: block; }
+ .conn-body { flex: 1; min-width: 0; }
+ .conn-title { font-size: 14px; font-weight: 900; }
+ .conn-desc { font-size: 11px; color: var(--pw-muted); line-height: 1.35; margin-top: 2px; }
+ .conn-check { flex-shrink: 0; color: var(--pw-accent, #c96342); font-size: 16px; font-weight: 900; }
+ .conn-plus { flex-shrink: 0; color: var(--pw-muted); font-size: 16px; font-weight: 700; }
  .intg-group { font-size: 11px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pw-muted); margin: 20px 0 10px; }
  .intg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
  .intg-card { text-align: left; border: 2px solid var(--pw-ink); background: var(--pw-surface); padding: 14px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; transition: transform 0.1s, box-shadow 0.1s; }
