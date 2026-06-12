@@ -1645,6 +1645,24 @@ async def project_chat(slug: str, request: Request):
                     "elapsed_ms": _qb.get("elapsed_ms"), "learned": True,
                     "trace": [_qb_trace], "tool_calls": [_qb_tool]}
 
+    # Inject proven similar queries into the agent context so the model reliably
+    # reuses verified SQL (the recall_similar_queries tool is often skipped).
+    # Mirrors the training-qa rank block above (prepend to context_msg). Fail-soft,
+    # gated, thread-isolated recall. NB: os is not a module-level import here.
+    try:
+        import os as _qr_os
+        if str(_qr_os.getenv("QUERY_RECALL_CONTEXT_DISABLED", "0")).lower() not in ("1", "true", "yes") \
+                and len((message or "").strip()) >= 8:
+            from dash.learning.query_bank import recall_similar_sync as _qr_recall
+            _qr_hits = _qr_recall(slug, message, limit=2)
+            if _qr_hits:
+                _qr_block = "\n## SIMILAR PROVEN QUERIES (reuse/adapt these — they are verified)\n"
+                for _qr_h in _qr_hits:
+                    _qr_block += f"- Q: {_qr_h.get('question','')}\n  SQL: {_qr_h.get('sql','')}\n"
+                context_msg = _qr_block + "\n\n" + context_msg
+    except Exception:
+        pass
+
     # Continuous query learning (P1 shadow): both shortcuts missed and we're about
     # to run the full agent. Log whether this question WOULD have hit the query
     # bank — measurement only, serves nothing. Fire-and-forget (own embed call), so

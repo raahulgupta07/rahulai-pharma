@@ -179,7 +179,9 @@ def demote_on_negative_feedback(slug: str) -> dict:
                 "FROM public.dash_feedback f "
                 "WHERE p.project_slug = :s AND p.source = 'chat' "
                 "  AND p.status IN ('candidate','proven') "
-                "  AND f.rating < 0 AND f.correction IS NOT NULL "
+                # rating is TEXT: negative = 'down' / '-1' / any leading-minus value
+                "  AND (f.rating = 'down' OR f.rating LIKE '-%') "
+                "  AND f.correction IS NOT NULL AND f.correction <> '' "
                 "  AND lower(regexp_replace(COALESCE(f.question,''),'\\s+',' ','g')) = p.question_norm"
             ), {"s": slug}).rowcount
         return {"ok": True, "demoted": int(n or 0)}

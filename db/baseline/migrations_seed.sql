@@ -190,3 +190,5 @@ INSERT INTO public.dash_migrations(filename,checksum) VALUES('181_drop_skills_fe
 INSERT INTO public.dash_migrations(filename,checksum) VALUES('186_shop_flat_link_status.sql','7d02985f59bf11c4bd0742cba5e8f3ffd8815357a19949f2ba8fc7daa6a6392f') ON CONFLICT(filename) DO NOTHING;
 -- migration 187 (autonomy heartbeat — folded into baseline schema.sql recon block; seed-mark so runner skips)
 INSERT INTO public.dash_migrations(filename,checksum) VALUES('187_autonomy_state.sql','') ON CONFLICT(filename) DO NOTHING;
+-- migration 188 (query bank P1 — folded into baseline schema.sql recon block; seed-mark so runner skips)
+INSERT INTO public.dash_migrations(filename,checksum) VALUES('188_query_bank.sql','') ON CONFLICT(filename) DO NOTHING;

@@ -181,6 +181,7 @@ services:
       # Dead-daemon gates — no external connectors / pruned verticals single-tenant
       - CONNECTOR_SCHEDULER_DISABLED=${CONNECTOR_SCHEDULER_DISABLED:-1}
       - VERTICAL_DAEMONS_DISABLED=${VERTICAL_DAEMONS_DISABLED:-1}
+      - QUERY_CURATOR_ENABLED=${QUERY_CURATOR_ENABLED:-0}
       # Gateway chat-body logging → dash_apigw_messages (powers per-key Questions
       # drill-down + auto-learn harvest). PII: keep on only with consent.
       - APIGW_LOG_BODIES=${APIGW_LOG_BODIES:-1}

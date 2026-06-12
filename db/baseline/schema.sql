@@ -13003,3 +13003,41 @@ CREATE TABLE IF NOT EXISTS public.dash_autonomy_journal (
 
 CREATE INDEX IF NOT EXISTS dash_autonomy_journal_slug_ts
   ON public.dash_autonomy_journal (project_slug, ts DESC);
+
+-- ============================================================
+-- POST-BASELINE RECONCILIATION (migration 188 — query bank P1)
+-- Continuous query learning: capture/shadow schema. Idempotent.
+-- (DELETE-dups from the migration is omitted — a fresh DB has no dups.)
+-- ============================================================
+SET search_path = public, dash;
+
+-- extend dash_query_patterns with the query-bank columns
+ALTER TABLE public.dash_query_patterns
+  ADD COLUMN IF NOT EXISTS status          TEXT    NOT NULL DEFAULT 'proven',
+  ADD COLUMN IF NOT EXISTS schema_hash     TEXT,
+  ADD COLUMN IF NOT EXISTS rows_returned   INTEGER,
+  ADD COLUMN IF NOT EXISTS last_latency_ms INTEGER,
+  ADD COLUMN IF NOT EXISTS success         BOOLEAN NOT NULL DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS question_norm   TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS dash_query_patterns_norm_uq
+  ON public.dash_query_patterns (project_slug, question_norm)
+  WHERE question_norm IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS dash_query_patterns_status
+  ON public.dash_query_patterns (project_slug, source, status);
+
+CREATE TABLE IF NOT EXISTS public.dash_query_bank_shadow (
+  id            BIGSERIAL PRIMARY KEY,
+  project_slug  TEXT NOT NULL,
+  question      TEXT NOT NULL,
+  matched_id    INTEGER,
+  sim           NUMERIC,
+  matched_status TEXT,
+  would_serve   BOOLEAN NOT NULL DEFAULT FALSE,
+  schema_ok     BOOLEAN,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS dash_query_bank_shadow_slug
+  ON public.dash_query_bank_shadow (project_slug, created_at DESC);

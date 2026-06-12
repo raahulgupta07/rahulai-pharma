@@ -2754,6 +2754,23 @@ async def super_chat(request: Request):
             "Ask Researcher first. Only involve Analyst if specific numbers are needed.]\n\n" + reasoning_instructions
         )
 
+    # Inject proven similar queries into the agent context so the model reliably
+    # reuses verified SQL (the recall_similar_queries tool is often skipped).
+    # Fail-soft, gated, thread-isolated recall.
+    try:
+        import os as _qr_os
+        if str(_qr_os.getenv("QUERY_RECALL_CONTEXT_DISABLED", "0")).lower() not in ("1", "true", "yes") \
+                and not _chit and len((message or "").strip()) >= 8:
+            from dash.learning.query_bank import recall_similar_sync as _qr_recall
+            _qr_hits = _qr_recall(_qb_locked(), message, limit=2)
+            if _qr_hits:
+                _qr_block = "\n## SIMILAR PROVEN QUERIES (reuse/adapt these — they are verified)\n"
+                for _qr_h in _qr_hits:
+                    _qr_block += f"- Q: {_qr_h.get('question','')}\n  SQL: {_qr_h.get('sql','')}\n"
+                reasoning_instructions = reasoning_instructions + _qr_block
+    except Exception:
+        pass
+
     # User message stays CLEAN (no system prompt prepended)
     context_msg = message
 

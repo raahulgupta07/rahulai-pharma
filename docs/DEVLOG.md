@@ -2,6 +2,27 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-12 (latest+81) — v1.23.0: query-learning pending-items hardening (Q1–Q3)
+
+**Ask.** "How to do all 9 pending items — plan phase by phase, run parallel agents." Wrote a 4-phase plan (Q1 make-it-work, Q2 cold-install, Q3 exercise-paths, Q4 measure) then ran **2 parallel agents** on disjoint files (recall-context-inject vs baseline-fold) + serial deploy + serial tests.
+
+**Q1 — make the bank actually speed things up.**
+- **Q1.1 recall context-injection** (parallel agent A) — the `recall_similar_queries` TOOL is model-discretion and got skipped, so instead INJECT proven similar queries into the agent context every turn. `app/projects.py project_chat`: `recall_similar_sync(slug, message, limit=2)` → prepend a `## SIMILAR PROVEN QUERIES` block to `context_msg` (mirrors the training-qa block). Same in `app/main.py super_chat` → append to `reasoning_instructions`. Gated `QUERY_RECALL_CONTEXT_DISABLED`, fail-soft, skip chitchat/<8-char. LANDMINE re-hit: `os` not module-level in projects.py → local `import os as _qr_os`. Verified: paraphrase Q → 200, correct (1,364,522), no crash.
+- **Q1.2 curator daemon ON** — `QUERY_CURATOR_ENABLED=1` in `.env` + `compose.yaml` (`${QUERY_CURATOR_ENABLED:-0}`). Boot log shows leader runs `query_curator_loop`, non-leaders skip (leader-election correct).
+
+**Q2 — cold-install durability** (parallel agent B). Folded mig 188 into baseline: recon block appended to `db/baseline/schema.sql` (6 ADD COLUMN IF NOT EXISTS + 2 indexes + partial-unique + `dash_query_bank_shadow` CREATE, after the `\unrestrict` trailer, `SET search_path=public,dash`) + seed line in `db/baseline/migrations_seed.sql` (`188_query_bank.sql` marked-applied, empty checksum, mirrors 187). DELETE-dups + backfill omitted (fresh DB has no rows).
+
+**Q3 — exercise the untested paths.**
+- **Q3.2 fold-into-training** ✓ — `POST /query-bank/fold-training` folded 2 proven chat patterns → `dash_training_qa` (idempotent).
+- **Q3.3 demote-on-negative-feedback** ✓ — **caught a real bug:** `dash_feedback.rating` is **TEXT** ('down'/'up'/'-1'), but `demote_on_negative_feedback` compared `f.rating < 0` (text<int → silently caught → no-op). Fixed: `(f.rating='down' OR f.rating LIKE '-%') AND f.correction<>''`. Re-test: 👎+correction on a proven Q → curate → pattern flipped proven→demoted (`neg_demoted=1`). RULE: dash_feedback.rating is TEXT, never compare numerically.
+- **Q3.1 generalize** — runs, returns 0 clusters for the current data (290/291 are the SAME query, no filter slot to parameterize; also `_shape` is alias-sensitive so even identical-shape SQL with different SELECT aliases doesn't cluster). CORRECT empty result; needs genuinely filter-varied proven patterns ("category X" vs "Y") to produce a template. FOLLOW-UP: normalize aliases in `query_generalize._shape`.
+
+**Q4 (measure + tune thresholds)** — deferred; needs real traffic accumulation in `dash_query_bank_shadow`, then a human decision on the 0.96 serve bar / 0.85 recall floor.
+
+**Parallelism note.** 2 agents edited disjoint files (projects.py+main.py vs db/baseline/*) with zero conflict — code-writing parallelizes; deploy + live-tests stayed serial (one image, one DB).
+
+---
+
 ### Session 2026-06-12 (latest+80) — v1.22.0: continuous query learning P2–P6 (recall + serve + curator + generalize + fold)
 
 **Ask.** "I want all tools and tech build." → built the remaining 5 phases on top of P1 (capture+shadow). Plan: `docs/plans/continuous_query_learning.md`.

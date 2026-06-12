@@ -2,6 +2,16 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.23.0",
+      "date": "2026-06-12",
+      "title": "Smarter query reuse + self-correction",
+      "items": [
+        "The assistant now consistently draws on similar queries it has answered before, so repeat and lookalike questions are quicker and more reliable.",
+        "When you mark an answer as wrong with a correction, the assistant automatically stops reusing that learned query.",
+        "Learned queries that prove out are now folded into the assistant's training each time it retrains."
+      ]
+    },
+    {
       "version": "1.22.0",
       "date": "2026-06-12",
       "title": "The assistant reuses what it has learned — faster repeat answers",
