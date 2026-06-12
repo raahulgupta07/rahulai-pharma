@@ -457,9 +457,9 @@ Operator sets only `OPENROUTER_API_KEY` + `SUPER_ADMIN` + `SUPER_ADMIN_PASS` and
 
 ---
 
-## Integrations hub (v1.38–1.40)
+## Connectors page (v1.38–1.41)
 
-All external data sources are managed from one place: **Admin → Integrations**. A grid of brand-logo tiles — **S3 Sync · SharePoint · Google Drive · OneDrive · PostgreSQL · MySQL** — where clicking a tile opens that connector's setup in a popup. Every configured connection (across all types) appears in a single **Configured connections** table below the tiles, with its detail, status, and per-row actions (sync · edit · delete). Add as many S3 buckets or databases as you need — each is a row. Admins/super only.
+All external data sources are managed from one place: **Admin → Integrations**, now a clean **Connectors** page. A search box and **Discover / All / Connected / Available** filters sit at the top; connectors are grouped into sections (**Data sources**: S3 Sync · PostgreSQL · MySQL — **Microsoft & Google**: SharePoint · Google Drive · OneDrive), each card showing a logo, short description, and a checkmark when it's already connected. Clicking a card opens that connector's setup in a centered popup. Everything you've configured (across all types) is listed under **Connected** with its detail, status, and per-row actions (sync · edit · delete). Add as many S3 buckets or databases as you need — each is a row. Admins/super only.
 
 The top-bar **Endpoints** menu (after Workspace) is separate — it holds the **API Gateway** and **Embed** widget, i.e. the ways to *use* the agent from your own apps and sites (vs. Integrations, which connects data *in*).
 
