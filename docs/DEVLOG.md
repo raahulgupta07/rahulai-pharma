@@ -2,6 +2,16 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-12 (latest+97) — v1.35.4: THE real fix — seed the locked project on boot
+
+**Symptom.** Prod on 1.35.3 (super-admin seed + is_super-from-role + datasource fail-soft all live) STILL stuck: Workspace "loading…", 0 tables, no Upload/Force-Train. Badge correctly showed `admin` = SUPER ADMIN (so `/api/auth/check` returns is_super=True — auth was fine).
+
+**Actual root cause (the one under all the others).** On a FRESH install there is **no `citypharma` row in `public.dash_projects`**. The only INSERT path is `create_project()`, which `guard_no_project_management` blocks in single-agent mode; demo seed is OFF by default; nothing else seeds it. On local the row exists only because it was renamed from the old demo seed. With no project row: `check_project_permission` returns None at its FIRST guard (`if not row: return None`) — **before** the super-admin branch — so even a super-admin is denied. → `GET /projects/{slug}` 404, `/datasource` 403 → frontend `loadDetail` fails → `userRole` stuck `viewer` → `canEdit` false → buttons hidden + tables never load. 1.35.1/2/3 all fixed real bugs but were downstream of a project that didn't exist.
+
+**Fix.** New `app/projects.py ensure_locked_project()` — on boot (worker-0, after migrations, in `app/main.py` lifespan): if single-agent and the locked slug has no `dash_projects` row, create the schema (`create_project_schema`) + INSERT the row owned by the `SUPER_ADMIN` env account (self-healed to role=super in 1.35.3), idempotent `ON CONFLICT (slug) DO NOTHING`, fully fail-soft. A clean AWS deploy now lands a working, empty, ready-to-upload project. No-op when the row already exists (local) or outside single-agent mode.
+
+**Chain (complete):** boot seeds super-admin (role=super, 1.35.3) + locked project (1.35.4) → check_project_permission finds the row AND grants owner → `/projects/{slug}` 200 user_role=owner → canEdit → Upload + Force Train All visible; datasource 200 (fail-soft). Operator sets only env + `docker compose`. Verified local: ensure_locked_project no-ops on existing project, super still owner, endpoints 200.
+
 ### Session 2026-06-12 (latest+96) — v1.35.3: bulletproof super-admin seed (fresh-install upload/train)
 
 **Symptom (prod, AWS box `52.220.37.93:8002`).** Even after deploying 1.35.2, super-admin `admin` STILL saw Workspace Data Source stuck "loading…", 0 tables, no Upload / Force-Train-All. Operator can only set env (OPENROUTER key + `SUPER_ADMIN` + `SUPER_ADMIN_PASS`) and `docker compose` — no DB surgery.

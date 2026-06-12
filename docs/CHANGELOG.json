@@ -2,6 +2,14 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.35.4",
+      "date": "2026-06-12",
+      "title": "Fresh install is ready to use immediately",
+      "items": [
+        "A brand-new install now sets up its workspace automatically on first start, so the admin sees the Data Source page with Upload data + Force Train All right away instead of an endless \"loading…\". No setup steps, no manual database work — deploy, log in, upload."
+      ]
+    },
+    {
       "version": "1.35.3",
       "date": "2026-06-12",
       "title": "Upload + train just work on a fresh install",

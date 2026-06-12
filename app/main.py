@@ -270,6 +270,16 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
         except Exception as _mig_e:
             import logging as _mig_log
             _mig_log.getLogger(__name__).warning(f"migration runner skipped: {_mig_e}")
+        # Single-tenant: ensure the locked project row + schema exist. Without it a
+        # fresh install (no demo seed) has no dash_projects row → every access check
+        # 404/403s before the super-admin branch → Workspace stuck "loading", Upload/
+        # Force-Train hidden. Idempotent; worker-0 gated like migrations.
+        try:
+            from app.projects import ensure_locked_project as _ensure_locked
+            _ensure_locked()
+        except Exception as _elp_e:
+            import logging as _elp_log
+            _elp_log.getLogger(__name__).warning(f"ensure_locked_project skipped: {_elp_e}")
     # Skills feature REMOVED 2026-06-09 (single-tenant pharma never used it:
     # 0 invocations/bindings, injection gated off, builtins were deck/chart
     # generators irrelevant to a pharmacy counter). No builtin registration.

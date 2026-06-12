@@ -865,6 +865,68 @@ def create_project(request: Request, name: str, agent_name: str, agent_role: str
     return {"status": "ok", "slug": slug, "schema_name": schema_name}
 
 
+def ensure_locked_project() -> None:
+    """Single-tenant: guarantee the locked project row + schema exist on boot.
+
+    On a FRESH install (no demo seed) nothing ever created the locked `citypharma`
+    project — the only INSERT path is create_project(), which guard_no_project_management
+    blocks in single-agent mode. With no row in public.dash_projects, EVERY access
+    check fails before the super-admin branch (check_project_permission returns None
+    when the project row is missing) → GET /projects/{slug} 404, datasource 403 →
+    Workspace stuck "loading…", Upload/Force-Train hidden even for the super-admin.
+
+    This seeds the row (owner = the SUPER_ADMIN env account) + its schema, idempotently,
+    so a clean AWS deploy lands a working, empty, ready-to-upload project. No-op if the
+    row already exists or if not in single-agent mode.
+    """
+    import os
+    import logging
+    log = logging.getLogger(__name__)
+    try:
+        if not is_single_agent():
+            return
+        slug = locked_slug()
+        with _engine.connect() as conn:
+            exists = conn.execute(text(
+                "SELECT 1 FROM public.dash_projects WHERE slug = :s"
+            ), {"s": slug}).fetchone()
+            if exists:
+                return
+            # Owner = the env super-admin (self-healed to role='super' by auth init);
+            # fall back to the lowest user id so the row is always ownable.
+            admin_user = os.getenv("SUPER_ADMIN", "admin")
+            owner = conn.execute(text(
+                "SELECT id FROM public.dash_users WHERE username = :u"
+            ), {"u": admin_user}).fetchone()
+            if not owner:
+                owner = conn.execute(text(
+                    "SELECT id FROM public.dash_users ORDER BY id ASC LIMIT 1"
+                )).fetchone()
+            owner_id = owner[0] if owner else 1
+
+        try:
+            from dash.single_agent import product_name
+            pname = product_name()
+        except Exception:
+            pname = "CityAgent Pharma"
+
+        # Schema first (own txn inside helper), then the row.
+        create_project_schema(slug)
+        with _engine.connect() as conn:
+            conn.execute(text(
+                "INSERT INTO public.dash_projects "
+                "(user_id, slug, name, agent_name, agent_role, agent_personality, schema_name) "
+                "VALUES (:uid, :slug, :name, :an, :ar, :ap, :sn) "
+                "ON CONFLICT (slug) DO NOTHING"
+            ), {"uid": owner_id, "slug": slug, "name": pname,
+                "an": pname, "ar": "Pharma data analyst",
+                "ap": "professional", "sn": slug})
+            conn.commit()
+        log.info("ensure_locked_project: seeded locked project '%s' (owner uid=%s)", slug, owner_id)
+    except Exception:
+        log.exception("ensure_locked_project: failed (non-fatal)")
+
+
 @router.post("/{slug}/duplicate")
 def duplicate_project(slug: str, request: Request):
     """Duplicate a project — copies config + persona. Does NOT copy data (user retrains)."""
