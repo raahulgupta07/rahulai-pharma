@@ -517,6 +517,25 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
         import logging as _ds_log
         _ds_log.getLogger(__name__).warning(f"distiller daemon not started: {_e}")
 
+    # S3 auto-sync daemon — polls due S3 sources, replaces tables from changed
+    # objects, retrains. DEFAULT OFF (S3_SYNC_ENABLED=1). Leader-gated. Per-source
+    # schedule + ETag change-detection live in the source rows, so an enabled-but-
+    # idle bucket is a cheap no-op every tick.
+    try:
+        import os as _os_s3
+        if _os_s3.environ.get("S3_SYNC_ENABLED") not in ("1", "true", "TRUE", "yes"):
+            raise RuntimeError("s3 sync disabled (default OFF)")
+        if not _should_run_daemons():
+            raise RuntimeError("daemons disabled")
+        import asyncio as _asyncio_s3
+        from dash.cron.s3_sync_daemon import s3_sync_loop as _s3_loop
+        _asyncio_s3.create_task(_s3_loop())
+        import logging as _s3_log
+        _s3_log.getLogger(__name__).info("s3 sync daemon started")
+    except Exception as _e:
+        import logging as _s3_log
+        _s3_log.getLogger(__name__).warning(f"s3 sync daemon not started: {_e}")
+
     # Ontology auto-cluster daemon (~6h cadence). Mirrors reembed_loop pattern.
     # default OFF (Phase-1 trim: pure-burn daemon, output not consumed). Set ONTOLOGY_CLUSTER_ENABLED=1 to re-enable.
     # Opt-out via ONTOLOGY_CLUSTER_DISABLED=1 (also honored inside the loop).
@@ -1670,6 +1689,14 @@ try:
 except Exception as _e:
     import logging as _logging
     _logging.warning(f"insight_api not loaded: {_e}")
+
+# S3 auto-sync API (Integrations → S3 Sync) — admin CRUD + manual sync trigger
+try:
+    from app.s3_api import router as s3_router
+    app.include_router(s3_router)
+except Exception as _e:
+    import logging as _logging
+    _logging.warning(f"s3_api not loaded: {_e}")
 
 # Connector subsystem (admin CRUD + user-facing query) — connectors_contract §8
 try:

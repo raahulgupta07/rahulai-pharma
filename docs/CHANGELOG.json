@@ -2,6 +2,14 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.37.0",
+      "date": "2026-06-12",
+      "title": "Auto-sync data from S3",
+      "items": [
+        "New Integrations → S3 Sync: connect an S3 bucket and the agent automatically pulls new/changed files on a schedule, replaces the matching tables, and retrains — no manual upload. Map files to tables by name pattern, run on a timer or on-demand, with a per-source status log. Admins only."
+      ]
+    },
+    {
       "version": "1.36.1",
       "date": "2026-06-12",
       "title": "Tighten regular-user access",

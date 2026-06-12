@@ -180,6 +180,11 @@ services:
       - PUBLIC_URL=${PUBLIC_URL:-}
       # Dead-daemon gates — no external connectors / pruned verticals single-tenant
       - CONNECTOR_SCHEDULER_DISABLED=${CONNECTOR_SCHEDULER_DISABLED:-1}
+      # S3 auto-sync daemon: poll a bucket → replace tables from changed files →
+      # retrain. DEFAULT OFF. Configure sources in Integrations → S3 Sync. Per-source
+      # schedule + creds live in the DB; this just turns the poller on.
+      - S3_SYNC_ENABLED=${S3_SYNC_ENABLED:-0}
+      - S3_SYNC_TICK_SECONDS=${S3_SYNC_TICK_SECONDS:-60}
       - VERTICAL_DAEMONS_DISABLED=${VERTICAL_DAEMONS_DISABLED:-1}
       - QUERY_CURATOR_ENABLED=${QUERY_CURATOR_ENABLED:-0}
       # Tuned (Q4) on a real paraphrase sim distribution — text-embedding-3-small

@@ -1299,10 +1299,10 @@
             <span class="pw-nav-label">Workspace</span>
           </button>
           {/if}
-          {#if canIntegration && (gatewayEnabled || embedEnabled)}
-            <div class="pw-nav-group" class:pw-group-active={routeMatches('/gateway') || routeMatches('/embed')}>
+          {#if canIntegration}
+            <div class="pw-nav-group" class:pw-group-active={routeMatches('/gateway') || routeMatches('/embed') || routeMatches('/s3-sync')}>
               <button class="pw-nav"
-                      class:pw-nav-active={(routeMatches('/gateway') || routeMatches('/embed')) && openMenu !== 'integrations'}
+                      class:pw-nav-active={(routeMatches('/gateway') || routeMatches('/embed') || routeMatches('/s3-sync')) && openMenu !== 'integrations'}
                       onclick={() => toggleMenu('integrations')}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                 <span class="pw-nav-label">Integrations</span>
@@ -1328,6 +1328,13 @@
                     </div>
                   </button>
                   {/if}
+                  <button class="pw-menu-row" class:pw-menu-active={routeMatches('/s3-sync')} onclick={() => navTo('/ui/s3-sync')}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>
+                    <div class="pw-menu-text">
+                      <span class="pw-menu-name">S3 Sync</span>
+                      <span class="pw-menu-sub">Auto-pull data from S3 → retrain</span>
+                    </div>
+                  </button>
                 </div>
               {/if}
             </div>

@@ -2,6 +2,21 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-12 (latest+101) — v1.37.0: S3 auto-sync pipeline (poll → replace → retrain)
+
+**Ask.** "Team wants data pulled from S3 automatically whenever a file changes — delete old data, load new, retrain." Chose: polling daemon + dynamic file→table mapping + admin UI in Integrations.
+
+**Built (reuses the existing upload+train pipeline via internal HTTP, not reimplemented):**
+- Migration **191_s3_sync.sql**: `public.dash_s3_sources` (bucket/prefix/region/endpoint/creds_enc/file_map jsonb/schedule_seconds/retrain_after/enabled/last_status/last_log) + `public.dash_s3_object_state` (per-object ETag for change-detection).
+- `dash/connectors/s3_client.py` — boto3 wrapper, fail-soft if boto3 absent (`boto3_available()`, `list_objects`, `download_object`, `head_bucket`).
+- `app/s3_sync.py` — `run_s3_sync(source_id, force, triggered_by)`: list objects → match each filename to a `file_map` glob rule → (table, action) → sync only ETag-changed objects (or force) → download → **POST /api/upload action=replace** (drops+reloads the table through the full ingest/profile pipeline) → record ETag → if anything changed and `retrain_after`, **POST /api/projects/{slug}/retrain?force=1**. Auth via a short-lived super-admin service token (minted in `dash_tokens`, revoked after). Creds Fernet-encrypted (`dash.connectors.crypto`), never logged/returned. `test_connection()` + `due_source_ids()` helpers.
+- `dash/cron/s3_sync_daemon.py` — `s3_sync_loop`, DEFAULT OFF (`S3_SYNC_ENABLED=1`), leader-gated, 60s tick, runs `run_s3_sync` for due sources off-thread.
+- `app/s3_api.py` — `/api/s3/*` CRUD + `/test` + `/sync` (manual, background thread), gated to the **integration** surface (admin+super; chat-only users blocked). Creds write-only (never in GET).
+- Wired router + daemon into `app/main.py`. `requirements.txt` += boto3 1.35.99 + botocore + jmespath + s3transfer (uv pip sync needs the full chain explicitly — boto3 alone left botocore missing). compose += `S3_SYNC_ENABLED:-0`, `S3_SYNC_TICK_SECONDS:-60`.
+- Frontend: `routes/s3-sync/+page.svelte` + `lib/admin/S3SyncPanel.svelte` (source cards w/ status dot + log, add/edit modal with file→table rules, Test connection, Sync now / Force, per-object table). Added "S3 Sync" to the Integrations nav dropdown (always shown to admins, even if gateway/embed off).
+
+**Verified live 1.37.0:** migration applied (both tables); `boto3_available=true`; **Test connection hit real AWS** (`InvalidAccessKeyId` with fake creds = the boto3 path works end-to-end); CRUD works; manual sync recorded `last_status=error` + clear log on bad creds with no crash (api stayed healthy); `/ui/s3-sync` serves 200, panel in the SPA build. Only the real download→replace→retrain needs the operator's actual bucket creds. **Enable: set `S3_SYNC_ENABLED=1` + add a source in Integrations → S3 Sync.** LANDMINE: `uv pip sync` installs EXACTLY the requirements list (no transitive deps) — any new lib needs its whole dependency chain pinned.
+
 ### Session 2026-06-12 (latest+100) — v1.36.1: close project-scoped workspace leak + 3-user matrix test
 
 **Found by a full 3-user feature matrix test** (super=demo, admin=role'admin', plain user). One leak: plain user got 200 on `GET /api/projects/{slug}/auto-train/status` — the surface gate caught the `/api/auto-train` prefix but NOT the project-scoped `/api/projects/{slug}/auto-train/…` path. Fix (`app/main.py`): added a workspace-surface project-leaf gate (mirrors the dashboard-leaf one) — `/api/projects/{slug}/…` containing `/auto-train`, `/training`, `/brain`, `/rules`, `/retrain`, `/scores`, `/suggested_rules`, `/learn` → 403 unless `surfaces_for(user).workspace`. Chat-support leaves (followups/feedback/messages/history) are NOT in the list, so chat still works.

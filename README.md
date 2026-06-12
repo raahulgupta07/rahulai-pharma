@@ -457,6 +457,19 @@ Operator sets only `OPENROUTER_API_KEY` + `SUPER_ADMIN` + `SUPER_ADMIN_PASS` and
 
 ---
 
+## S3 auto-sync (v1.37.0)
+
+Connect an S3 bucket and the agent pulls new/changed files automatically, replaces the matching tables, and retrains — no manual upload. Configure in **Integrations → S3 Sync** (admins only).
+
+How it works per source: the daemon lists objects under your prefix, matches each filename to a **file → table rule** (glob pattern, e.g. `articles_*.csv → articles_list`), and syncs only the files whose S3 ETag changed since last time. Each changed file is loaded with `action=replace` (the old table is dropped and rebuilt through the normal ingest pipeline); if anything changed and *Retrain after* is on, a full force-retrain runs once. Per-object ETag tracking means an unchanged bucket is a cheap no-op.
+
+- **Enable:** set `S3_SYNC_ENABLED=1` (daemon off by default), then add a source in the UI. Per-source schedule (5 min … 1 day), or **Sync now** / **Force** on demand.
+- **Credentials** are stored Fernet-encrypted (never returned by the API or logged). Supports S3-compatible endpoints (MinIO) via an optional endpoint URL.
+- **Status + log** per source, plus a table of every synced object (key → table → rows). **Test connection** lists the bucket read-only before enabling.
+- Requires `boto3` (in the image). The panel warns if it's missing.
+
+---
+
 ## Environment configuration (`.env`)
 
 `.env` holds **all secrets and per-deploy config** — it is **gitignored, never commit it**. Copy `.env.example` → `.env` and fill it in. `dash-api` lists env vars individually in `compose.yaml` (no `env_file`), so a **new** var must be added to the service `environment:` block too, or it won't reach the container.
