@@ -2,6 +2,14 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.38.1",
+      "date": "2026-06-12",
+      "title": "Consistent integration design",
+      "items": [
+        "The S3 Sync setup screen now matches the rest of the admin console (same borders, headings, and buttons as the other connectors)."
+      ]
+    },
+    {
       "version": "1.38.0",
       "date": "2026-06-12",
       "title": "One place for every integration",

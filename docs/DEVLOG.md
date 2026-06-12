@@ -2,6 +2,10 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-12 (latest+103) — v1.38.1: S3 panel restyled to match admin (brutalist)
+
+S3SyncPanel drill-in looked clean/rounded while SharePoint/GoogleDrive/the whole admin console are brutalist (2px black `--pw-ink` borders, UPPERCASE labels, mono inputs, square `[BUTTONS]`, ●/○ status dots). User wanted ONE consistent style (chose Option A — match admin). Rewrote `frontend/src/lib/admin/S3SyncPanel.svelte` template + `<style>` to use `--pw-*` tokens and the brutalist look (logic/fetch/state unchanged). Form is now an inline panel (not a modal): name/bucket/prefix/region/endpoint/keys, file→table rules grid, Test connection, schedule + retrain/enable toggles. Cards = ink-box with ●ON/○OFF pill + status dot + square action buttons. Log = dark terminal block + synced-objects table. Build clean (2 a11y label warnings, non-fatal), page 200, v1.38.1 live.
+
 ### Session 2026-06-12 (latest+102) — v1.38.0: unified Integrations hub (Admin → Integrations)
 
 **Ask.** "One integration page in Admin Console with all types." Chose Design A (card grid → drill-in).
