@@ -2,6 +2,14 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.21.0",
+      "date": "2026-06-12",
+      "title": "The assistant now learns from real questions",
+      "items": [
+        "When the assistant answers a data question, it now quietly remembers the question and the query it used — building a private library of what your team actually asks. No change to answers yet; this is the groundwork that will let it reply faster to repeat questions over time."
+      ]
+    },
+    {
       "version": "1.20.0",
       "date": "2026-06-12",
       "title": "Friendly robot assistant on the chat widget",

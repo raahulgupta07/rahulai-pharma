@@ -15,3 +15,7 @@ from contextvars import ContextVar
 
 CUR_SESSION_ID: ContextVar[str | None] = ContextVar("CUR_SESSION_ID", default=None)
 CUR_PROJECT_SLUG: ContextVar[str | None] = ContextVar("CUR_PROJECT_SLUG", default=None)
+# The raw user question for the current chat turn. Set by project_chat before the
+# agent runs so the run_sql_query capture hook (continuous query learning, P1) can
+# pair the agent's generated SQL with the question that prompted it. Best-effort.
+CUR_QUESTION: ContextVar[str | None] = ContextVar("CUR_QUESTION", default=None)

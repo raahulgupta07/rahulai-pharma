@@ -1036,6 +1036,15 @@ async def project_chat(slug: str, request: Request):
     except Exception:
         pass
 
+    # Continuous query learning (P1): expose the user's question to the
+    # run_sql_query capture hook so any SQL the agent writes this turn is paired
+    # with the question. Best-effort; the clean user message (no scaffolding).
+    try:
+        from dash.links_ctx import CUR_QUESTION as _CUR_Q
+        _CUR_Q.set((message or "").strip())
+    except Exception:
+        pass
+
     # Phase 1 bilingual: set the reply-language contract from the user's script
     # BEFORE the team is built/cached. Burmese unicode block (U+1000–U+109F) ⇒ 'my'.
     # build_analyst_instructions appends the Burmese override and dash.team caches
@@ -1599,6 +1608,17 @@ async def project_chat(slug: str, request: Request):
                                     "args": {"query": _ms_sql},
                                     "result": {"value": _v, "cached": True,
                                                "rows": _ms_rows, "columns": _ms_cols}}]}
+
+    # Continuous query learning (P1 shadow): both shortcuts missed and we're about
+    # to run the full agent. Log whether this question WOULD have hit the query
+    # bank — measurement only, serves nothing. Fire-and-forget (own embed call), so
+    # it never adds latency to the agent path. Fail-soft.
+    try:
+        import asyncio as _qb_asyncio
+        from dash.learning.query_capture import shadow_match as _qb_shadow
+        _qb_asyncio.ensure_future(_qb_shadow(slug, message))
+    except Exception:
+        pass
 
     # Create project-scoped team
     from dash.team import create_project_team

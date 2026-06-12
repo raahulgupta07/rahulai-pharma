@@ -245,7 +245,24 @@ class RLSAwareSQLTools(SQLTools):
                 # Only forward the cleaned SQL string. Stray wrapper keys
                 # (args/kwargs/query/...) in **extra are intentionally dropped so
                 # the parent SQLTools never sees an unexpected keyword argument.
+                import time as _qb_time
+                _qb_t0 = _qb_time.monotonic()
                 _result = super().run_sql_query(query)
+                # Continuous query learning (P1): record this question->SQL into
+                # the query bank (source='chat', status='pending'). Fire-and-forget,
+                # never blocks/raises. Reads the turn's question from CUR_QUESTION.
+                try:
+                    from dash.links_ctx import CUR_QUESTION as _qb_q
+                    _qb_question = _qb_q.get()
+                    if _qb_question and getattr(self, "_mdl_slug", None):
+                        from dash.learning.query_capture import capture_query_async
+                        capture_query_async(
+                            self._mdl_slug, _qb_question, query,
+                            result=_result,
+                            latency_ms=int((_qb_time.monotonic() - _qb_t0) * 1000),
+                        )
+                except Exception:
+                    pass
                 # Guardrail: record success. Fail-soft.
                 try:
                     from dash.runtime.tool_guardrail import record as _g_rec

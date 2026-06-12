@@ -2690,6 +2690,23 @@ async def super_chat(request: Request):
         from fastapi import HTTPException
         raise HTTPException(413, "Message too long (max 50000 chars)")
 
+    # Continuous query learning (P1): this is the analyst path (run_sql_query lives
+    # here). Expose the question to the capture hook + run the shadow match. Both
+    # best-effort, fire-and-forget, never block the reply. super_chat builds its own
+    # team (does not call project_chat), so wire them here too.
+    try:
+        from dash.links_ctx import CUR_QUESTION as _CUR_Q
+        _CUR_Q.set((message or "").strip())
+    except Exception:
+        pass
+    try:
+        import asyncio as _qb_asyncio
+        from dash.learning.query_capture import shadow_match as _qb_shadow
+        from dash.single_agent import locked_slug as _qb_locked
+        _qb_asyncio.ensure_future(_qb_shadow(_qb_locked(), message))
+    except Exception:
+        pass
+
     # Apply reasoning mode — build as SYSTEM instruction, not user message.
     # Chitchat/capability/greeting → plain pharmacist prose, NO dashboard tags/cards/charts.
     _chit = _is_chitchat(message)

@@ -2,6 +2,26 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-12 (latest+79) — v1.21.0: continuous query learning P1 (capture + shadow)
+
+**Ask.** "Make replies fast without hardcoding — keep the LLM. Learn from every question, build a reusable query bank, make it part of learning." Plan written to `docs/plans/continuous_query_learning.md` (6 phases). User: "ok start" → built **P1 (capture + shadow only — serves nothing yet)**.
+
+**Why P1 first.** The learning loop is OPEN: training writes `dash_query_patterns`, the agent reads them as hints, but the SQL the agent writes in LIVE chat is never captured. `dash_traces` logs span names, not SQL text. So the product only knows the questions *training guessed*. P1 closes capture + measures repeat-rate before we ever risk serving a reused SQL.
+
+**Built (extends existing infra — no new serve lane, Mode-2/Mode-1 deferred to P2/P4):**
+- **Migration 188** (`db/migrations/188_query_bank.sql`): `ALTER dash_query_patterns ADD status/schema_hash/rows_returned/last_latency_ms/success/question_norm`; backfill existing 84 rows `status='proven'` + normalize; DELETE 5 pre-existing dup `question_norm`; partial unique index `(project_slug, question_norm)`; new `public.dash_query_bank_shadow` (measurement log). Applied live + marked in `dash_migrations`. (FOLLOW-UP: fold into baseline schema.sql recon + migrations_seed — currently relies on the boot runner, fine for cold installs.)
+- **`dash/learning/query_capture.py`**: `capture_query_async(slug, question, sql, result, latency)` — daemon thread, fail-soft, skips trivial/non-SELECT/errored SQL, dedupe-UPSERT on `question_norm` (`uses++` on repeat), stamps `schema_hash` via `schema_guard.live_schema_hash`, embeds question → `dash.dash_vectors namespace='qbank'` (reuses the qcache pattern). `shadow_match(slug, question)` — existence-check (skip when bank empty) → embed → cosine NN join `dash_query_patterns` → log `{sim, matched_id, matched_status, schema_ok, would_serve}` to shadow table. `would_serve = sim≥0.96 AND status='proven' AND schema_ok` (Mode-1 preview). SERVES NOTHING.
+- **Capture hook** in `dash/tools/build.py` `run_sql_query` success path (the `return _result` after `super().run_sql_query`): reads `CUR_QUESTION` contextvar, fires `capture_query_async`. Gated `QUERY_CAPTURE_DISABLED`.
+- **`CUR_QUESTION` contextvar** added to `dash/links_ctx.py`. Set in `app/projects.py` `project_chat` AND `app/main.py` `super_chat`. Shadow scheduled (`asyncio.ensure_future`) in both at the agent-fallthrough.
+
+**LANDMINE (cost a deploy).** The analyst chat actually runs through **`app/main.py super_chat`, NOT `app/projects.py project_chat`** — super_chat builds its own team via `create_project_team` and does not call project_chat. Wiring `CUR_QUESTION`+shadow only into project_chat captured NOTHING (first test: 0 rows despite TeamRunStarted). Fix = wire BOTH endpoints. Any future per-turn hook that must see the analyst path belongs in super_chat too.
+
+**Verified live.** Q "total stock quantity across all sites" → captured pattern id=290 (`source='chat'`, `status='pending'`, `rows_returned=1`, real `SELECT SUM(stock_qty::numeric)…`, qbank vector written). Paraphrase "total stock quantity across every site" → shadow row sim=**0.928**, matched_id=290, schema_ok=t, would_serve=f (below 0.96 + not proven). Reply latency unchanged (capture is a thread; shadow is fire-and-forget with its own embed). Gates: `QUERY_CAPTURE_DISABLED`, `QUERY_SHADOW_DISABLED`, `QUERY_BANK_SERVE_SIM` (0.96), `QUERY_BANK_SHADOW_FLOOR` (0.80).
+
+**Next.** Let it accumulate, read repeat-rate + would_serve-rate from `dash_query_bank_shadow`, THEN decide P2 (recall tool, Mode-2 LLM hint) / P4 (Mode-1 bypass).
+
+---
+
 ### Session 2026-06-12 (latest+78) — v1.20.0: robot launcher on embed widget
 
 **Ask.** "Instead of the circle [chat-bubble launcher icon] use our robot." Embed widget's floating launcher bubble (60px accent circle, bottom-right) showed a generic chat-bubble SVG (`CHAT_ICON`).
