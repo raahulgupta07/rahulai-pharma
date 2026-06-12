@@ -2238,9 +2238,22 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
 
   {#if intgView === 'hub'}
     <!-- ── Unified integration hub (card grid) ── -->
+    {#snippet brandLogo(id)}
+      {#if id === 's3'}
+        <svg viewBox="0 0 24 24" width="34" height="34"><rect width="24" height="24" rx="5" fill="#E25444"/><path d="M7 7.5h10l-.9 8.2a1.1 1.1 0 0 1-1.1 1H9a1.1 1.1 0 0 1-1.1-1z" fill="#fff"/><path d="M6.3 7h11.4" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg>
+      {:else if id === 'sharepoint'}
+        <svg viewBox="0 0 24 24" width="34" height="34"><circle cx="9" cy="8" r="6" fill="#03787C"/><circle cx="16" cy="13" r="5.4" fill="#1A9BA1"/><circle cx="11.5" cy="18" r="4.8" fill="#37C6D0"/><text x="9" y="11" font-size="7.5" font-weight="700" fill="#fff" text-anchor="middle" font-family="Arial">S</text></svg>
+      {:else if id === 'gdrive'}
+        <svg viewBox="0 0 87.3 78" width="32" height="30"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0-1.2 4.5h27.5z" fill="#00ac47"/><path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 11.5z" fill="#ea4335"/><path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/><path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/><path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/></svg>
+      {:else if id === 'onedrive'}
+        <svg viewBox="0 0 24 24" width="34" height="34"><path d="M10.4 18.6h8.5a3.2 3.2 0 0 0 .45-6.36 4.8 4.8 0 0 0-8.9-1.6 3.85 3.85 0 0 0-3.65 3.95 3.65 3.65 0 0 0 3.65 4.01z" fill="#0078D4"/><path d="M7.2 14.4a3.3 3.3 0 0 1 3-3.3 4.6 4.6 0 0 1 .9-1.7 3.5 3.5 0 0 0-5.2 2.1 2.9 2.9 0 0 0 .3 4.3 3.6 3.6 0 0 1 1-1.4z" fill="#28A8EA"/></svg>
+      {:else}
+        <svg viewBox="0 0 24 24" width="34" height="34"><ellipse cx="12" cy="6" rx="7" ry="3" fill="#336791"/><path d="M5 6v12c0 1.66 3.13 3 7 3s7-1.34 7-3V6" fill="#336791"/><path d="M5 9.5c0 1.66 3.13 3 7 3s7-1.34 7-3M5 13.5c0 1.66 3.13 3 7 3s7-1.34 7-3" stroke="#fff" stroke-width="0.8" fill="none" opacity=".7"/></svg>
+      {/if}
+    {/snippet}
     {#snippet intgCard(id, icon, color, title, sub, status, stat)}
       <button class="intg-card" onclick={() => { intgView = id; }}>
-        <div class="intg-ic" style="background:{color}">{icon}</div>
+        <div class="intg-logo">{@render brandLogo(id)}</div>
         <div class="intg-name">{title}</div>
         <div class="intg-sub">{sub}</div>
         <div class="intg-foot">
@@ -4053,7 +4066,8 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  .intg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
  .intg-card { text-align: left; border: 2px solid var(--pw-ink); background: var(--pw-surface); padding: 14px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; transition: transform 0.1s, box-shadow 0.1s; }
  .intg-card:hover { transform: translateY(-2px); box-shadow: 4px 4px 0 var(--pw-ink); }
- .intg-ic { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #fff; border-radius: 6px; }
+ .intg-logo { width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; }
+ .intg-logo svg { display: block; }
  .intg-name { font-size: 14px; font-weight: 900; }
  .intg-sub { font-size: 11px; color: var(--pw-muted); line-height: 1.3; }
  .intg-foot { font-size: 11px; color: var(--pw-muted); display: flex; align-items: center; gap: 6px; margin-top: 2px; }

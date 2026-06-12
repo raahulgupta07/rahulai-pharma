@@ -2,6 +2,14 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.39.0",
+      "date": "2026-06-12",
+      "title": "Connector logos + multi-account setup",
+      "items": [
+        "Integration cards now show each platform's real logo. Setup opens in a popup, and once saved you get a table of all configured accounts — so you can connect more than one bucket/account per platform and manage them (sync, edit, log, delete) from one list."
+      ]
+    },
+    {
       "version": "1.38.3",
       "date": "2026-06-12",
       "title": "Endpoints menu on the top bar",
