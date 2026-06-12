@@ -1299,7 +1299,41 @@
             <span class="pw-nav-label">Workspace</span>
           </button>
           {/if}
-          <!-- Integrations live under Admin → Integrations only (unified hub). -->
+          <!-- Endpoints: ways to use the agent from other apps/sites (API + widget).
+               Connector CONFIG lives separately under Admin → Integrations. -->
+          {#if canIntegration && (gatewayEnabled || embedEnabled)}
+            <div class="pw-nav-group" class:pw-group-active={routeMatches('/gateway') || routeMatches('/embed')}>
+              <button class="pw-nav"
+                      class:pw-nav-active={(routeMatches('/gateway') || routeMatches('/embed')) && openMenu !== 'endpoints'}
+                      onclick={() => toggleMenu('endpoints')}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                <span class="pw-nav-label">Endpoints</span>
+                <svg class="pw-chev" class:pw-chev-open={openMenu === 'endpoints'} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              {#if openMenu === 'endpoints'}
+                <div class="pw-menu">
+                  {#if gatewayEnabled}
+                  <button class="pw-menu-row" class:pw-menu-active={routeMatches('/gateway')} onclick={() => navTo('/ui/gateway')}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                    <div class="pw-menu-text">
+                      <span class="pw-menu-name">API Gateway</span>
+                      <span class="pw-menu-sub">OpenAI-compatible REST /api/v1</span>
+                    </div>
+                  </button>
+                  {/if}
+                  {#if embedEnabled}
+                  <button class="pw-menu-row" class:pw-menu-active={routeMatches('/embed')} onclick={() => navTo('/ui/embed')}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                    <div class="pw-menu-text">
+                      <span class="pw-menu-name">Embed</span>
+                      <span class="pw-menu-sub">Chat widget for external sites</span>
+                    </div>
+                  </button>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          {/if}
           {#if canAdminGroup}
             <div class="pw-nav-group" class:pw-group-active={isAdminGroupActive}>
               <button class="pw-nav"

@@ -2,6 +2,14 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.38.3",
+      "date": "2026-06-12",
+      "title": "Endpoints menu on the top bar",
+      "items": [
+        "API Gateway and Embed are back on the top bar under a new “Endpoints” menu (after Workspace) — the quick ways to use the agent from your own apps and websites. Connector setup still lives under Admin → Integrations."
+      ]
+    },
+    {
       "version": "1.38.2",
       "date": "2026-06-12",
       "title": "Single home for integrations",
