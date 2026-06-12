@@ -4257,17 +4257,17 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  .conn-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
  .conn-h1 { font-size: 26px; font-weight: 900; letter-spacing: -0.01em; }
  .conn-h2 { font-size: 13px; color: var(--pw-muted); margin-top: 4px; }
- .conn-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--pw-bg-alt); border-radius: 12px; background: var(--pw-surface); padding: 9px 16px; min-width: 300px; transition: border-color 0.15s; }
- .conn-search:focus-within { border-color: var(--pw-muted); }
+ .conn-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--pw-muted); border-radius: 12px; background: var(--pw-surface); padding: 9px 16px; min-width: 300px; transition: border-color 0.15s; }
+ .conn-search:focus-within { border-color: var(--pw-ink); }
  .conn-search input { border: 0; outline: 0; background: transparent; font: inherit; font-size: 13px; width: 100%; color: var(--pw-ink); }
  .conn-pills { display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }
- .conn-pill { border: 1px solid var(--pw-bg-alt); background: var(--pw-surface); padding: 7px 18px; border-radius: 999px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--pw-ink); transition: background 0.15s, border-color 0.15s; }
+ .conn-pill { border: 1px solid var(--pw-muted); background: var(--pw-surface); padding: 7px 18px; border-radius: 999px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--pw-ink); transition: background 0.15s, border-color 0.15s; }
  .conn-pill:hover { background: var(--pw-bg-alt); }
- .conn-pill.on { background: var(--pw-bg-alt); border-color: var(--pw-bg-alt); }
+ .conn-pill.on { background: var(--pw-ink); border-color: var(--pw-ink); color: var(--pw-surface); }
  .conn-group { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pw-muted); margin: 22px 0 12px; }
  .conn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
- .conn-card { text-align: left; display: flex; align-items: center; gap: 14px; border: 1px solid var(--pw-bg-alt); border-radius: 14px; background: var(--pw-surface); padding: 18px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.04); transition: box-shadow 0.16s, border-color 0.16s, transform 0.16s; }
- .conn-card:hover { box-shadow: 0 6px 18px rgba(0,0,0,0.09); border-color: var(--pw-muted); transform: translateY(-1px); }
+ .conn-card { text-align: left; display: flex; align-items: center; gap: 14px; border: 1px solid var(--pw-muted); border-radius: 14px; background: var(--pw-surface); padding: 18px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.04); transition: box-shadow 0.16s, border-color 0.16s, transform 0.16s; }
+ .conn-card:hover { box-shadow: 0 6px 18px rgba(0,0,0,0.09); border-color: var(--pw-ink); transform: translateY(-1px); }
  .conn-logo { width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
  .conn-logo svg { display: block; }
  .conn-body { flex: 1; min-width: 0; }
@@ -4293,7 +4293,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  .intg-modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 150; padding: 24px; overflow-y: auto; }
  .intg-modal { background: var(--pw-surface, #fff); border: 1px solid var(--pw-bg-alt); border-radius: 16px; width: 880px; max-width: 100%; max-height: calc(100vh - 48px); margin: auto; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.25); overflow: hidden; }
  .intg-modal-h { display: flex; align-items: center; justify-content: space-between; padding: 16px 22px; border-bottom: 1px solid var(--pw-bg-alt); font-size: 16px; font-weight: 800; }
- .intg-x { border: 1px solid var(--pw-bg-alt); border-radius: 8px; background: var(--pw-surface); width: 32px; height: 32px; cursor: pointer; font-size: 14px; line-height: 1; color: var(--pw-muted); transition: background 0.15s; }
+ .intg-x { border: 1px solid var(--pw-muted); border-radius: 8px; background: var(--pw-surface); width: 32px; height: 32px; cursor: pointer; font-size: 14px; line-height: 1; color: var(--pw-muted); transition: background 0.15s; }
  .intg-x:hover { background: var(--pw-bg-alt); color: var(--pw-ink); }
  .intg-modal-body { padding: 20px; overflow-y: auto; }
  .intg-sub2 { font-size: 12px; color: var(--pw-muted); margin-bottom: 14px; }
@@ -4311,8 +4311,8 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  .cdot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; background: #bbb; }
  .cdot.on { background: #3a9e4d; } .cdot.err { background: #d24a4a; } .cdot.off { background: #c9c4ba; }
  .ca { text-align: right; white-space: nowrap; }
- .cico { border: 1px solid var(--pw-bg-alt); border-radius: 8px; background: var(--pw-surface); width: 28px; height: 28px; cursor: pointer; font-size: 12px; line-height: 1; margin-left: 4px; color: var(--pw-ink); transition: background 0.15s, border-color 0.15s; }
- .cico:hover { background: var(--pw-bg-alt); border-color: var(--pw-muted); }
+ .cico { border: 1px solid var(--pw-muted); border-radius: 8px; background: var(--pw-surface); width: 28px; height: 28px; cursor: pointer; font-size: 12px; line-height: 1; margin-left: 4px; color: var(--pw-ink); transition: background 0.15s, border-color 0.15s; }
+ .cico:hover { background: var(--pw-bg-alt); border-color: var(--pw-ink); }
  .cico.danger:hover { border-color: #d24a4a; color: #d24a4a; }
  .cico.danger { color: #c0392b; border-color: #c0392b; }
  /* S3 form (inside popup) */
