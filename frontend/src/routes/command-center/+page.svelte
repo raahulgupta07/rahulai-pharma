@@ -21,8 +21,10 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
 
  /* ─── state ─── */
  let activeTab = $state('cockpit');
- // Unified Integrations hub: 'hub' = card grid, else a connector id drilled into.
+ // Unified Integrations hub: 'hub' = card grid, else a connector id shown in a popup modal.
  let intgView = $state('hub');
+ const _intgTitles = { s3: '☁ S3 Sync', sharepoint: '▦ SharePoint', gdrive: '▲ Google Drive', onedrive: '☁ OneDrive', database: '⛁ Database' };
+ let intgTitle = $derived(_intgTitles[intgView] || 'Integration');
  let loading = $state(false);
 
  /* ─── auth helper ─── */
@@ -2270,9 +2272,16 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
       {@render intgCard('onedrive', '⛅', '#1b66c9', 'OneDrive', 'Personal / business files', odAdminConfig.configured ? 'on' : 'off', odAdminConfig.configured ? 'Configured' : 'Not set')}
       {@render intgCard('database', '⛁', '#5a4b8a', 'Database', 'PostgreSQL / MySQL tables', dbAllSources.length ? 'on' : 'off', dbAllSources.length ? dbAllSources.length + ' connected' : 'Not set')}
     </div>
-  {:else}
-    <button class="intg-back" onclick={() => { intgView = 'hub'; }}>← All integrations</button>
+  {/if}
 
+  {#if intgView !== 'hub'}
+    <div class="intg-modal-bg" role="presentation" onclick={() => { intgView = 'hub'; }}>
+      <div class="intg-modal" role="dialog" aria-modal="true" onclick={(e) => e.stopPropagation()}>
+        <div class="intg-modal-h">
+          <span>{intgTitle}</span>
+          <button class="intg-x" onclick={() => { intgView = 'hub'; }} aria-label="Close">✕</button>
+        </div>
+        <div class="intg-modal-body">
     {#if intgView === 's3'}
       <S3SyncPanel />
     {:else if intgView === 'sharepoint'}
@@ -2602,6 +2611,9 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
     </div>
   </div>
     {/if}
+        </div>
+      </div>
+    </div>
   {/if}
 
 {:else if activeTab === 'branding'}
@@ -4076,4 +4088,11 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  .intg-dot.off { background: #c9c4ba; }
  .intg-back { border: 1px solid var(--pw-bg-alt); background: var(--pw-bg-alt); padding: 6px 12px; cursor: pointer; font-size: 12px; font-weight: 700; margin-bottom: 16px; }
  .intg-back:hover { background: var(--pw-surface); }
+ /* connector config popup */
+ .intg-modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: flex-start; justify-content: center; z-index: 150; padding: 48px 24px; overflow-y: auto; }
+ .intg-modal { background: var(--pw-surface, #fff); border: 2px solid var(--pw-ink); width: 880px; max-width: 100%; max-height: calc(100vh - 96px); display: flex; flex-direction: column; box-shadow: 8px 8px 0 var(--pw-ink); }
+ .intg-modal-h { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 2px solid var(--pw-ink); font-size: 16px; font-weight: 900; text-transform: uppercase; }
+ .intg-x { border: 1px solid var(--pw-ink); background: var(--pw-surface); width: 30px; height: 30px; cursor: pointer; font-size: 14px; line-height: 1; }
+ .intg-x:hover { background: var(--pw-bg-alt); }
+ .intg-modal-body { padding: 20px; overflow-y: auto; }
 </style>
