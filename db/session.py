@@ -52,6 +52,32 @@ def _make_search_path_listener(search_path: str):
     return set_search_path
 
 
+# Catastrophic statements that are NEVER issued by legitimate app/ingest/Engineer
+# flow. Quoted string literals are stripped first so a data value like 'drop schema'
+# is not flagged. DROP TABLE / TRUNCATE are NOT here (ingest replaces tables).
+_BLAST_RE = re.compile(
+    r"\b(?:drop\s+database|drop\s+schema|drop\s+(?:role|user)|create\s+(?:role|user)"
+    r"|alter\s+(?:role|user)|alter\s+system|reassign\s+owned|drop\s+owned"
+    r"|copy\b[^;]*\bprogram\b)\b",
+    re.IGNORECASE | re.DOTALL,
+)
+_BLAST_STRIP_LITERALS = re.compile(r"'(?:[^']|'')*'")
+
+
+def _make_blast_guard():
+    """before_cursor_execute listener: reject catastrophic statements on the
+    writable (superuser) engine. Defense-in-depth until the app runs as a
+    non-superuser role (see SECURITY_TESTING.md)."""
+    def _guard(conn, cursor, statement, parameters, context, executemany):
+        try:
+            s = _BLAST_STRIP_LITERALS.sub("''", statement or "")
+        except Exception:
+            s = statement or ""
+        if _BLAST_RE.search(s):
+            raise PermissionError("blocked: catastrophic SQL statement rejected by safety guard")
+    return _guard
+
+
 def _make_readonly_listener():
     """Return a 'begin' event listener that sets read-only + timeout."""
     def set_readonly(conn):
@@ -396,6 +422,12 @@ def get_project_engine(slug: str) -> Engine:
         poolclass=NullPool,
     )
     event.listen(eng, "begin", _make_search_path_listener(f'"{safe}"'))
+    # Blast-radius guard on the WRITABLE engine (Engineer LLM-SQL + ingest). DB role
+    # is superuser, so reject catastrophic statements (DROP DATABASE/SCHEMA/ROLE,
+    # ALTER SYSTEM, COPY...PROGRAM) that are never legitimate here. Normal DML +
+    # CREATE TABLE/VIEW in dash are unaffected; migrations use a separate engine.
+    # Durable fix = run the app as a non-superuser role (SECURITY_TESTING.md).
+    event.listen(eng, "before_cursor_execute", _make_blast_guard())
     with _engine_lock:
         _project_engines[safe] = eng
         _engine_timestamps[safe] = _time.time()

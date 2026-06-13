@@ -780,7 +780,8 @@ def validate_token(token: str) -> Optional[dict]:
     try:
         with _engine.connect() as conn:
             row = conn.execute(text(
-                "SELECT t.user_id, t.username, t.expiry, COALESCE(u.role, 'user') "
+                "SELECT t.user_id, t.username, t.expiry, COALESCE(u.role, 'user'), "
+                "u.site_code, u.store_id, COALESCE(u.scope_mode, 'global'), u.store_ids "
                 "FROM public.dash_tokens t LEFT JOIN public.dash_users u ON u.id = t.user_id "
                 "WHERE t.token = :t"
             ), {"t": token}).fetchone()
@@ -790,7 +791,12 @@ def validate_token(token: str) -> Optional[dict]:
                 # makes upload/train rights survive an env-username vs DB mismatch.
                 _is_super = (row[1] == SUPER_ADMIN) or (row[3] == "super")
                 _is_admin = _is_super or (row[3] == "admin")
-                info = {"user_id": row[0], "username": row[1], "expiry": row[2], "is_super": _is_super, "is_admin": _is_admin, "aad_groups": _extract_aad_groups(token), "cached_at": time.time()}
+                # Store binding for web sessions — lets resolve_api_scope() lock a
+                # shop-staff (scope_mode='store') web login to its branch, the same
+                # way API/embed keys are scoped. Admins are scope_mode='global' → no-op.
+                info = {"user_id": row[0], "username": row[1], "expiry": row[2], "is_super": _is_super, "is_admin": _is_admin,
+                        "site_code": row[4], "store_id": row[5], "scope_mode": row[6], "store_ids": row[7],
+                        "aad_groups": _extract_aad_groups(token), "cached_at": time.time()}
                 with _token_cache_lock:
                     # Enforce size limit BEFORE inserting
                     now = time.time()
@@ -864,7 +870,13 @@ def resolve_api_scope(user: Optional[dict]) -> Optional["object"]:
     Returns a dash.api_scope.StoreScope (or None). Never raises.
     """
     try:
-        if not user or not user.get("via_api_key"):
+        if not user:
+            return None
+        # Enforce for API-key users AND for web sessions explicitly bound to a store
+        # (scope_mode='store'). Admins / unbound users (scope_mode='global') fall
+        # through to a non-enforced scope below, so their behaviour is unchanged.
+        _mode = (user.get("scope_mode") or "global").strip().lower()
+        if not user.get("via_api_key") and _mode != "store":
             return None
         from dash.api_scope import StoreScope
         store = (user.get("store_id") or user.get("site_code") or "").strip()
@@ -1025,8 +1037,8 @@ def register(req: RegisterRequest):
     """Register a new user."""
     if not req.username or len(req.username) < 2:
         raise HTTPException(400, "Username must be at least 2 characters")
-    if not req.password or len(req.password) < 4:
-        raise HTTPException(400, "Password must be at least 4 characters")
+    if not req.password or len(req.password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
 
     try:
         with _engine.connect() as conn:
@@ -1050,8 +1062,21 @@ def register(req: RegisterRequest):
 
 
 @router.post("/login")
-def login(req: LoginRequest):
+def login(req: LoginRequest, request: Request = None):
     """Login and get a token."""
+    # Brute-force throttle: cap login attempts per client IP via the global Redis
+    # fixed-window (shared across all workers). 20 / 5 min. Redis down → fail-open
+    # (don't lock out legit users), but the cap closes online password guessing.
+    try:
+        _ip = (request.client.host if (request and request.client) else "unknown")
+        from app.rate_limit import _redis_fixed_window
+        _rl = _redis_fixed_window(f"login:{_ip}", 20, 300)
+        if _rl is not None and not _rl[0]:
+            raise HTTPException(429, "Too many login attempts. Try again shortly.")
+    except HTTPException:
+        raise
+    except Exception:
+        pass
     try:
         with _engine.connect() as conn:
             # Accept either the username OR the email as the login identifier —
@@ -1092,8 +1117,9 @@ def login(req: LoginRequest):
             return {"status": "ok", "token": token, "username": row[1], "user_id": row[0], "is_super": is_super, "is_admin": is_admin, "surfaces": _surfaces}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(500, f"Login failed: {str(e)}")
+    except Exception:
+        logger.exception("auth: login failed")
+        raise HTTPException(500, "Login failed")
 
 
 @router.get("/check")
@@ -1360,8 +1386,8 @@ def create_user(request: Request, username: str, password: str, email: str = "",
     _require_surface(request, "users_access")
     if not username or len(username) < 2:
         raise HTTPException(400, "Username must be at least 2 characters")
-    if not password or len(password) < 4:
-        raise HTTPException(400, "Password must be at least 4 characters")
+    if not password or len(password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
 
     role = (role or "user").strip().lower()
     if role not in ("user", "admin"):
@@ -1483,9 +1509,20 @@ def oidc_config():
     return {"enabled": bool(_KEYCLOAK_URL), "provider": "keycloak" if _KEYCLOAK_URL else None}
 
 
+def _legacy_oidc_enabled() -> bool:
+    """Legacy Keycloak OIDC (this module) does NOT verify the ID token signature,
+    state, nonce or PKCE and leaks the token in the redirect URL. It is superseded
+    by the hardened provider in app/auth_federation.py. OFF by default; set
+    LEGACY_OIDC_ENABLED=1 only if you still depend on these endpoints."""
+    import os as _o
+    return _o.getenv("LEGACY_OIDC_ENABLED", "0").strip().lower() in ("1", "true", "yes")
+
+
 @router.get("/oidc/login")
 def oidc_login(redirect_uri: str = ""):
     """Get Keycloak login URL."""
+    if not _legacy_oidc_enabled():
+        raise HTTPException(404, "Not found")
     if not _KEYCLOAK_URL:
         raise HTTPException(400, "OIDC not configured")
     callback = redirect_uri or "/api/auth/oidc/callback"
@@ -1500,6 +1537,8 @@ def oidc_login(redirect_uri: str = ""):
 @router.get("/oidc/callback")
 def oidc_callback(code: str, request: Request):
     """Handle Keycloak callback, create/update local user, return Dash token."""
+    if not _legacy_oidc_enabled():
+        raise HTTPException(404, "Not found")
     if not _KEYCLOAK_URL:
         raise HTTPException(400, "OIDC not configured")
 
@@ -1607,8 +1646,8 @@ def change_password(request: Request, old_password: str, new_password: str):
     user = get_current_user(request)
     if not user:
         raise HTTPException(401, "Not authenticated")
-    if len(new_password) < 4:
-        raise HTTPException(400, "Password must be at least 4 characters")
+    if len(new_password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
 
     with _engine.connect() as conn:
         row = conn.execute(text(
@@ -1628,8 +1667,8 @@ def reset_password(username: str, new_password: str, request: Request):
     """Reset a user's password. Admin tier; plain admins cannot reset admin-tier accounts."""
     _require_surface(request, "users_access")
     _guard_admin_target(request, username)
-    if len(new_password) < 4:
-        raise HTTPException(400, "Password must be at least 4 characters")
+    if len(new_password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
 
     with _engine.connect() as conn:
         result = conn.execute(text(

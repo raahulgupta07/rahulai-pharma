@@ -981,6 +981,19 @@ async def project_chat(slug: str, request: Request):
     user = _get_user(request)
     proj = get_project(slug, request)
 
+    # Store-scope a web shop-staff session (scope_mode='store') for the whole
+    # request: fast-paths + team build (drops writable Engineer, strips raw SQL) +
+    # streaming generator all read API_STORE_SCOPE. Admins are 'global' → no-op.
+    # Request-isolated contextvar, so no reset needed.
+    try:
+        from app.auth import resolve_api_scope as _ras
+        from dash.api_scope import API_STORE_SCOPE as _ASS
+        _wscope = _ras(user)
+        if _wscope is not None:
+            _ASS.set(_wscope)
+    except Exception:
+        pass
+
     form = await request.form()
     message = form.get("message", "")
     stream = str(form.get("stream", "true")).lower() == "true"

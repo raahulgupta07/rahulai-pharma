@@ -24,15 +24,35 @@ gateway + multi-store scoping + LDAP/OIDC**.
 - [x] **Redis `REDIS_PASS`** support (set in prod)
 - [x] **SG / network-exposure** table in `DEPLOYMENT_AWS.md`
 
-### Still open — remediate or risk-accept before prod
-- [ ] **App DB role `ai` is a SUPERUSER.** Blast radius of any SQLi/identifier
-  injection = total data loss (`DROP SCHEMA`, `DROP DATABASE`). AGE/extension
-  creation needs superuser only at **migrate/boot** time, not at runtime.
-  **Fix:** create a non-superuser runtime role (e.g. `cp_app`) with only
-  `CONNECT`/`USAGE`/`SELECT` (+ `INSERT/UPDATE/DELETE` on app tables, NOT DDL),
-  run the API as that role, and keep a separate privileged role for migrations
-  only. Do NOT blind-downgrade `ai` (AGE `LOAD`/`SET search_path` + boot
-  migrations will break) — add the new role + test boot in staging first.
+### Phase-5 fixes shipped (A, B, C, E-tactical)
+- [x] **A — writable Engineer locked down.** Dropped from embed + store-locked
+  teams (`team.py` `allow_write_agents`/`is_store_locked`); embed passes
+  `allow_write_agents=False`; cache key now includes write-state.
+- [x] **A/E — catastrophic-statement guard** on the writable engine
+  (`db/session.py` `_make_blast_guard`): rejects `DROP DATABASE/SCHEMA/ROLE`,
+  `ALTER SYSTEM`, `COPY…PROGRAM` (quoted literals stripped first). Migrations use a
+  separate engine and are unaffected.
+- [x] **B — web shop-staff store-scope enforced.** `validate_token` now returns the
+  store binding; `resolve_api_scope` honors web `scope_mode='store'`; both web chat
+  handlers set `API_STORE_SCOPE` → masking + raw-SQL strip engage (was prompt-only).
+- [x] **C — auth hardening.** OIDC email-merge now requires `email_verified` + never
+  merges into admin/super (`auth_federation.py`), default merge OFF; password min
+  4→8; per-IP login throttle (20/5min, Redis); legacy unverified Keycloak OIDC routes
+  gated behind `LEGACY_OIDC_ENABLED` (default off).
+
+### Still open — the durable DB-role cutover (staged, needs DBA + staging)
+- [ ] **App DB role `ai` is a SUPERUSER.** The blast guard above blocks the
+  catastrophic statements, but the *durable* fix is least-privilege. **Blocker found:**
+  migrations run **in the app boot** (`app/main.py:251` → `dash/db_runner/migrate.py`),
+  so the app role can't simply be demoted — boot migrations need DDL/extension rights.
+  **Cutover plan (staging-test first):**
+  1. Create `cp_app` (non-superuser): `CONNECT`, `USAGE` on `public`/`dash`/`citypharma`,
+     `SELECT` on all + default-privileges, `INSERT/UPDATE/DELETE` on app tables,
+     `CREATE` on `dash` only. No `CREATEROLE`/`CREATEDB`/`SUPERUSER`.
+  2. Add a separate `MIGRATE_DATABASE_URL` (superuser) and point
+     `dash/db_runner/migrate.py` at it; run migrations as super, runtime pool as `cp_app`.
+  3. AGE is `shared_preload_libraries='age'` so `LOAD 'age'` works for non-super — verify
+     graph queries + ingest + Engineer view-build still pass on staging before cutover.
 
 ---
 

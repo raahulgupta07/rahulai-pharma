@@ -112,8 +112,16 @@ def create_project_team(
     agent_role: str = "",
     agent_personality: str = "friendly",
     user_id: int | None = None,
+    allow_write_agents: bool = True,
 ) -> Team:
-    """Create a team scoped to a specific project."""
+    """Create a team scoped to a specific project.
+
+    allow_write_agents=False drops the Engineer (the only member with a WRITABLE
+    SQL tool). Embed/consumer surfaces pass False so an anonymous prompt-injection
+    can't reach a write-capable, schema-mutating agent. The Engineer is also
+    dropped whenever the request is store-locked (a branch key/embed never needs
+    schema building).
+    """
     # Phase 1 bilingual: instructions are baked at agent creation, so the MY-override
     # team and the EN team must be cached separately. Key the cache on the reply
     # language contract too — the MY team is built once (with the Burmese override)
@@ -123,7 +131,17 @@ def create_project_team(
         _lang = (_RL.get() or "en")
     except Exception:
         _lang = "en"
-    cache_key = f"{project_slug}_{user_id}_{_lang}"
+    try:
+        from dash.api_scope import is_store_locked as _isl
+        _locked = bool(_isl())
+    except Exception:
+        _locked = False
+    # Write-capable agents are excluded for embed/consumer (allow_write_agents=False)
+    # AND for any store-locked request. Bake this into the cache key so a
+    # write-enabled team can NEVER be served to a no-write/locked caller (closes the
+    # global->store re-scope window too).
+    _writes_ok = bool(allow_write_agents) and not _locked
+    cache_key = f"{project_slug}_{user_id}_{_lang}_{int(_writes_ok)}"
     now = time.time()
     with _cache_lock:
         # Evict expired entries to prevent memory leak
@@ -365,7 +383,7 @@ def create_project_team(
     _agents_cfg = _fc(project_slug).get("agents", {})
     members = []
     if _agents_cfg.get("analyst", True):        members.append(analyst)
-    if _agents_cfg.get("engineer", True):       members.append(engineer)
+    if _writes_ok and _agents_cfg.get("engineer", True):  members.append(engineer)
     if _agents_cfg.get("researcher", True):     members.append(researcher)
     if customer_strategist is not None and _agents_cfg.get("customer_strategist", True):
         members.append(customer_strategist)

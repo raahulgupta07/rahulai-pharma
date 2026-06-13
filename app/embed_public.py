@@ -1672,6 +1672,7 @@ async def embed_chat(req: Request):
                 # store's baked store_id → cross-store number leak. synthetic_viewer
                 # is the per-embed (per-store) negative id → one team per store.
                 user_id=synthetic_viewer,
+                allow_write_agents=False,  # embed = never a write-capable agent
             )
 
             ctx_note = ""
@@ -2169,6 +2170,7 @@ async def embed_chat_stream(req: Request):
                 # Per-store team cache key (see chat path) — stops cross-store
                 # baked-prompt reuse under the shared citypharma_None_<lang> key.
                 user_id=synthetic_viewer,
+                allow_write_agents=False,  # embed = never a write-capable agent
             )
 
             ctx_note = ""

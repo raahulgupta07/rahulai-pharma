@@ -2871,6 +2871,20 @@ async def super_chat(request: Request):
         from fastapi.responses import JSONResponse
         return JSONResponse({"detail": "Not authenticated"}, status_code=401)
 
+    # Store-scope a web shop-staff session (scope_mode='store') for the whole
+    # request — covers fast-paths, team build (drops the writable Engineer +
+    # strips raw SQL), and the streaming generator (tools read API_STORE_SCOPE at
+    # run time). Each request is its own contextvar context, so no reset needed.
+    # Admins / unbound users get a non-enforced scope → behaviour unchanged.
+    try:
+        from app.auth import resolve_api_scope as _ras
+        from dash.api_scope import API_STORE_SCOPE as _ASS
+        _wscope = _ras(user)
+        if _wscope is not None:
+            _ASS.set(_wscope)
+    except Exception:
+        pass
+
     form = await request.form()
     message = form.get("message", "")
     stream = str(form.get("stream", "true")).lower() == "true"

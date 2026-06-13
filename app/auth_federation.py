@@ -119,7 +119,7 @@ def _env_config() -> dict:
     """Baseline config from environment variables (OpenWebUI-style names)."""
     return {
         "local_enabled": _bool(getenv("LOCAL_AUTH_ENABLED"), True),
-        "merge_by_email": _bool(getenv("OAUTH_MERGE_ACCOUNTS_BY_EMAIL"), True),
+        "merge_by_email": _bool(getenv("OAUTH_MERGE_ACCOUNTS_BY_EMAIL"), False),
         "trusted_email_header": getenv("WEBUI_AUTH_TRUSTED_EMAIL_HEADER", ""),
         "ldap": {
             "enabled": _bool(getenv("ENABLE_LDAP")),
@@ -276,7 +276,7 @@ def _map_site_and_role(values: list[str], group_to_site: dict, allowed_roles: li
 
 def _provision_and_issue(*, username: str, email: str, first: str, last: str,
                          provider: str, external_id: str, site_code: Optional[str],
-                         merge_by_email: bool) -> dict:
+                         merge_by_email: bool, email_verified: bool = False) -> dict:
     """Create-or-update the local user, then mint a dash token. Returns login payload."""
     if not username:
         raise HTTPException(400, "no username from identity provider")
@@ -284,10 +284,18 @@ def _provision_and_issue(*, username: str, email: str, first: str, last: str,
         row = conn.execute(text(
             "SELECT id, username FROM public.dash_users WHERE username = :u"
         ), {"u": username}).fetchone()
-        if not row and merge_by_email and email:
-            row = conn.execute(text(
-                "SELECT id, username FROM public.dash_users WHERE lower(email) = lower(:e)"
+        # Account-takeover guard: only merge an existing LOCAL account by email when
+        # the IdP asserts the email is VERIFIED, and NEVER merge into an admin/super
+        # account (an attacker controlling any federated account with a matching
+        # email must not inherit local privilege). Default merge is now OFF.
+        if not row and merge_by_email and email and email_verified:
+            m = conn.execute(text(
+                "SELECT id, username, COALESCE(role,'user') FROM public.dash_users "
+                "WHERE lower(email) = lower(:e)"
             ), {"e": email}).fetchone()
+            if m and m[2] in ("admin", "super"):
+                raise HTTPException(403, "email-merge into a privileged account is not allowed")
+            row = (m[0], m[1]) if m else None
 
         if row:
             user_id, uname = row[0], row[1]
@@ -423,7 +431,8 @@ def ldap_login(req: LdapLoginRequest):
 
     return _provision_and_issue(username=req.username, email=email, first=first, last=last,
                                 provider="ldap", external_id=user_dn, site_code=site,
-                                merge_by_email=bool(cfg.get("merge_by_email")))
+                                merge_by_email=bool(cfg.get("merge_by_email")),
+                                email_verified=True)  # LDAP directory is authoritative for email
 
 
 # ---------------------------------------------------------------------------
@@ -575,6 +584,7 @@ def oidc_callback(provider: str, request: Request, code: str = "", state: str = 
         username=username, email=email, first=first, last=last,
         provider=f"oidc:{provider}", external_id=str(claims.get("sub", "")),
         site_code=site, merge_by_email=bool(cfg.get("merge_by_email")),
+        email_verified=bool(claims.get("email_verified")),  # IdP-asserted, required for email-merge
     )
 
     # Hand the token to the SPA WITHOUT putting it in the URL (no access-log /
