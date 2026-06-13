@@ -496,7 +496,7 @@ How it works per source: the daemon lists objects under your prefix, matches eac
 | `OPENROUTER_API_KEY` | placeholder | real key (app won't start without it) | ✅ |
 | `DB_PASS` | `ai` | strong database password | ✅ |
 | `SUPER_ADMIN` | `admin` | your super-admin username | |
-| `SUPER_ADMIN_PASS` | `admin` | strong unique password | ✅ |
+| `SUPER_ADMIN_PASS` | **none** (fail-closed) | strong unique password. **If unset/empty the super-admin is NOT seeded** (no `admin/admin` fallback) — compose enforces `:?`; on k8s/bare-gunicorn you must set it. ✅ |
 | `CORS_ORIGINS` | blank → allow-all **no-creds** | exact domains, comma-sep (`https://pharma.x.com`). **Never ship `*` with real users.** | |
 | `PUBLIC_URL` | blank | your public origin (`https://pharma.x.com`) — drives embed snippets, SDK, OIDC callback | |
 | `DOMAIN` | `localhost` | your domain | |
@@ -512,11 +512,16 @@ How it works per source: the daemon lists objects under your prefix, matches eac
 | `APIGW_CACHE_TTL` | `90` | keep **ON** in prod (hides 70–220s repeat-question latency). `0`+`METRIC_SHORTCUT_DISABLED=1` are **dev-only**. Now **live-tunable from the admin console** (see "Live-tunable" below) — flip to prod there, not `.env` |
 | `SENTRY_DSN` | blank | set to enable error tracking ✅ |
 | `BACKUP_RETENTION_DAYS` | `7` | nightly `pg_dump` prune (`dash-backup` service) |
+| `CHAT_FALLBACKS` / `DEEP_FALLBACKS` / `LITE_FALLBACKS` | GA chain (`gemini-2.5-flash,gemini-2.0-flash-001`) | OpenRouter failover when the `-preview` primary 404s (provider retires preview aliases). No effect in normal run; keep non-empty in prod. |
+| `RETENTION_ENABLED` / `RETENTION_DAYS_<TABLE>` | `1` / per-table (30–365) | daily leader-gated purge of append-only telemetry tables (`dash_traces`, `dash_audit_log`, …). Set `0` to disable; override a window e.g. `RETENTION_DAYS_DASH_TRACES=14`. |
+| `DIRECT_DB_MAX_CONN` / `DIRECT_DB_WAIT` | `16` / `15`s | cap on simultaneous **direct** (PgBouncer-bypassing) tool connections. Keep under PG `max_connections` minus the PgBouncer reservation. |
+| `DASH_BG_WORKERS` | `8` | bounded pool for per-chat fire-and-forget write-backs (answer-cache, metric-shortcut, hooks). |
 
 ### 🟢 Optional (only if used — all OFF by default)
 
 - **Federated auth** — local login always works. Add **LDAP** (`ENABLE_LDAP` + `LDAP_*`, secret `LDAP_APP_PASSWORD`), **OIDC/Keycloak** (`OPENID_PROVIDER_URL`/`KEYCLOAK_*` + secret `*_CLIENT_SECRET`), or **Google/Microsoft** (`*_CLIENT_SECRET`). Non-secret config is also editable live at `/ui/auth-admin`; **secrets stay in env only**, never written to the DB.
 - **Slack** — `SLACK_TOKEN` + `SLACK_SIGNING_SECRET` (both secret). ✅
+- **Connector-credential encryption** — `CONNECTION_ENCRYPTION_KEY` (44-char urlsafe-b64 Fernet, secret ✅). **Only needed if you use S3/connectors.** Generate once: `python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"`. **Keep it stable forever** — rotating it makes already-stored connector credentials undecryptable (re-encrypt before changing). Falls back to `JWT_SECRET` if set; with neither, any connector op raises (no hardcoded key).
 - **Autonomy** (v1.17.0) — auto-enqueue a retrain on data/schema change (default detect-only). Now toggled **live** from the admin console (`autonomy_t3_actions`, see "Live-tunable" below); `AUTONOMY_T3_ACTIONS` env is the fallback. Also `AUTONOMY_HEARTBEAT_DISABLED`, `AUTONOMY_POLL_INTERVAL_S=300`, `AUTONOMY_DAILY_TOKEN_CAP=50000`.
 - **Feature flags** — `AUTOML_ENABLED`, `SIM_LAB_ENABLED`, `INVESTMENT_VERTICAL_ENABLED`, `ONTOLOGY_CLUSTER_ENABLED`, `BENCHMARK_SYNC_ENABLED` (set `1` to mount).
 
