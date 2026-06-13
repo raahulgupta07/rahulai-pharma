@@ -43,7 +43,8 @@ async def distiller_loop(interval_seconds: int = _DEFAULT_INTERVAL_S):
             written = 0
             for slug in _slugs():
                 try:
-                    res = run_distiller(slug, dry_run=False)
+                    # Off the event loop — blocking SQL+LLM; leader is also a chat worker.
+                    res = await asyncio.to_thread(run_distiller, slug, False)
                     written += res.get("written", 0)
                 except Exception as e:  # noqa: BLE001
                     logger.exception(f"distiller crashed for {slug}: {e}")

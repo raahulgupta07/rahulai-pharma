@@ -47,8 +47,9 @@ async def query_curator_loop(interval_seconds: int = _DEFAULT_INTERVAL_S):
             promoted = demoted = 0
             for slug in _slugs():
                 try:
-                    demote_on_negative_feedback(slug)
-                    res = run_query_curator(slug, limit=_MAX, dry_run=False)
+                    # Off the event loop — blocking SQL+LLM; leader is also a chat worker.
+                    await asyncio.to_thread(demote_on_negative_feedback, slug)
+                    res = await asyncio.to_thread(run_query_curator, slug, limit=_MAX, dry_run=False)
                     promoted += res.get("promoted", 0)
                     demoted += res.get("demoted", 0)
                 except Exception as e:  # noqa: BLE001

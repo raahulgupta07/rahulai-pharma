@@ -133,6 +133,10 @@ async def _tick() -> None:
         if not cron:
             continue
         last_run = sched.get("last_run_at")
+        # last_run_at may be timestamptz (aware) — strip to naive UTC to match the
+        # naive `now` above, else `now - last_run` raises TypeError.
+        if last_run is not None and getattr(last_run, "tzinfo", None) is not None:
+            last_run = last_run.replace(tzinfo=None)
         # Idempotency: skip if already fired within same minute window.
         if last_run and (now - last_run).total_seconds() < 60:
             continue

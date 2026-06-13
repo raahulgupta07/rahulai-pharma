@@ -2,6 +2,11 @@
 
 Fernet key sourced from env `CONNECTION_ENCRYPTION_KEY` (44-char urlsafe-b64).
 Fallback: derive sha256 from `JWT_SECRET` and urlsafe-b64-encode the 32 bytes.
+
+SECURITY: there is NO hardcoded fallback. If neither var is set, encrypt/decrypt
+raises loudly rather than silently protecting stored connector credentials with a
+publicly-known dev key. Set CONNECTION_ENCRYPTION_KEY (generate once, persist) in
+prod; keep it stable forever — rotating it makes existing ciphertext undecryptable.
 """
 from __future__ import annotations
 
@@ -26,7 +31,12 @@ def get_fernet() -> Fernet:
     if key:
         key_bytes = key.encode("utf-8") if isinstance(key, str) else key
     else:
-        jwt_secret = os.environ.get("JWT_SECRET") or "dev-insecure-jwt-secret"
+        jwt_secret = os.environ.get("JWT_SECRET")
+        if not jwt_secret:
+            raise RuntimeError(
+                "CONNECTION_ENCRYPTION_KEY (or JWT_SECRET) must be set to encrypt/decrypt "
+                "connector credentials. Refusing to use a hardcoded default key."
+            )
         key_bytes = _derive_key_from_secret(jwt_secret)
     return Fernet(key_bytes)
 

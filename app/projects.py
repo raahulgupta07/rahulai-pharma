@@ -12,8 +12,16 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
+import os as _os_bg
 
-_bg_executor = ThreadPoolExecutor(max_workers=5, thread_name_prefix="dash-bg")
+# Bounded background pool for per-chat fire-and-forget write-backs (answer-cache,
+# metric-shortcut, batched hooks). Bounded = backpressure under a chat burst
+# instead of unbounded raw-thread spawning; kept under DIRECT_DB_MAX_CONN so the
+# write-backs can't exhaust the direct-connection cap. Tune with DASH_BG_WORKERS.
+_bg_executor = ThreadPoolExecutor(
+    max_workers=max(2, int(_os_bg.getenv("DASH_BG_WORKERS", "8"))),
+    thread_name_prefix="dash-bg",
+)
 
 from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy import create_engine as _sa_create_engine, inspect, text
@@ -1412,9 +1420,10 @@ async def project_chat(slug: str, request: Request):
                     score_verified(_slug, _q, _a, _sid)
                 except Exception:
                     pass
-            import threading as _th_ac
-            _th_ac.Thread(target=_ac_bg, args=(message, _ac_answer, slug, session_id or ""),
-                          daemon=True).start()
+            # Bounded pool, not a raw per-request thread: a burst of concurrent
+            # chats would otherwise spawn an unbounded burst of OS threads, each
+            # opening a DB connection (amplifies direct-connection pressure).
+            _bg_executor.submit(_ac_bg, message, _ac_answer, slug, session_id or "")
 
             _ac_trace = {
                 "id": f"answercache_{session_id or 'ac'}",
@@ -1585,10 +1594,8 @@ async def project_chat(slug: str, request: Request):
                     score_verified(_slug, _q, _a, _sid)
                 except Exception:
                     pass
-            import threading as _th_ms
-            _th_ms.Thread(target=_ms_bg,
-                          args=(message, _answer, slug, session_id or ""),
-                          daemon=True).start()
+            # Bounded pool, not a raw per-request thread (see _ac_bg above).
+            _bg_executor.submit(_ms_bg, message, _answer, slug, session_id or "")
 
             # Synthetic trace events so the UI surfaces the cached path:
             #   - ReasoningStep → trace card "Used cached verified metric"
@@ -1963,9 +1970,9 @@ async def project_chat(slug: str, request: Request):
             except Exception as e:
                 _logger.debug(f"dream_poignancy_hook failed for {slug}: {e}")
 
-        # ONE daemon thread for all tasks (was ~11 separate submissions).
-        import threading as _th_bg
-        _th_bg.Thread(target=_batched_bg, daemon=True).start()
+        # ONE batched job for all tasks (was ~11 separate submissions), on the
+        # bounded pool rather than a raw per-request thread.
+        _bg_executor.submit(_batched_bg)
 
     # sim chassis deleted 2026-05-23
 

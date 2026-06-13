@@ -2930,22 +2930,31 @@ def rollback_pattern(slug: str, pattern_id: int, request: Request):
 
 def _compute_registry(slug: str) -> list[dict]:
     """Compute health scores for all resource types."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     registry = []
     with _engine.connect() as conn:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
+
+        def _stale_days(latest):
+            # tz-safe: DB columns may come back naive (timestamp) or aware
+            # (timestamptz); naive - aware raises TypeError. Coerce to aware UTC.
+            if not latest:
+                return 999
+            if getattr(latest, "tzinfo", None) is None:
+                latest = latest.replace(tzinfo=timezone.utc)
+            return (now - latest).days
 
         # Memories
         mem_count = conn.execute(text("SELECT COUNT(*) FROM public.dash_memories WHERE project_slug = :s AND (archived IS NULL OR archived = FALSE)"), {"s": slug}).scalar() or 0
         mem_latest = conn.execute(text("SELECT MAX(created_at) FROM public.dash_memories WHERE project_slug = :s AND (archived IS NULL OR archived = FALSE)"), {"s": slug}).scalar()
-        mem_stale = (now - mem_latest).days if mem_latest else 999
+        mem_stale = _stale_days(mem_latest)
         mem_health = min(100, mem_count * 10) - (20 if mem_stale > 30 else 0)
         registry.append({"type": "memory", "count": mem_count, "health": max(0, mem_health), "staleness": mem_stale})
 
         # Query patterns
         pat_count = conn.execute(text("SELECT COUNT(*) FROM public.dash_query_patterns WHERE project_slug = :s"), {"s": slug}).scalar() or 0
         pat_latest = conn.execute(text("SELECT MAX(last_used) FROM public.dash_query_patterns WHERE project_slug = :s"), {"s": slug}).scalar()
-        pat_stale = (now - pat_latest).days if pat_latest else 999
+        pat_stale = _stale_days(pat_latest)
         pat_health = min(100, pat_count * 20) - (20 if pat_stale > 14 else 0)
         registry.append({"type": "pattern", "count": pat_count, "health": max(0, pat_health), "staleness": pat_stale})
 
@@ -2957,7 +2966,7 @@ def _compute_registry(slug: str) -> list[dict]:
         # Evolved instructions
         inst_row = conn.execute(text("SELECT version, created_at FROM public.dash_evolved_instructions WHERE project_slug = :s ORDER BY version DESC LIMIT 1"), {"s": slug}).fetchone()
         inst_health = 100 if inst_row else 0
-        inst_stale = (now - inst_row[1]).days if inst_row else 999
+        inst_stale = _stale_days(inst_row[1] if inst_row else None)
         registry.append({"type": "instruction", "count": inst_row[0] if inst_row else 0, "health": max(0, inst_health - (20 if inst_stale > 30 else 0)), "staleness": inst_stale})
 
         # Annotations
@@ -2968,7 +2977,7 @@ def _compute_registry(slug: str) -> list[dict]:
         # Evals
         eval_count = conn.execute(text("SELECT COUNT(*) FROM public.dash_evals WHERE project_slug = :s"), {"s": slug}).scalar() or 0
         eval_latest = conn.execute(text("SELECT MAX(last_run_at) FROM public.dash_evals WHERE project_slug = :s"), {"s": slug}).scalar()
-        eval_stale = (now - eval_latest).days if eval_latest else 999
+        eval_stale = _stale_days(eval_latest)
         eval_health = min(100, eval_count * 20) - (30 if eval_stale > 7 else 0)
         registry.append({"type": "eval", "count": eval_count, "health": max(0, eval_health), "staleness": eval_stale})
 

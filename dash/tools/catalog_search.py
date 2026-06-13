@@ -33,8 +33,8 @@ _RRF_K = 60
 
 
 def _conn():
-    import psycopg
-    c = psycopg.connect(
+    from dash.tools._direct_db import direct_connect
+    c = direct_connect(
         host=os.getenv("GRAPH_DB_HOST", "dash-db"),
         port=int(os.getenv("GRAPH_DB_PORT", "5432")),
         user=os.getenv("DB_USER", "ai"),

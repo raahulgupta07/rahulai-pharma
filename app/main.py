@@ -343,6 +343,73 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
         _asyncio_bv.create_task(_brain_versions_purge_loop())
     except Exception:
         pass
+    # Telemetry/log retention: append-only audit/trace/usage tables grow forever
+    # (multiple rows per request) and silently rot query speed + disk. Daily,
+    # leader-gated DELETE-by-age. Self-correcting: each table is introspected via
+    # information_schema, so a missing table/column is skipped (never crashes boot).
+    # Disable with RETENTION_ENABLED=0; tune any window with RETENTION_DAYS_<TABLE>.
+    try:
+        if not _should_run_daemons():
+            raise RuntimeError("daemons disabled")
+        import os as _ret_os
+        if _ret_os.getenv("RETENTION_ENABLED", "1").strip().lower() in ("0", "false", "no"):
+            raise RuntimeError("retention disabled")
+        import asyncio as _asyncio_ret
+        # (table, default_days). Candidate timestamp columns resolved at runtime.
+        _RETENTION_SPEC = [
+            ("dash_traces", 30), ("dash_embed_calls", 30), ("dash_sse_audit", 30),
+            ("dash_search_log", 30), ("dash_query_bank_shadow", 30),
+            ("dash_brain_access_log", 60), ("dash_visibility_read_log", 60),
+            ("dash_rls_audit", 90), ("dash_security_events", 90),
+            ("dash_eval_runs", 90), ("dash_training_steps", 90),
+            ("dash_apigw_messages", 90), ("dash_apigw_usage", 180),
+            ("dash_audit_log", 365),
+        ]
+        _RET_TS_CANDS = [
+            "created_at", "accessed_at", "ts", "started_at", "occurred_at",
+            "logged_at", "happened_at", "inserted_at", "event_time", "run_at",
+        ]
+        async def _retention_loop() -> None:
+            import logging as _ret_log
+            from sqlalchemy import create_engine as _ret_ce, text as _ret_text
+            from sqlalchemy.pool import NullPool as _ret_np
+            from db import db_url as _ret_url
+            log = _ret_log.getLogger("telemetry.retention")
+            while True:
+                try:
+                    eng = _ret_ce(_ret_url, poolclass=_ret_np)
+                    for tbl, default_days in _RETENTION_SPEC:
+                        try:
+                            days = int(_ret_os.getenv(f"RETENTION_DAYS_{tbl.upper()}", str(default_days)))
+                            if days <= 0:
+                                continue  # 0/negative = keep forever
+                            with eng.begin() as conn:
+                                if conn.execute(_ret_text("SELECT to_regclass(:q)"),
+                                                {"q": f"public.{tbl}"}).scalar() is None:
+                                    continue  # table absent in this install
+                                col = conn.execute(_ret_text(
+                                    "SELECT column_name FROM information_schema.columns "
+                                    "WHERE table_schema='public' AND table_name=:t "
+                                    "AND column_name = ANY(:c) "
+                                    "ORDER BY array_position(:c::text[], column_name) LIMIT 1"
+                                ), {"t": tbl, "c": _RET_TS_CANDS}).scalar()
+                                if not col:
+                                    continue  # no recognizable timestamp column
+                                # tbl + col are DB-validated identifiers; days is int.
+                                res = conn.execute(_ret_text(
+                                    f"DELETE FROM public.{tbl} "
+                                    f"WHERE {col} < now() - (:d * INTERVAL '1 day')"
+                                ), {"d": days})
+                                if res.rowcount:
+                                    log.info(f"retention: purged {res.rowcount} rows from {tbl} (>{days}d)")
+                        except Exception as _te:
+                            log.warning(f"retention: {tbl} skipped: {_te}")
+                except Exception as e:
+                    log.warning(f"retention loop failed: {e}")
+                await _asyncio_ret.sleep(86400)  # 24h
+        _asyncio_ret.create_task(_retention_loop())
+    except Exception:
+        pass
     # Keep template_bindings + autonomous_workflows infra tables bootstrapped
     # for callers that still write to them (auto_apply, ontology_api). The
     # industry preset registry/apply layer is gone but storage helpers remain.

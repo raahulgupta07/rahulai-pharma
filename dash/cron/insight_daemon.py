@@ -45,7 +45,11 @@ async def insight_daemon_loop(interval_seconds: int = _DEFAULT_INTERVAL_S):
             written = 0
             for slug in _slugs():
                 try:
-                    res = run_insight_curator(slug, dry_run=False)
+                    # run_insight_curator does blocking SQL + LLM calls. The daemon
+                    # leader is also a chat-serving worker, so run it off the event
+                    # loop or every concurrent chat on this worker stalls for the
+                    # cycle duration. (Matches the golden_drift_loop pattern.)
+                    res = await asyncio.to_thread(run_insight_curator, slug, False)
                     written += res.get("written", 0)
                 except Exception as e:  # noqa: BLE001
                     logger.exception(f"insight_curator crashed for {slug}: {e}")

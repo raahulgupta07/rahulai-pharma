@@ -42,7 +42,10 @@ services:
           memory: 4G
 
   dash-pgbouncer:
-    image: edoburu/pgbouncer:latest
+    # Pinned by digest (= the image currently running, PgBouncer 1.25.1). :latest
+    # would silently pull a breaking pgbouncer major (auth/param handling) between
+    # the app and DB on the next compose pull/recreate. Bump deliberately.
+    image: edoburu/pgbouncer@sha256:85d1e38593617af1b5f7f285e97d407e56c29939683cc7cfe4c8f6dc19f1268b
     container_name: cp-pgbouncer
     restart: always
     healthcheck:
@@ -262,15 +265,27 @@ services:
       - REASONING_MODEL=${REASONING_MODEL:-google/gemini-3-flash-preview}
       - ULTRA_MODEL=${ULTRA_MODEL:-google/gemini-3-flash-preview}
       - TRAINING_MODEL=${TRAINING_MODEL:-}
-      - CHAT_FALLBACKS=${CHAT_FALLBACKS:-}
-      - DEEP_FALLBACKS=${DEEP_FALLBACKS:-}
-      - LITE_FALLBACKS=${LITE_FALLBACKS:-}
+      # GA failover chain. Primary models above are a *-preview alias (parked,
+      # do not change without a quality pass); preview IDs are retired by the
+      # provider on notice. These GA fallbacks keep chat alive when that happens
+      # — OpenRouter only routes to them when the primary 404s, so zero change in
+      # normal operation. Override per-tier in .env if you pin different GA models.
+      - CHAT_FALLBACKS=${CHAT_FALLBACKS:-google/gemini-2.5-flash,google/gemini-2.0-flash-001}
+      - DEEP_FALLBACKS=${DEEP_FALLBACKS:-google/gemini-2.5-flash,google/gemini-2.0-flash-001}
+      - LITE_FALLBACKS=${LITE_FALLBACKS:-google/gemini-2.5-flash-lite,google/gemini-2.0-flash-001}
       - SUPER_ADMIN=${SUPER_ADMIN:?SUPER_ADMIN required}
       - SUPER_ADMIN_PASS=${SUPER_ADMIN_PASS:?SUPER_ADMIN_PASS required}
       # Set to 1 to force-resync the super-admin password from SUPER_ADMIN_PASS on
       # every boot (use if the password was lost). Default 0 = a password changed in
       # the UI survives reboots. The account is always ensured + promoted to role=super.
       - SUPER_ADMIN_RESET_PASS=${SUPER_ADMIN_RESET_PASS:-0}
+      # Connector-credential encryption (Fernet). Generate ONCE and keep stable
+      # forever — rotating it makes existing encrypted credentials undecryptable.
+      #   python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"
+      # Required only when S3/connectors are used; crypto.get_fernet() raises if a
+      # connector op runs without this (or JWT_SECRET) set — no hardcoded fallback.
+      - CONNECTION_ENCRYPTION_KEY=${CONNECTION_ENCRYPTION_KEY:-}
+      - JWT_SECRET=${JWT_SECRET:-}
       # Blank is a VALID value: app falls back to PUBLIC_URL, else allows all
       # origins without credentials. Use :- (default empty), NOT :? (which
       # rejects an empty string and breaks cold installs shipping a blank .env).
@@ -347,7 +362,10 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - dash-api
+      # Wait for the API's healthcheck (first-boot migrations + lifespan, ~30-40s)
+      # so Caddy doesn't proxy to a not-yet-ready upstream and serve cold-boot 502s.
+      dash-api:
+        condition: service_healthy
     networks:
       - dash
     deploy:
@@ -381,9 +399,14 @@ services:
       - REASONING_MODEL=${REASONING_MODEL:-google/gemini-3-flash-preview}
       - ULTRA_MODEL=${ULTRA_MODEL:-google/gemini-3-flash-preview}
       - TRAINING_MODEL=${TRAINING_MODEL:-}
-      - CHAT_FALLBACKS=${CHAT_FALLBACKS:-}
-      - DEEP_FALLBACKS=${DEEP_FALLBACKS:-}
-      - LITE_FALLBACKS=${LITE_FALLBACKS:-}
+      # GA failover chain. Primary models above are a *-preview alias (parked,
+      # do not change without a quality pass); preview IDs are retired by the
+      # provider on notice. These GA fallbacks keep chat alive when that happens
+      # — OpenRouter only routes to them when the primary 404s, so zero change in
+      # normal operation. Override per-tier in .env if you pin different GA models.
+      - CHAT_FALLBACKS=${CHAT_FALLBACKS:-google/gemini-2.5-flash,google/gemini-2.0-flash-001}
+      - DEEP_FALLBACKS=${DEEP_FALLBACKS:-google/gemini-2.5-flash,google/gemini-2.0-flash-001}
+      - LITE_FALLBACKS=${LITE_FALLBACKS:-google/gemini-2.5-flash-lite,google/gemini-2.0-flash-001}
     depends_on:
       dash-db:
         condition: service_healthy

@@ -687,7 +687,11 @@ def _create_default_admin():
     """
     import os
     admin_user = os.getenv("SUPER_ADMIN", "admin")
-    admin_pass = os.getenv("SUPER_ADMIN_PASS", admin_user)  # default password = username
+    # SECURITY: no username fallback. An unset SUPER_ADMIN_PASS must NOT silently
+    # become the username (admin/admin). Fail closed: refuse to seed/reset rather
+    # than create a guessable super-admin. Existing accounts (UI-set password) are
+    # untouched, so a missing env var never locks an already-provisioned deploy out.
+    admin_pass = (os.getenv("SUPER_ADMIN_PASS") or "").strip()
     reset_pass = os.getenv("SUPER_ADMIN_RESET_PASS", "0").strip().lower() in ("1", "true", "yes")
     try:
         with _engine.connect() as conn:
@@ -695,6 +699,13 @@ def _create_default_admin():
                 "SELECT id, COALESCE(role, 'user') FROM public.dash_users WHERE username = :u"
             ), {"u": admin_user}).fetchone()
             if not row:
+                if not admin_pass:
+                    logger.error(
+                        "auth: SUPER_ADMIN_PASS is unset/empty — refusing to seed super-admin '%s' "
+                        "with a default password. Set SUPER_ADMIN_PASS in the environment and reboot.",
+                        admin_user,
+                    )
+                    return
                 conn.execute(text(
                     "INSERT INTO public.dash_users (username, password_hash, role) "
                     "VALUES (:u, :p, 'super')"
@@ -708,7 +719,7 @@ def _create_default_admin():
                     "UPDATE public.dash_users SET role = 'super' WHERE id = :i"
                 ), {"i": uid})
                 logger.info("auth: promoted '%s' to role=super (was '%s')", admin_user, role)
-            if reset_pass:
+            if reset_pass and admin_pass:
                 conn.execute(text(
                     "UPDATE public.dash_users SET password_hash = :p WHERE id = :i"
                 ), {"i": uid, "p": _hash_password(admin_pass)})

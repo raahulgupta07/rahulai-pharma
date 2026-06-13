@@ -9697,11 +9697,16 @@ async def stage_upload(request: Request, file: UploadFile, project: str | None =
 
     with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
         size = 0
-        while chunk := await file.read(1024 * 1024):
-            size += len(chunk)
-            if size > MAX_FILE_SIZE:
-                raise HTTPException(400, f"File too large. Max: {MAX_FILE_SIZE // (1024*1024)} MB")
-            tmp.write(chunk)
+        try:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_FILE_SIZE:
+                    # delete=False — must unlink the partial temp on rejection or it leaks.
+                    raise HTTPException(400, f"File too large. Max: {MAX_FILE_SIZE // (1024*1024)} MB")
+                tmp.write(chunk)
+        except BaseException:
+            Path(tmp.name).unlink(missing_ok=True)
+            raise
         tmp_path = tmp.name
 
     try:
@@ -10243,6 +10248,10 @@ async def upload_document(request: Request, file: UploadFile, project: str | Non
                 final_result["error"] = str(e)
                 _emit("Conductor", "Error", f"{str(e)[:150]} | {tb.splitlines()[-2][:100] if len(tb.splitlines()) > 1 else ''}")
             finally:
+                # Own the temp's lifecycle here: this thread always runs to
+                # completion even if the SSE client disconnects (which would skip
+                # the generator's post-loop cleanup and leak the file).
+                Path(tmp_path).unlink(missing_ok=True)
                 progress_q.put(None)  # Signal done
 
         thread = threading.Thread(target=_process, daemon=True)
@@ -10269,7 +10278,7 @@ async def upload_document(request: Request, file: UploadFile, project: str | Non
 
             text_content = conductor_result.get("text", "")
             doc_tables = conductor_result.get("tables", [])
-            import os; os.unlink(tmp_path)
+            # temp already unlinked by _process's finally (disconnect-safe)
 
             # Save text
             _emit_direct = lambda a, s, d: None  # already streamed
@@ -10652,11 +10661,16 @@ async def upload_with_agent(request: Request, file: UploadFile, project: str | N
     # Stream to temp file
     with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
         size = 0
-        while chunk := await file.read(1024 * 1024):
-            size += len(chunk)
-            if size > MAX_FILE_SIZE:
-                raise HTTPException(400, "File too large")
-            tmp.write(chunk)
+        try:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_FILE_SIZE:
+                    # delete=False — unlink the partial temp on rejection or it leaks.
+                    raise HTTPException(400, "File too large")
+                tmp.write(chunk)
+        except BaseException:
+            Path(tmp.name).unlink(missing_ok=True)
+            raise
         tmp_path = tmp.name
 
     user_id = _get_user_id(request) or 1
