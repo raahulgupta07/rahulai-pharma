@@ -502,6 +502,8 @@ How it works per source: the daemon lists objects under your prefix, matches eac
 | `DOMAIN` | `localhost` | your domain | |
 | `DASH_DEBUG` | blank | **keep blank** — truthy leaks tracebacks to clients + mounts `/api/_debug/*` | |
 
+> **Front proxy:** the repo ships **Caddy** (compose/k8s only). On AWS the front is the **ALB** (`/health` target check gates cold-boot 502s for free) or **nginx** — see `DEPLOYMENT_AWS.md` → "nginx reverse proxy" for the `proxy_next_upstream` retry, `client_max_body_size 210m` (200 MB upload cap), and `proxy_buffering off` (SSE) settings. Caddy's `service_healthy` gate + pgbouncer digest pin (commit f58135d) are compose/k8s-only.
+
 ### 🟡 Recommended (prod tuning)
 
 | Variable | Default | Note |

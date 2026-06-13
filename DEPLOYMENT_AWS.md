@@ -192,6 +192,48 @@ aws elbv2 create-load-balancer --name dash-alb \
 # Listener forwards to dash-app target group on port 8000
 ```
 
+## nginx reverse proxy (if fronting with nginx instead of / behind ALB)
+
+The repo ships **Caddy** (`compose.yaml`, `k8s/60-caddy-deploy.yaml`) for local/k8s only. On AWS the front is normally the **ALB** above — its target-group health check on `/health` already gates traffic, so the app is never hit before it's ready (no cold-boot 502s). If you instead terminate at **nginx** on the box (or run nginx in front of the app), Caddy is not used and that gate doesn't apply — replicate it in `nginx.conf`:
+
+```nginx
+upstream cityapi {
+    server 127.0.0.1:8000 max_fails=3 fail_timeout=10s;
+    keepalive 32;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name pharma.yourdomain.com;
+    # ssl_certificate / ssl_certificate_key …
+
+    client_max_body_size 210m;          # uploads cap is 200 MB (MAX_FILE_SIZE)
+
+    location / {
+        proxy_pass http://cityapi;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+
+        # Cold-boot resilience: the API needs ~30-40s on first boot (migrations +
+        # lifespan). Open-source nginx has no ACTIVE health check, so it would 502
+        # during that window — retry the next attempt instead of surfacing it.
+        proxy_connect_timeout 5s;
+        proxy_next_upstream error timeout http_502 http_503 http_504;
+        proxy_next_upstream_tries 3;
+
+        # SSE streaming endpoints (chat, upload progress) must not buffer.
+        proxy_buffering off;
+        proxy_read_timeout 600s;        # Vision/large-file ingest can run minutes
+    }
+}
+```
+
+Notes: set `PUBLIC_URL`/`CORS_ORIGINS` to the nginx-terminated origin; `client_max_body_size` ≥ 200 MB or large uploads 413; `proxy_buffering off` is required for the live thinking-trace + upload SSE. The pgbouncer digest pin and Caddy `service_healthy` gate (commit f58135d) are compose/k8s-only and do not affect this path.
+
 ## IAM task role policy (minimum)
 
 ```jsonc
