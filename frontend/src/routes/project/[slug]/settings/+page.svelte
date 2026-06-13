@@ -7623,7 +7623,7 @@ function signUserJWT($user) {
             {#each recentChats as c}
               <div class="set-activity-row">
                 <span class="set-activity-time">{c.updated_at ? formatRelTime(c.updated_at) : '—'}</span>
-                <span class="set-activity-msg" style="flex: 1;">{c.first_message || '(no preview)'}</span>
+                <span class="set-activity-msg" style="flex: 1;">{c.first_message ?? ((c.keywords||[]).join(' · ') || '(no preview)')}</span>
                 {#if c.score !== null && c.score !== undefined}<span style="font-size: 11px; color: var(--pw-muted);">{c.score}/5</span>{/if}
                 <a href="{base}/project/{slug}?session={c.session_id}" class="set-ghost" style="font-size: 11px;">Open →</a>
               </div>
@@ -8551,11 +8551,11 @@ function signUserJWT($user) {
             <div class="flex items-center justify-between">
               {#if p.question_my}
                 <div style="font-size: 11px; font-weight: 900; color: var(--pw-accent); display: flex; flex-direction: column; gap: 3px;">
-                  <span style="display: flex; align-items: baseline; gap: 6px;"><span class="bi-badge">1</span><span>Q: {p.question}</span></span>
-                  <span style="display: flex; align-items: baseline; gap: 6px;"><span class="bi-badge">2</span><span lang="my" style="color: var(--pw-muted); font-weight: 700;">{p.question_my}</span></span>
+                  <span style="display: flex; align-items: baseline; gap: 6px;"><span class="bi-badge">1</span><span>Q: {p.question ?? ((p.keywords||[]).join(' · ') || '🔒 hidden')}</span></span>
+                  <span style="display: flex; align-items: baseline; gap: 6px;"><span class="bi-badge">2</span><span lang="my" style="color: var(--pw-muted); font-weight: 700;">{p.question_my ?? ''}</span></span>
                 </div>
               {:else}
-                <div style="font-size: 11px; font-weight: 900; color: var(--pw-accent);">Q: {p.question}</div>
+                <div style="font-size: 11px; font-weight: 900; color: var(--pw-accent);">Q: {p.question ?? ((p.keywords||[]).join(' · ') || '🔒 hidden')}</div>
               {/if}
               <span style="font-size: 11px; color: var(--pw-muted);">used {p.uses}x</span>
             </div>
@@ -8573,7 +8573,7 @@ function signUserJWT($user) {
           <div class="ink-border" style="background: var(--pw-surface); padding: 10px 14px; border-left: 3px solid {f.rating === 'up' ? 'var(--pw-accent)' : 'var(--pw-error)'};">
             <div class="flex items-center gap-2">
               <span style="font-size: 13px;">{f.rating === 'up' ? '' : ''}</span>
-              <div style="font-size: 11px; font-weight: 700;">Q: {f.question}</div>
+              <div style="font-size: 11px; font-weight: 700;">Q: {f.question ?? ((f.keywords||[]).join(' · ') || '🔒 hidden')}</div>
             </div>
             {#if f.answer}<div style="font-size: 10px; color: var(--pw-muted); margin-top: 2px;">{f.answer?.slice(0, 150)}...</div>{/if}
           </div>
@@ -10023,7 +10023,7 @@ function signUserJWT($user) {
         {#each brainEvals as ev}
           <div class="ink-border" style="background: var(--pw-surface); padding: 10px 14px; border-left: 3px solid {ev.last_score === 'PASS' ? 'var(--pw-accent)' : ev.last_score === 'ERROR' ? 'var(--pw-error)' : 'var(--pw-muted)'};">
             <div class="flex items-center justify-between">
-              <div style="font-size: 11px; font-weight: 900;">Q: {ev.question}</div>
+              <div style="font-size: 11px; font-weight: 900;">Q: {ev.question ?? ((ev.keywords||[]).join(' · ') || '🔒 hidden')}</div>
               <div class="flex items-center gap-2">
                 {#if ev.last_score}
                   <span class="tag-label" style="font-size: 11px; background: {ev.last_score === 'PASS' ? 'var(--pw-accent)' : 'var(--pw-error)'}; color: white;">{ev.last_score}</span>

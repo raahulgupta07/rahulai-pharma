@@ -82,6 +82,92 @@ def _exec(query: str, params: dict | None = None) -> bool:
         return False
 
 
+# --- privacy: dashboards never show raw chat text ----------------------------
+# Manager policy — analytics surfaces show keyword/aggregate analysis only, never
+# the actual question or answer. Text is HARD-REMOVED server-side by default; it
+# is not sent to the client at all. A deliberate, audited per-row reveal exists
+# for the 👎 train-review flow only (see /feedback/{fid}/reveal).
+import os as _os
+import re as _re
+
+
+def _privacy_on() -> bool:
+    return _os.getenv("PRIVACY_SHOW_CHAT", "0").lower() not in ("1", "true", "yes", "on")
+
+
+def _r(value):
+    """Redact free chat text unless privacy is explicitly disabled."""
+    return None if _privacy_on() else value
+
+
+# --- keyword analysis (aggregate-only — raw text never leaves the server) -----
+# Minimal EN + Burmese stopword set. Burmese has no reliable word spacing, so we
+# tokenize on whitespace/punctuation and keep script runs; the LLM topic daemon
+# (default OFF) handles deeper clustering. Aggregates only ever return terms+counts.
+_STOP_EN = {
+    "the", "a", "an", "and", "or", "but", "if", "of", "to", "in", "on", "for", "is",
+    "are", "was", "were", "be", "been", "am", "do", "does", "did", "how", "what",
+    "which", "who", "whom", "this", "that", "these", "those", "i", "you", "we", "they",
+    "it", "me", "my", "our", "your", "with", "at", "by", "from", "as", "can", "could",
+    "would", "should", "will", "shall", "may", "might", "must", "have", "has", "had",
+    "please", "show", "tell", "give", "want", "need", "get", "find", "list", "about",
+    "there", "here", "all", "any", "some", "no", "not", "more", "most", "than", "then",
+    "so", "up", "out", "now", "much", "many", "also", "let", "me", "us", "ok", "okay",
+}
+_STOP_MY = {"ဘာ", "ဘယ်", "ဘယ်လို", "ဘယ်မှာ", "ဘယ်လောက်", "ပါ", "ပါသလဲ", "လဲ", "လား",
+            "ကို", "က", "မှာ", "နဲ့", "တယ်", "သည်", "များ", "ရှိ", "ပြ", "ပေး", "ချင်"}
+_STOP = _STOP_EN | _STOP_MY
+_TOKEN_RE = _re.compile(r"[A-Za-z][A-Za-z0-9\-]+|[က-႟]+")
+
+# intent buckets shared with /keywords + the legacy /gateway-questions endpoint
+_INTENTS = [
+    ("substitutes", r"substitut|alternativ|replace|အစား"),
+    ("drug info / uses", r"\b(use|uses|used for|indication|side effect|dosage|dose|salt|composition|what is)\b|သုံး|ဆေး|ရောဂါ"),
+    ("stock check", r"\b(stock|in stock|available|how many|units|quantity|balance|count)\b|လက်ကျန်|ပမာဏ|ရှိလား"),
+    ("price", r"\b(price|cost|how much|rate|discount|mrp)\b|ဈေး|စျေး|ဖိုး"),
+    ("analytics (SQL)", r"\b(total|sum|average|breakdown|category|compare|trend|top|sql|report|analy)\b|စုစုပေါင်း| စာရင်း"),
+]
+
+
+def _tok(s: str) -> list[str]:
+    return [t.lower() for t in _TOKEN_RE.findall(s or "")
+            if len(t) > 2 and t.lower() not in _STOP]
+
+
+def _keyword_rollup(texts: list[str], top: int = 40) -> dict:
+    """Pure server-side rollup of question text → terms/bigrams/intents. The input
+    strings are consumed here and discarded; only counts leave this function."""
+    uni: dict[str, int] = {}
+    bi: dict[str, int] = {}
+    buckets = {k: 0 for k, _ in _INTENTS}
+    buckets["other"] = 0
+    for s in texts:
+        toks = _tok(s)
+        for t in toks:
+            uni[t] = uni.get(t, 0) + 1
+        for a, b in zip(toks, toks[1:]):
+            g = f"{a} {b}"
+            bi[g] = bi.get(g, 0) + 1
+        low = (s or "").lower()
+        matched = False
+        for label, pat in _INTENTS:
+            if _re.search(pat, low):
+                buckets[label] += 1
+                matched = True
+                break
+        if not matched:
+            buckets["other"] += 1
+    keywords = [{"term": k, "count": v} for k, v in
+                sorted(uni.items(), key=lambda x: -x[1])[:top]]
+    bigrams = [{"term": k, "count": v} for k, v in
+               sorted(bi.items(), key=lambda x: -x[1])[:top] if v > 1]
+    tot = sum(buckets.values()) or 1
+    intents = [{"label": k, "count": v, "pct": round(100.0 * v / tot, 1)}
+               for k, v in sorted(buckets.items(), key=lambda x: -x[1]) if v > 0]
+    return {"keywords": keywords, "bigrams": bigrams, "intents": intents,
+            "total_questions": len(texts)}
+
+
 # --- window + filters --------------------------------------------------------
 def _window(frm: str | None, to: str | None) -> tuple[datetime, datetime]:
     def _p(s: str | None, default: datetime) -> datetime:
@@ -543,11 +629,13 @@ def get_person(request: Request, username: str,
             "series": [{"bucket": str(r[0]), "requests": int(r[1] or 0), "cost": float(r[2] or 0),
                         "tokens": int(r[3] or 0)} for r in series],
             "by_source": [{"src": r[0], "requests": int(r[1] or 0), "cost": float(r[2] or 0)} for r in by_src],
-            "sessions": [{"session_id": r[0], "first_message": r[1], "project": r[2],
+            "sessions": [{"session_id": r[0], "first_message": _r(r[1]),
+                          "q_chars": len(r[1] or ""), "project": r[2],
                           "created": str(r[3]) if r[3] else None,
                           "updated": str(r[4]) if r[4] else None} for r in sess],
-            "questions": [{"ts": str(r[0]), "question": r[1], "answer": r[2], "rating": r[3],
-                           "session_id": r[4]} for r in fb],
+            "questions": [{"ts": str(r[0]), "question": _r(r[1]), "answer": _r(r[2]),
+                           "q_chars": len(r[1] or ""), "a_chars": len(r[2] or ""),
+                           "rating": r[3], "session_id": r[4]} for r in fb],
         }
     except Exception as e:
         logger.warning("GET /api/admin/usage/person failed: %s", e)
@@ -661,7 +749,7 @@ def get_embed_session(request: Request, session: str,
                 "first_seen": str(hh[10]) if hh[10] else None, "last_seen": str(hh[11]) if hh[11] else None,
             },
             "messages": [{
-                "ts": str(r[0]), "question": r[1], "answer": r[2], "success": bool(r[3]),
+                "ts": str(r[0]), "question": _r(r[1]), "answer": _r(r[2]), "success": bool(r[3]),
                 "latency_ms": int(r[4] or 0), "q_chars": int(r[5] or 0), "a_chars": int(r[6] or 0),
             } for r in msgs],
         }
@@ -688,7 +776,8 @@ def get_messages(request: Request, key_id: int | None = None, store: str | None 
                      + " ORDER BY ts DESC, id DESC LIMIT :l", p)
         return {"enabled": True,
                 "messages": [{"ts": str(r[0]), "session_id": r[1], "service_account": r[2], "store_id": r[3],
-                              "role": r[4], "content": r[5], "masked": bool(r[6])} for r in rows]}
+                              "role": r[4], "content": _r(r[5]), "chars": len(r[5] or ""),
+                              "masked": bool(r[6])} for r in rows]}
     except Exception as e:
         return {"enabled": False, "messages": [], "error": str(e)}
 
@@ -751,7 +840,8 @@ def get_key_detail(request: Request, name: str,
             sid = r[0]; ux = umap.get(sid)
             questions.append({
                 "ts": str(r[4]) if r[4] else None, "session_id": sid,
-                "question": r[1], "answer": r[2], "masked": bool(r[3]),
+                "question": _r(r[1]), "answer": _r(r[2]),
+                "q_chars": len(r[1] or ""), "a_chars": len(r[2] or ""), "masked": bool(r[3]),
                 "tokens": int(ux[1]) if ux else 0,
                 "latency_ms": int(ux[2]) if ux else 0,
                 "status": (ux[3] if ux else None),
@@ -1303,7 +1393,7 @@ def embed_detail(request: Request, embed_id: str, range: str = "7d"):
                   "msg_chars": int(r[6] or 0), "resp_chars": int(r[7] or 0),
                   "latency_ms": int(r[8] or 0) if r[8] is not None else None,
                   "origin": r[9] or "(direct)",
-                  "question": r[10], "answer": r[11]}
+                  "question": _r(r[10]), "answer": _r(r[11])}
                  for r in _rows(
             f"SELECT c.id, c.ts, c.external_user, c.session_token, c.success, c.error, "
             f"c.message_chars, c.response_chars, c.latency_ms, c.origin, {qcol}, {acol} "
@@ -1346,6 +1436,89 @@ def gateway_questions(request: Request, range: str = "7d", key: str | None = Non
         return {"intents": intents, "total": sum(buckets.values()), "messages_enabled": enabled}
     except Exception as e:
         return {"intents": [], "total": 0, "messages_enabled": False, "error": str(e)}
+
+
+def _collect_questions(start, end) -> list[str]:
+    """Pull user-question text from every source INTO MEMORY for rollup. Strings
+    are consumed by _keyword_rollup and never returned to the client."""
+    out: list[str] = []
+    p = {"s": start, "e": end}
+    # registered chat feedback + session openers
+    out += [r[0] for r in _rows(
+        "SELECT question FROM public.dash_feedback WHERE created_at >= :s AND created_at < :e", p) if r[0]]
+    out += [r[0] for r in _rows(
+        "SELECT first_message FROM public.dash_chat_sessions "
+        "WHERE updated_at >= :s AND updated_at < :e", p) if r[0]]
+    # API gateway user turns
+    out += [r[0] for r in _rows(
+        "SELECT content FROM public.dash_apigw_messages "
+        "WHERE role='user' AND ts >= :s AND ts < :e", p) if r[0]]
+    # embed widget messages (column may not exist)
+    try:
+        has_body = _rows("SELECT 1 FROM information_schema.columns WHERE table_schema='public' "
+                         "AND table_name='dash_embed_calls' AND column_name='message_text' LIMIT 1")
+        if has_body:
+            out += [r[0] for r in _rows(
+                "SELECT message_text FROM public.dash_embed_calls "
+                "WHERE message_text IS NOT NULL AND ts >= :s AND ts < :e", p) if r[0]]
+    except Exception:
+        pass
+    return out
+
+
+@router.get("/keywords")
+def keywords_analytics(request: Request,
+                       frm: str | None = Query(None, alias="from"), to: str | None = None):
+    """Aggregate keyword/topic analysis across ALL question sources — the
+    privacy-safe replacement for reading raw chats. Returns term + bigram
+    frequencies, intent buckets, and rising terms (this window vs the previous
+    equal-length window). NO raw question or answer text ever leaves here."""
+    _gate(request)
+    start, end = _window(frm, to)
+    try:
+        cur = _collect_questions(start, end)
+        roll = _keyword_rollup(cur)
+        # previous equal window → rising terms (delta in rank/count)
+        span = end - start
+        prev = _collect_questions(start - span, start)
+        prev_counts = {k["term"]: k["count"] for k in _keyword_rollup(prev)["keywords"]}
+        rising = []
+        for k in roll["keywords"]:
+            was = prev_counts.get(k["term"], 0)
+            rising.append({"term": k["term"], "count": k["count"], "prev": was,
+                           "delta": k["count"] - was})
+        rising = sorted(rising, key=lambda x: -x["delta"])[:15]
+        return {"window": {"from": start.isoformat(), "to": end.isoformat()},
+                "total_questions": roll["total_questions"],
+                "prev_questions": len(prev),
+                "keywords": roll["keywords"], "bigrams": roll["bigrams"],
+                "intents": roll["intents"], "rising": rising}
+    except Exception as e:
+        logger.warning("GET /api/admin/usage/keywords failed: %s", e)
+        return {"keywords": [], "bigrams": [], "intents": [], "rising": [],
+                "total_questions": 0, "error": str(e)}
+
+
+@router.get("/keyword-topics")
+def keyword_topics(request: Request):
+    """Latest LLM topic-cluster snapshot (written by the keyword_topics daemon,
+    default OFF). Aggregates only — topic label + count + representative keywords.
+    Empty when the daemon has never run."""
+    _gate(request)
+    try:
+        we = _rows("SELECT MAX(window_end) FROM public.dash_keyword_topics")
+        if not we or not we[0][0]:
+            return {"enabled": False, "topics": [], "window_end": None}
+        wend = we[0][0]
+        import json as _json
+        rows = _rows("SELECT topic, count, pct, keywords FROM public.dash_keyword_topics "
+                     "WHERE window_end = :e ORDER BY count DESC", {"e": wend})
+        topics = [{"topic": r[0], "count": int(r[1] or 0), "pct": float(r[2] or 0),
+                   "keywords": (r[3] if isinstance(r[3], list)
+                                else _json.loads(r[3] or "[]"))} for r in rows]
+        return {"enabled": True, "window_end": str(wend), "topics": topics}
+    except Exception as e:
+        return {"enabled": False, "topics": [], "error": str(e)}
 
 
 @router.get("/gateway-tools")
@@ -1438,7 +1611,7 @@ def embeddings_analytics(request: Request,
     recent = [{"ts": r[0].isoformat() if r[0] else None, "model": r[1] or "(none)",
                "tokens": int(r[2] or 0), "cost": float(r[3] or 0),
                "actor": r[4] or "—", "latency_ms": int(r[5]) if r[5] is not None else None,
-               "text": r[6]}
+               "text": _r(r[6]), "chars": len(r[6] or "")}
               for r in _rows("SELECT ts, COALESCE(NULLIF(engine_model,''),model), prompt_tokens, "
                              "cost_usd, service_account, latency_ms, input_preview " + base
                              + " ORDER BY ts DESC LIMIT :lim", {**p, "lim": max(1, min(500, limit))})]
@@ -1477,16 +1650,25 @@ def feedback_analytics(request: Request,
                   for r in _rows("SELECT COALESCE(project_slug,'(none)'), "
                                  "COUNT(*) FILTER (WHERE rating='up'), COUNT(*) FILTER (WHERE rating='down') "
                                  "FROM public.dash_feedback " + win + " GROUP BY 1 ORDER BY 3 DESC LIMIT 20", p)]
-    disliked = [{"id": int(r[0]), "project": r[1], "question": r[2], "answer": r[3],
-                 "sql": r[4], "ts": r[5].isoformat() if r[5] else None,
-                 "comment": r[6], "tags": list(r[7]) if r[7] else [],
-                 "correction": r[8], "correction_status": r[9]}
+    # Privacy: the analytics dashboard shows NO raw text. Each 👎 row carries only
+    # keyword chips (top terms from its own question) + meta + char counts. The full
+    # text is retrievable for review only via the audited /feedback/{fid}/reveal.
+    disliked = [{"id": int(r[0]), "project": r[1],
+                 "question": _r(r[2]), "answer": _r(r[3]), "sql": _r(r[4]),
+                 "q_chars": len(r[2] or ""), "a_chars": len(r[3] or ""),
+                 "keywords": [k["term"] for k in _keyword_rollup([r[2] or ""], top=6)["keywords"]],
+                 "ts": r[5].isoformat() if r[5] else None,
+                 "comment": _r(r[6]), "tags": list(r[7]) if r[7] else [],
+                 "has_correction": bool(r[8]), "correction": _r(r[8]),
+                 "correction_status": r[9]}
                 for r in _rows("SELECT id, project_slug, question, answer, sql_query, created_at, "
                                "comment, comment_tags, correction, correction_status "
                                "FROM public.dash_feedback WHERE rating='down' AND created_at >= :start "
                                "AND created_at < :end ORDER BY created_at DESC LIMIT :lim",
                                {**p, "lim": max(1, min(200, limit))})]
-    liked = [{"id": int(r[0]), "project": r[1], "question": r[2], "ts": r[3].isoformat() if r[3] else None}
+    liked = [{"id": int(r[0]), "project": r[1], "question": _r(r[2]), "q_chars": len(r[2] or ""),
+              "keywords": [k["term"] for k in _keyword_rollup([r[2] or ""], top=6)["keywords"]],
+              "ts": r[3].isoformat() if r[3] else None}
              for r in _rows("SELECT id, project_slug, question, created_at FROM public.dash_feedback "
                             "WHERE rating='up' AND created_at >= :start AND created_at < :end "
                             "ORDER BY created_at DESC LIMIT 15", p)]
@@ -1539,6 +1721,30 @@ def feedback_dismiss(fid: int, request: Request):
     if not ok:
         raise HTTPException(500, "dismiss failed")
     return {"ok": True, "status": "dismissed"}
+
+
+@router.get("/feedback/{fid}/reveal")
+def feedback_reveal(fid: int, request: Request):
+    """Deliberate, AUDITED reveal of ONE 👎 row's raw text — the only path that
+    returns question/answer/correction in cleartext. Used solely by the train-review
+    flow so an admin can judge a correction before promote/dismiss. Super-admin gated
+    + written to dash_audit_log. The general analytics dashboard never calls this."""
+    _gate(request)
+    rows = _rows("SELECT project_slug, question, answer, sql_query, comment, correction, "
+                 "correction_status, created_at "
+                 "FROM public.dash_feedback WHERE id = :id", {"id": fid})
+    if not rows:
+        raise HTTPException(404, "feedback not found")
+    r = rows[0]
+    try:
+        from app.auth import log_action
+        log_action(_get_user(request), "feedback.reveal", "dash_feedback", str(fid),
+                   "revealed raw Q&A for train review")
+    except Exception:
+        pass
+    return {"id": fid, "project": r[0], "question": r[1], "answer": r[2], "sql": r[3],
+            "comment": r[4], "correction": r[5], "correction_status": r[6],
+            "ts": r[7].isoformat() if r[7] else None}
 
 
 @router.get("/tokens")

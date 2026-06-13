@@ -2,6 +2,23 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.43.0",
+      "date": "2026-06-13",
+      "title": "Private analytics — keywords, not chats",
+      "items": [
+        "Admin dashboards now show keyword and topic analysis instead of customers' actual questions and answers. A new Keywords view reveals the most-asked terms, what people ask about, trending words and topic clusters — all without exposing any private chat text.",
+        "For training review, an admin can deliberately reveal a single flagged answer; every reveal is recorded in the security trail."
+      ]
+    },
+    {
+      "version": "1.42.0",
+      "date": "2026-06-13",
+      "title": "Simpler top menu",
+      "items": [
+        "The top menu now leads with Chat, and Brain and Settings each have their own button so you can reach them in one click. Everything else is in the same place."
+      ]
+    },
+    {
       "version": "1.41.0",
       "date": "2026-06-12",
       "title": "New Connectors page",

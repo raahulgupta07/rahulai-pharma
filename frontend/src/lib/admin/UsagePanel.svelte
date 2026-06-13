@@ -10,7 +10,7 @@
     { label: 'Models & Tokens', items: [['models', 'Models', 'cube'], ['tokens', 'Tokens', 'coins'], ['embeddings', 'Embeddings', 'vector']] },
     { label: 'Learning', items: [['learning', 'Like / Dislike', 'thumb']] },
     { label: 'People', items: [['people', 'People', 'people2']] },
-    { label: 'Analytics', items: [['tools', 'Tools', 'wrench'], ['security', 'Security', 'shield'], ['entities', 'Entities', 'users']] },
+    { label: 'Analytics', items: [['keywords', 'Keywords', 'thumb'], ['tools', 'Tools', 'wrench'], ['security', 'Security', 'shield'], ['entities', 'Entities', 'users']] },
     { label: 'Answer Cache', items: [['cache', 'Answer Cache', 'vector']] },
     { label: 'Query Bank', items: [['querybank', 'Query Bank', 'wrench']] },
     { label: 'Billing', items: [['billing', 'Billing', 'receipt'], ['live', 'Live', 'bolt']] },
@@ -54,6 +54,28 @@
   let modelsData: any = $state(null), tokensData: any = $state(null);
   let embedsData: any = $state(null), feedbackData: any = $state(null);
   let fbBusy: number = $state(0), fbActionMsg = $state('');
+  // privacy: keyword analytics + per-row audited reveal (train review only)
+  let keywordsData: any = $state(null), keyTopics: any = $state(null);
+  let revealed: Record<number, any> = $state({});
+  let revealBusy: number = $state(0);
+  // client-side keyword masking for the few project-scoped tables that still
+  // send question text (cache / query bank). The dashboard shows chips, not prose.
+  const _STOPW = new Set(('the a an and or but if of to in on for is are was how what which who this that '
+    + 'with at by from as can could would should will may have has please show tell give want need get '
+    + 'find list about all any some no not more me my our your you we they it do does').split(' '));
+  function kw(s: string, n = 5): string[] {
+    const seen = new Set<string>(); const out: string[] = [];
+    for (const m of (s || '').toLowerCase().match(/[a-z][a-z0-9\-]{2,}|[က-႟]+/g) || []) {
+      if (_STOPW.has(m) || seen.has(m)) continue; seen.add(m); out.push(m); if (out.length >= n) break;
+    }
+    return out;
+  }
+  async function revealFeedback(d: any) {
+    revealBusy = d.id;
+    try { revealed = { ...revealed, [d.id]: await jget(`/api/admin/usage/feedback/${d.id}/reveal`) }; }
+    catch (e: any) { fbActionMsg = `Reveal failed: ${e.message}`; }
+    revealBusy = 0;
+  }
   let entUsers: any[] = $state([]), entStores: any[] = $state([]);
   let logins: any[] = $state([]);
   // people activity
@@ -255,6 +277,13 @@
       else if (t === 'tokens') tokensData = await jget(`/api/admin/usage/tokens?${qs()}`);
       else if (t === 'embeddings') embedsData = await jget(`/api/admin/usage/embeddings?${qs()}`);
       else if (t === 'learning') feedbackData = await jget(`/api/admin/usage/feedback?${qs()}`);
+      else if (t === 'keywords') {
+        const [k, tp] = await Promise.all([
+          jget(`/api/admin/usage/keywords?${qs()}`),
+          jget(`/api/admin/usage/keyword-topics`),
+        ]);
+        keywordsData = k; keyTopics = tp;
+      }
       else if (t === 'errors') errs = await jget(`/api/admin/usage/errors?${qs()}`);
       else if (t === 'tools') tools = await jget(`/api/admin/usage/tools?${qs()}`);
       else if (t === 'security') sec = await jget(`/api/admin/usage/security?${qs()}`);
@@ -671,19 +700,31 @@
           {#if fbActionMsg}<div class="ua-fbmsg">{fbActionMsg}</div>{/if}
           <div class="ua-disliked">
             {#each (feedbackData.disliked ?? []) as d}
+              {@const rv = revealed[d.id]}
               <div class="ua-dcard">
-                <div class="ua-dq">{d.question}</div>
-                {#if d.answer}<div class="ua-da">{d.answer}</div>{/if}
+                {#if rv}
+                  <!-- audited reveal (train review only) -->
+                  <div class="ua-dq">{rv.question}</div>
+                  {#if rv.answer}<div class="ua-da">{rv.answer}</div>{/if}
+                  {#if rv.comment}<div class="ua-dcmt"><b>Why wrong:</b> {rv.comment}</div>{/if}
+                  {#if rv.correction}<div class="ua-dcorr"><b>User's correction</b><code>{rv.correction}</code></div>{/if}
+                  {#if rv.sql}<code class="ua-dsql">{rv.sql}</code>{/if}
+                {:else}
+                  <!-- privacy default: keywords + meta only, no raw text -->
+                  <div class="ua-dchips">
+                    {#each (d.keywords ?? []) as k}<span class="ua-dtag">{k}</span>{/each}
+                    {#if !(d.keywords ?? []).length}<span class="ua-muted">no keywords</span>{/if}
+                  </div>
+                  <div class="ua-dchars">Q · {d.q_chars ?? 0} chars{#if d.a_chars} · A · {d.a_chars} chars{/if}{#if d.has_correction} · ✎ correction on file{/if}</div>
+                {/if}
                 {#if (d.tags ?? []).length}
                   <div class="ua-dtags">{#each d.tags as tg}<span class="ua-dtag">{tg}</span>{/each}</div>
                 {/if}
-                {#if d.comment}<div class="ua-dcmt"><b>Why wrong:</b> {d.comment}</div>{/if}
-                {#if d.correction}
-                  <div class="ua-dcorr"><b>User's correction</b><code>{d.correction}</code></div>
-                {/if}
-                {#if d.sql}<code class="ua-dsql">{d.sql}</code>{/if}
-                <div class="ua-dmeta">{d.project} · {d.ts ? new Date(d.ts).toLocaleString() : ''}</div>
-                {#if d.correction}
+                <div class="ua-dmeta">
+                  {d.project} · {d.ts ? new Date(d.ts).toLocaleString() : ''}
+                  {#if !rv}<button class="ua-reveal" disabled={revealBusy === d.id} onclick={() => revealFeedback(d)} title="Audited — logged to the security trail">{revealBusy === d.id ? '…' : '🔓 Reveal for review'}</button>{/if}
+                </div>
+                {#if d.has_correction}
                   {#if d.correction_status === 'promoted'}
                     <div class="ua-dstat ok">✓ promoted to golden</div>
                   {:else if d.correction_status === 'dismissed'}
@@ -700,6 +741,88 @@
             {#if !(feedbackData.disliked ?? []).length}<div class="u-empty">no disliked answers 🎉</div>{/if}
           </div>
         </div>
+      </div>
+    </section>
+  {/if}
+
+  <!-- ============ KEYWORDS (privacy-safe topic analytics) ============ -->
+  {#if tab === 'keywords'}
+    {@const kd = keywordsData ?? {}}
+    {@const kmax = Math.max(1, ...((kd.keywords ?? []).map((k: any) => k.count)))}
+    <section class="ua">
+      <div class="u-note">🔒 Privacy mode — these dashboards show keyword &amp; topic analysis only. Raw questions and answers are never displayed.</div>
+      <div class="ua-kpis">
+        <div class="ua-kpi"><div class="ua-kn">{compact(kd.total_questions ?? 0)}</div><div class="ua-kl">Questions analysed</div></div>
+        <div class="ua-kpi"><div class="ua-kn">{compact((kd.keywords ?? []).length)}</div><div class="ua-kl">Distinct terms</div></div>
+        <div class="ua-kpi ua-kpi-accent"><div class="ua-kn">{(kd.keywords ?? [])[0]?.term ?? '—'}</div><div class="ua-kl">Top keyword</div></div>
+        <div class="ua-kpi"><div class="ua-kn">{compact(kd.prev_questions ?? 0)}</div><div class="ua-kl">Prev window</div></div>
+      </div>
+
+      <div class="ua-grid2">
+        <!-- keyword cloud -->
+        <div class="ua-card">
+          <div class="ua-h">Top keywords</div>
+          <div class="kwcloud">
+            {#each (kd.keywords ?? []) as k}
+              <span class="kwtag" style="font-size:{12 + Math.round(14 * k.count / kmax)}px" title="{k.count} mentions">{k.term} <b>{k.count}</b></span>
+            {/each}
+            {#if !(kd.keywords ?? []).length}<div class="u-empty">no questions in this window</div>{/if}
+          </div>
+        </div>
+        <!-- intent buckets -->
+        <div class="ua-card">
+          <div class="ua-h">What people ask about</div>
+          {#each (kd.intents ?? []) as it}
+            <div class="kwbar">
+              <div class="kwbar-lbl">{it.label}</div>
+              <div class="kwbar-track"><div class="kwbar-fill" style="width:{it.pct}%"></div></div>
+              <div class="kwbar-val">{it.count} · {it.pct}%</div>
+            </div>
+          {/each}
+          {#if !(kd.intents ?? []).length}<div class="u-empty">—</div>{/if}
+        </div>
+      </div>
+
+      <div class="ua-grid2">
+        <!-- rising terms -->
+        <div class="ua-card">
+          <div class="ua-h">Rising terms <span class="ua-sub">vs previous window</span></div>
+          <table class="ua-tbl">
+            <thead><tr><th>Term</th><th class="r">Now</th><th class="r">Was</th><th class="r">Δ</th></tr></thead>
+            <tbody>
+              {#each (kd.rising ?? []) as r}
+                <tr><td class="mono">{r.term}</td><td class="r">{r.count}</td><td class="r dim">{r.prev}</td>
+                  <td class="r" class:up={r.delta > 0} class:down={r.delta < 0}>{r.delta > 0 ? '+' : ''}{r.delta}</td></tr>
+              {/each}
+              {#if !(kd.rising ?? []).length}<tr><td colspan="4" class="u-empty">—</td></tr>{/if}
+            </tbody>
+          </table>
+        </div>
+        <!-- common phrases -->
+        <div class="ua-card">
+          <div class="ua-h">Common phrases</div>
+          <div class="kwcloud">
+            {#each (kd.bigrams ?? []) as b}<span class="kwtag">{b.term} <b>{b.count}</b></span>{/each}
+            {#if !(kd.bigrams ?? []).length}<div class="u-empty">—</div>{/if}
+          </div>
+        </div>
+      </div>
+
+      <!-- LLM topic clusters (daemon, default off) -->
+      <div class="ua-card">
+        <div class="ua-h">Topic clusters <span class="ua-sub">{keyTopics?.enabled ? 'LLM-grouped · ' + (keyTopics.window_end ? new Date(keyTopics.window_end).toLocaleDateString() : '') : 'enable KEYWORD_TOPICS daemon'}</span></div>
+        {#if keyTopics?.enabled && (keyTopics.topics ?? []).length}
+          <div class="kwtopics">
+            {#each keyTopics.topics as t}
+              <div class="kwtopic">
+                <div class="kwtopic-h"><b>{t.topic}</b><span class="kwtopic-n">{t.count} · {t.pct}%</span></div>
+                <div class="kwchips">{#each (t.keywords ?? []) as k}<span class="kwchip">{k}</span>{/each}</div>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <div class="u-empty">LLM topic clustering is off. Live keyword analysis above needs no setup; richer named clusters appear here once the keyword-topics daemon runs (KEYWORD_TOPICS_ENABLED=1).</div>
+        {/if}
       </div>
     </section>
   {/if}
@@ -1020,18 +1143,18 @@
           {#if curatePreview.length}<button class="u-btn sm" style="float:right" onclick={promoteAll} disabled={curateBusy}>{curateBusy ? 'promoting…' : `Promote all (${curatePreview.length})`}</button>{/if}
         </div>
         <table class="u-tbl"><thead><tr><th>question</th><th>value</th><th>SQL</th></tr></thead><tbody>
-          {#each curatePreview as c}<tr><td>{c.question}</td><td class="num">{c.value ?? '—'}</td><td class="mono dim" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{c.sql}</td></tr>{/each}
+          {#each curatePreview as c}<tr><td>{#each (c.keywords ?? kw(c.question)) as k}<span class="kwchip">{k}</span>{/each}{#if !(c.keywords ?? kw(c.question)).length}<span class="dim">—</span>{/if}</td><td class="num">{c.value ?? '—'}</td><td class="mono dim" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{c.sql}</td></tr>{/each}
           {#if !curatePreview.length}<tr><td colspan="3" class="u-empty">nothing new to cache</td></tr>{/if}
         </tbody></table>
       </div>
     {/if}
 
     <div class="u-card"><div class="u-ctitle">Frequent questions (last 30d, asked ≥3×)</div>
-      <table class="u-tbl"><thead><tr><th>×</th><th>question</th><th></th></tr></thead><tbody>
+      <table class="u-tbl"><thead><tr><th>×</th><th>keywords</th><th></th></tr></thead><tbody>
         {#each cacheClusters as c}
           <tr>
             <td class="num">{c.count}</td>
-            <td>{c.representative}</td>
+            <td>{#each (c.keywords ?? kw(c.representative)) as k}<span class="kwchip">{k}</span>{/each}{#if !((c.keywords ?? kw(c.representative)).length)}<span class="dim">—</span>{/if}</td>
             <td style="text-align:right">
               <button class="u-btn ghost sm" onclick={() => cacheThis(c.representative)} disabled={cacheBusy === c.representative}>
                 {cacheBusy === c.representative ? 'caching…' : 'Cache this →'}
@@ -1047,7 +1170,7 @@
       <table class="u-tbl"><thead><tr><th>question</th><th>hits</th><th>source</th><th>schema</th><th>by</th><th></th></tr></thead><tbody>
         {#each cacheRows as r}
           <tr class:dim={r.status !== 'live'}>
-            <td>{r.question}</td>
+            <td>{#each (r.keywords ?? kw(r.question)) as k}<span class="kwchip">{k}</span>{/each}{#if !(r.keywords ?? kw(r.question)).length}<span class="dim">—</span>{/if}</td>
             <td class="num">{r.hit_count}</td>
             <td class="mono dim">{(r.source_tables ?? []).join(', ') || '—'}</td>
             <td>{#if r.schema_fresh}<span class="u-st">✓</span>{:else}<span class="u-st error">⚠ drift</span>{/if}</td>
@@ -1093,7 +1216,7 @@
       <table class="u-tbl"><thead><tr><th>question</th><th>status</th><th>uses</th><th>rows</th><th>SQL</th><th></th></tr></thead><tbody>
         {#each qbPatterns as p}
           <tr class:dim={p.status === 'demoted'}>
-            <td>{p.question}</td>
+            <td>{#each (p.keywords ?? kw(p.question)) as k}<span class="kwchip">{k}</span>{/each}{#if !(p.keywords ?? kw(p.question)).length}<span class="dim">—</span>{/if}</td>
             <td><span class="u-st">{p.status}</span></td>
             <td class="num">{p.uses}</td>
             <td class="num">{p.rows_returned ?? '—'}</td>
@@ -1204,12 +1327,12 @@
             {/if}
             <div class="u-ctitle" style="margin-top:1rem">Recent sessions ({drawerData.sessions?.length ?? 0})</div>
             <table class="u-tbl"><thead><tr><th>started</th><th>first message</th></tr></thead><tbody>
-              {#each drawerData.sessions ?? [] as r}<tr><td class="dim">{shortTs(r.updated)}</td><td class="dw-q">{r.first_message ?? '—'}</td></tr>{/each}
+              {#each drawerData.sessions ?? [] as r}<tr><td class="dim">{shortTs(r.updated)}</td><td class="dw-q dim">[{r.q_chars ?? 0} chars]</td></tr>{/each}
               {#if !(drawerData.sessions ?? []).length}<tr><td colspan="2" class="u-empty">no sessions in window</td></tr>{/if}
             </tbody></table>
             <div class="u-ctitle" style="margin-top:1rem">Rated questions ({drawerData.questions?.length ?? 0})</div>
             <table class="u-tbl"><thead><tr><th>when</th><th>question</th><th>👍/👎</th></tr></thead><tbody>
-              {#each drawerData.questions ?? [] as r}<tr><td class="dim">{shortTs(r.ts)}</td><td class="dw-q">{r.question}</td><td>{#if r.rating === 'up'}<span class="sat good">👍</span>{:else}<span class="sat bad">👎</span>{/if}</td></tr>{/each}
+              {#each drawerData.questions ?? [] as r}<tr><td class="dim">{shortTs(r.ts)}</td><td class="dw-q dim">[Q · {r.q_chars ?? 0} chars]</td><td>{#if r.rating === 'up'}<span class="sat good">👍</span>{:else}<span class="sat bad">👎</span>{/if}</td></tr>{/each}
               {#if !(drawerData.questions ?? []).length}<tr><td colspan="3" class="u-empty">no rated questions (only thumbs-rated answers show here)</td></tr>{/if}
             </tbody></table>
           {/if}
@@ -1442,4 +1565,29 @@
   .ua-dstat.ok { color: #2f7a4a; }
   .ua-dstat.muted { color: #9a8f80; }
   .ua-fbmsg { font-size: 11px; color: #2f7a4a; background: #eef7f0; border-radius: 6px; padding: .35rem .6rem; margin-bottom: .5rem; }
+  /* privacy: disliked card chips + reveal */
+  .ua-dchips { display: flex; flex-wrap: wrap; gap: .25rem; }
+  .ua-dchars { font-size: 10px; color: #9a8f80; margin-top: .3rem; }
+  .ua-muted { font-size: 10.5px; color: #b3a695; }
+  .ua-reveal { font-size: 10px; font-weight: 600; border: 1px solid #d8c8b8; background: #fff; color: #8a6a52; border-radius: 6px; padding: .12rem .5rem; cursor: pointer; margin-left: .5rem; }
+  .ua-reveal:hover:not(:disabled) { background: #f3ece4; }
+  .ua-reveal:disabled { opacity: .55; cursor: default; }
+  /* keyword analytics */
+  .u-note { font-size: 11.5px; color: #6b5a48; background: #fbf3ef; border: 1px solid #efd9d0; border-radius: 8px; padding: .5rem .75rem; margin-bottom: 1rem; }
+  .kwcloud { display: flex; flex-wrap: wrap; gap: .4rem; align-items: baseline; }
+  .kwtag { background: #f3ece4; color: #5a4a38; border-radius: 999px; padding: .15rem .6rem; line-height: 1.5; }
+  .kwtag b { color: #c2683f; font-weight: 700; }
+  .kwchips { display: flex; flex-wrap: wrap; gap: .25rem; margin-top: .3rem; }
+  .kwchip { font-size: 9.5px; background: #efe2d6; color: #7a5c43; border-radius: 999px; padding: .1rem .45rem; }
+  .kwbar { display: grid; grid-template-columns: 130px 1fr 80px; align-items: center; gap: .5rem; margin: .35rem 0; font-size: 11.5px; }
+  .kwbar-lbl { color: #5a4a38; }
+  .kwbar-track { background: #f0e7dd; border-radius: 999px; height: 10px; overflow: hidden; }
+  .kwbar-fill { background: #c2683f; height: 100%; border-radius: 999px; }
+  .kwbar-val { color: #9a8f80; text-align: right; font-variant-numeric: tabular-nums; }
+  .ua-tbl td.r.up { color: #2f7a4a; font-weight: 700; }
+  .ua-tbl td.r.down { color: #b3603f; }
+  .kwtopics { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .6rem; margin-top: .3rem; }
+  .kwtopic { border: 1px solid #ece2d6; background: #fdfaf6; border-radius: 8px; padding: .5rem .65rem; }
+  .kwtopic-h { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: #4a3c2c; }
+  .kwtopic-n { font-size: 10px; color: #9a8f80; }
 </style>

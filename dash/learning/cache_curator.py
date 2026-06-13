@@ -361,8 +361,11 @@ def list_cached(project_slug: str, *, limit: int = 200) -> list[dict]:
                     fresh = (not live) or (live == stored)
                 except Exception:
                     fresh = True
+            from dash.privacy import redact as _r, keywords as _kw
             out.append({
-                "id": r[0], "question": r[1], "hit_count": int(r[2] or 0),
+                # privacy: dashboards show keyword chips, never the raw question
+                "id": r[0], "question": _r(r[1]), "keywords": _kw(r[1]),
+                "hit_count": int(r[2] or 0),
                 "status": r[3], "source_tables": tables,
                 "promoted_by": r[6], "confidence": float(r[7] or 0),
                 "created_at": r[8].isoformat() + "Z" if r[8] else None,

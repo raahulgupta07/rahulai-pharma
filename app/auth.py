@@ -2560,7 +2560,8 @@ def admin_chat_logs(request: Request, project: str = "", user: str = "", limit: 
 
     with _engine.connect() as conn:
         rows = conn.execute(text(query), params).fetchall()
-    return {"logs": [{"session_id": r[0], "project": r[1], "user": r[2], "created_at": str(r[3]) if r[3] else None, "updated_at": str(r[4]) if r[4] else None, "first_message": r[5]} for r in rows]}
+    from dash.privacy import redact as _r, keywords as _kw
+    return {"logs": [{"session_id": r[0], "project": r[1], "user": r[2], "created_at": str(r[3]) if r[3] else None, "updated_at": str(r[4]) if r[4] else None, "first_message": _r(r[5]), "keywords": _kw(r[5])} for r in rows]}
 
 
 @router.get("/admin/schemas")

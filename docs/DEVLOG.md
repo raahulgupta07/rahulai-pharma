@@ -2,6 +2,28 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-13 (latest+105) — v1.43.0: Private analytics — keyword/topic dashboards, no raw chat
+
+**Manager policy:** admin/analytics dashboards must show keyword + topic analysis only, NEVER the actual customer question/answer text.
+
+**Shared gate** `dash/privacy.py` — `privacy_on()` (env `PRIVACY_SHOW_CHAT`, default OFF = hard-hide), `redact(v)` (→None when on), `keywords(text,n)` (EN+Burmese stopword tokenizer → top terms; the privacy-safe stand-in). Endpoints pass chat text through `redact()` + return a `keywords` list instead.
+
+**Backend redaction** (server-side hard-remove; text never reaches the browser):
+- `app/usage_api.py` — `_privacy_on()`/`_r()` on `/person`, `/embed-session`, `/messages`, `/key/{name}`, `/embed-detail`, `/recent`, `/feedback` (disliked+liked → chips+char counts).
+- `dash/learning/query_curator.py` (`/query-bank/patterns`), `cache_curator.py` (`/cache/list`), `question_clusters.py` (`/cache/clusters` — display keywords but keep `representative` for the "Cache this" action), `app/learning.py` (`/{slug}/feedback|query-patterns|evals`), `app/auth.py` (chat-logs `first_message`), `app/golden_api.py` (corpus list + drift → keywords + `qhash`).
+- **New aggregate endpoint** `/api/admin/usage/keywords` — terms, bigrams, intent buckets, rising terms (this window vs prev). Multi-source collect (`_collect_questions`: feedback + chat sessions + gateway + embed), consumed in-memory, only counts returned.
+- **Audited reveal** — `/feedback/{fid}/reveal` and `/golden/{id}/reveal`: the ONLY paths returning cleartext, one row at a time, logged to `dash_audit_log` via `log_action` (actions `feedback.reveal` / `golden.reveal`). Used by 👎 train-review + golden Edit.
+
+**Hybrid LLM topics** (default OFF): mig `192_keyword_topics.sql` (`dash_keyword_topics`, aggregates only) + `dash/cron/keyword_topics_daemon.py` (`KEYWORD_TOPICS_ENABLED=1`, leader-gated, hourly — samples questions, small LLM clusters into named topics, stores counts/keywords only) + `/keyword-topics` read endpoint. Wired into `main.py` lifespan + `compose.yaml` env.
+
+**Frontend**: `UsagePanel.svelte` — new **Keywords** tab (cloud, intent bars, rising terms, common phrases, topic clusters) + `🔓 Reveal for review` button on 👎 cards; chips/char-counts everywhere text used to render; client `kw()` fallback prefers server `keywords`. `GoldenPanel.svelte` — corpus table → chips + `🔒 hidden`, drift matched by `qhash`, `Edit` fetches audited reveal to populate the form. `ScopeAuditPanel.svelte` — session `first_message` → chips. `project/[slug]/settings` — brain feedback/patterns/evals + recent-chats → `question ?? keywords` fallback.
+
+**Excluded (legit, still show text):** live chat UI, admin's own Gateway sandbox, user's own chat-history sidebar (RobotPanel / settings recent), deliberate shared-results inbox.
+
+**Demo seed** `scripts/seed_privacy_demo.sql` — synthetic pharma chat across feedback/sessions/gateway + topic clusters (tagged `demo-*`/`[demo]`, re-runnable). Verified live: `/keywords` 28 q analysed, `/feedback` 0 leaks, golden list redacted + reveal returns text + audit rows written.
+
+LANDMINES: `representative` kept in `/cache/clusters` payload (UI shows keywords but the Cache-this action needs the literal text server-side); golden is FILE-based JSON (`_golden.json`), reveal re-reads it; rtk-proxied `curl | python json` chokes on injected control chars — write to a file first; demo user needs `password_hash` NOT NULL.
+
 ### Session 2026-06-12 (latest+104) — v1.41.0: Connectors page (Perplexity-style)
 
 Redesigned the Integrations hub (`command-center/+page.svelte`, `activeTab==='integrations'`, `intgView==='hub'`) from a tile-grid+table into a **Perplexity-style Connectors page**:

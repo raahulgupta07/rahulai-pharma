@@ -73,6 +73,15 @@
   // ── State ────────────────────────────────────────────────────────────────
   let projectSlug = $state('');
   let activeTab = $state<'sessions' | 'summary' | 'user'>('sessions');
+  // privacy: dashboards show keyword chips, never raw chat text
+  const _STOPW = new Set('the a an and or to in on for is are how what which this that with at by from as can my your you we they it do does of'.split(' '));
+  function kw(s: string | null, n = 5): string[] {
+    const out: string[] = []; const seen = new Set<string>();
+    for (const m of (s || '').toLowerCase().match(/[a-z][a-z0-9\-]{2,}|[က-႟]+/g) || []) {
+      if (_STOPW.has(m) || seen.has(m)) continue; seen.add(m); out.push(m); if (out.length >= n) break;
+    }
+    return out;
+  }
   let days = $state(7);
 
   let sessions = $state<SessionRow[]>([]);
@@ -279,7 +288,7 @@
                 <td><span class="chev">{expandedSession === s.session_id ? '▼' : '▶'}</span></td>
                 <td><code class="mono">{s.session_id.slice(0, 16)}…</code></td>
                 <td>{s.username || `#${s.user_id ?? '?'}`}</td>
-                <td class="msg">{s.first_message || '—'}</td>
+                <td class="msg">{#each kw(s.first_message) as k}<span class="kwc">{k}</span>{/each}{#if !kw(s.first_message).length}—{/if}</td>
                 <td>{s.msg_count}</td>
                 <td>{fmtCost(s.total_cost_usd)}</td>
                 <td class:err={s.error_count > 0}>{s.error_count}</td>
@@ -661,7 +670,7 @@
                 <tr>
                   <td><code class="mono">{s.session_id.slice(0, 16)}…</code></td>
                   <td>{s.project_slug || '—'}</td>
-                  <td class="msg">{s.first_message || '—'}</td>
+                  <td class="msg">{#each kw(s.first_message) as k}<span class="kwc">{k}</span>{/each}{#if !kw(s.first_message).length}—{/if}</td>
                   <td class="small muted">{fmtTime(s.created_at)}</td>
                 </tr>
               {/each}
@@ -771,6 +780,7 @@
   .sa-table tr.row:hover { background: #faf7ef; }
   .sa-table .chev { font-size: 10px; color: #c96342; }
   .sa-table .msg { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kwc { display: inline-block; font-size: 10px; background: #eef1f4; color: #4a5568; border-radius: 999px; padding: .05rem .4rem; margin: 0 .15rem .15rem 0; }
   .mono { font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 11px; background: #f7f3e9; padding: 2px 6px; border-radius: 3px; }
 
   .detail-row td { background: #fdfaf3; padding: 16px; }

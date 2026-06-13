@@ -174,8 +174,14 @@ def cluster_questions(project_slug: str, *, days: int = 30, min_count: int = 2,
             # representative = most common raw form (tie → lexical for determinism)
             rep = max(g["raw_counts"].items(), key=lambda kv: (kv[1], kv[0]))[0]
             variants = [raw for raw, _ in g["raw_counts"].most_common(5)]
+            from dash.privacy import keywords as _kw
+            # privacy: the UI DISPLAYS keyword chips only (never the raw question).
+            # `representative` is still returned because the "Cache this" curation
+            # action needs the literal text to seed the answer cache — the frontend
+            # passes it back to /cache/promote but never renders it.
             clusters.append({
                 "representative": rep,
+                "keywords": _kw(rep),
                 "norm": g["norm"],
                 "count": g["count"],
                 "variants": variants,

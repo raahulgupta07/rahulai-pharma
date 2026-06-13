@@ -13,19 +13,26 @@ Lock strategy: POSIX fcntl.flock (LOCK_EX) wraps every read-modify-write. Fail-s
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import json
 import logging
 import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/golden", tags=["golden"])
 
 GOLDEN_FILE = "_golden.json"
+
+
+def _qhash(text: str | None) -> str:
+    """Stable short key for a question — lets the UI match drift regressions to
+    list rows WITHOUT exposing the question text."""
+    return hashlib.sha1((text or "")[:200].encode("utf-8")).hexdigest()[:12]
 
 
 def _golden_path(slug: str) -> Path:
@@ -95,9 +102,40 @@ def list_golden(project_slug: str = Query(..., min_length=1)) -> dict[str, Any]:
         logger.exception(f"list_golden failed: {e}")
         raise HTTPException(503, f"golden corpus unavailable: {e}")
 
-    # Attach stable index for edit/delete
-    indexed = [{"id": i, **e} for i, e in enumerate(entries)]
+    # Privacy: the corpus list shows keyword chips only, never the raw question or
+    # answer. Admin reveals a single row (audited) via /{id}/reveal to edit it.
+    from dash.privacy import redact as _r, keywords as _kw
+    indexed = []
+    for i, e in enumerate(entries):
+        row = {**e, "id": i,
+               "question": _r(e.get("question")),
+               "keywords": _kw(e.get("question")),
+               "expected_answer": _r(e.get("expected_answer")),
+               "qhash": _qhash(e.get("question"))}
+        indexed.append(row)
     return {"project_slug": project_slug, "count": len(indexed), "entries": list(reversed(indexed))}
+
+
+@router.get("/{entry_id}/reveal")
+def reveal_golden(entry_id: int, request: Request,
+                  project_slug: str = Query(..., min_length=1)) -> dict[str, Any]:
+    """Deliberate, AUDITED reveal of ONE golden entry's raw text so an admin can
+    edit it. The only path that returns question/expected_answer in cleartext.
+    Logged to dash_audit_log."""
+    _, entries = _load_locked(project_slug)
+    if entry_id < 0 or entry_id >= len(entries):
+        raise HTTPException(404, f"entry {entry_id} not found (have {len(entries)})")
+    e = entries[entry_id]
+    try:
+        from app.auth import log_action
+        user = getattr(getattr(request, "state", None), "user", None)
+        log_action(user, "golden.reveal", "golden", f"{project_slug}#{entry_id}",
+                   "revealed golden entry for editing")
+    except Exception:
+        pass
+    return {"id": entry_id, "question": e.get("question"),
+            "expected_answer": e.get("expected_answer"), "sql": e.get("sql"),
+            "tags": e.get("tags") or [], "notes": e.get("notes")}
 
 
 @router.post("")
@@ -203,9 +241,13 @@ def drift_status(project_slug: str = Query(..., min_length=1)) -> dict[str, Any]
     drifted = res.get("drifted", []) or []
     pass_count = max(0, checked - len(drifted))
     pass_rate = (pass_count / checked) if checked > 0 else 0.0
+    from dash.privacy import redact as _r, keywords as _kw
     regressions = [
         {
-            "question": (d.get("entry") or {}).get("question", "")[:200],
+            # privacy: match to list rows by qhash, show keyword chips, not text
+            "question": _r((d.get("entry") or {}).get("question", "")),
+            "keywords": _kw((d.get("entry") or {}).get("question", "")),
+            "qhash": _qhash((d.get("entry") or {}).get("question", "")),
             "reason": d.get("reason", ""),
         }
         for d in drifted

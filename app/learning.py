@@ -135,7 +135,9 @@ def list_feedback(slug: str, request: Request):
             "SELECT id, question, answer, sql_query, rating, created_at FROM public.dash_feedback "
             "WHERE project_slug = :s ORDER BY created_at DESC LIMIT 30"
         ), {"s": slug}).fetchall()
-    return {"feedback": [{"id": r[0], "question": r[1], "answer": r[2], "sql": r[3], "rating": r[4], "created_at": str(r[5]) if r[5] else None} for r in rows]}
+    from dash.privacy import redact as _r, keywords as _kw
+    return {"feedback": [{"id": r[0], "question": _r(r[1]), "answer": _r(r[2]), "keywords": _kw(r[1]),
+                          "sql": r[3], "rating": r[4], "created_at": str(r[5]) if r[5] else None} for r in rows]}
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +195,8 @@ def list_query_patterns(slug: str, request: Request):
             "WHERE en.project_slug = :s AND (en.source IS NULL OR en.source <> 'bilingual_twin') "
             "ORDER BY en.uses DESC LIMIT 20"
         ), {"s": slug}).fetchall()
-    return {"patterns": [{"id": r[0], "question": r[1], "sql": r[2], "uses": r[3], "last_used": str(r[4]) if r[4] else None, "created_at": str(r[5]) if r[5] else None, "question_my": r[6]} for r in rows]}
+    from dash.privacy import redact as _r, keywords as _kw
+    return {"patterns": [{"id": r[0], "question": _r(r[1]), "keywords": _kw(r[1]), "sql": r[2], "uses": r[3], "last_used": str(r[4]) if r[4] else None, "created_at": str(r[5]) if r[5] else None, "question_my": _r(r[6])} for r in rows]}
 
 
 # ---------------------------------------------------------------------------
@@ -209,7 +212,8 @@ def list_evals(slug: str, request: Request):
             "SELECT id, question, expected_sql, last_result, last_score, last_run_at, created_at "
             "FROM public.dash_evals WHERE project_slug = :s ORDER BY created_at"
         ), {"s": slug}).fetchall()
-    return {"evals": [{"id": r[0], "question": r[1], "expected_sql": r[2], "last_result": r[3], "last_score": r[4], "last_run_at": str(r[5]) if r[5] else None, "created_at": str(r[6]) if r[6] else None} for r in rows]}
+    from dash.privacy import redact as _r, keywords as _kw
+    return {"evals": [{"id": r[0], "question": _r(r[1]), "keywords": _kw(r[1]), "expected_sql": r[2], "last_result": _r(r[3]), "last_score": r[4], "last_run_at": str(r[5]) if r[5] else None, "created_at": str(r[6]) if r[6] else None} for r in rows]}
 
 
 @router.post("/{slug}/evals")

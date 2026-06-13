@@ -44,12 +44,12 @@
   let formTags = $state('');
   let formNotes = $state('');
 
-  // drifted question set for quick lookup
-  const driftedSet = $derived(new Set((drift?.regressions || []).map(r => r.question)));
+  // drifted set for quick lookup — keyed by qhash (privacy: no raw question)
+  const driftedSet = $derived(new Set((drift?.regressions || []).map((r: any) => r.qhash)));
 
   function rowResult(e: GoldenEntry): 'fail' | 'pass' | 'unknown' {
     if (!drift || drift.checked === 0) return 'unknown';
-    return driftedSet.has((e.question || '').slice(0, 200)) ? 'fail' : 'pass';
+    return driftedSet.has((e as any).qhash) ? 'fail' : 'pass';
   }
 
   async function loadAll() {
@@ -138,14 +138,24 @@
     showAddModal = true;
   }
 
-  function openEdit(e: GoldenEntry) {
+  async function openEdit(e: GoldenEntry) {
     editingId = e.id;
-    formQuestion = e.question || '';
-    formExpected = e.expected_answer || '';
-    formSql = e.sql || '';
     formTags = (e.tags || []).join(', ');
     formNotes = e.notes || '';
+    formQuestion = ''; formExpected = ''; formSql = '';
     showAddModal = true;
+    // Privacy: the list carries no raw text — fetch it via the audited reveal so
+    // the admin can edit. Every reveal is logged server-side.
+    try {
+      const r = await dashFetch(`/api/golden/${e.id}/reveal?project_slug=${slug}`, { headers: { Accept: 'application/json' } });
+      if (r.ok) {
+        const d = await r.json();
+        formQuestion = d.question || '';
+        formExpected = d.expected_answer || '';
+        formSql = d.sql || '';
+        formNotes = d.notes ?? formNotes;
+      }
+    } catch { /* leave blank; admin can retype */ }
   }
 
   function closeModal() {
@@ -333,16 +343,18 @@
               {@const result = rowResult(e)}
               <tr>
                 <td class="muted">{e.id}</td>
-                <td class="cell-q" title={e.question}>{truncate(e.question, 120)}</td>
+                <td class="cell-q">
+                  {#if e.question}{truncate(e.question, 120)}
+                  {:else}{#each ((e as any).keywords || []) as k}<span class="gp-kw">{k}</span>{/each}{#if !((e as any).keywords || []).length}<span class="muted small">🔒</span>{/if}{/if}
+                </td>
                 <td class="cell-a">
                   {#if e.expected_answer}
                     <div class="exp" title={e.expected_answer}>{truncate(e.expected_answer, 100)}</div>
+                  {:else}
+                    <span class="muted small">🔒 hidden</span>
                   {/if}
                   {#if e.sql}
                     <code class="sql-snip" title={e.sql}>{truncate(e.sql, 80)}</code>
-                  {/if}
-                  {#if !e.expected_answer && !e.sql}
-                    <span class="muted small">—</span>
                   {/if}
                 </td>
                 <td class="cell-tags">
@@ -365,7 +377,7 @@
                 </td>
                 <td class="cell-actions">
                   <button class="btn-mini" onclick={() => openEdit(e)}>Edit</button>
-                  <button class="btn-mini btn-danger" onclick={() => deleteEntry(e.id, e.question)}>Delete</button>
+                  <button class="btn-mini btn-danger" onclick={() => deleteEntry(e.id, e.question || `#${e.id}`)}>Delete</button>
                 </td>
               </tr>
             {/each}
@@ -381,7 +393,7 @@
           {#each drift.regressions as r}
             <li>
               <code>{r.reason}</code>
-              <div class="muted small">{truncate(r.question, 160)}</div>
+              <div class="muted small">{#if r.question}{truncate(r.question, 160)}{:else}{((r as any).keywords || []).join(' · ') || '🔒 hidden'}{/if}</div>
             </li>
           {/each}
         </ul>
@@ -581,6 +593,7 @@
   .col-result { width: 110px; }
   .col-actions { width: 130px; white-space: nowrap; }
   .cell-q { max-width: 280px; }
+  .gp-kw { display: inline-block; font-size: 10px; background: #efe2d6; color: #7a5c43; border-radius: 999px; padding: .05rem .45rem; margin: 0 .2rem .2rem 0; }
   .cell-a { max-width: 320px; }
   .cell-a .exp { color: #1f1c17; margin-bottom: 4px; }
   .sql-snip {

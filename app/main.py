@@ -536,6 +536,25 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
         import logging as _s3_log
         _s3_log.getLogger(__name__).warning(f"s3 sync daemon not started: {_e}")
 
+    # Keyword topic-cluster daemon — privacy-safe analytics. Samples recent
+    # question text, LLM-clusters into named topics, stores AGGREGATES ONLY
+    # (no raw chat). Feeds the Keywords dashboard. DEFAULT OFF
+    # (KEYWORD_TOPICS_ENABLED=1). Leader-gated. Hourly.
+    try:
+        import os as _os_kt
+        if _os_kt.environ.get("KEYWORD_TOPICS_ENABLED") not in ("1", "true", "TRUE", "yes"):
+            raise RuntimeError("keyword topics disabled (default OFF)")
+        if not _should_run_daemons():
+            raise RuntimeError("daemons disabled")
+        import asyncio as _asyncio_kt
+        from dash.cron.keyword_topics_daemon import keyword_topics_loop as _kt_loop
+        _asyncio_kt.create_task(_kt_loop())
+        import logging as _kt_log
+        _kt_log.getLogger(__name__).info("keyword topics daemon started")
+    except Exception as _e:
+        import logging as _kt_log
+        _kt_log.getLogger(__name__).warning(f"keyword topics daemon not started: {_e}")
+
     # Ontology auto-cluster daemon (~6h cadence). Mirrors reembed_loop pattern.
     # default OFF (Phase-1 trim: pure-burn daemon, output not consumed). Set ONTOLOGY_CLUSTER_ENABLED=1 to re-enable.
     # Opt-out via ONTOLOGY_CLUSTER_DISABLED=1 (also honored inside the loop).

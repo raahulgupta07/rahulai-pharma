@@ -185,6 +185,12 @@ services:
       # schedule + creds live in the DB; this just turns the poller on.
       - S3_SYNC_ENABLED=${S3_SYNC_ENABLED:-0}
       - S3_SYNC_TICK_SECONDS=${S3_SYNC_TICK_SECONDS:-60}
+      # Privacy: dashboards show keyword/topic analytics only, never raw chat.
+      # Text is hard-hidden server-side; flip PRIVACY_SHOW_CHAT=1 only for an
+      # audited reveal build. Keyword topic LLM daemon is default OFF.
+      - PRIVACY_SHOW_CHAT=${PRIVACY_SHOW_CHAT:-0}
+      - KEYWORD_TOPICS_ENABLED=${KEYWORD_TOPICS_ENABLED:-0}
+      - KEYWORD_TOPICS_TICK_SECONDS=${KEYWORD_TOPICS_TICK_SECONDS:-3600}
       - VERTICAL_DAEMONS_DISABLED=${VERTICAL_DAEMONS_DISABLED:-1}
       - QUERY_CURATOR_ENABLED=${QUERY_CURATOR_ENABLED:-0}
       # Tuned (Q4) on a real paraphrase sim distribution — text-embedding-3-small

@@ -378,10 +378,13 @@ def list_patterns(slug: str, *, source: str = "chat", status: str | None = None,
                 "FROM public.dash_query_patterns " + clause +
                 " ORDER BY uses DESC, last_used DESC NULLS LAST LIMIT :k"
             ), params).fetchall()
+        from dash.privacy import redact as _r, keywords as _kw
         out = []
         for r in rows:
             out.append({
-                "id": int(r[0]), "question": r[1], "sql": r[2], "status": r[3],
+                # privacy: dashboards show keyword chips, never the raw question
+                "id": int(r[0]), "question": _r(r[1]), "keywords": _kw(r[1]),
+                "sql": r[2], "status": r[3],
                 "uses": int(r[4] or 0), "rows_returned": r[5], "latency_ms": r[6],
                 "has_schema_hash": bool(r[7]), "tables": r[8],
                 "last_used": r[9].isoformat() if r[9] else None,
