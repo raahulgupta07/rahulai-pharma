@@ -209,6 +209,15 @@ server {
 
     client_max_body_size 210m;          # uploads cap is 200 MB (MAX_FILE_SIZE)
 
+    # Security headers — parity with the Caddyfile (Caddy is NOT used here).
+    add_header X-Content-Type-Options    "nosniff"                         always;
+    add_header X-Frame-Options           "DENY"                            always;
+    add_header Referrer-Policy           "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy        "geolocation=(), microphone=(), camera=()" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header Content-Security-Policy    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" always;
+    server_tokens off;                   # hide nginx version
+
     location / {
         proxy_pass http://cityapi;
         proxy_http_version 1.1;
@@ -233,6 +242,26 @@ server {
 ```
 
 Notes: set `PUBLIC_URL`/`CORS_ORIGINS` to the nginx-terminated origin; `client_max_body_size` ≥ 200 MB or large uploads 413; `proxy_buffering off` is required for the live thinking-trace + upload SSE. The pgbouncer digest pin and Caddy `service_healthy` gate (commit f58135d) are compose/k8s-only and do not affect this path.
+
+## Security groups / network exposure (minimal surface)
+
+Only the front proxy is public. Everything else is private (internal SG / localhost).
+
+| Component | Port | Exposure |
+|-----------|------|----------|
+| ALB / nginx (TLS) | 443 | **public** (0.0.0.0) — the only internet-facing listener |
+| ALB / nginx (HTTP) | 80 | public, **redirect → 443 only** |
+| dash-api | 8000 | private — SG allows ONLY the ALB/nginx SG (compose binds `127.0.0.1:8011`) |
+| pgbouncer | 5432 | private — SG allows ONLY dash-api/worker SG |
+| Postgres (cp-db) | 5432 | private — SG allows ONLY pgbouncer SG; **never internet-reachable** |
+| Redis (cp-redis) | 6379 | private — SG allows ONLY app SG; set `REDIS_PASS` |
+
+Rules:
+- DB and Redis SGs must have **no `0.0.0.0/0` ingress** — scope to the app SG only.
+- The compose Caddy ports (`8090`/`8453`) bind all interfaces; on AWS either don't run Caddy (ALB/nginx fronts) or restrict them to the ALB SG.
+- Use **IMDSv2-only** on the instances/tasks (blocks SSRF → credential theft via `169.254.169.254`).
+- Postgres + Redis **encryption at rest** (KMS) and **TLS in transit** where the provider supports it.
+- Outbound: allow only what's needed (OpenRouter API, S3, OIDC IdP) — egress allowlist limits SSRF/exfil.
 
 ## IAM task role policy (minimum)
 

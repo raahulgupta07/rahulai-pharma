@@ -171,7 +171,7 @@ services:
       - RATE_LIMIT=${RATE_LIMIT:-500/minute}
       # OpenAI-compat gateway: per-store-key rate cap (Redis-backed, global)
       - API_GW_RATE_PER_MIN=${API_GW_RATE_PER_MIN:-60}
-      - REDIS_URL=${REDIS_URL:-redis://dash-redis:6379}
+      - REDIS_URL=${REDIS_URL:-redis://:${REDIS_PASS:-}@dash-redis:6379}
       # Required
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       # Multi-key pool (round-robin + per-key 429 cooldown) for 1000-store scale
@@ -335,11 +335,16 @@ services:
     image: redis:7-alpine
     container_name: cp-redis
     restart: unless-stopped
-    command: redis-server --maxmemory 1gb --maxmemory-policy allkeys-lru
+    # REDIS_PASS blank (default) = no auth, unchanged behavior. Set it in prod to
+    # require auth (defense-in-depth — Redis is internal-only but still). The app
+    # reads the password from REDIS_URL (set below), so both move together.
+    environment:
+      - REDIS_PASS=${REDIS_PASS:-}
+    command: ["sh", "-c", "exec redis-server --maxmemory 1gb --maxmemory-policy allkeys-lru ${REDIS_PASS:+--requirepass \"$$REDIS_PASS\"}"]
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli ${REDIS_PASS:+-a \"$$REDIS_PASS\"} ping | grep -q PONG"]
       interval: 10s
       timeout: 3s
       retries: 3
