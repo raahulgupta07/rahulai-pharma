@@ -8803,8 +8803,14 @@ def _autoload_definitions(project_slug: str, file_path: str, ext: str) -> int:
 
 
 @router.post("/upload")
-async def upload_file(request: Request, file: UploadFile, table_name: str | None = None, replace: bool = False, project: str | None = None, action: str = "auto"):
+async def upload_file(request: Request, file: UploadFile, table_name: str | None = None, replace: bool = False, project: str | None = None, action: str = "auto", guarded: bool = False):
     """Upload a data file. action: auto/append/upsert/replace/new.
+
+    `guarded=1` (set by the unattended S3 sync, not the manual UI) turns on the
+    safety holds on a REPLACE: a 0-row file, a schema that DROPS/renames columns,
+    or a row-count cliff (incoming << current) are REFUSED (409/400) so a bad
+    automated export can't silently corrupt a live table. Manual UI uploads stay
+    flexible (guarded defaults off).
 
     Accept `project` (and friends) from BOTH query string AND multipart form.
     FastAPI bare-typed params bind to query only — prior callers sending
@@ -8821,6 +8827,8 @@ async def upload_file(request: Request, file: UploadFile, table_name: str | None
             action = str(_form.get("action"))
         if _form.get("replace") in ("1", "true", "True"):
             replace = True
+        if _form.get("guarded") in ("1", "true", "True"):
+            guarded = True
     except Exception:
         pass  # form already consumed by FastAPI internals; bare query still works
     user_id = _get_user_id(request)
@@ -9419,6 +9427,94 @@ async def upload_file(request: Request, file: UploadFile, table_name: str | None
             # engineer-built view depends on the data table. Drop with CASCADE
             # ourselves first, then create fresh via append-on-empty.
             if mode == "replace":
+                # #1 EMPTY-FILE GUARD — refuse to replace an EXISTING table with a
+                # 0-row file. A truncated/failed export (or an empty S3 object)
+                # would otherwise DROP the table and recreate it empty, silently
+                # wiping all data. The S3 sync relies on this 400 to keep the old
+                # data AND not advance the object etag (so a later good file
+                # re-syncs). First-ever load (table absent) is allowed. 2026-06-13.
+                if table_exists and len(df) == 0:
+                    raise HTTPException(
+                        400,
+                        f"refusing to replace '{tbl}' with an empty (0-row) file — "
+                        f"existing data kept. Upload a non-empty file to replace it.",
+                    )
+                # #3 SCHEMA-DRIFT GUARD + #4 ROW-COUNT CLIFF GUARD — only when
+                # guarded (unattended S3 sync). A new export that DROPS/renames
+                # columns silently reshapes the table (breaks proven queries +
+                # CASCADE-drops dependent views), and a partial export (far fewer
+                # rows than current) silently loses data. In guarded mode we HOLD
+                # (409) instead of applying; the sync logs it and doesn't advance
+                # the etag, so a corrected file re-syncs. Added columns are fine.
+                if guarded and table_exists:
+                    try:
+                        _cur_cols = {c["name"] for c in insp.get_columns(tbl, schema=user_schema)}
+                        _new_cols = set(df.columns)
+                        _removed = _cur_cols - _new_cols
+                        if _removed:
+                            raise HTTPException(409, detail={
+                                "error": "schema_drift",
+                                "table": tbl,
+                                "removed_columns": sorted(_removed),
+                                "message": (f"guarded replace of '{tbl}' held — incoming file is missing "
+                                            f"{len(_removed)} existing column(s): {', '.join(sorted(_removed))}. "
+                                            f"Existing data kept. Fix the export or replace manually."),
+                            })
+                        # Row-count cliff: incoming must be >= MIN_PCT of current.
+                        try:
+                            _cliff_pct = float(os.getenv("REPLACE_MIN_ROW_PCT", "50"))
+                        except (TypeError, ValueError):
+                            _cliff_pct = 50.0
+                        if _cliff_pct > 0:
+                            with engine.connect() as _cc:
+                                _cur_rc = _cc.execute(text(
+                                    f'SELECT COUNT(*) FROM "{user_schema}"."{tbl}"'
+                                )).scalar() or 0
+                            if _cur_rc > 0 and len(df) < (_cur_rc * _cliff_pct / 100.0):
+                                raise HTTPException(409, detail={
+                                    "error": "row_count_cliff",
+                                    "table": tbl,
+                                    "current_rows": int(_cur_rc),
+                                    "incoming_rows": int(len(df)),
+                                    "min_pct": _cliff_pct,
+                                    "message": (f"guarded replace of '{tbl}' held — incoming {len(df)} rows is "
+                                                f"< {_cliff_pct:.0f}% of current {_cur_rc}. Likely a partial export. "
+                                                f"Existing data kept. Raise REPLACE_MIN_ROW_PCT or replace manually."),
+                                })
+                    except HTTPException:
+                        raise
+                    except Exception as _ge:
+                        logger.warning(f"guarded drift/cliff check skipped for {tbl} (continuing): {_ge}")
+                # #2 PRE-REPLACE BACKUP — snapshot the current table to
+                # "{tbl}__bak" before the irreversible DROP CASCADE so a bad
+                # replace can be restored (see /projects/{slug}/restore-table).
+                # Keep last 1. Skipped for very large tables to bound disk
+                # (REPLACE_BACKUP_MAX_ROWS, default 2,000,000; 0 disables). The
+                # "__bak" suffix is excluded from training (see retrain_project +
+                # auto_train_daemon._is_trainable). Fail-soft — never blocks the
+                # replace. 2026-06-13.
+                if table_exists:
+                    try:
+                        _bmax = int(os.getenv("REPLACE_BACKUP_MAX_ROWS", "2000000"))
+                    except (TypeError, ValueError):
+                        _bmax = 2000000
+                    if _bmax > 0:
+                        try:
+                            with engine.begin() as _bk:
+                                _cur_rows = _bk.execute(text(
+                                    f'SELECT COUNT(*) FROM "{user_schema}"."{tbl}"'
+                                )).scalar() or 0
+                                if _cur_rows <= _bmax:
+                                    _bk.execute(text(f'DROP TABLE IF EXISTS "{user_schema}"."{tbl}__bak" CASCADE'))
+                                    _bk.execute(text(
+                                        f'CREATE TABLE "{user_schema}"."{tbl}__bak" '
+                                        f'AS TABLE "{user_schema}"."{tbl}"'
+                                    ))
+                                    logger.info(f"replace backup: {user_schema}.{tbl} → {tbl}__bak ({_cur_rows} rows)")
+                                else:
+                                    logger.info(f"replace backup skipped for {tbl}: {_cur_rows} rows > {_bmax}")
+                        except Exception as _be:
+                            logger.warning(f"replace backup failed for {tbl} (continuing with replace): {_be}")
                 try:
                     with engine.begin() as _conn:
                         _conn.execute(text(f'DROP TABLE IF EXISTS "{user_schema}"."{tbl}" CASCADE'))
@@ -11743,6 +11839,9 @@ async def retrain_project(slug: str, request: Request):
     except Exception:
         pass
     tables = [t for t in tables if t not in _DERIVED_TABLES]
+    # Exclude pre-replace backup snapshots ("{tbl}__bak", written by /upload's
+    # replace path) — they are restore points, not trainable sources.
+    tables = [t for t in tables if not t.endswith("__bak")]
 
     # Fire column enrichment IMMEDIATELY (parallel to training, fire-and-forget).
     # User clicked "Train All" → columns should refresh even if training stalls.
@@ -12482,6 +12581,18 @@ async def retrain_project(slug: str, request: Request):
 
         _obs_token = set_llm_observer(_on_llm, tag=f"retrain:{slug}")
 
+        # Startup heartbeat — write a log line IMMEDIATELY (now that _master_log
+        # is defined) so the run's `logs` array is never empty. The stale-watchdog
+        # (_reap_stale_runs) measures liveness off the newest log's tsabs; without
+        # an early line, a hang in the pre-table phase below (orphan purge / eval
+        # clear / first-table setup) leaves logs=[] and a post-mortem can't tell
+        # where it stuck. 2026-06-13.
+        try:
+            _master_log(f"▶ retrain started — {total_tables} table(s): {', '.join(tables[:8])}"
+                        + (" …" if total_tables > 8 else ""), "", 0)
+        except Exception:
+            pass
+
         # Clear stale eval cases ONCE at retrain start. Per-table eval generation
         # appends to public.dash_evals every run with no dedup, so the set grew
         # unbounded (15→30→90...) and post-training evals got slower each retrain.
@@ -12594,26 +12705,48 @@ async def retrain_project(slug: str, request: Request):
         # Parallelize per-table training (max 4 concurrent). Each table opens its
         # own DB connections + writes its own knowledge files, so they're
         # independent. Cancel is honored before submit + inside _train_one.
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="retrain-tbl") as _tpool:
-            _futs = []
-            for tbl_idx, tbl in enumerate(tables, start=1):
-                if _training_cancel_flags.get(slug):
-                    break
-                _futs.append(_tpool.submit(_train_one, tbl_idx, tbl))
-            _trained_tbls: list[str] = []
-            for _f in concurrent.futures.as_completed(_futs):
-                try:
-                    _res = _f.result()
-                except Exception:
-                    _res = {"status": "failed"}
-                _st = (_res or {}).get("status")
-                if _st == "trained":
-                    trained += 1
-                    _tn = (_res or {}).get("table")
-                    if _tn:
-                        _trained_tbls.append(_tn)
-                elif _st == "skipped":
-                    skipped += 1
+        #
+        # PER-TABLE TIMEOUT (RETRAIN_TABLE_TIMEOUT_S, default 600s) is a hard
+        # ceiling so ONE hung table/step can't wedge the whole batch forever. The
+        # old `as_completed(_futs)` loop blocked indefinitely on a stuck future →
+        # the run sat 'running' until the 12-min stale-watchdog killed it with
+        # logs=[] and no clue which table. Now a hung future's .result(timeout)
+        # returns control, we log it, count it failed, and move on. We do NOT join
+        # an orphaned hung worker (shutdown wait=False) so the batch can finalize.
+        # 2026-06-13.
+        import os as _os_to
+        try:
+            _per_tbl_to = max(60, int(_os_to.getenv("RETRAIN_TABLE_TIMEOUT_S", "600")))
+        except (TypeError, ValueError):
+            _per_tbl_to = 600
+        _tpool = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="retrain-tbl")
+        _fut_tbl: dict = {}
+        for tbl_idx, tbl in enumerate(tables, start=1):
+            if _training_cancel_flags.get(slug):
+                break
+            _fut_tbl[_tpool.submit(_train_one, tbl_idx, tbl)] = (tbl_idx, tbl)
+        _trained_tbls: list[str] = []
+        # Submit-order iteration with a per-future timeout. Tables run in parallel
+        # (4 workers) so already-finished futures return instantly; the timeout is
+        # only a ceiling on a genuinely stuck one.
+        for _f, (_tidx, _tname) in _fut_tbl.items():
+            try:
+                _res = _f.result(timeout=_per_tbl_to)
+            except concurrent.futures.TimeoutError:
+                _master_log(f"⊘ table {_tname} timed out (> {_per_tbl_to}s) — skipped, batch continues", _tname, _tidx)
+                _res = {"status": "failed", "table": _tname, "error": f"timeout > {_per_tbl_to}s"}
+            except Exception:
+                _res = {"status": "failed"}
+            _st = (_res or {}).get("status")
+            if _st == "trained":
+                trained += 1
+                _tn = (_res or {}).get("table")
+                if _tn:
+                    _trained_tbls.append(_tn)
+            elif _st == "skipped":
+                skipped += 1
+        # Don't block batch finalization on an orphaned hung worker thread.
+        _tpool.shutdown(wait=False, cancel_futures=True)
 
         # ── Knowledge re-index — ONCE for the whole batch ──
         # Was per-table inside _run_auto_training, which re-embedded the entire
@@ -13362,6 +13495,58 @@ async def retrain_project(slug: str, request: Request):
             _l.error(f"[retrain] _bg crashed for {slug}: {f.exception()}", exc_info=f.exception())
     _fut.add_done_callback(_check_bg)
     return {"status": "ok", "tables": len(tables), "message": "Delta retraining started — unchanged tables will be skipped"}
+
+
+@router.post("/projects/{slug}/restore-table")
+async def restore_table(slug: str, request: Request):
+    """Restore a data table from its pre-replace backup snapshot ("{table}__bak").
+
+    The backup is written by /upload's replace path (issue #2) right before the
+    irreversible DROP CASCADE, so a bad/empty/partial replace can be undone. Body:
+    {"table": "<name>"}. Editor role required. Returns rows restored.
+    """
+    user = getattr(getattr(request, 'state', None), 'user', None)
+    if not user:
+        raise HTTPException(401, "Not authenticated")
+    from app.auth import check_project_permission
+    if not check_project_permission(user, slug, required_role="editor"):
+        raise HTTPException(403, "Editor access required to restore a table")
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    table = str((body or {}).get("table") or "").strip()
+    if not table or table.endswith("__bak") or '"' in table:
+        raise HTTPException(400, "provide a valid 'table' name (without the __bak suffix)")
+
+    from db.session import create_project_schema
+    schema = create_project_schema(slug)
+    engine = create_engine(db_url)
+    insp = inspect(engine)
+    existing = set(insp.get_table_names(schema=schema))
+    if f"{table}__bak" not in existing:
+        raise HTTPException(404, f"no backup snapshot found for '{table}' (expected {table}__bak)")
+
+    try:
+        with engine.begin() as conn:
+            rows = conn.execute(text(
+                f'SELECT COUNT(*) FROM "{schema}"."{table}__bak"'
+            )).scalar() or 0
+            # Recreate the live table from the snapshot. DROP CASCADE first so
+            # dependent views don't block it (they get rebuilt by retrain).
+            conn.execute(text(f'DROP TABLE IF EXISTS "{schema}"."{table}" CASCADE'))
+            conn.execute(text(
+                f'CREATE TABLE "{schema}"."{table}" AS TABLE "{schema}"."{table}__bak"'
+            ))
+        logger.info(f"restore-table: {schema}.{table} restored from __bak ({rows} rows)")
+        return {"status": "ok", "table": table, "rows_restored": int(rows),
+                "message": f"Restored '{table}' from backup ({rows} rows). Retrain to rebuild derived views/metadata."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"restore-table failed for {slug}/{table}: {e}", exc_info=True)
+        raise HTTPException(500, f"restore failed: {str(e)[:200]}")
 
 
 @router.get("/knowledge-file-content/{filename}")

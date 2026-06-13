@@ -438,6 +438,40 @@ The consumer widget's "agent working" strip must never leak internal tool names.
 ### Embed follow-up chips — bilingual (2026-06-11)
 After-answer follow-up chips (`_consumer_followups` in `app/embed_public.py`) are EN+MY twins (`_FOLLOWUPS` map, keyed by heuristic branch) — `_is_burmese(question)` (U+1000–U+109F) picks the set so a Burmese chat gets Burmese chips. Branch detection also reads a few Burmese intent words (`ရှိ`/`စတော့`/`လက်ကျန်`/`အစားထိုး`). NOTE: opening **starter** chips are separate (`embed_default_starters` config, already Burmese); these are the per-answer follow-ups.
 
+### Claude-style chat UI — runtime toggle (2026-06-13, uncommitted)
+
+The analyst chat page (`frontend/src/routes/project/[slug]/+page.svelte`) can render in **`claude`** or **`classic`** style, switchable at runtime — no redeploy to roll back.
+
+- **Toggle:** `chatStyle` `$state` seeded from `localStorage 'cp_chat_style'` (**default `claude`**); `toggleChatStyle()` persists. Header pill next to the agent name (`✻ Claude` ⇄ `🤖 Classic`, class `.chatstyle-toggle`). Classic = byte-identical to the old look = instant rollback.
+- Style is **threaded as a prop**, not a global: page passes `chatStyle` → `<ChatMessageList>` and `variant={chatStyle}` → `<TraceTimeline>`. Both components **default to `classic`** so they stand alone.
+- **Empty state** (`claude`): centered hero — `✻` star (`ctStarPulse`) + time-based `greeting` (`$derived`) + `userName` (from `/api/auth/check` in onMount) + composer-as-hero + subtle `.ce-chip` pills. **NO stat tiles** (old `.starter-*` 2×2 grid + Sessions/Quality/Memories tiles removed). The composer is extracted into **one** `{#snippet composerCard()}` rendered EITHER centered (empty) OR docked bottom (`.input-bar` `display:none` when empty) — never both, so only one `<textarea bind:this={textareaEl}>` mounts (rendering both = double-bind bug).
+- **2-robot bug (fixed):** the assistant msg **avatar** robot (`ChatMessageList.svelte`) + the **thinking-indicator** robot+dots both painted while streaming-with-no-content → `🤖🤖•••`. In `claude`: avatar hidden (`{#if chatStyle!=='claude'}`, answers go full-width), thinking = a single `✻` pulse via `{#snippet thinkingDots()}` (`.claude-think .ct-star`) replacing all 3 robot+dots spots.
+- **Reasoning trace** (`TraceTimeline.svelte`, prop `variant`): `claude` adds `class:tt-claude` + leading `✻`. `.tt-claude` CSS = boxless/gray, **hides** tier/mode/analysis/effort chips + token/cost/model stats + left caret, mutes status circles to 6px gray dots, softens the code box. Header label flips **"Thinking…"** (live) → **"Thought for {workedFor}"** (done) in claude variant (was static "Thinking", read as never-finished).
+- **AnswerCard tier badge (fixed):** `AnswerCard.svelte` `.tier-badge` (the `LOOKUP`/`ANALYSIS` pill) was `position:absolute` top-right → collided with the `⌖ {bandSource}` source chip stacked under it. Now rendered **inline inside `.band-meta`, right after the `⌖` source chip** (both mono + analytical-band layouts), CSS `absolute`→`inline-flex`, shown only when `tierLabel` set.
+
+LANDMINE: `bun run build` MUST run from `frontend/` (cwd drifts to repo root after a `docker compose` cd → stale FE ships silently). Image build often flakes pulling `oven/bun:1` from Docker Hub (EOF) → wrap `compose build dash-api` in a retry loop, then `--force-recreate` + `docker exec cp-api grep -rl <new-token> /app/frontend/build` to confirm the swap.
+
+### Auto-train robustness + replace/sync data-safety guards (2026-06-13, uncommitted)
+
+Triggered by the floating robot showing ⚠ "1" — auto-train runs aborted `stale: no progress > 12 min` with `logs=[]`, `tables_trained=0` (hung at startup). All backend except `FloatingRobot.svelte`; all env-flagged, defaults safe; verified live on :8011 with a throwaway `smoke_guard` table. See memory `project_citypharma_train_sync_guards`.
+
+**Auto-train (`app/upload.py` `retrain_project._bg`, `app/learning.py`, `dash/cron/auto_train_daemon.py`):**
+- **Per-table timeout** `RETRAIN_TABLE_TIMEOUT_S` (default 600s) — replaced `for f in as_completed(_futs)` (blocked forever on a hung future → run went stale w/ empty logs) with submit-order iteration + `f.result(timeout=…)`; on `TimeoutError` logs `⊘ table X timed out`, counts failed, continues. **`_tpool.shutdown(wait=False, cancel_futures=True)`** so an orphaned hung worker can't re-block at the (old) `with`-pool exit. LANDMINE: don't restore the `with ThreadPoolExecutor()` context-manager form — it joins all threads on exit and re-introduces the hang.
+- **Startup heartbeat** `_master_log("▶ retrain started — N table(s)…")` placed AFTER the `_master_log`/`_set_step` closures are defined (placing it right after the master-run INSERT = `NameError`, closures not yet bound). Guarantees `logs` is never `[]` → a hang in the pre-table phase (orphan-purge / eval-clear) is now diagnosable.
+- **Watchdog surfaces why** `_reap_stale_runs` now also `SET error=` the stale reason (was only `current_step`, invisible to `get_run_status`/robot, keeps any real prior error). `/auto-train/status` `recent_runs` returns `error`+`current_step`. `FloatingRobot.svelte` console shows `⚠ last run failed: {error||current_step}`.
+- **Circuit-breaker** `AUTO_TRAIN_MAX_RETRY` (default 2) — the daemon already auto-retried hung tables via untrained-detection; the real gap was INFINITE retry of a broken table-set (worse now: per-table timeout lets the run finish 'done' but the table stays untrained → re-fires every poll). `_untrained_attempts: {slug:(frozenset(tables), n)}`; same set tried > max → `action="circuit_open"`, skip trigger, log warn; clears when set changes or `_get_untrained_tables` empties. Exposed in `get_daemon_status().circuit_open`. In-memory (redeploy = 1 fresh attempt).
+- **Robot badge** (`FloatingRobot.svelte`) no longer latches forever: `showErr` = failed AND `!errDismissed` AND `!errStale` (>6h `ERR_TTL_H`) AND `!isTrainingNow`; `errDismissed` auto-resets via `$effect` on a new `lastRun.id`; ✕ dismiss button in `.fr-trainerr` (`.fr-errx`).
+
+**Replace / S3-sync guards** (`app/upload.py` `upload_file` REPLACE branch, NEW `guarded` param resolved from query+form; `app/s3_sync.py` POSTs `guarded=1` — manual UI stays flexible, unattended sync is protected):
+- **#1 empty file** — refuse replace of an existing table with a 0-row file → `400` (a parse-layer `400 "File is empty or has no columns"` fires first for header-only too = double safety). Sync's existing `status≥400 → continue` skips the etag write → corrected file re-syncs.
+- **#2 backup + restore** — before `DROP … CASCADE`, `CREATE TABLE "{tbl}__bak" AS TABLE …` (drop prior, skip if rows > `REPLACE_BACKUP_MAX_ROWS` default 2M, 0=off). NEW route `POST /api/projects/{slug}/restore-table` `{"table":…}` (editor-gated). **`__bak` excluded from training** in BOTH `retrain_project` (`not t.endswith("__bak")`) AND daemon `_is_trainable`.
+- **#3 schema-drift** (guarded) — removed/renamed columns → `409 {error:"schema_drift", removed_columns}`. Added columns OK.
+- **#4 row-cliff** (guarded) — incoming `< REPLACE_MIN_ROW_PCT%` (default 50) of current → `409 {error:"row_count_cliff"}`. First-ever load always allowed.
+- **#6 notify** — `s3_sync._notify_admins()` inserts `dash_notifications` for `role IN ('admin','super') AND is_active` on errors>0 + exception path; 409 holds logged ` [HELD — old data kept]`.
+- **#5 stage→dry-run sync = NOT built** — deemed low value once #1–4 auto-hold + #6 notifies (preview UX only, no safety gap).
+
+LANDMINES: curl auth header must be `-H "Authorization: Bearer $TOK"` (a `Bearer\ ` escape → Caddy "Invalid HTTP request"); `.env` admin pw key is `SUPER_ADMIN_PASSWORD`; uploads strip a leading `_` from `table_name` (`_smoke_guard`→`smoke_guard`); column is `dash_users.is_active` (not `active`) and roles are only `super`/`user` (no `admin` row, query harmless). Defaults all safe: `RETRAIN_TABLE_TIMEOUT_S=600`, `AUTO_TRAIN_MAX_RETRY=2`, `REPLACE_BACKUP_MAX_ROWS=2000000`, `REPLACE_MIN_ROW_PCT=50`.
+
 ---
 
 ## Session changelog → `docs/DEVLOG.md`

@@ -166,6 +166,23 @@ def test_connection(source_id: int) -> dict:
         return {"ok": False, "error": str(e)}
 
 
+def _notify_admins(ntype: str, title: str, message: str) -> None:
+    """Drop a notification into the bell for every admin/super user. Fail-soft —
+    a notification failure must never break or mask a sync result. (#6)"""
+    try:
+        with _engine.begin() as conn:
+            admins = [r[0] for r in conn.execute(text(
+                "SELECT id FROM public.dash_users WHERE role IN ('admin','super') AND COALESCE(is_active, TRUE)"
+            )).fetchall()]
+            for uid in admins:
+                conn.execute(text(
+                    "INSERT INTO public.dash_notifications (user_id, type, title, message) "
+                    "VALUES (:uid, :t, :ti, :m)"
+                ), {"uid": uid, "t": ntype, "ti": title[:200], "m": message[:2000]})
+    except Exception as e:
+        logger.warning("s3_sync: notify_admins failed (non-fatal): %s", e)
+
+
 def run_s3_sync(source_id: int, force: bool = False, triggered_by: str = "daemon") -> dict:
     """Sync one source. Returns a summary dict (also stored on the source row)."""
     src = get_source(source_id)
@@ -221,16 +238,23 @@ def run_s3_sync(source_id: int, force: bool = False, triggered_by: str = "daemon
                 try:
                     s3_client.download_object(cl, src["bucket"], obj["key"], tmp.name)
                     with open(tmp.name, "rb") as fh:
+                        # guarded=1 → upload enforces the safety holds (empty file,
+                        # schema drift, row-count cliff) since this is unattended.
                         resp = http.post(
                             "/api/upload",
                             headers=headers,
-                            params={"project": slug, "table_name": table, "action": action},
-                            data={"project": slug, "table_name": table, "action": action},
+                            params={"project": slug, "table_name": table, "action": action, "guarded": "1"},
+                            data={"project": slug, "table_name": table, "action": action, "guarded": "1"},
                             files={"file": (obj["key"].rsplit("/", 1)[-1], fh, "application/octet-stream")},
                         )
                     if resp.status_code >= 400:
                         errors += 1
-                        lines.append(f"✗ {obj['key']} -> {table} ({action}): HTTP {resp.status_code} {resp.text[:160]}")
+                        # A 409 = a safety hold (drift/cliff/empty) deliberately kept
+                        # the old data. We DON'T advance the etag (no state write
+                        # below — the `continue` skips it) so a corrected file
+                        # re-syncs automatically next cycle.
+                        _held = " [HELD — old data kept]" if resp.status_code == 409 else ""
+                        lines.append(f"✗ {obj['key']} -> {table} ({action}): HTTP {resp.status_code}{_held} {resp.text[:200]}")
                         continue
                     rows = 0
                     try:
@@ -269,11 +293,23 @@ def run_s3_sync(source_id: int, force: bool = False, triggered_by: str = "daemon
         status = "error" if errors else "ok"
         lines.append(f"done: {changed} changed, {errors} error(s)")
         _set_status(source_id, status, "\n".join(lines), touch_sync=True)
+        if errors:
+            # #6 surface sync failures/holds in the notification bell — a disabled
+            # or erroring source was otherwise silent (only in the log text).
+            _tail = "\n".join(lines[-6:])
+            _notify_admins(
+                "s3_sync_error",
+                f"S3 sync '{src.get('name') or source_id}': {errors} error(s)",
+                _tail,
+            )
         return {"ok": errors == 0, "changed": changed, "errors": errors, "log": "\n".join(lines)}
     except Exception as e:
         logger.exception("s3_sync: run failed for source %s", source_id)
         lines.append(f"FAILED: {e}")
         _set_status(source_id, "error", "\n".join(lines), touch_sync=True)
+        _notify_admins("s3_sync_error",
+                       f"S3 sync '{src.get('name') if isinstance(src, dict) else source_id}' FAILED",
+                       str(e)[:400])
         return {"ok": False, "error": str(e), "log": "\n".join(lines)}
     finally:
         _revoke_token(token)

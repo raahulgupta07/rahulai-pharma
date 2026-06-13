@@ -507,8 +507,6 @@
 </script>
 
 <article class="answer-card">
-  <span class="tier-badge">{tierLabel}</span>
-
   {#if skillUsed}
     <span class="skill-chip" title="Applied skill: {skillUsed.name} (#{skillUsed.id})">
       <svg class="skill-chip-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -535,6 +533,7 @@
       <span class="band-meta">
         {#if confLevel}<span class="conf-dot conf-{confLevel.toLowerCase()}" title="Confidence: {confLevel}">{confGlyph(confLevel)} {confLevel}</span>{/if}
         <span class="src-chip" title="Source: {bandSource}">⌖ {bandSource}</span>
+        {#if tierLabel}<span class="tier-badge" title="Router tier">{tierLabel}</span>{/if}
       </span>
     </div>
 
@@ -614,6 +613,7 @@
       <div class="band-meta">
         {#if confLevel}<span class="conf-dot conf-{confLevel.toLowerCase()}" title="Confidence: {confLevel}">{confGlyph(confLevel)} {confLevel}</span>{/if}
         <span class="src-chip" title="Source: {bandSource}">⌖ {bandSource}</span>
+        {#if tierLabel}<span class="tier-badge" title="Router tier">{tierLabel}</span>{/if}
       </div>
     </div>
     {#if bandLead}
@@ -1082,17 +1082,17 @@
   .related-row:hover .related-arrow { transform: translateX(2px); }
 
   .tier-badge {
-    position: absolute;
-    top: 10px;
-    right: 12px;
+    display: inline-flex;
+    align-items: center;
     font-size: 10px;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.1em;
     color: var(--pw-ink-muted, #7a6f60);
     background: transparent;
     border: 1px solid rgba(0, 0, 0, 0.1);
     border-radius: 999px;
-    padding: 2px 8px;
+    padding: 1px 8px;
     text-transform: uppercase;
+    white-space: nowrap;
   }
 
   .skill-chip {

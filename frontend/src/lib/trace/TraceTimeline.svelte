@@ -25,6 +25,7 @@
     analysis = '',
     elapsedMs = 0,
     live = false,
+    variant = 'classic',
   }: {
     steps?: TraceItem[];
     reasoning?: TraceItem[];
@@ -34,6 +35,7 @@
     analysis?: string;   // user analysis-type setting (usually auto)
     elapsedMs?: number;
     live?: boolean;
+    variant?: 'claude' | 'classic';  // 'claude' = quiet gray collapsible trace
   } = $props();
 
   const safeSteps = $derived(Array.isArray(steps) ? steps.filter(Boolean) : []);
@@ -400,10 +402,11 @@
 {/snippet}
 
 {#if rows.length}
-  <div class="tt" class:tt-live={live}>
+  <div class="tt" class:tt-live={live} class:tt-claude={variant === 'claude'}>
     <button class="tt-head" onclick={toggle} type="button" aria-expanded={!collapsed}>
+      {#if variant === 'claude'}<span class="tt-star">✻</span>{/if}
       <span class="tt-chev-l" class:open={!collapsed}>▸</span>
-      <span class="tt-title">{live ? 'Thinking…' : 'Thinking'}</span>
+      <span class="tt-title">{live ? 'Thinking…' : (variant === 'claude' ? (elapsedMs > 0 ? `Thought for ${workedFor}` : 'Thought process') : 'Thinking')}</span>
       {#if tierChip}<span class="tt-chip tt-chip-route">{tierChip}</span>{/if}
       {#if modeChip}<span class="tt-chip tt-chip-mode">{modeChip}</span>{/if}
       {#if analysisChip}<span class="tt-chip tt-chip-analysis">{analysisChip}</span>{/if}
@@ -567,4 +570,46 @@
   .tt-pulse { animation: tt-pulse 1.1s ease-in-out infinite; }
   @keyframes tt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
   .tt-spin { color: var(--pw-accent, #c96342); animation: tt-pulse 1.1s ease-in-out infinite; font-size: 9px; }
+
+  /* ── Claude variant: quiet, boxless, gray collapsible summary line ────────── */
+  .tt-claude {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 2px 0;
+    margin: 6px 0;
+  }
+  .tt-claude.tt-live { box-shadow: none; border: none; }
+  /* leading ✻ star (pulses while live) */
+  .tt-claude .tt-star {
+    color: var(--pw-accent, #c2683f);
+    font-size: 14px;
+    line-height: 1;
+  }
+  .tt-claude.tt-live .tt-star { animation: tt-pulse 1.1s ease-in-out infinite; }
+  .tt-claude .tt-head { color: var(--pw-muted, #8a8175); gap: 8px; padding: 3px 0; }
+  .tt-claude .tt-title { font-weight: 500; font-size: 13px; color: var(--pw-muted, #8a8175); }
+  .tt-claude .tt-head:hover .tt-title { color: var(--pw-ink, #2c2a26); }
+  /* Claude shows no tier/mode/analysis/effort badges, no token/cost/model stats */
+  .tt-claude .tt-chip,
+  .tt-claude .tt-stat,
+  .tt-claude .tt-model { display: none; }
+  /* keep the chevron, drop the redundant left caret */
+  .tt-claude .tt-chev-l { display: none; }
+  .tt-claude .tt-chev { color: var(--pw-dim, #b8b5ab); }
+  /* groups: no left rail, gentler spacing */
+  .tt-claude .tt-groups { border: none; padding-left: 0; margin-top: 6px; }
+  /* status circles → small muted dots */
+  .tt-claude .tt-circle { width: 6px; height: 6px; border-width: 1px; border-color: var(--pw-dim, #c4c1b6); }
+  .tt-claude .tt-circle-done { background: var(--pw-dim, #c4c1b6); border-color: var(--pw-dim, #c4c1b6); }
+  .tt-claude .tt-circle-running { border-color: var(--pw-accent, #c2683f); }
+  /* names/narrative read as quiet prose */
+  .tt-claude .tt-name { font-weight: 500; font-size: 13px; color: var(--pw-ink-soft, #57544d); }
+  .tt-claude .tt-narr { color: var(--pw-muted, #8a8175); font-size: 13px; }
+  .tt-claude .tt-tool-tag { background: var(--pw-bg-alt, #f0ede7); color: var(--pw-muted, #8a8175); }
+  /* soften the code box (no hard borders/dark) */
+  .tt-claude .tt-code { background: var(--pw-bg-alt, #f7f6f3); border-color: var(--pw-border, #ece8df); }
+  /* agent section header → quiet */
+  .tt-claude .tt-agent-head { color: var(--pw-muted, #8a8175); }
+  .tt-claude .tt-agent-model { display: none; }
 </style>

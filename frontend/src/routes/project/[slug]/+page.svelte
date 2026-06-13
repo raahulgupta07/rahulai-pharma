@@ -87,6 +87,22 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  let isStreaming = $state(false);
  let sessionId = $state('');
  let sessionStartTime = $state('');
+ // Chat presentation style: 'claude' (full-width, no avatar, ✻ thinking, quiet trace)
+ // or 'classic' (current robot-avatar + dotted thinking + full trace). Toggle persists;
+ // instant rollback to the old look without a redeploy.
+ let chatStyle = $state<'claude' | 'classic'>(
+   (typeof localStorage !== 'undefined' && localStorage.getItem('cp_chat_style') === 'classic') ? 'classic' : 'claude'
+ );
+ function toggleChatStyle() {
+   chatStyle = chatStyle === 'claude' ? 'classic' : 'claude';
+   try { localStorage.setItem('cp_chat_style', chatStyle); } catch {}
+ }
+ // Claude-style empty state: signed-in user + time-based greeting
+ let userName = $state('');
+ const greeting = $derived.by(() => {
+   const h = new Date().getHours();
+   return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+ });
  let messagesEl: HTMLDivElement;
  let textareaEl: HTMLTextAreaElement;
  let copiedIndex = $state(-1);
@@ -569,6 +585,12 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  try {
  const res = await fetch(`/api/projects/${projectSlug}`, { headers: _headers() });
  if (res.ok) { projectInfo = await res.json(); userRole = projectInfo.user_role || 'owner'; }
+ } catch {}
+
+ // Signed-in user name for the Claude-style greeting
+ try {
+ const ur = await fetch('/api/auth/check', { headers: _headers() });
+ if (ur.ok) { const ud = await ur.json(); userName = ud.username || ''; }
  } catch {}
 
  // Auto-trigger Deep Dash if redirected from /chat with ?build_dash=1
@@ -2404,10 +2426,15 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
     <div style="max-width: 880px; margin: 0 auto;">
 
       {#if messages.length > 0}
-        <div class="flex justify-center mb-2 animate-fade-up">
+        <div class="flex justify-center items-center gap-2 mb-2 animate-fade-up">
           <div style="font-family: var(--pw-font-headline); font-size: 16px; font-weight: 500; color: var(--pw-ink);">
             {projectInfo?.agent_name || 'Agent'}
           </div>
+          <button
+            class="chatstyle-toggle"
+            onclick={toggleChatStyle}
+            title={chatStyle === 'claude' ? 'Switch to Classic look (robot avatar + full trace)' : 'Switch to Claude look (clean, full-width)'}
+          >{chatStyle === 'claude' ? '✻ Claude' : '🤖 Classic'}</button>
         </div>
       {/if}
       {#if sessionStartTime}
@@ -2446,47 +2473,36 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
           </div>
         {/if}
 
-        <div class="flex flex-col items-center animate-fade-up" style="padding-top: 60px;">
-          <div style="text-align: center; margin-bottom: 40px;">
-            <div class="pw-hero-title">{projectInfo?.agent_name || 'Agent'}</div>
-            <div class="pw-hero-sub">
-              {projectInfo?.agent_role || 'Ask me anything about your data'}
-            </div>
+        <!-- Claude.ai-style empty state: greeting → centered composer → subtle chips -->
+        <div class="claude-empty animate-fade-up">
+          <div class="ce-greet">
+            <div class="ce-star">✻</div>
+            <div class="ce-hello">{greeting}{userName ? `, ${userName}` : ''}</div>
+            {#if projectInfo?.agent_role}
+              <div class="ce-sub">{projectInfo.agent_role}</div>
+            {/if}
           </div>
-          <!-- Analytics stats -->
-          <div style="display: flex; gap: 12px; justify-content: center; margin-bottom: 20px;">
-            <div class="pw-stat-card">
-              <div class="pw-stat-num">{sessionCount}</div>
-              <div class="pw-stat-label">Sessions</div>
-            </div>
-            <div class="pw-stat-card">
-              <div class="pw-stat-num">{avgScore > 0 ? avgScore.toFixed(1) : '--'}</div>
-              <div class="pw-stat-label">Avg quality</div>
-            </div>
-            <div class="pw-stat-card">
-              <div class="pw-stat-num">{memoryCount}</div>
-              <div class="pw-stat-label">Memories</div>
-            </div>
+
+          <div class="ce-composer">
+            {@render composerCard()}
           </div>
-          <!-- Design A: 4 starter cards in 2x2 grid, ChatGPT-style -->
-          <div style="text-transform:uppercase; letter-spacing:0.08em; font-size:11px; font-weight:700; color:var(--pw-muted); margin-bottom:10px; text-align:center;">Try asking</div>
-          <div class="starter-grid">
-            {#each (dynamicSuggestions || []).slice(0, 4) as prompt, i}
-              <button class="starter-card" onclick={() => send(prompt)} disabled={isStreaming}>
-                <div class="starter-card-head">
-                  <span class="starter-icon">{['','','',''][i] || ''}</span>
-                  <span class="starter-label">{['ANALYZE','COMPARE','BREAKDOWN','DISCOVER'][i] || 'ASK'}</span>
-                </div>
-                <div class="starter-text">{prompt}</div>
-              </button>
-            {/each}
-          </div>
+
+          {#if (dynamicSuggestions || []).length}
+            <div class="ce-chips">
+              {#each (dynamicSuggestions || []).slice(0, 4) as prompt}
+                <button class="ce-chip" onclick={() => send(prompt)} disabled={isStreaming} title={prompt}>
+                  {prompt}
+                </button>
+              {/each}
+            </div>
+          {/if}
         </div>
       {:else}
         <div class="flex flex-col gap-5">
           <ChatMessageList
             messages={messages}
             isStreaming={isStreaming}
+            chatStyle={chatStyle}
             routeLabel={(messages[messages.length-1] as any)?.reasoningUsed || reasoningMode || "auto"}
             agentName={projectInfo?.agent_name || "Agent"}
             copiedIndex={copiedIndex}
@@ -2508,7 +2524,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
           >
             {#snippet analysisExtras({ msg, index: i })}
               {#if Array.isArray((msg as any).trace) && (msg as any).trace.length}
-                <TraceTimeline steps={(msg as any).trace} usage={(msg as any).usage ?? null} routerDecision={(msg as any).routing ?? null} mode={(msg as any).reasoningUsed ?? ''} analysis={(msg as any).analysisUsed ?? ''} elapsedMs={((msg as any).traceDoneAt ?? Date.now()) - ((msg as any).traceStart ?? Date.now())} live={(msg as any).traceLive === true} />
+                <TraceTimeline variant={chatStyle} steps={(msg as any).trace} usage={(msg as any).usage ?? null} routerDecision={(msg as any).routing ?? null} mode={(msg as any).reasoningUsed ?? ''} analysis={(msg as any).analysisUsed ?? ''} elapsedMs={((msg as any).traceDoneAt ?? Date.now()) - ((msg as any).traceStart ?? Date.now())} live={(msg as any).traceLive === true} />
               {/if}
               {#if msg.status === 'done' && i === messages.length - 1}
                 <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
@@ -2658,8 +2674,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 
   <!-- Insights banner removed: insights now surface via the inline Insights tab on each response -->
 
-  <div class="input-bar shrink-0">
-    <div style="padding: 12px 0;">
+  {#snippet composerCard()}
       <div class="composer-card" class:focused={inputFocused}>
         <div class="composer-row">
           <!-- Segment 1: Filter pills -->
@@ -2722,6 +2737,11 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
           <!-- composer actions (Dashboard/Slides/Excel/Research) removed — chat-only product -->
         </div>
       </div>
+  {/snippet}
+
+  <div class="input-bar shrink-0" style="display:{messages.length === 0 ? 'none' : 'block'};">
+    <div style="padding: 12px 0;">
+      {#if messages.length > 0}{@render composerCard()}{/if}
       {#if !splitMode && dashVersions.length > 0}
         <div style="margin: 6px 0; padding: 6px 10px; background: var(--pw-bg-alt); border: 1px solid var(--pw-border); display: inline-flex; align-items: center; gap: 8px; font-size: 11px; max-width: 420px;">
           <span style="color: var(--pw-accent);">📊</span>
@@ -3417,59 +3437,91 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
   ondone={(d) => { if (d?.promoted?.total_goldens) console.log(`[golden] promoted (total: ${d.promoted.total_goldens})`); }} />
 
 <style>
-/* === Design A: starter cards 2x2 grid, ChatGPT-style === */
-:global(.starter-grid) {
- display: grid;
- grid-template-columns: repeat(2, 1fr);
- gap: 12px;
- max-width: 720px;
- margin: 0 auto;
- width: 100%;
-}
-:global(.starter-card) {
- background: #ffffff;
- border: 1px solid #ebebeb;
- border-radius: var(--pw-radius-sm);
- padding: 16px 18px;
- text-align: left;
- cursor: pointer;
+/* === Claude.ai-style empty state: greeting → centered composer → subtle chips === */
+:global(.claude-empty) {
  display: flex;
  flex-direction: column;
- gap: 8px;
- min-height: 100px;
- transition: border-color 150ms, box-shadow 150ms, transform 100ms;
- font-family: inherit;
-}
-:global(.starter-card:hover:not(:disabled)) {
- border-color: #c96342;
- box-shadow: 0 2px 8px rgba(201,99,66,0.10);
- transform: translateY(-1px);
-}
-:global(.starter-card:disabled) { opacity: 0.5; cursor: not-allowed; }
-:global(.starter-card-head) {
- display: flex;
  align-items: center;
- gap: 8px;
+ justify-content: center;
+ min-height: min(64vh, 620px);
+ width: 100%;
+ max-width: 740px;
+ margin: 0 auto;
+ padding: 24px 0 40px;
 }
-:global(.starter-icon) {
- font-size: 18px;
+:global(.ce-greet) { text-align: center; margin-bottom: 26px; }
+:global(.ce-star) {
+ font-size: 30px;
  line-height: 1;
+ color: var(--pw-accent, #c96342);
+ margin-bottom: 14px;
+ animation: ceStarIn 600ms ease-out both;
 }
-:global(.starter-label) {
- font-size: 10px;
- font-weight: 700;
- letter-spacing: 0.08em;
- text-transform: uppercase;
- color: #c96342;
-}
-:global(.starter-text) {
- font-size: 13px;
- color: #1a1614;
- line-height: 1.4;
+@keyframes ceStarIn { from { opacity: 0; transform: rotate(-90deg) scale(.6); } to { opacity: 1; transform: none; } }
+:global(.ce-hello) {
+ font-family: var(--pw-font-headline, Georgia, serif);
+ font-size: clamp(26px, 4vw, 36px);
  font-weight: 500;
+ letter-spacing: -0.01em;
+ color: var(--pw-ink, #1a1614);
+}
+:global(.ce-sub) {
+ margin-top: 6px;
+ font-size: 13px;
+ color: var(--pw-muted, #8a8175);
+}
+/* The composer becomes the hero — center it and cap width like Claude */
+:global(.ce-composer) { width: 100%; }
+:global(.ce-composer .composer-card) { max-width: 100%; }
+/* Subtle pill suggestions under the box */
+:global(.ce-chips) {
+ display: flex;
+ flex-wrap: wrap;
+ justify-content: center;
+ gap: 8px;
+ margin-top: 18px;
+}
+:global(.ce-chip) {
+ max-width: 320px;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ white-space: nowrap;
+ padding: 7px 14px;
+ font-size: 12.5px;
+ color: var(--pw-ink, #3a342e);
+ background: transparent;
+ border: 1px solid var(--pw-border, #e6e1d7);
+ border-radius: var(--pw-radius-pill, 999px);
+ cursor: pointer;
+ font-family: inherit;
+ transition: background 150ms, border-color 150ms, color 150ms;
+}
+:global(.ce-chip:hover:not(:disabled)) {
+ background: rgba(201,99,66,0.07);
+ border-color: var(--pw-accent, #c96342);
+ color: var(--pw-accent, #c96342);
+}
+:global(.ce-chip:disabled) { opacity: 0.5; cursor: not-allowed; }
+/* Claude/Classic presentation toggle (header) */
+:global(.chatstyle-toggle) {
+ font-size: 11px;
+ font-weight: 600;
+ padding: 3px 10px;
+ border-radius: var(--pw-radius-pill, 999px);
+ border: 1px solid var(--pw-border, #e6e1d7);
+ background: transparent;
+ color: var(--pw-muted, #8a8175);
+ cursor: pointer;
+ font-family: inherit;
+ transition: background 150ms, border-color 150ms, color 150ms;
+}
+:global(.chatstyle-toggle:hover) {
+ background: rgba(194,104,63,0.07);
+ border-color: var(--pw-accent, #c2683f);
+ color: var(--pw-accent, #c2683f);
 }
 @media (max-width: 640px) {
- :global(.starter-grid) { grid-template-columns: 1fr; }
+ :global(.ce-chip) { max-width: 88vw; }
 }
 
 /* === Sim tag cards + what-if chips === */

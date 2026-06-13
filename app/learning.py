@@ -619,7 +619,13 @@ def _reap_stale_runs(slug: str) -> int:
                 "UPDATE public.dash_training_runs "
                 "SET status='failed', finished_at=now(), "
                 "    current_step = left(COALESCE(NULLIF(current_step,''),'')"
-                "                   || ' · aborted (stale: no progress > ' || :m || ' min)', 200) "
+                "                   || ' · aborted (stale: no progress > ' || :m || ' min)', 200), "
+                # Also stamp the error column — current_step is invisible to
+                # get_run_status/the robot console, so a stale-abort otherwise has
+                # NO surfaced reason. Keep any real step error already recorded.
+                "    error = left(COALESCE(NULLIF(error,''), 'watchdog: aborted — no progress > '"
+                "                   || :m || ' min. A training step hung; check logs for the last step "
+                "reached (empty logs = hung before the first step).'), 1000) "
                 "WHERE project_slug = :s AND status IN ('running','finalizing') "
                 "  AND COALESCE( "
                 "        (SELECT max((e->>'tsabs')::float) FROM jsonb_array_elements(logs) e), "
@@ -650,14 +656,19 @@ def get_auto_train_status(slug: str, request: Request):
         with _engine.connect() as conn:
             runs = conn.execute(text(
                 "SELECT id, status, started_at, finished_at, "
-                "EXTRACT(EPOCH FROM (finished_at - started_at)) as duration_sec "
+                "EXTRACT(EPOCH FROM (finished_at - started_at)) as duration_sec, "
+                "error, current_step "
                 "FROM public.dash_training_runs WHERE project_slug = :s "
                 "ORDER BY started_at DESC LIMIT 5"
             ), {"s": slug}).fetchall()
+        # error/current_step surfaced so the robot console can show WHY a run
+        # failed (a stale-abort now stamps error — see _reap_stale_runs).
         recent_runs = [{"id": r[0], "status": r[1],
                         "started_at": _iso_utc(r[2]),
                         "finished_at": _iso_utc(r[3]),
-                        "duration_sec": round(r[4]) if r[4] else None}
+                        "duration_sec": round(r[4]) if r[4] else None,
+                        "error": (r[5] or "")[:500],
+                        "current_step": r[6] or ""}
                        for r in runs]
     except Exception:
         recent_runs = []

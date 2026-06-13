@@ -211,6 +211,8 @@ import AnswerCard from './AnswerCard.svelte';
  chartsEnabled?: boolean;
  /** Agent label shown in SOURCES tab "AGENT" stat. */
  agentName?: string;
+ /** Presentation variant: 'claude' (full-width, no avatar, ✻ thinking) or 'classic' (robot avatar + dots). */
+ chatStyle?: 'claude' | 'classic';
  /** Whether copy-message-N was just pressed (host owns the timer). */
  copiedIndex?: number;
  /** Whether message-N is pinned. */
@@ -246,6 +248,7 @@ import AnswerCard from './AnswerCard.svelte';
  tabEnabled = () => true,
  chartsEnabled = true,
  agentName = 'Agent',
+ chatStyle = 'classic',
  copiedIndex = -1,
  pinnedMap = {},
  onCopy,
@@ -355,12 +358,22 @@ import AnswerCard from './AnswerCard.svelte';
  }
 </script>
 
+{#snippet thinkingDots()}
+  {#if chatStyle === 'claude'}
+    <div class="claude-think" style="margin-top: 8px;"><span class="ct-star">✻</span></div>
+  {:else}
+    <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;"><RobotAvatar size={16} mood="thinking" /><div class="typing-indicator"><span></span><span></span><span></span></div></div>
+  {/if}
+{/snippet}
+
 {#each messages as msg, i (i)}
   {#if msg.role === 'assistant'}
     <div class="msg-row" style="display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px;">
+      {#if chatStyle !== 'claude'}
       <div style="width: 28px; height: 28px; border-radius: var(--pw-radius-sm); background: var(--pw-bg-alt); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
         <RobotAvatar size={20} mood={msg.status === 'error' ? 'error' : (msg.status === 'streaming' ? (msg.content ? 'typing' : 'thinking') : 'done')} />
       </div>
+      {/if}
       <div style="flex: 1; min-width: 0;">
 
         <!-- Complexity Router badge (Feature A) — tier · model · score -->
@@ -1221,7 +1234,7 @@ import AnswerCard from './AnswerCard.svelte';
 
           <!-- Live "generating" indicator while the answer is still streaming -->
           {#if msg.status === 'streaming'}
-            <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;"><RobotAvatar size={16} mood="thinking" /><div class="typing-indicator"><span></span><span></span><span></span></div></div>
+            {@render thinkingDots()}
           {/if}
 
           <!-- panel_announcement pills: mini-thumbnail + ✓ Added X (N rows). Click → scroll right pane to that panel. -->
@@ -1266,10 +1279,10 @@ import AnswerCard from './AnswerCard.svelte';
                   `<span style="display:inline-block;background:rgba(22,163,74,0.12);color:#15803d;font-size:10px;font-weight:700;letter-spacing:0.04em;padding:2px 6px;border-radius:3px;margin-left:6px;text-transform:uppercase;vertical-align:middle;">✓ ${inner}</span>`)
               }</div>
               {#if msg.status === 'streaming'}
-                <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;"><RobotAvatar size={16} mood="thinking" /><div class="typing-indicator"><span></span><span></span><span></span></div></div>
+                {@render thinkingDots()}
               {/if}
             {:else if msg.status === 'streaming'}
-              <div style="display: flex; align-items: center; gap: 8px;"><RobotAvatar size={16} mood="thinking" /><div class="typing-indicator"><span></span><span></span><span></span></div></div>
+              {@render thinkingDots()}
             {/if}
             {#if Array.isArray((msg as any).panelAnnouncements) && (msg as any).panelAnnouncements.length > 0}
               <div class="panel-anno-list">
@@ -1301,6 +1314,19 @@ import AnswerCard from './AnswerCard.svelte';
 {/each}
 
 <style>
+ /* Claude-style thinking indicator: a single pulsing ✻ star (no robot, no dots) */
+ .claude-think { display: flex; align-items: center; }
+ .claude-think .ct-star {
+   font-size: 18px;
+   line-height: 1;
+   color: var(--pw-accent, #c2683f);
+   animation: ctStarPulse 1.1s ease-in-out infinite;
+ }
+ @keyframes ctStarPulse {
+   0%, 100% { opacity: 0.35; transform: rotate(0deg) scale(0.92); }
+   50%      { opacity: 1;    transform: rotate(45deg) scale(1.06); }
+ }
+
  /* Legacy .trace-line / .trace-expanded / .mode-chip / .ana-chip / live-sql styles
     REMOVED — that trace UI is now owned entirely by ReasoningTrace.svelte. */
 

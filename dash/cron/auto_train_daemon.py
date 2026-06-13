@@ -39,6 +39,17 @@ async def _seconds_since_last_run(slug: str) -> float | None:
 _last_row_counts: dict[str, dict[str, int]] = {}  # {slug: {table: count}}
 _last_trained_at: dict[str, float] = {}  # {slug: epoch}
 
+# Circuit-breaker for the untrained-retrain loop. A table that hangs/fails
+# training never gets its Q&A, so _get_untrained_tables keeps returning it and
+# the daemon re-triggers a full retrain EVERY cycle — an infinite loop that
+# burns ~10 min (the per-table timeout) on a genuinely-broken table forever.
+# We track the SAME untrained table-set's consecutive auto-train attempts; once
+# it exceeds AUTO_TRAIN_MAX_RETRY, we stop auto-retrying (leave it for manual
+# train / a data change) until the set changes or a clean run clears it. In
+# memory only — a redeploy resets it (gives the fixed code one fresh attempt).
+_MAX_AUTO_RETRY = max(1, int(os.getenv("AUTO_TRAIN_MAX_RETRY", "2")))
+_untrained_attempts: dict[str, tuple[frozenset, int]] = {}  # {slug: (table_set, attempts)}
+
 
 async def _get_locked_slug() -> Optional[str]:
     try:
@@ -110,8 +121,10 @@ _NON_TRAINABLE = {"shop_flat", "catalog_enrichment"}
 
 def _is_trainable(name: str) -> bool:
     """A user data table worth training — excludes derived artifacts, backups
-    (_bk_*) and any internal/underscore-prefixed table."""
-    return bool(name) and name not in _NON_TRAINABLE and not name.startswith("_")
+    (_bk_* prefix, *__bak pre-replace snapshots) and any internal/underscore-
+    prefixed table."""
+    return (bool(name) and name not in _NON_TRAINABLE
+            and not name.startswith("_") and not name.endswith("__bak"))
 
 
 def _get_untrained_tables(slug: str) -> list[str]:
@@ -272,7 +285,26 @@ async def _check_and_train(slug: str) -> dict:
     # pipeline now, regardless of row-delta. Fixes the "pre-loaded tables stay
     # untrained forever because they never change" gap.
     untrained = _get_untrained_tables(slug)
+    if not untrained:
+        # Clean — clear any open circuit so a future genuine failure gets fresh retries.
+        _untrained_attempts.pop(slug, None)
     if untrained:
+        # CIRCUIT-BREAKER: if the SAME untrained table-set has already been
+        # auto-trained _MAX_AUTO_RETRY times without becoming trained, stop the
+        # loop (it's broken, not transient) instead of re-triggering forever.
+        _key = frozenset(untrained)
+        _prev_key, _prev_n = _untrained_attempts.get(slug, (frozenset(), 0))
+        _n = (_prev_n + 1) if _key == _prev_key else 1
+        if _n > _MAX_AUTO_RETRY:
+            _untrained_attempts[slug] = (_key, _prev_n)  # hold count, stay open
+            _last_row_counts[slug] = current
+            result["action"] = "circuit_open"
+            result["reason"] = (f"same {len(untrained)} table(s) failed training {_prev_n}× "
+                                f"({','.join(sorted(untrained))}) — auto-retry paused; "
+                                f"train manually or raise AUTO_TRAIN_MAX_RETRY")
+            log.warning(f"auto_train: circuit OPEN for {slug} — {result['reason']}")
+            return result
+        _untrained_attempts[slug] = (_key, _n)
         # Cooldown guard: skip if a run started recently (upload's promote+train is
         # already training these — its metadata write lags, so without this the
         # untrained-check double-fires a duplicate run that races the first).
@@ -374,4 +406,8 @@ def get_daemon_status() -> dict:
         "last_check_time": _last_check_time,
         "last_check_result": _last_check_result,
         "last_row_counts": {s: sum(t.values()) for s, t in _last_row_counts.items()},
+        "max_auto_retry": _MAX_AUTO_RETRY,
+        # Open circuits = table-sets the daemon has given up auto-retraining.
+        "circuit_open": {s: {"tables": sorted(k), "attempts": n}
+                         for s, (k, n) in _untrained_attempts.items() if n >= _MAX_AUTO_RETRY},
     }

@@ -282,12 +282,30 @@
     if (atStatus?.daemon?.enabled === false) return 'paused';
     return 'idle';
   });
+  // ── Sticky-badge fix (#7c): the ⚠ glyph + "1" badge used to latch on the last
+  // failed run FOREVER, even hours later while idle, so the robot looked broken
+  // when nothing was wrong. Now the alert clears when (a) the user dismisses it,
+  // (b) a NEWER run lands (dismissal auto-resets so a fresh failure re-alerts),
+  // or (c) the failure is older than ERR_TTL_H hours and nothing is training.
+  const ERR_TTL_H = 6;
+  let errDismissed = $state(false);
+  let _lastSeenRunId: number | undefined = $state(undefined);
+  $effect(() => {
+    const id = lastRun?.id;
+    if (id !== undefined && id !== _lastSeenRunId) { _lastSeenRunId = id; errDismissed = false; }
+  });
+  const errStale = $derived.by(() => {
+    if (!lastRun?.finished_at) return false;
+    const ageH = (Date.now() - new Date(lastRun.finished_at).getTime()) / 3.6e6;
+    return ageH > ERR_TTL_H;
+  });
+  const showErr = $derived((lastRun?.status === 'failed') && !errDismissed && !errStale && !isTrainingNow);
   const attention = $derived.by(() => {
     const a = atStatus?.attention;
-    if (typeof a === 'number') return a;
-    return (lastRun?.status === 'failed') ? 1 : 0;
+    if (typeof a === 'number' && !errDismissed && !errStale) return a;
+    return showErr ? 1 : 0;
   });
-  const isError = $derived(lastRun?.status === 'failed' || task === 'error');
+  const isError = $derived(showErr || task === 'error');
   const isPaused = $derived(!isTrainingNow && atStatus?.daemon?.enabled === false);
 
   // antenna / dot color reflects character mood
@@ -518,6 +536,12 @@
         {/if}
       </div>
       {#if trainErr && consoleTab === 'log'}<div class="fr-trainerr">⚠ {trainErr}</div>{/if}
+      {#if !isTrainingNow && consoleTab === 'log' && lastRun?.status === 'failed' && (lastRun?.error || lastRun?.current_step)}
+        <div class="fr-trainerr" title="Why the last run failed">
+          <span>⚠ last run failed: {lastRun.error || lastRun.current_step}</span>
+          <button class="fr-errx" onclick={() => (errDismissed = true)} title="Dismiss — clears the ⚠ badge until the next run" aria-label="dismiss">✕</button>
+        </div>
+      {/if}
 
       <!-- dark console -->
       <div class="fr-console" bind:this={consoleEl}>
@@ -761,7 +785,10 @@
   .co-pulse { animation: fr-pulse 1s ease-in-out infinite; }
   .co-lbl { font-size: 11px; font-weight: 800; letter-spacing: 0.02em; color: var(--pw-ink, #3a352c); flex-shrink: 0; }
   .co-txt { font-size: 11px; color: var(--pw-muted, #8a8275); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .fr-trainerr { padding: 5px 11px; font-size: 10.5px; color: #ff8b7e; background: #1a1622; border-bottom: 1px solid #2c2638; }
+  .fr-trainerr { display: flex; align-items: flex-start; gap: 8px; padding: 5px 11px; font-size: 10.5px; color: #ff8b7e; background: #1a1622; border-bottom: 1px solid #2c2638; }
+  .fr-trainerr > span { flex: 1; min-width: 0; }
+  .fr-errx { flex: none; background: none; border: none; color: #ff8b7e; opacity: 0.6; cursor: pointer; font-size: 11px; line-height: 1; padding: 1px 3px; border-radius: var(--pw-radius-sm, 6px); }
+  .fr-errx:hover { opacity: 1; background: rgba(255,139,126,0.15); }
 
   /* expanded console popover */
   .fr-pop { width: 440px; max-width: calc(100vw - 36px); background: #1d1926; border: 1px solid #3a3346; border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.4); overflow: hidden; animation: fr-rise 0.16s ease; }
