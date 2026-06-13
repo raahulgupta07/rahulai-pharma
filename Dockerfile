@@ -76,16 +76,15 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 FROM ghcr.io/astral-sh/uv:python3.12-trixie-slim AS runtime
 
 ARG TARGETARCH
-ARG DOCKERIZE_VERSION=v0.11.0
 
 # Runtime apt deps (OCR / PDF rendering — pdftoppm + tesseract for upload/vision).
+# (dockerize removed — replaced by a pure-bash TCP wait in entrypoint.sh; it had
+#  8 HIGH Go-stdlib CVEs and ships from an abandoned upstream repo.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
       curl ca-certificates gnupg \
       poppler-utils tesseract-ocr \
       libjpeg62-turbo libpng16-16 zlib1g libfreetype6 \
       libxml2 libxslt1.1 libffi8 \
-    && curl -sSfL "https://github.com/jwilder/dockerize/releases/download/${DOCKERIZE_VERSION}/dockerize-linux-${TARGETARCH}-${DOCKERIZE_VERSION}.tar.gz" \
-       | tar -xz -C /usr/local/bin \
     && rm -rf /var/lib/apt/lists/*
 
 # Pull Python site-packages from the deps stage (no rebuild).

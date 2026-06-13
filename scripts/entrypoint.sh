@@ -43,7 +43,16 @@ done
 
 if [[ "$WAIT_FOR_DB" = true || "$WAIT_FOR_DB" = True ]]; then
     echo -e "    ${DIM}Waiting for database at ${DB_HOST}:${DB_PORT}...${NC}"
-    dockerize -wait tcp://$DB_HOST:$DB_PORT -timeout 300s
+    # Pure-bash TCP wait (replaced dockerize — removed: 8 HIGH CVEs + abandoned repo).
+    _db_deadline=$((SECONDS + 300))
+    until (exec 3<>"/dev/tcp/${DB_HOST}/${DB_PORT}") 2>/dev/null; do
+        if [ "$SECONDS" -ge "$_db_deadline" ]; then
+            echo -e "    Database wait timed out after 300s" >&2
+            exit 1
+        fi
+        sleep 1
+    done
+    exec 3>&- 2>/dev/null || true
     echo -e "    ${BOLD}Database ready.${NC}"
     echo ""
 fi
