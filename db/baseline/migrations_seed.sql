@@ -165,7 +165,6 @@ COPY public.dash_migrations (filename, applied_at, checksum) FROM stdin;
 009_drift_events.sql	2026-06-07 02:50:08.79062+00	\N
 012_self_learn_logs.sql	2026-06-07 02:50:08.79062+00	\N
 067_dream_wave2.sql	2026-06-07 02:50:08.79062+00	\N
-073_agent_os_link.sql	2026-06-07 02:50:08.79062+00	\N
 075_entity_linker.sql	2026-06-07 02:50:08.79062+00	\N
 078_retrieval_depth.sql	2026-06-07 02:50:08.79062+00	\N
 082_investment_agents.sql	2026-06-07 02:50:08.79062+00	\N

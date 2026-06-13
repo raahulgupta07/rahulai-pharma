@@ -8843,11 +8843,26 @@ async def upload_file(request: Request, file: UploadFile, table_name: str | None
     # Stream to temp file instead of loading to memory
     with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
         size = 0
-        while chunk := await file.read(1024 * 1024):  # 1MB chunks
-            size += len(chunk)
-            if size > MAX_FILE_SIZE:
-                raise HTTPException(400, f"File too large. Max: {MAX_FILE_SIZE // (1024*1024)} MB")
-            tmp.write(chunk)
+        try:
+            while chunk := await file.read(1024 * 1024):  # 1MB chunks
+                size += len(chunk)
+                if size > MAX_FILE_SIZE:
+                    # Clean up the partial temp file before bailing (delete=False
+                    # means it would otherwise linger and slowly fill the temp dir).
+                    try:
+                        os.unlink(tmp.name)
+                    except OSError:
+                        pass
+                    raise HTTPException(400, f"File too large. Max: {MAX_FILE_SIZE // (1024*1024)} MB")
+                tmp.write(chunk)
+        except HTTPException:
+            raise
+        except Exception:
+            try:
+                os.unlink(tmp.name)
+            except OSError:
+                pass
+            raise
         tmp_path = tmp.name
     # Prometheus: bytes accepted on /upload, labeled by extension.
     try:

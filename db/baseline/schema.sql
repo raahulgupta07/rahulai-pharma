@@ -3784,7 +3784,15 @@ CREATE TABLE public.dash_agent_registry (
     description text,
     tags jsonb DEFAULT '[]'::jsonb NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    category text
+    category text,
+    status text DEFAULT 'active',
+    display_name text,
+    handler_kind text,
+    trigger_model text,
+    llm_model text,
+    cost_per_invocation numeric(10,4),
+    last_seen_at timestamp with time zone,
+    docs_url text
 );
 
 
