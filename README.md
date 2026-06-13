@@ -485,6 +485,32 @@ How it works per source: the daemon lists objects under your prefix, matches eac
 
 ---
 
+## Security & penetration testing
+
+A full pre-production pentest checklist lives in **`SECURITY_TESTING.md`** (P0–P2: store-scope
+boundary, prompt injection, SQLi, auth, upload, SSRF, secrets, gateway, DoS, infra, supply chain,
+business logic — each with tools + commands + pass criteria).
+
+A phased ethical-hack was run (2026-06-13) and remediated — see CLAUDE.md "Security pentest" for the
+full log. Highlights of what shipped:
+- **Agent SQL hard-fenced:** the writable "Engineer" agent is dropped from embed + store-locked
+  teams; a statement guard blocks `DROP DATABASE/SCHEMA/ROLE`/`ALTER SYSTEM`/`COPY…PROGRAM`; and the
+  agent's SQL tools **cannot read credential/system tables** (`dash_users`, `dash_tokens`, `pg_authid`, …)
+  — verified live (`db/session.py`).
+- **Web shop-staff store isolation enforced** (was prompt-only) via `API_STORE_SCOPE`.
+- **Auth hardening:** OIDC email-merge requires `email_verified` + never into admin/super (default off);
+  password min 8; per-IP login throttle; legacy unverified OIDC gated behind `LEGACY_OIDC_ENABLED`.
+- **Deps + image:** 22 dependency CVEs patched; the abandoned `dockerize` binary removed.
+- **Secrets:** two key values found committed in old docs were scrubbed (both keys are unused in this
+  build — see CLAUDE.md); CSP + full security headers on Caddy *and* the documented nginx config.
+
+**Prod secrets:** generate with the `.env.production` template (gitignored) — strong
+`SUPER_ADMIN_PASS`, `CONNECTION_ENCRYPTION_KEY`, `REDIS_PASS`, `JWT_SECRET` pre-filled; set your domain
+and copy to the server's `.env`. **Auto-scanners** (sqlmap/garak/nuclei) need open egress — run them
+from a box with normal internet using the commands in `SECURITY_TESTING.md`.
+
+---
+
 ## Environment configuration (`.env`)
 
 `.env` holds **all secrets and per-deploy config** — it is **gitignored, never commit it**. Copy `.env.example` → `.env` and fill it in. `dash-api` lists env vars individually in `compose.yaml` (no `env_file`), so a **new** var must be added to the service `environment:` block too, or it won't reach the container.
