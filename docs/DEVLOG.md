@@ -2829,7 +2829,7 @@ User asked execute pre-prod checklist. Dispatched 3 tracks via parallel agents (
   1. `OPENROUTER_API_KEY=sk-or-v1-<REDACTED>` — real LLM key, financial liability
   2. `SUPER_ADMIN_PASS=<DEMO_PASSWORD>` — real super-admin password (ALSO leaked in README.md:977,1009,1363 + CLAUDE.md)
   3. `PEXELS_API_KEY=h1Qv2MuR6H92...` — real stock-image key, low sensitivity
-  4. `CONNECTION_ENCRYPTION_KEY=6E7-lXD0TUOza...` — real Fernet key, rotation requires re-encrypt migration of all stored OAuth/connector creds
+  4. `CONNECTION_ENCRYPTION_KEY=<REDACTED>` — real Fernet key, rotation requires re-encrypt migration of all stored OAuth/connector creds
   
   **Production-dangerous default**: `compose.yaml` `${DB_PASS:-ai}` lets containers boot w/ password `ai` if env unset. **Derived-w/-insecure-fallback**: `dash/connectors/crypto.py:29` falls back to literal `"dev-insecure-jwt-secret"` if `JWT_SECRET` unset → makes `CONNECTION_ENCRYPTION_KEY` predictable. 4 empty container-env passthroughs + 2 test fixtures. NO rotation performed — audit + recommendation only. `docs/SECRETS.md` (NEW) — vault decision matrix (AWS Secrets Manager vs Doppler vs Infisical vs k8s native) w/ pros/cons. `.gitignore` extended w/ 12 `*.env*` variants.
 

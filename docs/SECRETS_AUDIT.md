@@ -59,7 +59,7 @@ Stack vendor key (third-party) entries are flagged separately from internal app 
 
 | where | file:line |
 |---|---|
-| `.env:34` | `PEXELS_API_KEY=h1Qv2MuR6H92H2W6DMEkthnHetAUXWIKho6iUCqbkL9EKn5OpOh30uVA` |
+| `.env:34` | `PEXELS_API_KEY=<REDACTED>` |
 | `.env.bak:27` | identical value |
 
 - **Classification:** REAL — 56-char base62-ish string, matches Pexels free-tier API key shape. Used for stock image lookup in slide/deck generation.
@@ -72,7 +72,7 @@ Stack vendor key (third-party) entries are flagged separately from internal app 
 
 | where | file:line |
 |---|---|
-| `.env:36` | `CONNECTION_ENCRYPTION_KEY=6E7-lXD0TUOza-kgYBy7wNbbYYaChELWq9yk0D1E4TY=` |
+| `.env:36` | `CONNECTION_ENCRYPTION_KEY=<REDACTED>` |
 
 - **Classification:** REAL — Fernet 44-char urlsafe-base64 key. Used by `dash/connectors/crypto.py` to symmetrically encrypt OAuth refresh tokens, DB passwords, etc., stored in `dash_connections` and `dash_connection_user_tokens` tables.
 - **Blast radius:** rotating this key invalidates every stored encrypted credential — all connected data sources (Postgres, MSSQL, Fabric, BigQuery, PowerBI) and OAuth tokens (SharePoint, GDrive, OneDrive) must be re-entered by users.
@@ -141,8 +141,8 @@ Stack vendor key (third-party) entries are flagged separately from internal app 
 
 | where | file:line |
 |---|---|
-| `tests/test_phase6.py:30` | `text = "Here is my key: sk-proj-abcdef1234567890abcdefXYZ"` |
-| `tests/test_phase6.py:63` | `text = "use sk-proj-abcdef1234567890abcdefXYZ to call api"` |
+| `tests/test_phase6.py:30` | `text = "Here is my key: <REDACTED>"` |
+| `tests/test_phase6.py:63` | `text = "use <REDACTED> to call api"` |
 
 - **Classification:** TEST FIXTURE — synthetic OpenAI-prefix string, never works as a real key. Used by Phase-6 secret-leak detector eval suite to verify the audit pipeline flags them.
 - **Action:** none required. Standard pattern.
