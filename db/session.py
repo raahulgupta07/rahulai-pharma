@@ -78,6 +78,32 @@ def _make_blast_guard():
     return _guard
 
 
+# Credential / system tables the AGENT's SQL tools must never read. The read-only
+# engine stops writes but NOT sensitive SELECTs — without this, a jailbroken agent
+# could `SELECT password_hash FROM public.dash_users`. The real app's auth code uses
+# a DIFFERENT engine (db._engine / get_sql_engine), so this only fences the agent.
+_SENSITIVE_TABLES_RE = re.compile(
+    r"\b(dash_users|dash_tokens|dash_security_events|dash_service_accounts|dash_api_keys"
+    r"|pg_authid|pg_shadow|pg_user|pg_roles|pg_user_mapping|user_mapping)\b",
+    re.IGNORECASE,
+)
+
+
+def _make_sensitive_read_guard():
+    """before_cursor_execute listener: reject any statement that references a
+    credential/system table. Attached to the agent's read + write engines so the
+    LLM can't exfiltrate password hashes/tokens via text-to-SQL, even if the
+    prompt-level guard is bypassed. Legitimate pharma analytics never touch these."""
+    def _guard(conn, cursor, statement, parameters, context, executemany):
+        try:
+            s = _BLAST_STRIP_LITERALS.sub("''", statement or "")
+        except Exception:
+            s = statement or ""
+        if _SENSITIVE_TABLES_RE.search(s):
+            raise PermissionError("blocked: query references a restricted credential/system table")
+    return _guard
+
+
 def _make_readonly_listener():
     """Return a 'begin' event listener that sets read-only + timeout."""
     def set_readonly(conn):
@@ -428,6 +454,7 @@ def get_project_engine(slug: str) -> Engine:
     # CREATE TABLE/VIEW in dash are unaffected; migrations use a separate engine.
     # Durable fix = run the app as a non-superuser role (SECURITY_TESTING.md).
     event.listen(eng, "before_cursor_execute", _make_blast_guard())
+    event.listen(eng, "before_cursor_execute", _make_sensitive_read_guard())
     with _engine_lock:
         _project_engines[safe] = eng
         _engine_timestamps[safe] = _time.time()
@@ -452,6 +479,9 @@ def get_project_readonly_engine(slug: str) -> Engine:
     )
     event.listen(eng, "begin", _make_search_path_listener(f'"{safe}"'))
     event.listen(eng, "begin", _make_readonly_listener())
+    # Agent read tool must not SELECT credential/system tables (read-only blocks
+    # writes, not sensitive reads).
+    event.listen(eng, "before_cursor_execute", _make_sensitive_read_guard())
     with _engine_lock:
         _project_ro_engines[safe] = eng
         _engine_timestamps[safe] = _time.time()
