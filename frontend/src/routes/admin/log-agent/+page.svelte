@@ -154,7 +154,7 @@
     box-sizing: border-box;
     background: var(--pw-bg);
     border: 1px solid var(--pw-border);
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     padding: 10px;
     font-family: inherit;
     font-size: 14px;
@@ -174,7 +174,7 @@
   .la-ctl input {
     background: var(--pw-bg);
     border: 1px solid var(--pw-border);
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     padding: 7px 9px;
     font-family: inherit;
     font-size: 13px;
@@ -187,7 +187,7 @@
     background: var(--pw-accent);
     color: #fff;
     border: none;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     padding: 9px 18px;
     font-family: inherit;
     font-size: 13px;
@@ -203,7 +203,7 @@
     border: 1px solid #d44;
     color: #b22;
     background: #fdecec;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     padding: 10px 12px;
     font-size: 13px;
   }
@@ -218,7 +218,7 @@
     margin-top: 20px;
     border-left: 3px solid var(--pw-accent);
     background: var(--pw-surface-warm);
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     padding: 14px 16px;
   }
   .la-answer-text { margin: 0; font-size: 14.5px; line-height: 1.6; }
@@ -227,7 +227,7 @@
     margin-top: 16px;
     border: 2px solid var(--pw-accent);
     background: var(--pw-accent-soft);
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     padding: 12px 14px;
   }
   .la-pattern-tag {
@@ -257,7 +257,7 @@
   .la-bar-track {
     background: var(--pw-bg-alt);
     border: 1px solid var(--pw-border);
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     height: 18px;
     overflow: hidden;
   }

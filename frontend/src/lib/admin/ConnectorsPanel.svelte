@@ -890,7 +890,7 @@
     display: flex; align-items: center; gap: 10px;
     width: 100%; text-align: left;
     background: transparent; border: none;
-    padding: 8px 12px; border-radius: 0;
+    padding: 8px 12px; border-radius: var(--pw-radius-sm);
     font-size: 12px; color: var(--pw-ink);
     font-family: inherit; cursor: pointer;
     border-left: 2px solid transparent;
@@ -1033,7 +1033,7 @@
     padding: 2px 8px;
     font-size: 11px;
     font-weight: 600;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
   }
   .pill-ok { background: rgba(46, 125, 50, 0.12); color: var(--pw-success, #2e7d32); }
   .pill-off { background: rgba(135, 131, 122, 0.18); color: var(--pw-muted); }
@@ -1103,7 +1103,7 @@
     font-size: 12.5px;
     color: var(--pw-ink);
     box-sizing: border-box;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
   }
   .input:focus { outline: none; border-color: var(--pw-accent); }
   textarea.input { font-family: var(--pw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 12px; resize: vertical; }
@@ -1167,7 +1167,7 @@
     margin: 8px 0 4px;
     white-space: pre-wrap;
     word-break: break-word;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     line-height: 1.5;
   }
 

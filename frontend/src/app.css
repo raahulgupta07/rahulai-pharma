@@ -81,12 +81,12 @@
   --pw-font-headline: var(--pw-serif);
   --pw-font-body: var(--pw-sans);
 
-  /* Brutalist CLI aesthetic — square corners everywhere. Circles (avatars,
-     status dots) use explicit 50% literals and are unaffected. */
-  --pw-radius: 0;
-  --pw-radius-sm: 0;
-  --pw-radius-button: 0;
-  --pw-radius-pill: 0;
+  /* Soft rounded aesthetic. Circles (avatars, status dots) use explicit 50%
+     literals and are unaffected. Tune all corner roundness from these 4 knobs. */
+  --pw-radius: 12px;
+  --pw-radius-sm: 8px;
+  --pw-radius-button: 8px;
+  --pw-radius-pill: 999px;
 
   --pw-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.03);
   --pw-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.05);
@@ -214,7 +214,7 @@ code, pre, kbd, samp, .mono {
 }
 
 [data-theme="brutalist"] * {
-  border-radius: 0!important;
+  border-radius: var(--pw-radius-sm)!important;
 }
 
 /* Header robot animation */
@@ -317,7 +317,7 @@ body { overflow-x: hidden; }
   background: var(--pw-accent-soft);
   color: var(--pw-ink);
   border: 1px solid color-mix(in srgb, var(--pw-accent) 24%, transparent);
-  border-radius: 0;
+  border-radius: var(--pw-radius-sm);
   padding: 10px 14px;
   max-width: 75%;
   font-size: 13px;
@@ -849,7 +849,7 @@ body { overflow-x: hidden; }
   font-weight: 700;
   color: var(--color-on-surface-dim);
   cursor: pointer;
-  border-radius: 0;
+  border-radius: var(--pw-radius-sm);
   transition: all 0.15s;
 }
 
@@ -2147,7 +2147,7 @@ body { overflow-x: hidden; }
   gap: 6px;
   height: 36px;
   padding: 0 16px;
-  border-radius: 0;
+  border-radius: var(--pw-radius-sm);
   font: inherit;
   font-family: var(--pw-font-body);
   font-size: 12px;
@@ -2180,7 +2180,7 @@ body { overflow-x: hidden; }
   gap: 6px;
   height: 36px;
   padding: 0 16px;
-  border-radius: 0;
+  border-radius: var(--pw-radius-sm);
   font: inherit;
   font-family: var(--pw-font-body);
   font-size: 12px;
@@ -2208,7 +2208,7 @@ body { overflow-x: hidden; }
   gap: 6px;
   height: 32px;
   padding: 0 12px;
-  border-radius: 0;
+  border-radius: var(--pw-radius-sm);
   font: inherit;
   font-family: var(--pw-font-body);
   font-size: 11px;
@@ -2245,7 +2245,7 @@ body { overflow-x: hidden; }
   gap: 6px;
   height: 36px;
   padding: 0 16px;
-  border-radius: 0;
+  border-radius: var(--pw-radius-sm);
   font: inherit;
   font-family: var(--pw-font-body);
   font-size: 12px;
@@ -2274,7 +2274,7 @@ body { overflow-x: hidden; }
   align-items: center;
   padding: 6px 14px;
   border: 1px solid var(--pw-border);
-  border-radius: 0;
+  border-radius: var(--pw-radius-sm);
   font: inherit;
   font-family: var(--pw-font-body);
   font-size: 11px;
@@ -2303,13 +2303,13 @@ body { overflow-x: hidden; }
 .pw-progress-track {
   background: var(--pw-bg-alt) !important;
   height: 6px !important;
-  border-radius: 0!important;
+  border-radius: var(--pw-radius-sm)!important;
   overflow: hidden !important;
 }
 .pw-progress-fill {
   background: var(--pw-accent) !important;
   height: 100% !important;
-  border-radius: 0!important;
+  border-radius: var(--pw-radius-sm)!important;
   transition: width 0.3s ease;
 }
 .pw-progress-fill.success { background: #16a34a !important; }
@@ -2331,7 +2331,7 @@ body { overflow-x: hidden; }
   display: inline-flex;
   align-items: center;
   padding: 3px 10px;
-  border-radius: 0;
+  border-radius: var(--pw-radius-sm);
   font-size: 10.5px;
   font-weight: 600;
   text-transform: uppercase;
@@ -2595,7 +2595,7 @@ body { overflow-x: hidden; }
   bottom: -1px;
   height: 2px;
   background: var(--pw-accent);
-  border-radius: 0;
+  border-radius: var(--pw-radius-sm);
 }
 .ds-tab-badge {
   display: inline-flex;
@@ -2901,7 +2901,7 @@ body { overflow-x: hidden; }
   background: transparent;
   border: none;
   padding: 8px 12px;
-  border-radius: 0;
+  border-radius: var(--pw-radius-sm);
   font-size: 12px;
   color: var(--pw-ink, #2c2a26);
   font-family: inherit;
@@ -2944,7 +2944,7 @@ body { overflow-x: hidden; }
 .sec-badge {
   background: var(--pw-accent, #c96342);
   color: white;
-  border-radius: 0;
+  border-radius: var(--pw-radius-sm);
   padding: 1px 6px;
   font: 600 10px Inter, system-ui, sans-serif;
   margin-left: auto;
@@ -2971,7 +2971,7 @@ body { overflow-x: hidden; }
   background: #f0f0f0 !important;  /* Claude-style light gray */
   color: #1a1614;
   border: none;
-  border-radius: 0;
+  border-radius: var(--pw-radius-sm);
   padding: 8px 14px;
   max-width: 60ch;
   width: fit-content;

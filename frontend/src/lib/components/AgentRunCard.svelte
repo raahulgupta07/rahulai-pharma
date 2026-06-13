@@ -44,10 +44,10 @@
 </div>
 
 <style>
- .arc { background: var(--pw-bg-alt, #f1ede4); border: 1px solid var(--pw-border, #e7e3da); border-radius: 0; font: 12px Inter; color: var(--pw-ink, #2c2a26); margin-top: 8px; }
+ .arc { background: var(--pw-bg-alt, #f1ede4); border: 1px solid var(--pw-border, #e7e3da); border-radius: var(--pw-radius-sm); font: 12px Inter; color: var(--pw-ink, #2c2a26); margin-top: 8px; }
  .hdr { display: flex; gap: 8px; align-items: center; width: 100%; background: none; border: none; padding: 6px 10px; cursor: pointer; text-align: left; }
  .agent { font-weight: 600; }
- .chip { display: inline-block; background: var(--pw-surface, #faf9f5); border: 1px solid var(--pw-border, #e7e3da); border-radius: 0; padding: 1px 6px; font: 600 10px Inter; text-transform: uppercase; letter-spacing: 0.04em; }
+ .chip { display: inline-block; background: var(--pw-surface, #faf9f5); border: 1px solid var(--pw-border, #e7e3da); border-radius: var(--pw-radius-sm); padding: 1px 6px; font: 600 10px Inter; text-transform: uppercase; letter-spacing: 0.04em; }
  .muted { color: var(--pw-ink-soft, #87837a); font-size: 11px; margin-left: auto; }
  .caret { color: var(--pw-ink-soft, #87837a); margin-left: 6px; }
  .body { padding: 8px 12px; border-top: 1px solid var(--pw-border, #e7e3da); }

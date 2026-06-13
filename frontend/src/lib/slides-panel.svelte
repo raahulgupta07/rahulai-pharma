@@ -291,14 +291,14 @@
   .sp-btn-primary {
     background: var(--pw-accent, #c96342); color: #fff;
     border: none; padding: 8px 14px; font-size: 12px; font-weight: 600;
-    cursor: pointer; border-radius: 0;
+    cursor: pointer; border-radius: var(--pw-radius-sm);
     text-transform: uppercase; letter-spacing: 0.04em;
   }
   .sp-btn-primary:hover { filter: brightness(1.05); }
   .sp-btn-primary:disabled { opacity: 0.5; cursor: wait; }
   .sp-btn-ghost {
     background: transparent; border: 1px solid var(--pw-border, #e5e1d4);
-    padding: 8px 12px; font-size: 12px; cursor: pointer; border-radius: 0;
+    padding: 8px 12px; font-size: 12px; cursor: pointer; border-radius: var(--pw-radius-sm);
     color: var(--pw-ink, #2c2a26);
   }
   .sp-btn-link {
@@ -311,11 +311,11 @@
   .sp-prompt-box {
     display: flex; gap: 6px; margin: 6px 0 10px; align-items: stretch;
     background: var(--pw-bg-alt, #f3efe4);
-    border: 1px solid var(--pw-border, #e5e1d4); border-radius: 0;
+    border: 1px solid var(--pw-border, #e5e1d4); border-radius: var(--pw-radius-sm);
     padding: 6px;
   }
   .sp-prompt-box input {
-    flex: 1; border: 1px solid var(--pw-border, #e5e1d4); border-radius: 0;
+    flex: 1; border: 1px solid var(--pw-border, #e5e1d4); border-radius: var(--pw-radius-sm);
     padding: 6px 8px; font-size: 12px; font-family: inherit;
     background: #fff;
   }
@@ -326,7 +326,7 @@
   .sp-slide {
     background: #fff;
     border: 1px solid var(--pw-border, #e5e1d4);
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     padding: 12px 14px;
   }
   .sp-slide.editing {
@@ -342,24 +342,24 @@
   }
   .sp-slide-layout {
     font-size: 10px; padding: 2px 6px;
-    background: var(--pw-bg-alt, #f3efe4); border-radius: 0;
+    background: var(--pw-bg-alt, #f3efe4); border-radius: var(--pw-radius-sm);
     color: var(--pw-ink-soft, #6b6557);
   }
   .sp-slide-title {
     margin: 4px 0 8px 0; font-size: 15px; font-weight: 600;
     color: var(--pw-ink, #2c2a26);
   }
-  .sp-hero { margin-bottom: 8px; border-radius: 0; overflow: hidden;
+  .sp-hero { margin-bottom: 8px; border-radius: var(--pw-radius-sm); overflow: hidden;
     border: 1px solid var(--pw-border, #e5e1d4); position: relative; }
   .sp-hero img { width: 100%; height: 110px; object-fit: cover; display: block; }
   .sp-hero-credit { position: absolute; bottom: 2px; right: 4px; font-size: 9px;
-    color: #fff; background: rgba(0,0,0,0.5); padding: 1px 4px; border-radius: 0; }
+    color: #fff; background: rgba(0,0,0,0.5); padding: 1px 4px; border-radius: var(--pw-radius-sm); }
   .sp-bullets { margin: 0 0 6px 0; padding-left: 0; list-style: none; font-size: 13px; }
   .sp-bullets li { margin: 4px 0; display: flex; gap: 6px; align-items: flex-start; }
   .sp-bullet-icon { color: var(--pw-accent, #c96342); flex-shrink: 0; margin-top: 2px; }
   .sp-notes {
     margin-top: 8px; padding: 6px 10px;
-    background: var(--pw-bg-alt, #f3efe4); border-radius: 0;
+    background: var(--pw-bg-alt, #f3efe4); border-radius: var(--pw-radius-sm);
     font-size: 12px; color: var(--pw-ink-soft, #6b6557);
   }
   .sp-visual {
@@ -367,7 +367,7 @@
   }
   .sp-visual code {
     background: var(--pw-bg-alt, #f3efe4); padding: 1px 5px;
-    border-radius: 0; font-size: 11px;
+    border-radius: var(--pw-radius-sm); font-size: 11px;
   }
   .sp-edit { display: flex; flex-direction: column; gap: 8px; }
   .sp-edit label { display: flex; flex-direction: column; font-size: 11px; gap: 3px; }
@@ -376,7 +376,7 @@
     color: var(--pw-ink-soft, #6b6557); font-weight: 600;
   }
   .sp-edit input, .sp-edit textarea {
-    border: 1px solid var(--pw-border, #e5e1d4); border-radius: 0;
+    border: 1px solid var(--pw-border, #e5e1d4); border-radius: var(--pw-radius-sm);
     padding: 6px 8px; font-size: 13px;
     font-family: inherit;
   }

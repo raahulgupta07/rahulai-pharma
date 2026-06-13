@@ -76,6 +76,23 @@ Verified-real prod-break fixes (most audit findings were hypothetical — dismis
 - Admin: Projects/Schemas multi-project grids hidden when `single_agent`.
 - **Single font family** — `app.css` `--pw-serif` aliases the Inter sans stack; `AgentFlow .box-num` + `AnswerCard .action-title/.kpi-value` use `--pw-font-body`. No serif anywhere (user wanted uniform).
 
+### UI rounding + nav cleanup (2026-06-13, no ver bump)
+- **Corners ROUNDED** (was brutalist square). Single knob: `app.css` 4 tokens → `--pw-radius:12px / --pw-radius-sm:8px / --pw-radius-button:8px / --pw-radius-pill:999px`. Swept **606** hardcoded `border-radius: 0` across 52 files → `var(--pw-radius-sm)` (perl lookahead `(?![ \d.])` preserved the 2 multi-value `0 0`/`0 4` cases; circles/avatars/dots use `50%` literals, untouched). Re-tune all roundness from those 4 vars. LANDMINE: don't reintroduce literal `border-radius: 0` — use the token.
+- **Nav pills = rounded RECT not stadium** — `.pw-nav` + `.pw-nav-active` (`+layout.svelte`) use `var(--pw-radius)` (12px), NOT `--pw-radius-pill` (999px stadium; user disliked the lozenge). Chips/tags still use the pill token.
+- **Dashboard FULL WIDTH** — `overview/+page.svelte` `.ov-root` max-width `1280px`→`none`, `margin: 0` (was `0 auto`), 32px side padding.
+- **Mini-card orange top-strip REMOVED** — `.ov-chip` dropped `border-top: 2px solid var(--pw-accent)` → plain 1px border, matches KPI row.
+- **Top-nav Brain REMOVED** (deduped) — Brain was a standalone route (`routes/brain/+page.svelte` → `$lib/brain/BrainHub.svelte`) AND the same `BrainHub` embedded in Settings left-rail BRAIN section (`settings/+page.svelte:8070`, `#brain`). Same component, two doors → dropped the top-nav button; Brain now ONLY via Settings rail.
+- **Top-nav "Settings" label → "Agent Brain"** — `+layout.svelte` `.pw-nav-label` text only (cog icon + `agentBrainHref` link unchanged).
+
+### Brain Cortex — animated "real brain" view (2026-06-13, no ver bump)
+- **NEW `frontend/src/lib/brain/BrainCortex.svelte`** — additive, renders inside BrainHub as the `'__cortex__'` tab. 4 mode-switch views, ALL animation = CSS + requestAnimationFrame (no ECharts dep), reuses EXISTING endpoints only (zero backend change):
+  - **Anatomy** — SVG brain, 4 lobes mapped to categories (Frontal=kpi/rules/patterns, Parietal=formula/definition, Temporal=glossary/alias+memory⚡ hippocampus, Occipital=graph). Hot lobes pulse+ripple from `/api/brain/log` recency (last 24h); brainstem fires; click lobe → `jump()` to that tab.
+  - **Synapses** — custom animated SVG neural net (neurons drift, synapses randomly fire/glow coral). Uses `/api/projects/{slug}/graph?source=pharma`; **falls back to synthetic 34-node net when graph empty** (pharma AGE graph not built yet).
+  - **Memory** — 3 consolidation lanes: forming (`/api/projects/{slug}/insights` status=pending, live approve/reject via `/api/insights/{id}/approve|reject`) → long-term (`/api/projects/{slug}/memories`, decay bars by created_at age) → lesion (insights status=rejected).
+  - **Vitals** — animated EEG polyline (rAF) + 6 health chips, all computed CLIENT-SIDE (freshness/blind-spots/learned-per-wk from counts+dates).
+- **Wiring (3 surfaces):** import+`{:else if activeTab==='__cortex__'}<BrainCortex slug={LOCKED_SLUG}/>` in BrainHub; `selectHubItem` branch `item==='cortex'→activeTab='__cortex__'`; RailNav new top group "BRAIN MAP"→`{id:'cortex'}` (standalone /brain); settings BRAIN rail `{id:'brain-cortex'}` in BOTH tab lists (`+page.svelte` ~4896 + ~6755) — settings drives via `item={activeTab.slice(6)}` so `brain-cortex`→`cortex`.
+- **Dashboard mini-brain** — `overview/+page.svelte` BRAIN card: flat category bars REPLACED with compact animated SVG mini-anatomy (`brainLobes` derived from `summary.brain`, hottest lobe pulses, brainstem fires, foot strip ❤health·mem·"Open Cortex →", whole card → `goTab('brain-cortex')`). LANDMINE: brain stats here are `by_category.kpi` (not glossary/rules), so Cortex maps kpi→Frontal; access log fields are `accessed_at`/`category` (not created_at/entry_name).
+
 ### Prune (2026-06) — single-agent cleanup, on `main`
 Fork inherited ~130 routers / 1118 routes of multi-tenant Dash. Cut the dead surface, **routes 1118 → 825**, tool stays healthy + chat works. Phased, git-revertible (`prune-dead` branch → merged to `main`).
 - **Deleted 9 dead-UI route dirs**: agent-os, os, channels, skills, dashboard-studio, presentations, scope-picker, mcp, embed-templates.

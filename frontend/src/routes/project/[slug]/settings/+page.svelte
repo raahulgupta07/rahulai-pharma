@@ -4894,6 +4894,7 @@ function signUserJWT($user) {
  { id: 'upload', label: 'DATA SOURCE' },
  { id: 'eda', label: 'EXPLORATORY' },
  { id: 'data-quality', label: 'DATA QUALITY' },
+ { id: 'brain-cortex', label: '🧠 CORTEX' },
  { id: 'brain-definitions', label: 'DEFINITIONS' },
  { id: 'brain-glossary', label: 'GLOSSARY' },
  { id: 'brain-patterns', label: 'PATTERNS' },
@@ -6752,6 +6753,7 @@ function signUserJWT($user) {
         { id: 'knowledge', label: 'Files' },
       ]},
       { label: 'Brain', icon: 'brain', items: [
+        { id: 'brain-cortex', label: '🧠 Cortex' },
         { id: 'brain-definitions', label: 'Definitions' },
         { id: 'brain-glossary', label: 'Glossary' },
         { id: 'brain-patterns', label: 'Patterns' },
@@ -7237,8 +7239,8 @@ function signUserJWT($user) {
                   </td>
                   <td style="text-align: center;">{qaCount}</td>
                   <td style="text-align: center;">
-                    <span style="display: inline-block; width: 50px; height: 5px; background: rgba(0,0,0,0.08); border-radius: 0; overflow: hidden; vertical-align: middle;">
-                      <span style="display: block; height: 100%; min-width: 2px; width: {Math.max(health, 0)}%; border-radius: 0; background: {health >= 67 ? 'var(--pw-success)' : health >= 34 ? 'var(--pw-warn, #cc7a00)' : 'var(--pw-error)'}; transition: width 0.3s ease, background 0.2s ease;"></span>
+                    <span style="display: inline-block; width: 50px; height: 5px; background: rgba(0,0,0,0.08); border-radius: var(--pw-radius-sm); overflow: hidden; vertical-align: middle;">
+                      <span style="display: block; height: 100%; min-width: 2px; width: {Math.max(health, 0)}%; border-radius: var(--pw-radius-sm); background: {health >= 67 ? 'var(--pw-success)' : health >= 34 ? 'var(--pw-warn, #cc7a00)' : 'var(--pw-error)'}; transition: width 0.3s ease, background 0.2s ease;"></span>
                     </span>
                     <span style="font-size: 11px; margin-left: 6px; color: var(--pw-muted);">{health}%</span>
                   </td>
@@ -7587,7 +7589,7 @@ function signUserJWT($user) {
             <div class="set-trained-stat-head">Cost & quota</div>
             <div class="set-trained-stat-row"><span>Today</span><b>${cockpitStats.cost}</b></div>
             <div class="set-trained-stat-row"><span>Cap</span><b>${costCapInput.toFixed(2)}</b></div>
-            <div style="margin-top: 6px; height: 6px; background: var(--pw-bg-alt); border-radius: 0; overflow: hidden;">
+            <div style="margin-top: 6px; height: 6px; background: var(--pw-bg-alt); border-radius: var(--pw-radius-sm); overflow: hidden;">
               <div style="width: {_pct}%; height: 100%; background: {_pct > 80 ? '#ff4040' : 'var(--pw-accent)'};"></div>
             </div>
             <div class="set-trained-stat-row" style="margin-top: 6px;"><span>Used</span><b>{_pct.toFixed(1)}%</b></div>
@@ -8209,26 +8211,26 @@ function signUserJWT($user) {
         <div style="font-size: 11px; font-weight: 900; text-transform: uppercase; margin-bottom: 10px;">NEW RULE</div>
 
         <!-- Formula / column builder -->
-        <div class="formula-builder" style="margin-bottom: 12px; padding: 12px; background: var(--pw-bg-alt); border-radius: 0;">
+        <div class="formula-builder" style="margin-bottom: 12px; padding: 12px; background: var(--pw-bg-alt); border-radius: var(--pw-radius-sm);">
           <div style="font-size: 11px; text-transform: uppercase; color: var(--pw-muted); margin-bottom: 8px; letter-spacing: 0.04em;">BUILD FROM COLUMNS</div>
           <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-            <select bind:value={fbTable} style="border: 1px solid var(--pw-border); background: var(--pw-surface); padding: 5px 8px; font-size: 11px; border-radius: 0;">
+            <select bind:value={fbTable} style="border: 1px solid var(--pw-border); background: var(--pw-surface); padding: 5px 8px; font-size: 11px; border-radius: var(--pw-radius-sm);">
               <option value="">Pick table…</option>
               {#each (detail?.tables || []) as t}<option value={t.name}>{t.name}</option>{/each}
             </select>
             {#if fbTable}
               {@const fbCols = (tableInspectCache[fbTable]?.columns || [])}
-              <select bind:value={fbColA} style="border: 1px solid var(--pw-border); background: var(--pw-surface); padding: 5px 8px; font-size: 11px; border-radius: 0;">
+              <select bind:value={fbColA} style="border: 1px solid var(--pw-border); background: var(--pw-surface); padding: 5px 8px; font-size: 11px; border-radius: var(--pw-radius-sm);">
                 <option value="">Column A…</option>
                 {#each fbCols as c}<option value={c.name}>{c.name}</option>{/each}
               </select>
-              <select bind:value={fbOp} style="border: 1px solid var(--pw-border); background: var(--pw-surface); padding: 5px 8px; font-size: 11px; border-radius: 0;">
+              <select bind:value={fbOp} style="border: 1px solid var(--pw-border); background: var(--pw-surface); padding: 5px 8px; font-size: 11px; border-radius: var(--pw-radius-sm);">
                 <option value="+">+</option>
                 <option value="-">−</option>
                 <option value="*">×</option>
                 <option value="/">÷</option>
               </select>
-              <select bind:value={fbColB} style="border: 1px solid var(--pw-border); background: var(--pw-surface); padding: 5px 8px; font-size: 11px; border-radius: 0;">
+              <select bind:value={fbColB} style="border: 1px solid var(--pw-border); background: var(--pw-surface); padding: 5px 8px; font-size: 11px; border-radius: var(--pw-radius-sm);">
                 <option value="">Column B…</option>
                 {#each fbCols as c}<option value={c.name}>{c.name}</option>{/each}
               </select>
@@ -8761,7 +8763,7 @@ function signUserJWT($user) {
           {#each investmentMemos as m}
             <div class="memo-row" style="display: grid; grid-template-columns: 90px 70px 90px 1fr auto auto; gap: 12px; align-items: center; padding: 8px 12px; border: 1px solid var(--pw-bg-alt); background: var(--pw-surface); font-size: 11px;">
               <span class="memo-symbol" style="font-family: 'SF Mono', Menlo, monospace; font-weight: 700;">{m.symbol || m.target || '—'}</span>
-              <span class="memo-verdict verdict-{(m.verdict || '').toLowerCase()}" style="font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; padding: 3px 7px; border-radius: 0; text-align: center; background: {m.verdict === 'BUY' ? 'rgba(34,197,94,0.14)' : m.verdict === 'HOLD' ? 'rgba(245,158,11,0.14)' : m.verdict === 'SELL' ? 'rgba(239,68,68,0.14)' : 'rgba(120,113,108,0.14)'}; color: {m.verdict === 'BUY' ? '#16a34a' : m.verdict === 'HOLD' ? '#d97706' : m.verdict === 'SELL' ? '#dc2626' : '#57534e'};">{m.verdict || '—'}</span>
+              <span class="memo-verdict verdict-{(m.verdict || '').toLowerCase()}" style="font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; padding: 3px 7px; border-radius: var(--pw-radius-sm); text-align: center; background: {m.verdict === 'BUY' ? 'rgba(34,197,94,0.14)' : m.verdict === 'HOLD' ? 'rgba(245,158,11,0.14)' : m.verdict === 'SELL' ? 'rgba(239,68,68,0.14)' : 'rgba(120,113,108,0.14)'}; color: {m.verdict === 'BUY' ? '#16a34a' : m.verdict === 'HOLD' ? '#d97706' : m.verdict === 'SELL' ? '#dc2626' : '#57534e'};">{m.verdict || '—'}</span>
               <span class="memo-conviction" style="color: #d97706; letter-spacing: 1.5px;">{''.repeat(Math.max(0, Math.min(5, m.conviction || 0)))}</span>
               <span class="memo-date" style="color: var(--pw-muted); font-size: 11px;">{memoRelTime(m.created_at)}</span>
               <button class="feedback-btn" style="font-size: 11px; padding: 3px 10px; cursor: pointer;" onclick={() => viewInvestmentMemo(m.id)}>VIEW</button>
@@ -9141,7 +9143,7 @@ function signUserJWT($user) {
     {@const _errN = _agents.filter((a:any) => _stateOf(a) === 'error').length}
 
     <!-- Slim CLI banner -->
-    <div style="background: #1a1614; color: #e8e3d6; padding: 10px 16px; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 11.5px; line-height: 1.7; border: 1px solid #2c2a26; border-radius: 0; margin-bottom: 14px; display: flex; flex-wrap: wrap; gap: 18px; align-items: center;">
+    <div style="background: #1a1614; color: #e8e3d6; padding: 10px 16px; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 11.5px; line-height: 1.7; border: 1px solid #2c2a26; border-radius: var(--pw-radius-sm); margin-bottom: 14px; display: flex; flex-wrap: wrap; gap: 18px; align-items: center;">
       <span><span style="color: #c96342;">$</span> dash agents · <span style="color: #e8e3d6;">{project?.agent_name || 'Agent'}</span></span>
       <span style="color: #888;">model <span style="color: #f9a374;">{(detail?.model || 'gemini-3.1-flash-lite').split('/').pop()}</span></span>
       <span style="color: #888;">schema <span style="color: #e8e3d6;">{slug}</span></span>
@@ -9152,14 +9154,14 @@ function signUserJWT($user) {
     {@const _labelOf = (s:string) => s === 'active' ? 'ACTIVE' : s === 'ready' ? 'READY' : s === 'error' ? 'ERROR' : 'IDLE'}
 
     <!-- ORG DIAGRAM (collapsible ASCII tree, dark CLI aesthetic) -->
-    <div style="border: 1px solid #2c2a26; border-radius: 0; margin-bottom: 14px; overflow: hidden;">
+    <div style="border: 1px solid #2c2a26; border-radius: var(--pw-radius-sm); margin-bottom: 14px; overflow: hidden;">
       <button onclick={() => agentsOrgCollapsed = !agentsOrgCollapsed} style="width: 100%; padding: 8px 14px; background: #1a1614; color: #e8e3d6; border: none; display: flex; align-items: center; gap: 8px; cursor: pointer; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 11px; text-align: left;">
         <span style="color: #c96342;">{agentsOrgCollapsed ? '▸' : '▾'}</span>
         <span style="color: #c96342;">$</span> <span style="color: #f9a374;">tree</span> <span style="color: #888;">--agents --orchestration</span>
         <span style="color: #888; margin-left: auto;">org diagram · {_agents.length} agents · 3 workflows</span>
       </button>
       {#if !agentsOrgCollapsed}
-        <pre style="margin: 0 !important; padding: 14px 18px !important; background: #1a1614 !important; color: #e8e3d6 !important; font-family: 'SF Mono', Menlo, Consolas, monospace !important; font-size: 10.5px !important; line-height: 1.55 !important; overflow-x: auto !important; white-space: pre !important; border: 0 !important; border-top: 1px solid #2c2a26 !important; border-radius: 0!important; box-shadow: none !important;"><span style="color: #888;">                                  </span><span style="color: #e8e3d6;">┌─────────────┐</span>
+        <pre style="margin: 0 !important; padding: 14px 18px !important; background: #1a1614 !important; color: #e8e3d6 !important; font-family: 'SF Mono', Menlo, Consolas, monospace !important; font-size: 10.5px !important; line-height: 1.55 !important; overflow-x: auto !important; white-space: pre !important; border: 0 !important; border-top: 1px solid #2c2a26 !important; border-radius: var(--pw-radius-sm)!important; box-shadow: none !important;"><span style="color: #888;">                                  </span><span style="color: #e8e3d6;">┌─────────────┐</span>
 <span style="color: #888;">                                  </span><span style="color: #e8e3d6;">│    USER     │</span>
 <span style="color: #888;">                                  </span><span style="color: #e8e3d6;">└──────┬──────┘</span>
 <span style="color: #888;">                                         </span><span style="color: #555;">│</span>
@@ -9305,7 +9307,7 @@ function signUserJWT($user) {
     </div>
 
     <!-- Linear-style agent rows (no action column - passive auto-activation) -->
-    <div style="border: 1px solid var(--pw-ink-soft); border-radius: 0; overflow: hidden; margin-bottom: 18px;">
+    <div style="border: 1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); overflow: hidden; margin-bottom: 18px;">
       <div style="display: grid; grid-template-columns: 16px minmax(150px,1fr) minmax(220px,2.5fr) 70px 80px 70px; padding: 8px 12px; background: var(--pw-bg-alt); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--pw-muted); border-bottom: 1px solid var(--pw-ink-soft);">
         <span></span><span>Agent</span><span>Role / Waiting condition</span><span style="text-align: right;">Tools</span><span style="text-align: center;">Status</span><span style="text-align: right;">Embed</span>
       </div>
@@ -9320,12 +9322,12 @@ function signUserJWT($user) {
           <span style="font-weight: 700;">{a.name}</span>
           <span style="color: var(--pw-muted); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{#if isIdle}<span style="color: #888;">waiting:</span> <span style="color: var(--pw-ink);">{a.reason || (a.cta?.label ? a.cta.label.replace(/^upload\s*/i,'') : 'data not yet available')}</span>{:else}{a.role || ''}{/if}</span>
           <span style="text-align: right; color: {a.tools ? 'var(--pw-accent)' : 'var(--pw-dim)'}; font-weight: 700; font-size: 10px;">{a.tools || '—'}</span>
-          <span style="text-align: center;"><span style="font-size: 8.5px; font-weight: 700; padding: 2px 7px; border-radius: 0; background: {col}1a; color: {col}; letter-spacing: 0.05em;">{_labelOf(st)}</span></span>
+          <span style="text-align: center;"><span style="font-size: 8.5px; font-weight: 700; padding: 2px 7px; border-radius: var(--pw-radius-sm); background: {col}1a; color: {col}; letter-spacing: 0.05em;">{_labelOf(st)}</span></span>
           <span style="text-align: right;">
             <button type="button"
               onclick={() => openAgentEmbed(aid, a.name)}
               title="Open inline embed config — auto-provisioned per agent"
-              style="font-family: ui-monospace, monospace; font-size: 9.5px; font-weight: 700; padding: 3px 7px; border: 1px solid var(--pw-ink-soft); background: var(--pw-bg); color: var(--pw-ink); border-radius: 0; cursor: pointer; letter-spacing: 0.04em;">
+              style="font-family: ui-monospace, monospace; font-size: 9.5px; font-weight: 700; padding: 3px 7px; border: 1px solid var(--pw-ink-soft); background: var(--pw-bg); color: var(--pw-ink); border-radius: var(--pw-radius-sm); cursor: pointer; letter-spacing: 0.04em;">
               &lt;/&gt; EMBED
             </button>
           </span>
@@ -9344,7 +9346,7 @@ function signUserJWT($user) {
             <span style="font-weight: 600; padding-left: 14px; color: var(--pw-ink);">{a.name}</span>
             <span style="color: var(--pw-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{a.role || ''}{a.trigger ? ` · trig: ${a.trigger}` : ''}</span>
             <span style="text-align: right; color: var(--pw-dim); font-size: 9.5px;">tool</span>
-            <span style="text-align: center;"><span style="font-size: 8.5px; font-weight: 700; padding: 1.5px 6px; border-radius: 0; background: {col}1a; color: {col};">{_labelOf(st)}</span></span>
+            <span style="text-align: center;"><span style="font-size: 8.5px; font-weight: 700; padding: 1.5px 6px; border-radius: var(--pw-radius-sm); background: {col}1a; color: {col};">{_labelOf(st)}</span></span>
           </div>
         {/each}
       {/if}
@@ -9364,7 +9366,7 @@ function signUserJWT($user) {
               <span style="font-weight: 600; padding-left: 14px; color: var(--pw-ink);">{a.name}</span>
               <span style="color: var(--pw-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{a.role || ''}{a.trigger ? ` · trig: ${a.trigger}` : ''}</span>
               <span style="text-align: right; color: {a.tools ? 'var(--pw-accent)' : 'var(--pw-dim)'}; font-size: 9.5px;">{a.tools || '—'}</span>
-              <span style="text-align: center;"><span style="font-size: 8.5px; font-weight: 700; padding: 1.5px 6px; border-radius: 0; background: {col}1a; color: {col};">{_labelOf(st)}</span></span>
+              <span style="text-align: center;"><span style="font-size: 8.5px; font-weight: 700; padding: 1.5px 6px; border-radius: var(--pw-radius-sm); background: {col}1a; color: {col};">{_labelOf(st)}</span></span>
             </div>
           {/each}
         {/if}
@@ -9385,7 +9387,7 @@ function signUserJWT($user) {
               <span style="font-weight: 600; padding-left: 14px; color: var(--pw-ink);">{a.name}</span>
               <span style="color: var(--pw-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{a.role || ''}{a.trigger ? ` · trig: ${a.trigger}` : ''}</span>
               <span style="text-align: right; color: {a.tools ? 'var(--pw-accent)' : 'var(--pw-dim)'}; font-size: 9.5px;">{a.tools || '—'}</span>
-              <span style="text-align: center;"><span style="font-size: 8.5px; font-weight: 700; padding: 1.5px 6px; border-radius: 0; background: {col}1a; color: {col};">{_labelOf(st)}</span></span>
+              <span style="text-align: center;"><span style="font-size: 8.5px; font-weight: 700; padding: 1.5px 6px; border-radius: var(--pw-radius-sm); background: {col}1a; color: {col};">{_labelOf(st)}</span></span>
             </div>
           {/each}
         {/if}
@@ -9405,7 +9407,7 @@ function signUserJWT($user) {
               <span style="font-weight: 600; padding-left: 14px; color: var(--pw-ink);">{a.name}</span>
               <span style="color: var(--pw-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{a.role || ''}{a.trigger ? ` · ${a.trigger}` : ''}</span>
               <span style="text-align: right; color: var(--pw-dim); font-size: 9.5px;">—</span>
-              <span style="text-align: center;"><span style="font-size: 8.5px; font-weight: 700; padding: 1.5px 6px; border-radius: 0; background: {col}1a; color: {col};">{_labelOf(st)}</span></span>
+              <span style="text-align: center;"><span style="font-size: 8.5px; font-weight: 700; padding: 1.5px 6px; border-radius: var(--pw-radius-sm); background: {col}1a; color: {col};">{_labelOf(st)}</span></span>
             </div>
           {/each}
         {/if}
@@ -9425,7 +9427,7 @@ function signUserJWT($user) {
               <span style="font-weight: 600; padding-left: 14px; color: var(--pw-ink);">{a.name}</span>
               <span style="color: var(--pw-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{a.role || ''}{a.trigger ? ` · ${a.trigger}` : ''}</span>
               <span style="text-align: right; color: {a.tools ? 'var(--pw-accent)' : 'var(--pw-dim)'}; font-size: 9.5px;">{a.tools || '—'}</span>
-              <span style="text-align: center;"><span style="font-size: 8.5px; font-weight: 700; padding: 1.5px 6px; border-radius: 0; background: {col}1a; color: {col};">{_labelOf(st)}</span></span>
+              <span style="text-align: center;"><span style="font-size: 8.5px; font-weight: 700; padding: 1.5px 6px; border-radius: var(--pw-radius-sm); background: {col}1a; color: {col};">{_labelOf(st)}</span></span>
             </div>
           {/each}
         {/if}
@@ -9445,7 +9447,7 @@ function signUserJWT($user) {
               <span style="font-weight: 600; padding-left: 14px; color: var(--pw-ink);">{a.name}</span>
               <span style="color: var(--pw-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{a.role || ''}{a.trigger ? ` · ${a.trigger}` : ''}</span>
               <span style="text-align: right; color: {a.tools ? 'var(--pw-accent)' : 'var(--pw-dim)'}; font-size: 9.5px;">{a.tools || '—'}</span>
-              <span style="text-align: center;"><span style="font-size: 8.5px; font-weight: 700; padding: 1.5px 6px; border-radius: 0; background: {col}1a; color: {col};">{_labelOf(st)}</span></span>
+              <span style="text-align: center;"><span style="font-size: 8.5px; font-weight: 700; padding: 1.5px 6px; border-radius: var(--pw-radius-sm); background: {col}1a; color: {col};">{_labelOf(st)}</span></span>
             </div>
           {/each}
         {/if}
@@ -9460,7 +9462,7 @@ function signUserJWT($user) {
           <span><Icon name="wrench" size={14} /> BACKGROUND MINIONS ({_minions.length})</span>
           <span style="font-size: 11px; color: var(--pw-muted); font-weight: 500; text-transform: none; letter-spacing: 0;">async handlers · queued/running/done counts from last 24h</span>
         </div>
-        <div class="ink-border" style="background: var(--pw-surface); border-radius: 0; overflow: hidden;">
+        <div class="ink-border" style="background: var(--pw-surface); border-radius: var(--pw-radius-sm); overflow: hidden;">
           <div style="display: grid; grid-template-columns: minmax(140px,1.2fr) minmax(160px,2fr) 90px 90px 60px 60px 60px 80px; padding: 6px 12px; background: var(--pw-bg-alt); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--pw-muted); border-bottom: 1px solid var(--pw-ink-soft);">
             <span>MINION</span>
             <span>DESCRIPTION</span>
@@ -9480,8 +9482,8 @@ function signUserJWT($user) {
             <div class="fleet-minion-row" style="display: grid; grid-template-columns: minmax(140px,1.2fr) minmax(160px,2fr) 90px 90px 60px 60px 60px 80px; padding: 7px 12px; border-bottom: 1px solid var(--pw-bg-alt); align-items: center; font-size: 11px;" title={(m.description || '') + ' · handler: ' + (m.handler_kind || '?')}>
               <span style="font-weight: 600; color: var(--pw-ink);">{m.name || m.id}</span>
               <span style="color: var(--pw-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{m.description || '—'}</span>
-              <span><span style="font-size: 8.5px; font-weight: 700; padding: 1.5px 6px; border-radius: 0; background: var(--pw-bg-alt); color: var(--pw-ink-soft);">{tm}</span></span>
-              <span><span style="font-size: 8.5px; font-weight: 700; padding: 1.5px 6px; border-radius: 0; background: {llmCol}; color: {llmFg};">{llmKind}</span></span>
+              <span><span style="font-size: 8.5px; font-weight: 700; padding: 1.5px 6px; border-radius: var(--pw-radius-sm); background: var(--pw-bg-alt); color: var(--pw-ink-soft);">{tm}</span></span>
+              <span><span style="font-size: 8.5px; font-weight: 700; padding: 1.5px 6px; border-radius: var(--pw-radius-sm); background: {llmCol}; color: {llmFg};">{llmKind}</span></span>
               <span style="text-align: right; color: {(m.queued || 0) > 0 ? '#cc7a00' : 'var(--pw-dim)'}; font-size: 10px;">{m.queued || 0}</span>
               <span style="text-align: right; color: {(m.running || 0) > 0 ? '#3a8dff' : 'var(--pw-dim)'}; font-size: 10px;">{m.running || 0}</span>
               <span style="text-align: right; color: {(m.done_24h || 0) > 0 ? '#10b981' : 'var(--pw-dim)'}; font-size: 10px;">{m.done_24h || 0}</span>
@@ -9626,7 +9628,7 @@ function signUserJWT($user) {
         <div class="ink-border" style="padding: 8px 10px; background: var(--pw-surface); text-align: center;">
           <div style="font-size: 11px; font-weight: 900; text-transform: uppercase; color: var(--pw-muted); letter-spacing: 0.06em;">{res.type}</div>
           <div style="font-size: 16px; font-weight: 900; color: var(--pw-ink);">{res.count}</div>
-          <div style="height: 5px; background: rgba(0,0,0,0.08); margin-top: 4px; border-radius: 0; overflow: hidden;"><div style="height: 100%; min-width: 2px; border-radius: 0; background: {res.health >= 67 ? 'var(--pw-success)' : res.health >= 34 ? 'var(--pw-warn, #cc7a00)' : 'var(--pw-error)'}; width: {Math.max(res.health, 0)}%; transition: width 0.3s ease, background 0.2s ease;"></div></div>
+          <div style="height: 5px; background: rgba(0,0,0,0.08); margin-top: 4px; border-radius: var(--pw-radius-sm); overflow: hidden;"><div style="height: 100%; min-width: 2px; border-radius: var(--pw-radius-sm); background: {res.health >= 67 ? 'var(--pw-success)' : res.health >= 34 ? 'var(--pw-warn, #cc7a00)' : 'var(--pw-error)'}; width: {Math.max(res.health, 0)}%; transition: width 0.3s ease, background 0.2s ease;"></div></div>
           <div style="font-size: 11px; margin-top: 2px; color: {res.health >= 70 ? 'var(--pw-accent)' : res.health >= 40 ? '#cc7a00' : 'var(--pw-error)'};">{res.health}%</div>
         </div>
       {/each}
@@ -10125,7 +10127,7 @@ function signUserJWT($user) {
               const newRole = (e.target as HTMLSelectElement).value;
               await fetch(`/api/projects/${slug}/share?username=${encodeURIComponent(u.username)}&role=${newRole}`, { method: 'POST', headers: _h() });
               await loadSharedUsers();
-            }} style="border: 1px solid var(--pw-bg-alt); padding: 3px 8px; font-family: var(--pw-font-body); font-size: 11px; font-weight: 700; text-transform: uppercase; background: var(--pw-surface); border-radius: 0;">
+            }} style="border: 1px solid var(--pw-bg-alt); padding: 3px 8px; font-family: var(--pw-font-body); font-size: 11px; font-weight: 700; text-transform: uppercase; background: var(--pw-surface); border-radius: var(--pw-radius-sm);">
               <option value="viewer">READ</option>
               <option value="editor">EDITOR</option>
               <option value="admin">ADMIN</option>
@@ -10182,7 +10184,7 @@ function signUserJWT($user) {
           <div style="padding: 12px 16px; border-top: 1px solid var(--pw-bg-alt); display: flex; justify-content: space-between; align-items: center;">
             <div class="flex items-center gap-2">
               <span style="font-size: 11px; font-weight: 700; text-transform: uppercase;">Role:</span>
-              <select bind:value={shareRole} style="border: 1px solid var(--pw-bg-alt); padding: 3px 8px; font-family: var(--pw-font-body); font-size: 10px; font-weight: 700; background: var(--pw-surface); border-radius: 0;">
+              <select bind:value={shareRole} style="border: 1px solid var(--pw-bg-alt); padding: 3px 8px; font-family: var(--pw-font-body); font-size: 10px; font-weight: 700; background: var(--pw-surface); border-radius: var(--pw-radius-sm);">
                 <option value="viewer">READ</option>
                 <option value="editor">EDITOR</option>
                 <option value="admin">ADMIN</option>
@@ -10198,7 +10200,7 @@ function signUserJWT($user) {
   {:else if activeTab === 'embed'}
 
     <!-- CLI header strip -->
-    <div style="margin-bottom:14px; padding:10px 14px; background:#1a1614; color:#e8e3d6; font-family:monospace; font-size:12px; border-radius:0; display:flex; justify-content:space-between; align-items:center;">
+    <div style="margin-bottom:14px; padding:10px 14px; background:#1a1614; color:#e8e3d6; font-family:monospace; font-size:12px; border-radius: var(--pw-radius-sm); display:flex; justify-content:space-between; align-items:center;">
       <span>
         <span style="color:#10b981;">$ dash sharing list</span>
         <span style="color:#888; margin-left:8px;">— embed widget for external sites · 3-step setup</span>
@@ -10274,17 +10276,17 @@ function signUserJWT($user) {
         <button type="button"
           onclick={() => { selectedEmbedId = ep.embed_id; }}
           title={ep.embed_id}
-          style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius: 0; border:1px solid {isActive ? 'var(--pw-accent)' : 'var(--pw-ink-soft)'}; background:{isActive ? 'var(--pw-accent)' : 'var(--pw-surface)'}; color:{isActive ? '#fff' : 'var(--pw-ink)'}; cursor:pointer; font-family:inherit; font-size:11px; font-weight:700; white-space:nowrap; flex-shrink:0;">
+          style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius: var(--pw-radius-sm); border:1px solid {isActive ? 'var(--pw-accent)' : 'var(--pw-ink-soft)'}; background:{isActive ? 'var(--pw-accent)' : 'var(--pw-surface)'}; color:{isActive ? '#fff' : 'var(--pw-ink)'}; cursor:pointer; font-family:inherit; font-size:11px; font-weight:700; white-space:nowrap; flex-shrink:0;">
           <span>{ep.name || ep.embed_id}</span>
           {#if isDefault}
-            <span style="font-size: 11px; padding:2px 6px; border-radius: 0; background:{isActive ? 'rgba(255,255,255,0.25)' : '#10b9811a'}; color:{isActive ? '#fff' : '#10b981'}; font-weight:900; letter-spacing:0.05em;">DEFAULT</span>
+            <span style="font-size: 11px; padding:2px 6px; border-radius: var(--pw-radius-sm); background:{isActive ? 'rgba(255,255,255,0.25)' : '#10b9811a'}; color:{isActive ? '#fff' : '#10b981'}; font-weight:900; letter-spacing:0.05em;">DEFAULT</span>
           {:else}
-            <span style="font-size: 11px; padding:2px 6px; border-radius: 0; background:{isActive ? 'rgba(255,255,255,0.25)' : 'var(--pw-bg-alt)'}; color:{isActive ? '#fff' : 'var(--pw-muted)'}; font-weight:900; letter-spacing:0.05em;">CUSTOM</span>
+            <span style="font-size: 11px; padding:2px 6px; border-radius: var(--pw-radius-sm); background:{isActive ? 'rgba(255,255,255,0.25)' : 'var(--pw-bg-alt)'}; color:{isActive ? '#fff' : 'var(--pw-muted)'}; font-weight:900; letter-spacing:0.05em;">CUSTOM</span>
           {/if}
         </button>
       {/each}
       <button type="button" onclick={openNewEmbedModal}
-        style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius: 0; border:1px dashed var(--pw-ink-soft); background:transparent; color:var(--pw-muted); cursor:pointer; font-family:inherit; font-size:11px; font-weight:700; white-space:nowrap; flex-shrink:0;">
+        style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius: var(--pw-radius-sm); border:1px dashed var(--pw-ink-soft); background:transparent; color:var(--pw-muted); cursor:pointer; font-family:inherit; font-size:11px; font-weight:700; white-space:nowrap; flex-shrink:0;">
         + NEW EMBED
       </button>
     </div>
@@ -10313,9 +10315,9 @@ function signUserJWT($user) {
       {@const ceSignedUrl = testToken ? `${_origin_str}${testToken.url || `/api/embed/try/${ce.embed_id}?token=${testToken.token}`}` : ''}
 
       <!-- Header bar -->
-      <div style="display:flex; align-items:center; gap:12px; padding:10px 14px; margin-bottom:14px; background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: 0;">
+      <div style="display:flex; align-items:center; gap:12px; padding:10px 14px; margin-bottom:14px; background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm);">
         <span style="font-size:13px; font-weight:900; letter-spacing:0.04em; color:var(--pw-ink);">EMBED</span>
-        <span style="font-size:11px; padding:3px 8px; border-radius: 0; background:{ceStColor}1a; color:{ceStColor}; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;">● {ceStatus}</span>
+        <span style="font-size:11px; padding:3px 8px; border-radius: var(--pw-radius-sm); background:{ceStColor}1a; color:{ceStColor}; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;">● {ceStatus}</span>
         <span style="font-size:11px; color:var(--pw-muted);">·</span>
         <span style="font-size:11px; color:var(--pw-muted);">{ceCalls} msg{ceCalls === 1 ? '' : 's'} (24h)</span>
         <span style="font-size:11px; color:var(--pw-muted);">·</span>
@@ -10330,7 +10332,7 @@ function signUserJWT($user) {
         <!-- LEFT COLUMN — CONFIG -->
         <div style="display:flex; flex-direction:column; gap:14px;">
           <!-- ANSWER STYLE -->
-          <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: 0; padding:12px 14px;">
+          <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); padding:12px 14px;">
             <div style="font-size: 11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--pw-muted); margin-bottom:8px;">Answer Style</div>
             <div style="display:flex; gap:14px;">
               {#each [['consumer','Consumer'],['developer','Developer']] as opt}
@@ -10344,7 +10346,7 @@ function signUserJWT($user) {
           </div>
 
           <!-- BRAND -->
-          <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: 0; padding:12px 14px;">
+          <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); padding:12px 14px;">
             <div style="font-size: 11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--pw-muted); margin-bottom:10px;">Brand</div>
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; font-size:11px;">
               <label style="display:flex; flex-direction:column; gap:4px;">
@@ -10394,7 +10396,7 @@ function signUserJWT($user) {
           </div>
 
           <!-- ACCESS -->
-          <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: 0; padding:12px 14px;">
+          <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); padding:12px 14px;">
             <div style="font-size: 11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--pw-muted); margin-bottom:10px;">Access</div>
             <label style="display:flex; flex-direction:column; gap:4px; margin-bottom:10px;">
               <span style="font-size: 11px; color:var(--pw-muted); text-transform:uppercase; letter-spacing:0.05em;">Allowed origins (comma list) — empty denies all</span>
@@ -10430,7 +10432,7 @@ function signUserJWT($user) {
           </div>
 
           <!-- TEST URL ACCESS CONTROL -->
-          <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: 0; padding:12px 14px;">
+          <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); padding:12px 14px;">
             <div style="font-size: 11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--pw-muted); margin-bottom:10px;">Test URL Access Control</div>
             <div style="display:flex; flex-direction:column; gap:6px; font-size:11px;">
               {#each [['anyone','Anyone with link'],['signed','Signed token only'],['dashboard','Dashboard users only'],['ip_allowlist','IP allowlist']] as opt}
@@ -10454,7 +10456,7 @@ function signUserJWT($user) {
           </div>
 
           <!-- ADVANCED ACTIONS FOOTER -->
-          <div style="display:flex; gap:8px; align-items:center; padding:10px 14px; background:var(--pw-bg-alt); border:1px solid var(--pw-ink-soft); border-radius: 0;">
+          <div style="display:flex; gap:8px; align-items:center; padding:10px 14px; background:var(--pw-bg-alt); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm);">
             <button onclick={() => rotateEmbedSecret(ce.embed_id)}
               style="padding:5px 10px; background:#fff4d4; border:1px solid #cc7a00; color:#995e00; cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">
               {rotatingId === ce.embed_id ? '…' : 'ROTATE SECRET'}
@@ -10478,7 +10480,7 @@ function signUserJWT($user) {
         <!-- RIGHT COLUMN — PREVIEW + URLS + SNIPPET + STATS -->
         <div style="display:flex; flex-direction:column; gap:14px;">
           <!-- LIVE PREVIEW -->
-          <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: 0; padding:12px 14px;">
+          <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); padding:12px 14px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
               <div style="font-size: 11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--pw-muted);">Live Preview</div>
               <span style="font-size:10px; color:var(--pw-muted);">ⓘ real chat — try it</span>
@@ -10486,12 +10488,12 @@ function signUserJWT($user) {
             {#key previewKey}
               <iframe title="embed preview"
                 src="/api/embed/try/{ce.embed_id}?preview=1&_k={previewKey}"
-                style="width:100%; height:540px; border:1px solid var(--pw-ink-soft); border-radius: 0; background:var(--pw-bg);"></iframe>
+                style="width:100%; height:540px; border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); background:var(--pw-bg);"></iframe>
             {/key}
           </div>
 
           <!-- SHARE / TEST URLS -->
-          <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: 0; padding:12px 14px;">
+          <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); padding:12px 14px;">
             <div style="font-size: 11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--pw-muted); margin-bottom:10px;">Share / Test URLs</div>
 
             <!-- Public URL -->
@@ -10540,7 +10542,7 @@ function signUserJWT($user) {
           </div>
 
           <!-- SNIPPET — dev quickstart -->
-          <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: 0; padding:12px 14px;">
+          <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); padding:12px 14px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
               <div style="font-size: 11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--pw-muted);">📦 Snippet — give to your dev</div>
               <div style="display:flex; gap:6px;">
@@ -10580,7 +10582,7 @@ function signUserJWT($user) {
               {/each}
             </div>
 
-            <pre style="margin:0 !important; padding:10px !important; background:#1a1614 !important; color:#e8e3d6 !important; font-family:ui-monospace,Menlo,monospace !important; font-size:11px !important; line-height:1.55 !important; overflow:auto !important; max-height:280px !important; border-radius: 0!important; white-space:pre !important;">{snippetCode(ce, ce.auth_mode || 'public', oneEmbedSnippetLang)}</pre>
+            <pre style="margin:0 !important; padding:10px !important; background:#1a1614 !important; color:#e8e3d6 !important; font-family:ui-monospace,Menlo,monospace !important; font-size:11px !important; line-height:1.55 !important; overflow:auto !important; max-height:280px !important; border-radius: var(--pw-radius-sm)!important; white-space:pre !important;">{snippetCode(ce, ce.auth_mode || 'public', oneEmbedSnippetLang)}</pre>
 
             <!-- Claims shape reference -->
             {#if embedRlsClaims.length > 0}
@@ -10610,7 +10612,7 @@ function signUserJWT($user) {
           </div>
 
           <!-- LAST 24H stats -->
-          <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: 0; padding:12px 14px;">
+          <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); padding:12px 14px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
               <div style="font-size: 11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--pw-muted);">Last 24h</div>
               <button onclick={() => openUsage(ce)}
@@ -10631,9 +10633,9 @@ function signUserJWT($user) {
           style="width:100%; display:flex; align-items:center; gap:10px; padding:10px 14px; background:transparent; border:none; cursor:pointer; font-family:inherit; text-align:left;">
           <span style="font-size:12px; font-weight:900; letter-spacing:0.04em; color:var(--pw-ink);">{embedRlsOpen ? '▾' : '▸'} ROW-LEVEL SECURITY</span>
           {#if embedRlsEnabled}
-            <span style="font-size:10px; padding:2px 7px; border-radius: 0; background:#10b9811a; color:#10b981; font-weight:700; letter-spacing:0.05em;">● ON</span>
+            <span style="font-size:10px; padding:2px 7px; border-radius: var(--pw-radius-sm); background:#10b9811a; color:#10b981; font-weight:700; letter-spacing:0.05em;">● ON</span>
           {:else}
-            <span style="font-size:10px; padding:2px 7px; border-radius: 0; background:var(--pw-bg-alt); color:var(--pw-muted); font-weight:700; letter-spacing:0.05em;">OFF</span>
+            <span style="font-size:10px; padding:2px 7px; border-radius: var(--pw-radius-sm); background:var(--pw-bg-alt); color:var(--pw-muted); font-weight:700; letter-spacing:0.05em;">OFF</span>
           {/if}
           <span style="margin-left:auto; font-size:10px; color:var(--pw-muted);">
             {embedRlsSavedFlash ? 'saved' : `${embedRlsClaims.length} claim${embedRlsClaims.length === 1 ? '' : 's'} · ${embedRlsPolicies.length} polic${embedRlsPolicies.length === 1 ? 'y' : 'ies'}`}
@@ -10650,7 +10652,7 @@ function signUserJWT($user) {
               <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
                 <!-- BLUEPRINT card -->
                 <button onclick={openBlueprintModal}
-                  style="background:#1a1614; border:1px solid var(--pw-ink-soft); border-radius: 0; padding:18px 14px; cursor:pointer; font-family:inherit; color:#e8e3d6; text-align:left; display:flex; flex-direction:column; gap:8px;">
+                  style="background:#1a1614; border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); padding:18px 14px; cursor:pointer; font-family:inherit; color:#e8e3d6; text-align:left; display:flex; flex-direction:column; gap:8px;">
                   <div style="font-size:19px;"><Icon name="zap" size={14} /></div>
                   <div style="font-size:11px; font-weight:900; letter-spacing:0.05em; text-transform:uppercase; color:#e8e3d6;">Blueprint</div>
                   <div style="font-size:10px; color:#bdb5a3; text-transform:uppercase; letter-spacing:0.04em;">1 click</div>
@@ -10663,8 +10665,8 @@ function signUserJWT($user) {
                 </button>
                 <!-- WIZARD card (recommended) -->
                 <button onclick={() => openWizard(ce.embed_id)}
-                  style="background:#1a1614; border:2px solid var(--pw-accent); border-radius: 0; padding:18px 14px; cursor:pointer; font-family:inherit; color:#e8e3d6; text-align:left; display:flex; flex-direction:column; gap:8px; position:relative;">
-                  <span style="position:absolute; top:-9px; right:10px; background:var(--pw-accent); color:#fff; font-size: 11px; font-weight:900; letter-spacing:0.06em; padding:2px 8px; border-radius: 0; text-transform:uppercase;">Recommended</span>
+                  style="background:#1a1614; border:2px solid var(--pw-accent); border-radius: var(--pw-radius-sm); padding:18px 14px; cursor:pointer; font-family:inherit; color:#e8e3d6; text-align:left; display:flex; flex-direction:column; gap:8px; position:relative;">
+                  <span style="position:absolute; top:-9px; right:10px; background:var(--pw-accent); color:#fff; font-size: 11px; font-weight:900; letter-spacing:0.06em; padding:2px 8px; border-radius: var(--pw-radius-sm); text-transform:uppercase;">Recommended</span>
                   <div style="font-size:19px;"><Icon name="compass" size={14} /></div>
                   <div style="font-size:11px; font-weight:900; letter-spacing:0.05em; text-transform:uppercase; color:#e8e3d6;">Wizard</div>
                   <div style="font-size:10px; color:#bdb5a3; text-transform:uppercase; letter-spacing:0.04em;">3 questions</div>
@@ -10677,7 +10679,7 @@ function signUserJWT($user) {
                 </button>
                 <!-- MANUAL card -->
                 <button onclick={dismissEntryScreen}
-                  style="background:#1a1614; border:1px solid var(--pw-ink-soft); border-radius: 0; padding:18px 14px; cursor:pointer; font-family:inherit; color:#e8e3d6; text-align:left; display:flex; flex-direction:column; gap:8px;">
+                  style="background:#1a1614; border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); padding:18px 14px; cursor:pointer; font-family:inherit; color:#e8e3d6; text-align:left; display:flex; flex-direction:column; gap:8px;">
                   <div style="font-size:19px;"><Icon name="pencil" size={14} /></div>
                   <div style="font-size:11px; font-weight:900; letter-spacing:0.05em; text-transform:uppercase; color:#e8e3d6;">Manual</div>
                   <div style="font-size:10px; color:#bdb5a3; text-transform:uppercase; letter-spacing:0.04em;">Advanced</div>
@@ -10693,7 +10695,7 @@ function signUserJWT($user) {
           {/if}
 
           {#if setupFallbackVisible}
-            <div style="display:flex; gap:10px; align-items:center; padding:6px 8px; background:var(--pw-bg-alt); border:1px dashed var(--pw-ink-soft); border-radius: 0; font-size:11px; color:var(--pw-muted);">
+            <div style="display:flex; gap:10px; align-items:center; padding:6px 8px; background:var(--pw-bg-alt); border:1px dashed var(--pw-ink-soft); border-radius: var(--pw-radius-sm); font-size:11px; color:var(--pw-muted);">
               <span style="text-transform:uppercase; letter-spacing:0.05em; font-size: 11px;">Setup via:</span>
               <button onclick={openBlueprintModal}
                 style="padding:3px 9px; background:var(--pw-bg); border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;"><Icon name="zap" size={14} /> BLUEPRINT</button>
@@ -10838,7 +10840,7 @@ function signUserJWT($user) {
               <span></span>
             </div>
             {#if embedRlsPolicies.length === 0}
-              <div style="padding:18px 12px; text-align:center; background:var(--pw-bg-alt); border:1px dashed var(--pw-ink-soft); border-radius: 0;">
+              <div style="padding:18px 12px; text-align:center; background:var(--pw-bg-alt); border:1px dashed var(--pw-ink-soft); border-radius: var(--pw-radius-sm);">
                 <div style="font-size:11px; color:var(--pw-ink); margin-bottom:10px; font-weight:600;">No policies yet.</div>
                 <div style="font-size:11px; color:var(--pw-muted); margin-bottom:12px;">Auto-add policies inferred from your column names, or build them by hand.</div>
                 <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
@@ -10921,7 +10923,7 @@ function signUserJWT($user) {
                   style="padding:4px 8px; background:transparent; border:1px solid var(--pw-ink-soft); color:var(--pw-error); cursor:pointer; font-family:inherit; font-size:11px;"><Icon name="trash" size={14} /></button>
               </div>
             {/each}
-            <div style="margin-top:6px; background:var(--pw-bg-alt); border-radius: 0; border:1px solid var(--pw-ink-soft);">
+            <div style="margin-top:6px; background:var(--pw-bg-alt); border-radius: var(--pw-radius-sm); border:1px solid var(--pw-ink-soft);">
               <button onclick={() => modeLegendOpen = !modeLegendOpen}
                 style="width:100%; display:flex; align-items:center; gap:8px; padding:8px 10px; background:transparent; border:none; cursor:pointer; font-family:inherit; text-align:left;">
                 <span style="font-size:10px; color:var(--pw-muted); width:10px;">{modeLegendOpen ? '▾' : '▸'}</span>
@@ -10933,7 +10935,7 @@ function signUserJWT($user) {
                 <div style="padding:6px 12px 10px 28px; border-top:1px solid var(--pw-ink-soft); display:flex; flex-direction:column; gap:8px;">
                   {#each ['private','own_value','shared','redacted','hidden'] as mk}
                     {@const m = legend && legend[mk] ? legend[mk] : null}
-                    <div style="padding:6px 8px; background:var(--pw-bg); border-radius: 0; border-left:2px solid var(--pw-accent); font-size:11px; color:var(--pw-ink); line-height:1.45;">
+                    <div style="padding:6px 8px; background:var(--pw-bg); border-radius: var(--pw-radius-sm); border-left:2px solid var(--pw-accent); font-size:11px; color:var(--pw-ink); line-height:1.45;">
                       <div style="font-weight:700; font-family:ui-monospace,Menlo,monospace;">{(m && m.label) || mk}</div>
                       {#if m && m.one_liner}<div style="margin-top:2px;">{m.one_liner}</div>{/if}
                       {#if m && m.detail}<div style="margin-top:2px; color:var(--pw-muted);">{m.detail}</div>{/if}
@@ -10950,7 +10952,7 @@ function signUserJWT($user) {
           </div>
 
           <!-- TEST SANDBOX -->
-          <div style="background:var(--pw-bg-alt); border:1px solid var(--pw-ink-soft); border-radius: 0; padding:12px 14px;">
+          <div style="background:var(--pw-bg-alt); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); padding:12px 14px;">
             <div style="font-size:11px; font-weight:700; letter-spacing:0.04em; color:var(--pw-ink); text-transform:uppercase; margin-bottom:8px;">Test Sandbox</div>
             {#if embedRlsClaims.filter(c => c.key.trim()).length === 0}
               <div style="font-size:11px; color:var(--pw-muted); font-style:italic;">Declare claims above to enable impersonation testing.</div>
@@ -11002,7 +11004,7 @@ function signUserJWT($user) {
             <div onclick={() => claimsImportOpen = false}
               style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:200; display:flex; align-items:center; justify-content:center;">
               <div onclick={(e:any) => e.stopPropagation()}
-                style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: 0; width:560px; max-width:92vw; max-height:80vh; display:flex; flex-direction:column; box-shadow:0 12px 32px rgba(0,0,0,0.3);">
+                style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); width:560px; max-width:92vw; max-height:80vh; display:flex; flex-direction:column; box-shadow:0 12px 32px rgba(0,0,0,0.3);">
                 <div style="padding:14px 18px; border-bottom:1px solid var(--pw-ink-soft); display:flex; justify-content:space-between; align-items:center;">
                   <div>
                     <div style="font-size:12px; font-weight:900; letter-spacing:0.04em; color:var(--pw-ink); text-transform:uppercase;">Auto-Detect Claims From Schema</div>
@@ -11016,7 +11018,7 @@ function signUserJWT($user) {
                   {/if}
                   {#each embedSchemaCatalog.suggested_claims as sc}
                     {@const checked = !!claimsImportSelected[sc.key]}
-                    <label style="display:flex; gap:10px; align-items:flex-start; padding:8px 10px; border:1px solid var(--pw-ink-soft); border-radius: 0; margin-bottom:6px; cursor:pointer; background:{checked ? 'var(--pw-bg-alt)' : 'var(--pw-bg)'};">
+                    <label style="display:flex; gap:10px; align-items:flex-start; padding:8px 10px; border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); margin-bottom:6px; cursor:pointer; background:{checked ? 'var(--pw-bg-alt)' : 'var(--pw-bg)'};">
                       <input type="checkbox" checked={checked}
                         onchange={(ev:any) => { claimsImportSelected = { ...claimsImportSelected, [sc.key]: ev.target.checked }; }}
                         style="margin-top:3px;" />
@@ -11024,7 +11026,7 @@ function signUserJWT($user) {
                         <div style="display:flex; gap:8px; align-items:baseline;">
                           <code style="font-size:12px; color:var(--pw-ink); font-weight:700;">{sc.key}</code>
                           <span style="font-size:11px; color:var(--pw-muted);">{sc.label || sc.key}</span>
-                          <span style="font-size: 11px; padding:1px 6px; background:var(--pw-bg-alt); border:1px solid var(--pw-ink-soft); border-radius: 0; color:var(--pw-muted); text-transform:uppercase; letter-spacing:0.05em;">{sc.type || 'string'}</span>
+                          <span style="font-size: 11px; padding:1px 6px; background:var(--pw-bg-alt); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); color:var(--pw-muted); text-transform:uppercase; letter-spacing:0.05em;">{sc.type || 'string'}</span>
                         </div>
                         {#if sc.reason}
                           <div style="font-size:10px; color:var(--pw-muted); margin-top:3px; line-height:1.4;">{sc.reason}</div>
@@ -11056,7 +11058,7 @@ function signUserJWT($user) {
             <div onclick={() => colProtectOpen = false}
               style="position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:300; display:flex; align-items:center; justify-content:center;">
               <div onclick={(e: any) => e.stopPropagation()}
-                style="background:var(--pw-bg); border:1px solid var(--pw-ink); border-radius:0; width:780px; max-width:94vw; max-height:88vh; display:flex; flex-direction:column;">
+                style="background:var(--pw-bg); border:1px solid var(--pw-ink); border-radius: var(--pw-radius-sm); width:780px; max-width:94vw; max-height:88vh; display:flex; flex-direction:column;">
                 <!-- Header -->
                 <div style="padding:14px 18px; border-bottom:1px solid var(--pw-ink-soft); display:flex; align-items:center; gap:10px;">
                   <span style="font-size:20px;">🛡️</span>
@@ -11168,7 +11170,7 @@ function signUserJWT($user) {
             <div onclick={() => policiesImportOpen = false}
               style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:200; display:flex; align-items:center; justify-content:center;">
               <div onclick={(e:any) => e.stopPropagation()}
-                style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: 0; width:680px; max-width:94vw; max-height:84vh; display:flex; flex-direction:column; box-shadow:0 12px 32px rgba(0,0,0,0.3);">
+                style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); width:680px; max-width:94vw; max-height:84vh; display:flex; flex-direction:column; box-shadow:0 12px 32px rgba(0,0,0,0.3);">
                 <div style="padding:14px 18px; border-bottom:1px solid var(--pw-ink-soft); display:flex; justify-content:space-between; align-items:center;">
                   <div>
                     <div style="font-size:12px; font-weight:900; letter-spacing:0.04em; color:var(--pw-ink); text-transform:uppercase;">Import Policies From Schema</div>
@@ -11194,14 +11196,14 @@ function signUserJWT($user) {
                         {@const pk = _policyKey(p.table, p.column || '*')}
                         {@const checked = !!policiesImportSelected[pk]}
                         {@const modeColor = p.mode === 'private' ? '#cc2244' : p.mode === 'own_value' ? '#3a8dff' : p.mode === 'shared' ? '#10b981' : p.mode === 'redacted' ? '#f59e0b' : '#666'}
-                        <label style="display:flex; gap:10px; align-items:flex-start; padding:7px 9px; border:1px solid var(--pw-ink-soft); border-radius: 0; margin-bottom:4px; cursor:pointer; background:{checked ? 'var(--pw-bg-alt)' : 'var(--pw-bg)'};">
+                        <label style="display:flex; gap:10px; align-items:flex-start; padding:7px 9px; border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); margin-bottom:4px; cursor:pointer; background:{checked ? 'var(--pw-bg-alt)' : 'var(--pw-bg)'};">
                           <input type="checkbox" checked={checked}
                             onchange={(ev:any) => { policiesImportSelected = { ...policiesImportSelected, [pk]: ev.target.checked }; }}
                             style="margin-top:3px;" />
                           <div style="flex:1; min-width:0;">
                             <div style="display:flex; gap:8px; align-items:baseline; flex-wrap:wrap;">
                               <code style="font-size:12px; color:var(--pw-ink); font-weight:700;">{p.table}.{p.column || '*'}</code>
-                              <span style="font-size: 11px; padding:2px 8px; border-radius: 0; background:{modeColor}22; color:{modeColor}; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;">● {p.mode}</span>
+                              <span style="font-size: 11px; padding:2px 8px; border-radius: var(--pw-radius-sm); background:{modeColor}22; color:{modeColor}; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;">● {p.mode}</span>
                               {#if p.filter}
                                 <span style="font-size:10px; color:var(--pw-muted);">filter: <code style="color:var(--pw-ink);">{p.filter}</code></span>
                               {/if}
@@ -11230,12 +11232,12 @@ function signUserJWT($user) {
           {/if}
 
           <!-- AUDIT SUMMARY -->
-          <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: 0; padding:12px 14px;">
+          <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); padding:12px 14px;">
             <div style="font-size:11px; font-weight:700; letter-spacing:0.04em; color:var(--pw-ink); text-transform:uppercase; margin-bottom:8px;">Top Denials — Last 7 Days</div>
             {#if embedRlsAudit && embedRlsAudit.length > 0}
               <div style="display:flex; flex-direction:column; gap:4px;">
                 {#each embedRlsAudit as row}
-                  <div style="display:grid; grid-template-columns: 1fr 60px; gap:6px; padding:4px 6px; background:var(--pw-bg-alt); border-radius: 0; font-size:11px;">
+                  <div style="display:grid; grid-template-columns: 1fr 60px; gap:6px; padding:4px 6px; background:var(--pw-bg-alt); border-radius: var(--pw-radius-sm); font-size:11px;">
                     <code style="color:var(--pw-ink);">{row.table}.{row.column}</code>
                     <span style="text-align:right; color:var(--pw-error); font-weight:700;">{row.count}</span>
                   </div>
@@ -11253,7 +11255,7 @@ function signUserJWT($user) {
               role="dialog" tabindex="-1"
               style="position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:300; display:flex; align-items:center; justify-content:center; padding:24px;">
               <div onclick={(ev:any) => ev.stopPropagation()} role="presentation"
-                style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: 0; width:920px; max-width:96vw; max-height:88vh; display:flex; flex-direction:column;">
+                style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); width:920px; max-width:96vw; max-height:88vh; display:flex; flex-direction:column;">
                 <div style="padding:14px 18px; border-bottom:1px solid var(--pw-ink-soft); display:flex; align-items:center; gap:12px;">
                   {#if blueprintDetail}
                     <button onclick={() => { blueprintDetail = null; blueprintCompat = null; }}
@@ -11286,11 +11288,11 @@ function signUserJWT($user) {
                     {:else}
                       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:12px;">
                         {#each filteredBlueprints as bp (bp.slug)}
-                          <div style="background:var(--pw-bg); border:1px solid var(--pw-ink-soft); border-radius: 0; padding:14px; display:flex; flex-direction:column; gap:8px;">
+                          <div style="background:var(--pw-bg); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); padding:14px; display:flex; flex-direction:column; gap:8px;">
                             <div style="display:flex; align-items:center; gap:8px;">
                               <span style="font-size:16px;">{bp.icon || ''}</span>
                               <span style="font-size:11px; font-weight:900; color:var(--pw-ink); flex:1; min-width:0;">{bp.name}</span>
-                              {#if bp.industry}<span style="font-size: 11px; padding:2px 7px; border-radius: 0; background:var(--pw-bg-alt); color:var(--pw-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">{bp.industry}</span>{/if}
+                              {#if bp.industry}<span style="font-size: 11px; padding:2px 7px; border-radius: var(--pw-radius-sm); background:var(--pw-bg-alt); color:var(--pw-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">{bp.industry}</span>{/if}
                             </div>
                             {#if (bp as any).display?.tagline}<div style="font-size:11px; color:var(--pw-ink); line-height:1.4; font-style:italic;">{(bp as any).display.tagline}</div>{/if}
                             {#if bp.description}<div style="font-size:11px; color:var(--pw-muted); line-height:1.45;">{bp.description}</div>{/if}
@@ -11334,7 +11336,7 @@ function signUserJWT($user) {
 
                     <!-- What it does callout -->
                     {#if sum.what_it_does}
-                      <div style="padding:12px 14px; background:#f8f1e3; border-left:3px solid var(--pw-accent); border-radius: 0; font-size:11px; color:var(--pw-ink); line-height:1.5; font-style:italic;">
+                      <div style="padding:12px 14px; background:#f8f1e3; border-left:3px solid var(--pw-accent); border-radius: var(--pw-radius-sm); font-size:11px; color:var(--pw-ink); line-height:1.5; font-style:italic;">
                         “{sum.what_it_does}”
                       </div>
                     {:else if blueprintDetail.description}
@@ -11354,7 +11356,7 @@ function signUserJWT($user) {
                                   <div style="flex:1; width:2px; background:var(--pw-ink-soft); margin-top:2px;"></div>
                                 {/if}
                               </div>
-                              <div style="flex:1; padding:9px 12px; border:1px solid var(--pw-ink-soft); border-radius: 0; background:var(--pw-bg);">
+                              <div style="flex:1; padding:9px 12px; border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); background:var(--pw-bg);">
                                 <div style="font-size:10px; font-weight:900; color:var(--pw-accent); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:3px;">{scene.scene || `Scene ${sci + 1}`}</div>
                                 {#if scene.actor}<div style="font-size:10px; color:var(--pw-muted); margin-bottom:3px;">{scene.actor}</div>{/if}
                                 {#if scene.action}<div style="font-size:11px; color:var(--pw-ink); line-height:1.45; margin-bottom:3px;"><span style="font-weight:700;">Action:</span> {scene.action}</div>{/if}
@@ -11369,17 +11371,17 @@ function signUserJWT($user) {
                     <!-- Before / After (handles both string and {before, after} shapes) -->
                     {#if baBefore || baAfter}
                       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-                        <div style="padding:10px 12px; background:var(--pw-bg-alt); border:1px solid var(--pw-ink-soft); border-radius: 0;">
+                        <div style="padding:10px 12px; background:var(--pw-bg-alt); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm);">
                           <div style="font-size: 11px; font-weight:700; color:var(--pw-muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">BEFORE this blueprint</div>
                           <div style="font-size:11px; color:var(--pw-ink); line-height:1.5;">{baBefore || '—'}</div>
                         </div>
-                        <div style="padding:10px 12px; background:#10b9810f; border:1px solid #10b98144; border-radius: 0;">
+                        <div style="padding:10px 12px; background:#10b9810f; border:1px solid #10b98144; border-radius: var(--pw-radius-sm);">
                           <div style="font-size: 11px; font-weight:700; color:#10b981; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">AFTER this blueprint</div>
                           <div style="font-size:11px; color:var(--pw-ink); line-height:1.5;">{baAfter || '—'}</div>
                         </div>
                       </div>
                     {:else if baStr}
-                      <div style="padding:10px 12px; background:var(--pw-bg-alt); border-left:3px solid var(--pw-accent); border-radius: 0; font-size:11px; color:var(--pw-ink); line-height:1.5; font-style:italic;">{baStr}</div>
+                      <div style="padding:10px 12px; background:var(--pw-bg-alt); border-left:3px solid var(--pw-accent); border-radius: var(--pw-radius-sm); font-size:11px; color:var(--pw-ink); line-height:1.5; font-style:italic;">{baStr}</div>
                     {/if}
 
                     <!-- Who is this for? -->
@@ -11396,7 +11398,7 @@ function signUserJWT($user) {
 
                     <!-- Common pitfalls -->
                     {#if pitfalls.length > 0}
-                      <div style="padding:10px 12px; background:#f59e0b14; border:1px solid #f59e0b66; border-left:3px solid #f59e0b; border-radius: 0;">
+                      <div style="padding:10px 12px; background:#f59e0b14; border:1px solid #f59e0b66; border-left:3px solid #f59e0b; border-radius: var(--pw-radius-sm);">
                         <div style="font-size:10px; font-weight:900; color:#b45309; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px;"><Icon name="alert-triangle" size={14} /> COMMON PITFALLS</div>
                         <ul style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:3px;">
                           {#each pitfalls as item}
@@ -11424,7 +11426,7 @@ function signUserJWT($user) {
                         <div style="font-size:10px; font-weight:900; color:var(--pw-muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px;">FAQ</div>
                         <div style="display:flex; flex-direction:column; gap:5px;">
                           {#each faq as item, fi (fi)}
-                            <details style="border:1px solid var(--pw-ink-soft); border-radius: 0; background:var(--pw-bg);">
+                            <details style="border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); background:var(--pw-bg);">
                               <summary style="cursor:pointer; padding:7px 10px; font-size:11px; font-weight:700; color:var(--pw-ink); list-style:none;">{item.q || `Question ${fi + 1}`}</summary>
                               <div style="padding:0 10px 9px 10px; font-size:11px; color:var(--pw-ink); line-height:1.5;">{item.a || ''}</div>
                             </details>
@@ -11452,11 +11454,11 @@ function signUserJWT($user) {
                         <div style="display:flex; flex-wrap:wrap; gap:6px;">
                           {#each blueprintDetail.required_tables as t}
                             {@const ok = blueprintCompat ? blueprintCompat.matched.includes(t) : null}
-                            <span style="font-size:11px; padding:3px 9px; border-radius: 0; background:{ok === true ? '#10b9811a' : ok === false ? '#cc22441a' : 'var(--pw-bg-alt)'}; color:{ok === true ? '#10b981' : ok === false ? '#cc2244' : 'var(--pw-ink)'}; border:1px solid {ok === true ? '#10b98144' : ok === false ? '#cc224444' : 'var(--pw-ink-soft)'}; font-family:ui-monospace,Menlo,monospace;">{ok === true ? '' : ok === false ? '' : '·'} {t}</span>
+                            <span style="font-size:11px; padding:3px 9px; border-radius: var(--pw-radius-sm); background:{ok === true ? '#10b9811a' : ok === false ? '#cc22441a' : 'var(--pw-bg-alt)'}; color:{ok === true ? '#10b981' : ok === false ? '#cc2244' : 'var(--pw-ink)'}; border:1px solid {ok === true ? '#10b98144' : ok === false ? '#cc224444' : 'var(--pw-ink-soft)'}; font-family:ui-monospace,Menlo,monospace;">{ok === true ? '' : ok === false ? '' : '·'} {t}</span>
                           {/each}
                         </div>
                         {#if blueprintCompatDisplay && (blueprintCompatDisplay.status === 'missing' || blueprintCompatDisplay.status === 'partial')}
-                          <div style="margin-top:8px; padding:10px 12px; background:#f59e0b14; border:1px solid #f59e0b66; border-left:3px solid #f59e0b; border-radius: 0; font-size:11px; color:var(--pw-ink); line-height:1.5;">
+                          <div style="margin-top:8px; padding:10px 12px; background:#f59e0b14; border:1px solid #f59e0b66; border-left:3px solid #f59e0b; border-radius: var(--pw-radius-sm); font-size:11px; color:var(--pw-ink); line-height:1.5;">
                             <div style="font-weight:700; margin-bottom:3px;"><Icon name="alert-triangle" size={14} /> {blueprintCompatDisplay.message || 'Schema mismatch'}</div>
                             {#if blueprintCompatDisplay.impact_if_missing}<div style="margin-bottom:3px;">{blueprintCompatDisplay.impact_if_missing}</div>{/if}
                             {#if blueprintCompatDisplay.what_to_do}<div style="color:var(--pw-muted);">{blueprintCompatDisplay.what_to_do}</div>{/if}
@@ -11479,25 +11481,25 @@ function signUserJWT($user) {
                         <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
                           <div style="font-size:10px; font-weight:700; color:var(--pw-muted); text-transform:uppercase; letter-spacing:0.05em;">Claims ({renderClaims.length})</div>
                           {#if bpEditedClaims !== null}
-                            <span style="font-size: 11px; padding:1px 7px; border-radius: 0; background:var(--pw-accent); color:#fff; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">EDITED</span>
+                            <span style="font-size: 11px; padding:1px 7px; border-radius: var(--pw-radius-sm); background:var(--pw-accent); color:#fff; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">EDITED</span>
                           {/if}
                         </div>
                         <div style="display:flex; flex-direction:column; gap:4px;">
                           {#each renderClaims as c, ci (ci)}
                             {@const cExp = claimsExp[ci]}
                             {@const cExpText = (cExp && typeof cExp === 'object') ? cExp.explanation : (typeof cExp === 'string' ? cExp : null)}
-                            <div style="padding:5px 8px; background:var(--pw-bg-alt); border-radius: 0; position:relative;">
+                            <div style="padding:5px 8px; background:var(--pw-bg-alt); border-radius: var(--pw-radius-sm); position:relative;">
                               <div style="display:flex; gap:8px; align-items:center; font-size:11px;">
                                 <code style="color:var(--pw-ink); font-weight:700;">{c.key}</code>
                                 <span style="color:var(--pw-muted);">{c.type || 'string'}{c.required ? ' · required' : ''}</span>
                                 {#if c.label}<span style="color:var(--pw-muted); margin-left:auto;">{c.label}</span>{/if}
                                 <button onclick={() => bpClaimPopover = bpClaimPopover === ci ? null : ci}
                                   title="Edit claim"
-                                  style="margin-left:{c.label ? '8px' : 'auto'}; padding:2px 6px; background:transparent; border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-size:10px; border-radius: 0;"><Icon name="pencil" size={14} /></button>
+                                  style="margin-left:{c.label ? '8px' : 'auto'}; padding:2px 6px; background:transparent; border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-size:10px; border-radius: var(--pw-radius-sm);"><Icon name="pencil" size={14} /></button>
                               </div>
                               {#if cExpText}<div style="font-size:10px; color:var(--pw-muted); font-style:italic; margin-top:3px; line-height:1.4;">{cExpText}</div>{/if}
                               {#if bpClaimPopover === ci}
-                                <div style="margin-top:6px; padding:8px; background:var(--pw-bg); border:1px solid var(--pw-ink-soft); border-radius: 0; display:flex; flex-direction:column; gap:6px;">
+                                <div style="margin-top:6px; padding:8px; background:var(--pw-bg); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); display:flex; flex-direction:column; gap:6px;">
                                   <label style="display:flex; flex-direction:column; gap:2px;">
                                     <span style="font-size: 11px; color:var(--pw-muted); text-transform:uppercase; letter-spacing:0.05em;">Key</span>
                                     <input type="text" value={c.key || ''} oninput={(ev:any) => bpEditClaim(ci, { key: ev.target.value })}
@@ -11539,7 +11541,7 @@ function signUserJWT($user) {
                         <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
                           <div style="font-size:10px; font-weight:700; color:var(--pw-muted); text-transform:uppercase; letter-spacing:0.05em;">Policies ({renderPolicies.length}) — click to expand · uncheck to drop</div>
                           {#if bpEditedPolicies !== null}
-                            <span style="font-size: 11px; padding:1px 7px; border-radius: 0; background:var(--pw-accent); color:#fff; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">EDITED</span>
+                            <span style="font-size: 11px; padding:1px 7px; border-radius: var(--pw-radius-sm); background:var(--pw-accent); color:#fff; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">EDITED</span>
                           {/if}
                         </div>
                         <div style="display:flex; flex-direction:column; gap:5px;">
@@ -11549,7 +11551,7 @@ function signUserJWT($user) {
                             {@const open = !!bpExpandedPolicy[pi]}
                             {@const editing = !!bpPolicyEditing[pi]}
                             {@const included = bpPolicyIncluded[pi] !== false}
-                            <div style="border:1px solid var(--pw-ink-soft); border-radius: 0; background:var(--pw-bg); opacity:{included ? 1 : 0.55};">
+                            <div style="border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); background:var(--pw-bg); opacity:{included ? 1 : 0.55};">
                               <div style="display:flex; align-items:center; gap:8px; padding:7px 10px;">
                                 <label title="Include this policy in apply" style="display:flex; align-items:center; gap:5px; cursor:pointer;">
                                   <input type="checkbox" checked={included} onchange={(ev:any) => bpPolicyIncluded = { ...bpPolicyIncluded, [pi]: ev.target.checked }} />
@@ -11559,12 +11561,12 @@ function signUserJWT($user) {
                                   style="flex:1; display:flex; gap:8px; align-items:center; background:transparent; border:none; cursor:pointer; font-family:inherit; text-align:left; padding:0;">
                                   <span style="font-size:10px; color:var(--pw-muted); width:10px;">{open ? '▾' : '▸'}</span>
                                   <code style="font-size:11px; color:var(--pw-ink); font-weight:700;">{p.table}.{p.column || '*'}</code>
-                                  <span style="font-size:10px; padding:1px 7px; border-radius: 0; background:var(--pw-bg-alt); color:var(--pw-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">{p.mode}</span>
+                                  <span style="font-size:10px; padding:1px 7px; border-radius: var(--pw-radius-sm); background:var(--pw-bg-alt); color:var(--pw-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">{p.mode}</span>
                                   {#if p.filter}<span style="font-size:10px; color:var(--pw-muted);">filter: {p.filter}</span>{/if}
                                 </button>
                                 <button onclick={() => bpPolicyEditing = { ...bpPolicyEditing, [pi]: !editing }}
                                   title="Edit policy"
-                                  style="padding:2px 6px; background:transparent; border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-size:10px; border-radius: 0;"><Icon name="pencil" size={14} /></button>
+                                  style="padding:2px 6px; background:transparent; border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-size:10px; border-radius: var(--pw-radius-sm);"><Icon name="pencil" size={14} /></button>
                               </div>
                               {#if open && exp}
                                 <div style="padding:8px 12px 10px 28px; border-top:1px solid var(--pw-ink-soft); display:flex; flex-direction:column; gap:5px; font-size:11px; color:var(--pw-ink); line-height:1.45;">
@@ -11621,7 +11623,7 @@ function signUserJWT($user) {
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
                       <div onclick={() => blueprintApplyMode = 'merge'} onkeydown={(ev:any) => { if (ev.key === 'Enter' || ev.key === ' ') blueprintApplyMode = 'merge'; }}
                         role="button" tabindex="0"
-                        style="padding:10px 12px; border:2px solid {blueprintApplyMode === 'merge' ? 'var(--pw-accent)' : 'var(--pw-ink-soft)'}; border-radius: 0; cursor:pointer; background:{blueprintApplyMode === 'merge' ? 'var(--pw-bg-alt)' : 'var(--pw-bg)'};">
+                        style="padding:10px 12px; border:2px solid {blueprintApplyMode === 'merge' ? 'var(--pw-accent)' : 'var(--pw-ink-soft)'}; border-radius: var(--pw-radius-sm); cursor:pointer; background:{blueprintApplyMode === 'merge' ? 'var(--pw-bg-alt)' : 'var(--pw-bg)'};">
                         <div style="display:flex; gap:6px; align-items:center; margin-bottom:5px;">
                           <input type="radio" name="bp_mode" checked={blueprintApplyMode === 'merge'} onchange={() => blueprintApplyMode = 'merge'} />
                           <span style="font-size:11px; font-weight:700; color:var(--pw-ink);">MERGE</span>
@@ -11634,7 +11636,7 @@ function signUserJWT($user) {
                       </div>
                       <div onclick={() => blueprintApplyMode = 'replace'} onkeydown={(ev:any) => { if (ev.key === 'Enter' || ev.key === ' ') blueprintApplyMode = 'replace'; }}
                         role="button" tabindex="0"
-                        style="padding:10px 12px; border:2px solid {blueprintApplyMode === 'replace' ? '#cc2244' : 'var(--pw-ink-soft)'}; border-radius: 0; cursor:pointer; background:{blueprintApplyMode === 'replace' ? '#cc22440f' : 'var(--pw-bg)'};">
+                        style="padding:10px 12px; border:2px solid {blueprintApplyMode === 'replace' ? '#cc2244' : 'var(--pw-ink-soft)'}; border-radius: var(--pw-radius-sm); cursor:pointer; background:{blueprintApplyMode === 'replace' ? '#cc22440f' : 'var(--pw-bg)'};">
                         <div style="display:flex; gap:6px; align-items:center; margin-bottom:5px;">
                           <input type="radio" name="bp_mode" checked={blueprintApplyMode === 'replace'} onchange={() => blueprintApplyMode = 'replace'} />
                           <span style="font-size:11px; font-weight:700; color:var(--pw-ink);">REPLACE</span>
@@ -11666,7 +11668,7 @@ function signUserJWT($user) {
               role="dialog" tabindex="-1"
               style="position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:400; display:flex; align-items:center; justify-content:center;">
               <div onclick={(ev:any) => ev.stopPropagation()} role="presentation"
-                style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: 0; width:420px; max-width:92vw; padding:18px 20px;">
+                style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); width:420px; max-width:92vw; padding:18px 20px;">
                 <div style="font-size:12px; font-weight:900; letter-spacing:0.04em; color:var(--pw-ink); margin-bottom:14px;">SAVE AS BLUEPRINT</div>
                 <label style="display:flex; flex-direction:column; gap:4px; margin-bottom:10px;">
                   <span style="font-size: 11px; color:var(--pw-muted); text-transform:uppercase; letter-spacing:0.05em;">Name</span>
@@ -11700,7 +11702,7 @@ function signUserJWT($user) {
               role="dialog" tabindex="-1"
               style="position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:300; display:flex; align-items:center; justify-content:center; padding:24px;">
               <div onclick={(ev:any) => ev.stopPropagation()} role="presentation"
-                style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: 0; width:720px; max-width:96vw; max-height:88vh; display:flex; flex-direction:column;">
+                style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); width:720px; max-width:96vw; max-height:88vh; display:flex; flex-direction:column;">
                 <div style="padding:14px 18px; border-bottom:1px solid var(--pw-ink-soft); display:flex; align-items:center; gap:12px;">
                   <div style="font-size:13px; font-weight:900; letter-spacing:0.04em; color:var(--pw-ink);"><Icon name="compass" size={14} /> RLS WIZARD</div>
                   <div style="font-size:10px; color:var(--pw-muted); font-family:ui-monospace,Menlo,monospace;">Step {wizardStep === 4 ? 'review' : `${wizardStep}/3`}</div>
@@ -11715,13 +11717,13 @@ function signUserJWT($user) {
                   {#if wizardStep === 1}
                     <div style="font-size:12px; font-weight:700; color:var(--pw-ink);">Who uses this embed?</div>
                     {@const q1Help = wizardOptions?.q1_audience?.helper || wizardOptions?.q1_helper}
-                    <div style="padding:9px 12px; background:var(--pw-bg-alt); border-left:3px solid var(--pw-accent-soft, #f8f1e3); border-radius: 0; font-size:11px; color:var(--pw-ink); line-height:1.5;">
+                    <div style="padding:9px 12px; background:var(--pw-bg-alt); border-left:3px solid var(--pw-accent-soft, #f8f1e3); border-radius: var(--pw-radius-sm); font-size:11px; color:var(--pw-ink); line-height:1.5;">
                       <div><span style="font-size: 11px; color:var(--pw-muted); font-weight:700; letter-spacing:0.04em;">WHY WE ASK:</span> {q1Help?.why || 'This determines whether scope-by-customer (each user sees only their data) or scope-by-role (staff filtered by region/department) is the right pattern.'}</div>
                       <div style="margin-top:3px;"><span style="font-size: 11px; color:var(--pw-muted); font-weight:700; letter-spacing:0.04em;">EXAMPLE ANSWER:</span> {q1Help?.example || '"Customers" if external buyers log in to see their orders; "Staff" if employees log in to see their territory.'}</div>
                     </div>
                     <div style="display:flex; flex-direction:column; gap:8px;">
                       {#each [{v:'customers', t:'Customers', d:'External users — each sees only their own data', meaning:'Every row in customer-owned tables is filtered to match the logged-in user\'s identity. Catalog/shared data stays visible.'}, {v:'staff', t:'Staff', d:'Internal users — scoped by role / region / department', meaning:'Rows are filtered by the staff member\'s assigned scope (e.g. store_id, region_id). Roles like admin/owner can bypass.'}, {v:'both', t:'Both', d:'Mix of customer and staff access patterns', meaning:'Two layers run together: customer-scope on customer tables, role-scope on operational tables.'}] as opt}
-                        <label title="WHAT THIS MEANS: {opt.meaning}" style="display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border:1px solid {wizardAnswers.audience === opt.v ? 'var(--pw-accent)' : 'var(--pw-ink-soft)'}; border-radius: 0; cursor:pointer; background:{wizardAnswers.audience === opt.v ? 'var(--pw-bg-alt)' : 'var(--pw-bg)'};">
+                        <label title="WHAT THIS MEANS: {opt.meaning}" style="display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border:1px solid {wizardAnswers.audience === opt.v ? 'var(--pw-accent)' : 'var(--pw-ink-soft)'}; border-radius: var(--pw-radius-sm); cursor:pointer; background:{wizardAnswers.audience === opt.v ? 'var(--pw-bg-alt)' : 'var(--pw-bg)'};">
                           <input type="radio" name="wiz_audience" checked={wizardAnswers.audience === opt.v} onchange={() => wizardAnswers = { ...wizardAnswers, audience: opt.v }} style="margin-top:3px;" />
                           <div>
                             <div style="font-size:11px; font-weight:700; color:var(--pw-ink);">{opt.t}</div>
@@ -11735,7 +11737,7 @@ function signUserJWT($user) {
                   {#if wizardStep === 2}
                     <div style="font-size:12px; font-weight:700; color:var(--pw-ink);">What's the primary scope of access?</div>
                     {@const q2Help = wizardOptions?.q2_helper}
-                    <div style="padding:9px 12px; background:var(--pw-bg-alt); border-left:3px solid var(--pw-accent-soft, #f8f1e3); border-radius: 0; font-size:11px; color:var(--pw-ink); line-height:1.5;">
+                    <div style="padding:9px 12px; background:var(--pw-bg-alt); border-left:3px solid var(--pw-accent-soft, #f8f1e3); border-radius: var(--pw-radius-sm); font-size:11px; color:var(--pw-ink); line-height:1.5;">
                       <div><span style="font-size: 11px; color:var(--pw-muted); font-weight:700; letter-spacing:0.04em;">WHY WE ASK:</span> {q2Help?.why || 'Picks the column we filter on. Every query is rewritten to "WHERE <scope_column> = <caller\'s claim>" so users only see their slice.'}</div>
                       <div style="margin-top:3px;"><span style="font-size: 11px; color:var(--pw-muted); font-weight:700; letter-spacing:0.04em;">EXAMPLE ANSWER:</span> {q2Help?.example || 'Pick "store_id" for a retail chain where each manager sees only their store. Pick "customer_id" for a customer portal.'}</div>
                     </div>
@@ -11745,7 +11747,7 @@ function signUserJWT($user) {
                           {@const found = opt.found !== false}
                           {@const meaning = opt.helper || opt.what_this_means || (opt.table && opt.column ? `Each user will only see rows where ${opt.table}.${opt.column} matches their claim.` : 'Filters rows to match the caller\'s identity.')}
                           <label title={!found ? 'not found in schema' : `WHAT THIS MEANS: ${meaning}`}
-                            style="display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1px solid {wizardAnswers.scope === opt.key ? 'var(--pw-accent)' : 'var(--pw-ink-soft)'}; border-radius: 0; cursor:{found ? 'pointer' : 'not-allowed'}; background:{wizardAnswers.scope === opt.key ? 'var(--pw-bg-alt)' : 'var(--pw-bg)'}; opacity:{found ? 1 : 0.45};">
+                            style="display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1px solid {wizardAnswers.scope === opt.key ? 'var(--pw-accent)' : 'var(--pw-ink-soft)'}; border-radius: var(--pw-radius-sm); cursor:{found ? 'pointer' : 'not-allowed'}; background:{wizardAnswers.scope === opt.key ? 'var(--pw-bg-alt)' : 'var(--pw-bg)'}; opacity:{found ? 1 : 0.45};">
                             <input type="radio" name="wiz_scope" disabled={!found} checked={wizardAnswers.scope === opt.key} onchange={() => { if (found) wizardAnswers = { ...wizardAnswers, scope: opt.key }; }} style="margin-top:3px;" />
                             <div style="flex:1; min-width:0;">
                               <div style="display:flex; gap:6px; align-items:baseline;">
@@ -11770,7 +11772,7 @@ function signUserJWT($user) {
                   {#if wizardStep === 3}
                     <div style="font-size:12px; font-weight:700; color:var(--pw-ink);">Which sensitive data needs extra protection?</div>
                     {@const q3Help = wizardOptions?.q3_helper}
-                    <div style="padding:9px 12px; background:var(--pw-bg-alt); border-left:3px solid var(--pw-accent-soft, #f8f1e3); border-radius: 0; font-size:11px; color:var(--pw-ink); line-height:1.5;">
+                    <div style="padding:9px 12px; background:var(--pw-bg-alt); border-left:3px solid var(--pw-accent-soft, #f8f1e3); border-radius: var(--pw-radius-sm); font-size:11px; color:var(--pw-ink); line-height:1.5;">
                       <div><span style="font-size: 11px; color:var(--pw-muted); font-weight:700; letter-spacing:0.04em;">WHY WE ASK:</span> {q3Help?.why || 'Picked columns get masked or hidden even for users who can see the row — protects PII, salaries, and other sensitive values.'}</div>
                       <div style="margin-top:3px;"><span style="font-size: 11px; color:var(--pw-muted); font-weight:700; letter-spacing:0.04em;">EXAMPLE ANSWER:</span> {q3Help?.example || 'Tick "PII" to hide email/phone, "Financial" to hide salary/revenue from non-finance roles.'}</div>
                     </div>
@@ -11782,7 +11784,7 @@ function signUserJWT($user) {
                           {@const checked = (wizardAnswers.sensitive || []).includes(cat.key)}
                           {@const catMeaning = cat.helper || cat.what_this_means || `Columns in this category will be redacted or hidden for users without the right role.`}
                           <label title={!found ? 'not found in schema' : `WHAT THIS MEANS: ${catMeaning}`}
-                            style="display:flex; gap:10px; align-items:flex-start; padding:9px 12px; border:1px solid var(--pw-ink-soft); border-radius: 0; cursor:{found ? 'pointer' : 'not-allowed'}; background:var(--pw-bg); opacity:{found ? 1 : 0.45};">
+                            style="display:flex; gap:10px; align-items:flex-start; padding:9px 12px; border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); cursor:{found ? 'pointer' : 'not-allowed'}; background:var(--pw-bg); opacity:{found ? 1 : 0.45};">
                             <input type="checkbox" disabled={!found} checked={checked}
                               onchange={(ev:any) => {
                                 const s = new Set(wizardAnswers.sensitive || []);
@@ -11806,7 +11808,7 @@ function signUserJWT($user) {
                         <div style="display:flex; flex-wrap:wrap; gap:8px;">
                           {#each wizardOptions.q3_advanced_roles as r}
                             {@const ck = (wizardAnswers.roles || []).includes(r.key || r)}
-                            <label style="display:flex; gap:5px; align-items:center; font-size:11px; padding:4px 8px; border:1px solid var(--pw-ink-soft); border-radius: 0; cursor:pointer; background:{ck ? 'var(--pw-bg-alt)' : 'var(--pw-bg)'};">
+                            <label style="display:flex; gap:5px; align-items:center; font-size:11px; padding:4px 8px; border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); cursor:pointer; background:{ck ? 'var(--pw-bg-alt)' : 'var(--pw-bg)'};">
                               <input type="checkbox" checked={ck}
                                 onchange={(ev:any) => {
                                   const key = r.key || r;
@@ -11827,7 +11829,7 @@ function signUserJWT($user) {
                     {@const wPolsExp = Array.isArray(wizardPreview.policies_explained) ? wizardPreview.policies_explained : []}
                     <div style="font-size:12px; font-weight:700; color:var(--pw-ink);">Review generated policy</div>
                     {#if Array.isArray(wizardPreview.warnings) && wizardPreview.warnings.length > 0}
-                      <div style="padding:8px 12px; background:#f59e0b1a; border:1px solid #f59e0b66; border-radius: 0; font-size:11px; color:var(--pw-ink);">
+                      <div style="padding:8px 12px; background:#f59e0b1a; border:1px solid #f59e0b66; border-radius: var(--pw-radius-sm); font-size:11px; color:var(--pw-ink);">
                         <div style="font-weight:700; margin-bottom:4px;"><Icon name="alert-triangle" size={14} /> Warnings</div>
                         {#each wizardPreview.warnings as w}<div>· {w}</div>{/each}
                       </div>
@@ -11838,7 +11840,7 @@ function signUserJWT($user) {
                         <div style="display:flex; flex-direction:column; gap:4px;">
                           {#each wizardPreview.claims as c, ci (ci)}
                             {@const wcText = (wClaimsExp[ci] && typeof wClaimsExp[ci] === 'object') ? wClaimsExp[ci].explanation : wClaimsExp[ci]}
-                            <div style="padding:5px 8px; background:var(--pw-bg-alt); border-radius: 0;">
+                            <div style="padding:5px 8px; background:var(--pw-bg-alt); border-radius: var(--pw-radius-sm);">
                               <div style="display:flex; gap:8px; font-size:11px;">
                                 <code style="color:var(--pw-ink); font-weight:700;">{c.key}</code>
                                 <span style="color:var(--pw-muted);">{c.type || 'string'}{c.required ? ' · required' : ''}</span>
@@ -11859,14 +11861,14 @@ function signUserJWT($user) {
                             {@const wpRaw = wPolsExp[i] || null}
                             {@const exp = (wpRaw && typeof wpRaw === 'object' && wpRaw.explanation && typeof wpRaw.explanation === 'object') ? wpRaw.explanation : wpRaw}
                             {@const open = !!wizExpandedPolicy[i]}
-                            <div style="border:1px solid var(--pw-ink-soft); border-radius: 0; background:{on ? 'var(--pw-bg)' : 'var(--pw-bg-alt)'}; opacity:{on ? 1 : 0.55};">
+                            <div style="border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); background:{on ? 'var(--pw-bg)' : 'var(--pw-bg-alt)'}; opacity:{on ? 1 : 0.55};">
                               <div style="display:flex; gap:8px; align-items:center; padding:6px 8px;">
                                 <input type="checkbox" checked={on} onchange={(ev:any) => { wizardPolicyEnabled = { ...wizardPolicyEnabled, [k]: ev.target.checked }; }} />
                                 <button onclick={() => { wizExpandedPolicy = { ...wizExpandedPolicy, [i]: !open }; }}
                                   style="display:flex; gap:8px; align-items:center; flex:1; background:transparent; border:none; cursor:pointer; font-family:inherit; padding:0; text-align:left;">
                                   <span style="font-size:10px; color:var(--pw-muted); width:10px;">{open ? '▾' : '▸'}</span>
                                   <code style="font-size:11px; color:var(--pw-ink); font-weight:700;">{p.table}.{p.column || '*'}</code>
-                                  <span style="font-size:10px; padding:1px 7px; border-radius: 0; background:var(--pw-bg-alt); color:var(--pw-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">{p.mode}</span>
+                                  <span style="font-size:10px; padding:1px 7px; border-radius: var(--pw-radius-sm); background:var(--pw-bg-alt); color:var(--pw-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">{p.mode}</span>
                                   {#if p.filter}<span style="font-size:10px; color:var(--pw-muted);">filter: {p.filter}</span>{/if}
                                 </button>
                               </div>
@@ -11979,7 +11981,7 @@ function signUserJWT($user) {
         onclick={() => { if (!creatingNewEmbed) showNewEmbedModal = false; }}
         onkeydown={(ev: any) => { if (ev.key === 'Escape' && !creatingNewEmbed) showNewEmbedModal = false; }}
         role="dialog" tabindex="-1">
-        <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: 0; padding:20px 22px; width:420px; max-width:92vw;"
+        <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); padding:20px 22px; width:420px; max-width:92vw;"
           onclick={(ev: any) => ev.stopPropagation()}
           role="presentation">
           <div style="font-size:13px; font-weight:900; letter-spacing:0.04em; color:var(--pw-ink); margin-bottom:14px;">NEW EMBED</div>
@@ -12014,7 +12016,7 @@ function signUserJWT($user) {
         onclick={() => { confirmDeleteEmbed = null; }}
         onkeydown={(ev: any) => { if (ev.key === 'Escape') confirmDeleteEmbed = null; }}
         role="dialog" tabindex="-1">
-        <div style="background:var(--pw-surface); border:1px solid var(--pw-error); border-radius: 0; padding:20px 22px; width:420px; max-width:92vw;"
+        <div style="background:var(--pw-surface); border:1px solid var(--pw-error); border-radius: var(--pw-radius-sm); padding:20px 22px; width:420px; max-width:92vw;"
           onclick={(ev: any) => ev.stopPropagation()}
           role="presentation">
           <div style="font-size:13px; font-weight:900; letter-spacing:0.04em; color:var(--pw-error); margin-bottom:10px;">DELETE EMBED</div>
@@ -12177,8 +12179,8 @@ function signUserJWT($user) {
           <!-- Live preview mockup (pure CSS, no iframe round-trip) -->
           <div style="margin-top:14px;">
             <div style="font-size: 11px; color:var(--pw-muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px;">Live preview</div>
-            <div style="background:#f5f1ea; border:1px solid var(--pw-ink-soft); border-radius: 0; padding:14px; min-height:200px; position:relative; overflow:hidden;">
-              <div style="position:absolute; {snippetEmbed.position === 'bottom-left' ? 'left:14px' : 'right:14px'}; bottom:14px; width:240px; background:#fff; border-radius: 0; box-shadow:0 4px 16px rgba(0,0,0,0.18); overflow:hidden;">
+            <div style="background:#f5f1ea; border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); padding:14px; min-height:200px; position:relative; overflow:hidden;">
+              <div style="position:absolute; {snippetEmbed.position === 'bottom-left' ? 'left:14px' : 'right:14px'}; bottom:14px; width:240px; background:#fff; border-radius: var(--pw-radius-sm); box-shadow:0 4px 16px rgba(0,0,0,0.18); overflow:hidden;">
                 <div style="background:{snippetEmbed.primary_color || '#1a2b4a'}; color:#fff; padding:10px 12px; display:flex; align-items:center; gap:8px; font-size:11px; font-weight:700;">
                   {#if snippetEmbed.logo_url}<img src={snippetEmbed.logo_url} alt="logo" style="width:18px; height:18px; border-radius:50%; object-fit:cover;" />{:else}<span style="width:18px; height:18px; border-radius:50%; background:rgba(255,255,255,0.25); display:inline-block;"></span>{/if}
                   <span style="flex:1;">{snippetEmbed.name || 'Agent'}</span>
@@ -12361,7 +12363,7 @@ function signUserJWT($user) {
     <!-- CREATE modal -->
     {#if showEmbedCreate}
       <div style="position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:200; display:flex; align-items:center; justify-content:center;">
-        <div style="background:var(--pw-surface); border:1px solid var(--pw-border); border-radius: 0; box-shadow:0 12px 40px rgba(0,0,0,0.18); width:520px; max-width:90vw; max-height:90vh; overflow-y:auto;">
+        <div style="background:var(--pw-surface); border:1px solid var(--pw-border); border-radius: var(--pw-radius-sm); box-shadow:0 12px 40px rgba(0,0,0,0.18); width:520px; max-width:90vw; max-height:90vh; overflow-y:auto;">
           <div style="padding:14px 16px; border-bottom:1px solid var(--pw-border); display:flex; justify-content:space-between; align-items:center;">
             <span style="font-family:var(--pw-font-headline); font-size:14px; font-weight:700; color:var(--pw-ink);">Create embed</span>
             <button onclick={() => showEmbedCreate = false} style="background:transparent; border:none; color:var(--pw-muted); font-size:16px; cursor:pointer; line-height:1; padding:2px 6px;"><Icon name="x" size={14} /></button>
@@ -12370,12 +12372,12 @@ function signUserJWT($user) {
             <div style="margin-bottom:12px;">
               <label style="display:block; color:var(--pw-muted); font-size:10.5px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; margin-bottom:4px;">Name</label>
               <input type="text" bind:value={newEmbed.name} placeholder="e.g. Marketing site widget"
-                style="width:100%; padding:7px 10px; background:var(--pw-bg); border:1px solid var(--pw-border); border-radius: 0; color:var(--pw-ink); font-family:inherit; font-size:11px; outline:none;" />
+                style="width:100%; padding:7px 10px; background:var(--pw-bg); border:1px solid var(--pw-border); border-radius: var(--pw-radius-sm); color:var(--pw-ink); font-family:inherit; font-size:11px; outline:none;" />
             </div>
             <div style="margin-bottom:12px;">
               <label style="display:block; color:var(--pw-muted); font-size:10.5px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; margin-bottom:4px;">Allowed origins (comma-separated)</label>
               <input type="text" bind:value={newEmbed.allowed_origins} placeholder="https://acme.com, https://www.acme.com"
-                style="width:100%; padding:7px 10px; background:var(--pw-bg); border:1px solid var(--pw-border); border-radius: 0; color:var(--pw-ink); font-family:inherit; font-size:11px; outline:none;" />
+                style="width:100%; padding:7px 10px; background:var(--pw-bg); border:1px solid var(--pw-border); border-radius: var(--pw-radius-sm); color:var(--pw-ink); font-family:inherit; font-size:11px; outline:none;" />
               <div style="font-size:10px; color:var(--pw-muted); margin-top:4px;">Empty list = denies all origins. Use exact origins (scheme + host[:port], no path).</div>
             </div>
             <div style="margin-bottom:12px;">
@@ -12383,7 +12385,7 @@ function signUserJWT($user) {
               <div style="display:flex; gap:6px;">
                 {#each ['public','hmac','jwt'] as mode}
                   <button type="button" onclick={() => newEmbed.auth_mode = mode}
-                    style="padding:6px 14px; background:{newEmbed.auth_mode === mode ? 'var(--pw-accent-soft)' : 'var(--pw-bg-alt)'}; border:1px solid {newEmbed.auth_mode === mode ? 'var(--pw-accent)' : 'var(--pw-border)'}; border-radius: 0; color:{newEmbed.auth_mode === mode ? 'var(--pw-accent)' : 'var(--pw-ink)'}; cursor:pointer; font-family:inherit; font-size:11px; font-weight:{newEmbed.auth_mode === mode ? '700' : '500'}; text-transform:lowercase;">
+                    style="padding:6px 14px; background:{newEmbed.auth_mode === mode ? 'var(--pw-accent-soft)' : 'var(--pw-bg-alt)'}; border:1px solid {newEmbed.auth_mode === mode ? 'var(--pw-accent)' : 'var(--pw-border)'}; border-radius: var(--pw-radius-sm); color:{newEmbed.auth_mode === mode ? 'var(--pw-accent)' : 'var(--pw-ink)'}; cursor:pointer; font-family:inherit; font-size:11px; font-weight:{newEmbed.auth_mode === mode ? '700' : '500'}; text-transform:lowercase;">
                     {mode}
                   </button>
                 {/each}
@@ -12409,7 +12411,7 @@ function signUserJWT($user) {
             <div style="margin-bottom:14px;">
               <label style="display:block; color:var(--pw-muted); font-size:10.5px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; margin-bottom:4px;">Rate limit (req/min)</label>
               <input type="number" bind:value={newEmbed.rate_limit_per_min} min="1" max="600"
-                style="width:110px; padding:7px 10px; background:var(--pw-bg); border:1px solid var(--pw-border); border-radius: 0; color:var(--pw-ink); font-family:inherit; font-size:11px; outline:none;" />
+                style="width:110px; padding:7px 10px; background:var(--pw-bg); border:1px solid var(--pw-border); border-radius: var(--pw-radius-sm); color:var(--pw-ink); font-family:inherit; font-size:11px; outline:none;" />
             </div>
             <div style="margin-bottom:12px; padding-top:10px; border-top:1px dashed var(--pw-border);">
               <div style="color:var(--pw-accent); font-size:10.5px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; margin-bottom:8px;">Visibility policy binding</div>
@@ -12417,7 +12419,7 @@ function signUserJWT($user) {
                 <div style="flex:1;">
                   <label style="display:block; color:var(--pw-muted); font-size:10.5px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; margin-bottom:4px;">Scope</label>
                   <select bind:value={newEmbed.bound_scope_id} onfocus={loadEmbedPolicyOptions}
-                    style="width:100%; padding:6px 8px; background:var(--pw-bg); border:1px solid var(--pw-border); border-radius: 0; color:var(--pw-ink); font-family:inherit; font-size:11px;">
+                    style="width:100%; padding:6px 8px; background:var(--pw-bg); border:1px solid var(--pw-border); border-radius: var(--pw-radius-sm); color:var(--pw-ink); font-family:inherit; font-size:11px;">
                     <option value="">(any)</option>
                     {#each embedScopes as sc}
                       <option value={sc.scope_id}>{sc.scope_label || sc.scope_id}</option>
@@ -12427,7 +12429,7 @@ function signUserJWT($user) {
                 <div style="flex:1;">
                   <label style="display:block; color:var(--pw-muted); font-size:10.5px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; margin-bottom:4px;">Role</label>
                   <select bind:value={newEmbed.bound_role} onfocus={loadEmbedPolicyOptions}
-                    style="width:100%; padding:6px 8px; background:var(--pw-bg); border:1px solid var(--pw-border); border-radius: 0; color:var(--pw-ink); font-family:inherit; font-size:11px;">
+                    style="width:100%; padding:6px 8px; background:var(--pw-bg); border:1px solid var(--pw-border); border-radius: var(--pw-radius-sm); color:var(--pw-ink); font-family:inherit; font-size:11px;">
                     <option value="">(none)</option>
                     {#each embedRoles as r}
                       <option value={r.role_name}>{r.role_name}</option>
@@ -12450,11 +12452,11 @@ function signUserJWT($user) {
             </div>
             <div style="display:flex; gap:8px; padding-top:12px; border-top:1px solid var(--pw-border);">
               <button onclick={createEmbed} disabled={creatingEmbed || !newEmbed.allowed_origins}
-                style="flex:1; padding:9px; background:{(!creatingEmbed && newEmbed.allowed_origins) ? 'var(--pw-accent)' : 'var(--pw-bg-alt)'}; border:1px solid {(!creatingEmbed && newEmbed.allowed_origins) ? 'var(--pw-accent)' : 'var(--pw-border)'}; border-radius: 0; color:{(!creatingEmbed && newEmbed.allowed_origins) ? '#fff' : 'var(--pw-muted)'}; cursor:{(!creatingEmbed && newEmbed.allowed_origins) ? 'pointer' : 'not-allowed'}; font-family:inherit; font-size:11px; font-weight:700;">
+                style="flex:1; padding:9px; background:{(!creatingEmbed && newEmbed.allowed_origins) ? 'var(--pw-accent)' : 'var(--pw-bg-alt)'}; border:1px solid {(!creatingEmbed && newEmbed.allowed_origins) ? 'var(--pw-accent)' : 'var(--pw-border)'}; border-radius: var(--pw-radius-sm); color:{(!creatingEmbed && newEmbed.allowed_origins) ? '#fff' : 'var(--pw-muted)'}; cursor:{(!creatingEmbed && newEmbed.allowed_origins) ? 'pointer' : 'not-allowed'}; font-family:inherit; font-size:11px; font-weight:700;">
                 {creatingEmbed ? 'Creating…' : 'Create'}
               </button>
               <button onclick={() => showEmbedCreate = false}
-                style="flex:1; padding:9px; background:var(--pw-surface); border:1px solid var(--pw-border); border-radius: 0; color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:11px; font-weight:600;">
+                style="flex:1; padding:9px; background:var(--pw-surface); border:1px solid var(--pw-border); border-radius: var(--pw-radius-sm); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:11px; font-weight:600;">
                 Cancel
               </button>
             </div>
@@ -12540,7 +12542,7 @@ function signUserJWT($user) {
       </div>
 
       <!-- ── HOW IT WORKS (collapsible help panel) ── -->
-      <details style="background:var(--pw-success-soft); border:1px solid var(--pw-success); border-left:4px solid var(--pw-success); padding:10px 14px; margin-bottom:14px; border-radius: 0;">
+      <details style="background:var(--pw-success-soft); border:1px solid var(--pw-success); border-left:4px solid var(--pw-success); padding:10px 14px; margin-bottom:14px; border-radius: var(--pw-radius-sm);">
         <summary style="cursor:pointer; font-weight:700; font-size:11px; color:var(--pw-success);">
           <Icon name="book" size={14} /> HOW RLS WORKS — read first
         </summary>
@@ -12574,7 +12576,7 @@ function signUserJWT($user) {
         <div style="background:{rlsConfig.enabled ? 'var(--pw-success-soft)' : 'var(--pw-bg)'}; border:1px solid {rlsConfig.enabled ? 'var(--pw-success)' : 'var(--pw-border)'}; padding:14px 16px; margin-bottom:14px; transition: background 0.2s, border-color 0.2s;">
           <div style="display:flex; align-items:center; gap:14px; margin-bottom:{rlsConfig.enabled ? '14px' : '0'};">
             <button type="button" onclick={() => rlsConfig = { ...rlsConfig, enabled: !rlsConfig.enabled }} aria-pressed={rlsConfig.enabled}
-              style="flex-shrink:0; position:relative; width:48px; height:26px; border-radius: 0; border:1px solid {rlsConfig.enabled ? 'var(--pw-success)' : 'var(--pw-border)'}; background:{rlsConfig.enabled ? 'var(--pw-success)' : 'var(--pw-bg-alt)'}; cursor:pointer; padding:0; transition: background 0.15s, border-color 0.15s;">
+              style="flex-shrink:0; position:relative; width:48px; height:26px; border-radius: var(--pw-radius-sm); border:1px solid {rlsConfig.enabled ? 'var(--pw-success)' : 'var(--pw-border)'}; background:{rlsConfig.enabled ? 'var(--pw-success)' : 'var(--pw-bg-alt)'}; cursor:pointer; padding:0; transition: background 0.15s, border-color 0.15s;">
               <span style="position:absolute; top:2px; left:{rlsConfig.enabled ? '24px' : '2px'}; width:20px; height:20px; border-radius:50%; background:#fff; box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: left 0.15s;"></span>
             </button>
             <div style="flex:1;">
@@ -12585,7 +12587,7 @@ function signUserJWT($user) {
                 {rlsConfig.enabled ? 'Row-level access control is active for this project.' : 'Turn on row-level access control to scope queries per user.'}
               </div>
             </div>
-            <span style="padding:3px 10px; font-size:10px; font-weight:800; letter-spacing:0.06em; background:{rlsConfig.enabled ? 'var(--pw-success)' : 'var(--pw-bg-alt)'}; color:{rlsConfig.enabled ? '#fff' : 'var(--pw-muted)'}; border:1px solid {rlsConfig.enabled ? 'var(--pw-success)' : 'var(--pw-border)'}; border-radius: 0;">
+            <span style="padding:3px 10px; font-size:10px; font-weight:800; letter-spacing:0.06em; background:{rlsConfig.enabled ? 'var(--pw-success)' : 'var(--pw-bg-alt)'}; color:{rlsConfig.enabled ? '#fff' : 'var(--pw-muted)'}; border:1px solid {rlsConfig.enabled ? 'var(--pw-success)' : 'var(--pw-border)'}; border-radius: var(--pw-radius-sm);">
               {rlsConfig.enabled ? 'ON' : 'OFF'}
             </span>
           </div>
@@ -13445,7 +13447,7 @@ function signUserJWT($user) {
                       <td style="padding:6px; vertical-align:top;">{(d.created_at || '').replace('T', ' ').slice(0, 16)}</td>
                       <td style="padding:6px; vertical-align:top;">user#{d.created_by}</td>
                       <td style="padding:6px; vertical-align:top;">
-                        <span style="display:inline-block; padding:2px 8px; background:{sc.bg}; color:{sc.fg}; font-weight:700; font-size:10px; border-radius: 0;">{(d.status || '').toUpperCase()}</span>
+                        <span style="display:inline-block; padding:2px 8px; background:{sc.bg}; color:{sc.fg}; font-weight:700; font-size:10px; border-radius: var(--pw-radius-sm);">{(d.status || '').toUpperCase()}</span>
                       </td>
                       <td style="padding:6px; vertical-align:top;">{apps.length}/{req}</td>
                       <td style="padding:6px; vertical-align:top; max-width:240px; word-break:break-word;">{d.comment || '—'}</td>
@@ -14379,7 +14381,7 @@ function signUserJWT($user) {
           <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 3px;">CREATED</div>
           <div class="ink-border" style="padding: 8px 12px; font-size: 11px; background: var(--pw-bg-alt);">{project.created_at?.slice(0, 19)}</div>
         </div>
-        <button class="send-btn" style="padding: 10px 22px; font-size: 11px; justify-content: center; display: flex; max-width: 200px; border-radius: 0;" onclick={async () => {
+        <button class="send-btn" style="padding: 10px 22px; font-size: 11px; justify-content: center; display: flex; max-width: 200px; border-radius: var(--pw-radius-sm);" onclick={async () => {
           const params = new URLSearchParams();
           if (editName) params.set('agent_name', editName);
           params.set('agent_role', editRole);
@@ -15819,7 +15821,7 @@ function signUserJWT($user) {
               <span style="font-weight:700;">run #{run.id ?? '—'}</span>
               <span style="color:var(--pw-muted);">{run.started_at?.slice(0,16)}</span>
               <span style="color:var(--pw-muted);">· {run.tables ?? 1} table{run.tables !== 1 ? 's' : ''}</span>
-              {#if (run.tables || 0) > 0}<span style="font-size:9px; padding:1px 5px; border-radius: 0; background:var(--pw-accent); color:#fff;">DETAIL</span>{/if}
+              {#if (run.tables || 0) > 0}<span style="font-size:9px; padding:1px 5px; border-radius: var(--pw-radius-sm); background:var(--pw-accent); color:#fff;">DETAIL</span>{/if}
               <span style="margin-left:auto; color:var(--pw-muted);">{run.status} · {dur}</span>
             </button>
           {/each}
@@ -16169,14 +16171,14 @@ function signUserJWT($user) {
  display: flex; align-items: center; gap: 14px;
  padding: 14px 20px;
  background: linear-gradient(135deg, var(--pw-surface) 0%, var(--pw-bg-alt) 100%);
- border: 1px solid var(--pw-border); border-radius: 0;
+ border: 1px solid var(--pw-border); border-radius: var(--pw-radius-sm);
  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
  font-family: var(--pw-font-body); font-size: 12px;
  margin-bottom: 18px;
  }
  .cp-hdr-badge {
  display: inline-flex; align-items: center; gap: 6px;
- padding: 6px 14px; border-radius: 0;
+ padding: 6px 14px; border-radius: var(--pw-radius-sm);
  font-weight: 700; font-size: 11px; letter-spacing: 0.02em;
  }
  .cp-hdr-trained {
@@ -16194,7 +16196,7 @@ function signUserJWT($user) {
  padding: 20px 22px;
  background: var(--pw-bg-alt);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  }
  .cp-band-head {
  font-size: 14px;
@@ -16213,7 +16215,7 @@ function signUserJWT($user) {
  width: 3px;
  height: 16px;
  background: var(--pw-accent);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  }
  .cp-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
  .cp-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
@@ -16226,7 +16228,7 @@ function signUserJWT($user) {
  .cp-card {
  background: var(--pw-surface);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 18px 20px;
  min-width: 0;
  display: flex; flex-direction: column; gap: 10px;
@@ -16263,10 +16265,10 @@ function signUserJWT($user) {
  }
  .cp-bar {
  height: 8px; background: var(--pw-bg-alt);
- border-radius: 0; overflow: hidden; margin: 6px 0 2px;
+ border-radius: var(--pw-radius-sm); overflow: hidden; margin: 6px 0 2px;
  box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
  }
- .cp-bar-fill { height: 100%; transition: width 0.4s ease; border-radius: 0; }
+ .cp-bar-fill { height: 100%; transition: width 0.4s ease; border-radius: var(--pw-radius-sm); }
 
  .cp-empty {
  font-size: 12px; color: var(--pw-muted); font-style: italic;
@@ -16275,7 +16277,7 @@ function signUserJWT($user) {
  .cp-row {
  display: flex; align-items: center; gap: 10px;
  font-size: 12px; padding: 8px 4px; min-width: 0;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  }
  .cp-row + .cp-row { border-top: 1px solid rgba(0,0,0,0.04); }
  .cp-row span:last-child { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -16283,14 +16285,14 @@ function signUserJWT($user) {
  .cp-row-icon {
  display: inline-flex; align-items: center; justify-content: center;
  width: 22px; height: 22px; flex-shrink: 0;
- background: var(--pw-bg-alt); border-radius: 0;
+ background: var(--pw-bg-alt); border-radius: var(--pw-radius-sm);
  font-size: 11px;
  }
 
  .cp-list { display: flex; flex-direction: column; }
  .cp-chat-row {
  display: flex; align-items: center; gap: 12px;
- padding: 10px 12px; border-radius: 0;
+ padding: 10px 12px; border-radius: var(--pw-radius-sm);
  font-size: 12px; min-width: 0;
  transition: background 0.15s;
  border-bottom: 1px solid rgba(0,0,0,0.04);
@@ -16316,7 +16318,7 @@ function signUserJWT($user) {
  .cp-chat-open {
  font-size: 11px; color: var(--pw-accent); text-decoration: none;
  padding: 4px 12px; border: 1px solid rgba(201,99,66,0.25);
- border-radius: 0; flex-shrink: 0; font-weight: 600;
+ border-radius: var(--pw-radius-sm); flex-shrink: 0; font-weight: 600;
  transition: all 0.15s;
  }
  .cp-chat-open:hover { background: var(--pw-accent); color: white; border-color: var(--pw-accent); }
@@ -16335,7 +16337,7 @@ function signUserJWT($user) {
  .cp-act-icon {
  width: 22px; height: 22px; flex-shrink: 0;
  display: inline-flex; align-items: center; justify-content: center;
- background: var(--pw-bg-alt); border-radius: 0;
+ background: var(--pw-bg-alt); border-radius: var(--pw-radius-sm);
  font-size: 11px;
  }
  .cp-act-msg { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -16345,7 +16347,7 @@ function signUserJWT($user) {
  display: inline-flex; align-items: center; gap: 12px;
  padding: 10px 16px;
  background: var(--pw-surface);
- border: 1px solid var(--pw-border); border-radius: 0;
+ border: 1px solid var(--pw-border); border-radius: var(--pw-radius-sm);
  font-size: 11px;
  transition: all 0.15s;
  }
@@ -16371,20 +16373,20 @@ function signUserJWT($user) {
  .cp-card-icon { margin-right: 4px; }
  .cp-card-big-num { font-size: 28px; font-weight: 800; line-height: 1; letter-spacing: -0.02em; color: var(--pw-ink); margin: 8px 0 2px; font-variant-numeric: tabular-nums; }
  .cp-card-sub { font-size: 11px; color: var(--pw-muted); text-transform: lowercase; margin-bottom: 12px; }
- .cp-card-list { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; background: var(--pw-bg-alt); border-radius: 0; font-size: 11px; }
- .cp-card-cta { margin-top: 12px; align-self: flex-start; background: none; border: 1px solid var(--pw-border); padding: 6px 14px; border-radius: 0; font-size: 11px; font-weight: 600; color: var(--pw-accent); cursor: pointer; font-family: inherit; transition: all 0.15s; }
+ .cp-card-list { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; background: var(--pw-bg-alt); border-radius: var(--pw-radius-sm); font-size: 11px; }
+ .cp-card-cta { margin-top: 12px; align-self: flex-start; background: none; border: 1px solid var(--pw-border); padding: 6px 14px; border-radius: var(--pw-radius-sm); font-size: 11px; font-weight: 600; color: var(--pw-accent); cursor: pointer; font-family: inherit; transition: all 0.15s; }
  .cp-card-cta:hover { background: var(--pw-accent); color: white; border-color: var(--pw-accent); }
 
  /* Training pipeline strip */
- .cp-pipeline-strip { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; background: var(--pw-surface); border: 1px solid var(--pw-border); border-radius: 0; }
- .cp-pipe-pill { display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border: 1.5px solid #ccc; border-radius: 0; font-size: 11px; font-weight: 700; color: #888; font-family: var(--pw-font-mono, monospace); letter-spacing: 0.05em; }
+ .cp-pipeline-strip { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; background: var(--pw-surface); border: 1px solid var(--pw-border); border-radius: var(--pw-radius-sm); }
+ .cp-pipe-pill { display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border: 1.5px solid #ccc; border-radius: var(--pw-radius-sm); font-size: 11px; font-weight: 700; color: #888; font-family: var(--pw-font-mono, monospace); letter-spacing: 0.05em; }
  .cp-pipe-done { border-color: #2e7d32; color: #2e7d32; background: rgba(46,125,50,0.05); }
  .cp-pipe-meta { margin-top: 8px; font-size: 11px; color: var(--pw-muted); }
 
  /* Activity metrics cards */
  .cp-grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
  @media (max-width: 960px) { .cp-grid-5 { grid-template-columns: repeat(2, 1fr); } }
- .cp-metric-card { background: var(--pw-surface); border: 2px solid var(--pw-border); border-radius: 0; padding: 18px 20px; text-align: center; transition: all 0.15s; }
+ .cp-metric-card { background: var(--pw-surface); border: 2px solid var(--pw-border); border-radius: var(--pw-radius-sm); padding: 18px 20px; text-align: center; transition: all 0.15s; }
  .cp-metric-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
  .cp-metric-num { font-size: 32px; font-weight: 900; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
  .cp-metric-label { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: var(--pw-muted); margin-top: 8px; }
@@ -16397,7 +16399,7 @@ function signUserJWT($user) {
  /* Tab completion grid */
  .cp-tab-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
  @media (max-width: 960px) { .cp-tab-grid { grid-template-columns: repeat(3, 1fr); } }
- .cp-tab-card { background: var(--pw-surface); border: 1.5px solid var(--pw-border); border-radius: 0; padding: 10px 12px; text-align: center; cursor: pointer; transition: all 0.15s; font-family: inherit; }
+ .cp-tab-card { background: var(--pw-surface); border: 1.5px solid var(--pw-border); border-radius: var(--pw-radius-sm); padding: 10px 12px; text-align: center; cursor: pointer; transition: all 0.15s; font-family: inherit; }
  .cp-tab-card:hover { transform: translateY(-1px); border-color: var(--pw-accent); }
  .cp-tab-done { border-color: rgba(46,125,50,0.30); background: linear-gradient(180deg, rgba(46,125,50,0.04) 0%, var(--pw-surface) 60%); }
  .cp-tab-label { font-size: 11px; font-weight: 700; letter-spacing: 0.10em; color: var(--pw-muted); margin-bottom: 3px; }
@@ -16507,7 +16509,7 @@ function signUserJWT($user) {
  font-size: 11px;
  background: var(--pw-surface);
  padding: 1px 5px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  }
  .ds-warn-link {
  margin-left: auto;
@@ -16544,7 +16546,7 @@ function signUserJWT($user) {
  .ds-chip {
  background: var(--pw-surface);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 4px 10px;
  font-size: 11px;
  color: var(--pw-ink-soft, var(--pw-muted));
@@ -16726,7 +16728,7 @@ function signUserJWT($user) {
  background: var(--pw-bg-alt);
  color: var(--pw-ink-soft, var(--pw-muted));
  padding: 1px 6px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  border: 1px solid var(--pw-border);
  }
  .ds-type-tbl {
@@ -16741,14 +16743,14 @@ function signUserJWT($user) {
  .ds-health-track {
  width: 60px; height: 5px;
  background: rgba(0,0,0,0.08);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  overflow: hidden;
  position: relative;
  }
  .ds-health-fill {
  height: 100%;
  min-width: 2px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  transition: width 0.3s ease, background 0.2s ease;
  background: var(--pw-error);
  }
@@ -16963,7 +16965,7 @@ function signUserJWT($user) {
  }
  .chip {
  padding: 4px 10px; border: 1px solid var(--color-border, var(--pw-border));
- background: var(--color-surface-bright, var(--pw-bg)); border-radius: 0;
+ background: var(--color-surface-bright, var(--pw-bg)); border-radius: var(--pw-radius-sm);
  font-size: 11px; cursor: pointer; font-family: monospace;
  }
  .chip.active { background: var(--pw-success); color: var(--pw-surface); border-color: var(--pw-success); }
@@ -16991,7 +16993,7 @@ function signUserJWT($user) {
  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
  }
  .mode-pill {
- padding: 2px 6px; border-radius: 0; font-size: 10px; font-weight: 600;
+ padding: 2px 6px; border-radius: var(--pw-radius-sm); font-size: 10px; font-weight: 600;
  }
  .mode-advisory { background: #fff4d4; color: #cc7a00; }
  .mode-rewrite { background: #e3f2fd; color: #1565c0; }
@@ -17002,7 +17004,7 @@ function signUserJWT($user) {
  .rls-audit-detail { display: flex; flex-direction: column; gap: 8px; }
  .rls-audit-sql {
  background: var(--pw-ink-soft); color: var(--pw-border-strong); padding: 8px;
- border-radius: 0; font-size: 11px; overflow-x: auto; margin: 4px 0;
+ border-radius: var(--pw-radius-sm); font-size: 11px; overflow-x: auto; margin: 4px 0;
  }
  .rls-audit-sql.rewritten { border-left: 3px solid var(--pw-success); }
  .rls-audit-block-reason { color: var(--pw-error); }
@@ -17014,14 +17016,14 @@ function signUserJWT($user) {
 
  .suggest-chip {
  padding: 2px 8px; border: 1px dashed var(--pw-success); background: var(--pw-success-soft);
- color: var(--pw-success); border-radius: 0; font-size: 11px; font-family: monospace; cursor: pointer;
+ color: var(--pw-success); border-radius: var(--pw-radius-sm); font-size: 11px; font-family: monospace; cursor: pointer;
  }
  .suggest-chip:hover { background: var(--pw-success-soft); }
  .rls-filter-row {
  display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap;
  }
  .rls-filter-table, .rls-filter-col, .rls-filter-op, .rls-filter-attr {
- padding: 4px 8px; border: 1px solid var(--pw-border-strong); border-radius: 0;
+ padding: 4px 8px; border: 1px solid var(--pw-border-strong); border-radius: var(--pw-radius-sm);
  font-family: monospace; font-size: 11px; background: var(--pw-surface); color: var(--pw-ink-soft);
  }
  .rls-filter-table { min-width: 150px; }
@@ -17029,21 +17031,21 @@ function signUserJWT($user) {
  .rls-filter-op { width: 80px; }
  .rls-filter-attr { min-width: 120px; }
  .rls-filter-expr-input {
- flex: 1; min-width: 200px; padding: 5px 8px; border: 1px solid var(--pw-border-strong); border-radius: 0;
+ flex: 1; min-width: 200px; padding: 5px 8px; border: 1px solid var(--pw-border-strong); border-radius: var(--pw-radius-sm);
  font-family: 'Menlo', monospace; font-size: 11px; background: var(--pw-surface); color: var(--pw-ink-soft);
  }
  .btn-link-sm { background: none; border: none; color: #1976d2; font-size: 11px; cursor: pointer; text-decoration: underline; }
  .btn-danger-sm {
  padding: 4px 10px; background: var(--pw-surface); border: 1px solid var(--pw-error); color: var(--pw-error);
- border-radius: 0; font-size: 10px; cursor: pointer; font-family: inherit; font-weight: 700;
+ border-radius: var(--pw-radius-sm); font-size: 10px; cursor: pointer; font-family: inherit; font-weight: 700;
  }
  .btn-secondary-sm {
- padding: 6px 12px; background: var(--pw-surface); border: 1px solid var(--pw-dim); border-radius: 0;
+ padding: 6px 12px; background: var(--pw-surface); border: 1px solid var(--pw-dim); border-radius: var(--pw-radius-sm);
  font-size: 10px; cursor: pointer; font-family: inherit; font-weight: 700; color: var(--pw-ink-soft);
  }
  .btn-primary-sm {
  padding: 6px 12px; background: #2a6dbf; border: 1px solid #2a6dbf;
- color: var(--pw-surface); border-radius: 0; font-size: 10px; cursor: pointer; font-family: inherit; font-weight: 700;
+ color: var(--pw-surface); border-radius: var(--pw-radius-sm); font-size: 10px; cursor: pointer; font-family: inherit; font-weight: 700;
  }
  .btn-primary-sm:disabled { opacity: 0.5; cursor: not-allowed; }
  .rls-modal-backdrop {
@@ -17052,7 +17054,7 @@ function signUserJWT($user) {
  align-items: center; justify-content: center;
  }
  .rls-modal {
- background: var(--pw-surface); padding: 24px; border-radius: 0;
+ background: var(--pw-surface); padding: 24px; border-radius: var(--pw-radius-sm);
  width: 480px; max-width: 90vw; box-shadow: 0 8px 32px rgba(0,0,0,0.2); color: var(--pw-ink-soft);
  }
  .rls-modal-header { font-weight: 700; font-size: 13px; margin-bottom: 8px; color: var(--pw-ink-soft); }
@@ -17103,7 +17105,7 @@ function signUserJWT($user) {
  .set-rail::-webkit-scrollbar-track { background: var(--pw-bg-alt); }
  .set-rail::-webkit-scrollbar-thumb {
  background: var(--pw-muted) !important;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  border: 2px solid var(--pw-bg-alt);
  min-height: 40px;
  }
@@ -17132,7 +17134,7 @@ function signUserJWT($user) {
  background: transparent;
  border: none;
  padding: 5px 12px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  color: var(--pw-ink);
  font-family: inherit;
  font-size: 11px;
@@ -17158,7 +17160,7 @@ function signUserJWT($user) {
  color: var(--pw-muted);
  background: var(--pw-bg-alt);
  padding: 1px 6px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  }
  .set-rail button.active .set-rail-count {
  background: var(--pw-accent-soft);
@@ -17215,7 +17217,7 @@ function signUserJWT($user) {
  .set-main code:not(pre code) {
  background: var(--pw-bg-alt);
  padding: 1px 6px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-size: 12px;
  }
  .set-main .cli-terminal {
@@ -17254,10 +17256,10 @@ function signUserJWT($user) {
  padding: 12px 16px !important;
  border: none !important;
  border-bottom: 1px solid var(--pw-border) !important;
- border-radius: 0!important;
+ border-radius: var(--pw-radius-sm)!important;
  white-space: nowrap;
  }
- .set-main table tbody td { border-radius: 0!important; }
+ .set-main table tbody td { border-radius: var(--pw-radius-sm)!important; }
  .set-main table thead th:first-child { border-top-left-radius: var(--pw-radius-sm, 8px) !important; }
  .set-main table thead th:last-child { border-top-right-radius: var(--pw-radius-sm, 8px) !important; }
  .set-main table tbody td {
@@ -17312,7 +17314,7 @@ function signUserJWT($user) {
  border: 1px solid var(--pw-accent);
  height: 36px;
  padding: 0 16px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-family: inherit;
  font-size: 12px;
  font-weight: 500;
@@ -17328,7 +17330,7 @@ function signUserJWT($user) {
  border: 1px solid var(--pw-border-strong, var(--pw-border));
  height: 36px;
  padding: 0 14px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-family: inherit;
  font-size: 12px;
  font-weight: 500;
@@ -17404,7 +17406,7 @@ function signUserJWT($user) {
  width: 100%;
  height: 8px;
  background: var(--pw-bg-alt, rgba(0,0,0,0.08));
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  overflow: hidden;
  margin-bottom: 8px;
  position: relative;
@@ -17415,7 +17417,7 @@ function signUserJWT($user) {
  height: 100%;
  min-width: 4px;
  background: var(--pw-accent, #c96342);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  transition: width 0.3s ease, background 0.2s ease;
  }
  .set-progress-fill.bar-low { background: var(--pw-error, #dc2626); }
@@ -17447,7 +17449,7 @@ function signUserJWT($user) {
  .set-quick-icon {
  width: 32px;
  height: 32px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  background: var(--pw-bg-alt);
  color: var(--pw-accent);
  display: grid;
@@ -17506,7 +17508,7 @@ function signUserJWT($user) {
  letter-spacing: 0.05em;
  color: var(--pw-muted);
  }
- .codex-meta { background: var(--pw-bg-alt); border-radius: 0; padding: 12px 14px; margin: 8px 0 14px; display: flex; flex-direction: column; gap: 6px; }
+ .codex-meta { background: var(--pw-bg-alt); border-radius: var(--pw-radius-sm); padding: 12px 14px; margin: 8px 0 14px; display: flex; flex-direction: column; gap: 6px; }
  .codex-row { display: flex; gap: 12px; font-size: 11px; align-items: flex-start; }
  .codex-lbl { font-weight: 600; color: var(--pw-muted); text-transform: uppercase; letter-spacing: 0.04em; min-width: 120px; flex-shrink: 0; font-size: 10px; }
  .codex-val { color: var(--pw-ink); flex: 1; word-break: break-word; }
@@ -17553,7 +17555,7 @@ function signUserJWT($user) {
  font-size: 12px;
  background: var(--pw-bg-alt);
  padding: 2px 6px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  color: var(--pw-ink-soft);
  }
 
@@ -17610,7 +17612,7 @@ function signUserJWT($user) {
  .set-conn-icon {
  width: 32px;
  height: 32px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  background: var(--pw-bg-alt);
  display: grid;
  place-items: center;
@@ -17650,7 +17652,7 @@ function signUserJWT($user) {
  align-items: center;
  gap: 4px;
  padding: 2px 10px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-size: 11.5px;
  font-weight: 500;
  text-transform: none;
@@ -17703,7 +17705,7 @@ function signUserJWT($user) {
  .set-icon-btn {
  background: transparent;
  border: 1px solid transparent;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 4px 6px;
  cursor: pointer;
  color: var(--pw-muted);
@@ -17772,7 +17774,7 @@ function signUserJWT($user) {
  .set-hero-card-icon {
  width: 32px;
  height: 32px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  background: var(--pw-bg-alt);
  color: var(--pw-accent);
  display: grid;
@@ -17929,7 +17931,7 @@ function signUserJWT($user) {
  .set-tp-bar {
  width: 18px;
  height: 100%;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  display: inline-block;
  }
  .set-tp-bar--ok { background: var(--pw-success); }
@@ -18029,7 +18031,7 @@ function signUserJWT($user) {
  .set-tc-count {
  background: rgba(255,255,255,0.6);
  padding: 0 6px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-size: 10.5px;
  font-weight: 600;
  margin-left: 2px;
@@ -18092,7 +18094,7 @@ function signUserJWT($user) {
  align-items: center;
  gap: 5px;
  padding: 2px 8px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-size: 10px;
  font-weight: 600;
  text-transform: capitalize;
@@ -18266,14 +18268,14 @@ function signUserJWT($user) {
  flex: 1;
  height: 6px;
  background: rgba(0,0,0,0.08);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  overflow: hidden;
  position: relative;
  }
  .dt-bar-fill {
  height: 100%;
  min-width: 2px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  transition: width 0.3s ease, background 0.2s ease;
  background: var(--pw-error);
  }
@@ -18336,7 +18338,7 @@ function signUserJWT($user) {
  flex: 1;
  height: 5px;
  background: var(--pw-bg-alt);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  overflow: hidden;
  }
  .dt-distro-fill {
@@ -18400,7 +18402,7 @@ function signUserJWT($user) {
  }
  .dream-pill {
  font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
- padding: 3px 8px; border-radius: 0;
+ padding: 3px 8px; border-radius: var(--pw-radius-sm);
  }
  .dream-tabs {
  display: flex; flex-wrap: wrap; gap: 6px;
@@ -18409,7 +18411,7 @@ function signUserJWT($user) {
  }
  .dream-tab {
  background: transparent; border: 1px solid var(--pw-border);
- border-bottom: none; border-radius: 0;
+ border-bottom: none; border-radius: var(--pw-radius-sm);
  padding: 6px 12px; font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
  color: var(--pw-ink); cursor: pointer;
  }
@@ -18420,7 +18422,7 @@ function signUserJWT($user) {
  }
  .dream-empty {
  padding: 24px; text-align: center; font-size: 11px;
- color: var(--pw-muted); border: 1px dashed var(--pw-border); border-radius: 0;
+ color: var(--pw-muted); border: 1px dashed var(--pw-border); border-radius: var(--pw-radius-sm);
  }
  .dream-table {
  width: 100%; border-collapse: collapse; font-size: 11px;
@@ -18439,21 +18441,21 @@ function signUserJWT($user) {
  .dream-json {
  background: #1a1614; color: #e8e3d6;
  padding: 10px 12px; font-family: 'SF Mono', Menlo, monospace;
- font-size: 11px; line-height: 1.5; border-radius: 0;
+ font-size: 11px; line-height: 1.5; border-radius: var(--pw-radius-sm);
  white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto;
  margin: 0;
  }
  .dream-type-badge {
- display: inline-block; padding: 2px 7px; border-radius: 0;
+ display: inline-block; padding: 2px 7px; border-radius: var(--pw-radius-sm);
  font-size: 11px; font-weight: 800; letter-spacing: 0.05em;
  }
  .dream-status-pill {
- display: inline-block; padding: 2px 7px; border-radius: 0;
+ display: inline-block; padding: 2px 7px; border-radius: var(--pw-radius-sm);
  font-size: 11px; font-weight: 800; letter-spacing: 0.05em;
  }
  .dream-conf-bar {
  width: 60px; height: 6px; background: var(--pw-bg-alt);
- border: 1px solid var(--pw-border); border-radius: 0; overflow: hidden;
+ border: 1px solid var(--pw-border); border-radius: var(--pw-radius-sm); overflow: hidden;
  display: inline-block; vertical-align: middle; margin-right: 4px;
  }
  .dream-conf-fill {
@@ -18463,7 +18465,7 @@ function signUserJWT($user) {
  display: inline-block; background: var(--pw-bg-alt);
  border: 1px solid var(--pw-border); color: var(--pw-ink);
  padding: 4px 10px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
- border-radius: 0; cursor: pointer; margin-left: 4px;
+ border-radius: var(--pw-radius-sm); cursor: pointer; margin-left: 4px;
  }
  .dream-btn:hover { background: var(--pw-surface); border-color: var(--pw-ink); }
  .dream-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -18483,7 +18485,7 @@ function signUserJWT($user) {
  .dream-vote {
  background: transparent; border: 1px solid var(--pw-border);
  padding: 3px 8px; font-size: 10px; font-weight: 700;
- border-radius: 0; cursor: pointer; color: var(--pw-ink);
+ border-radius: var(--pw-radius-sm); cursor: pointer; color: var(--pw-ink);
  }
  .dream-vote-up:hover { background: rgba(25,135,84,0.10); color: #146c43; border-color: #146c43; }
  .dream-vote-down:hover { background: rgba(220,53,69,0.10); color: #b02a37; border-color: #b02a37; }
@@ -18492,7 +18494,7 @@ function signUserJWT($user) {
  .autosim-cockpit-card {
  border: 1px solid var(--pw-border);
  background: var(--pw-surface);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 14px 16px;
  }
  .autosim-cockpit-head {
@@ -18518,7 +18520,7 @@ function signUserJWT($user) {
  .autosim-flags-card {
  border: 1px solid var(--pw-border);
  background: var(--pw-surface);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  overflow: hidden;
  }
  .autosim-flags-head {
@@ -18543,7 +18545,7 @@ function signUserJWT($user) {
  .autosim-flag-toggle {
  border: 1px solid var(--pw-border); background: var(--pw-bg);
  color: var(--pw-muted);
- padding: 3px 12px; border-radius: 0;
+ padding: 3px 12px; border-radius: var(--pw-radius-sm);
  font-weight: 800; font-size: 11px; cursor: pointer;
  font-family: inherit;
  }

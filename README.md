@@ -31,6 +31,8 @@ Operator landing page — one screen, fail-soft strips that reuse existing endpo
 
 One FastAPI backend (gunicorn + uvicorn workers) serving a SvelteKit 5 SPA, fronted by Caddy, talking to Postgres 18 (pgvector + Apache AGE) through PgBouncer, with Redis for rate-limits/cache. Everything runs as `cp-*` containers from one `compose.yaml`.
 
+**Look & feel (2026-06-13):** soft rounded corners driven by 4 CSS knobs in `frontend/src/app.css` (`--pw-radius` 12px / `-sm` 8px / `-button` 8px / `-pill` 999px) — re-tune all roundness from there. Nav pills are rounded rectangles (not stadium). Dashboard runs full window width. Top nav: **Chat · Dashboard · Agent Brain · Endpoints · Admin** — "Agent Brain" is the project Settings page (data + the Brain knowledge hub via its left rail); there is no separate top-nav Brain (one hub, one door).
+
 ```
                          ┌──────────── browser / embed widget / external PHP app ───────────┐
                          │  /ui (SvelteKit SPA)   <script> embed.js   POST /api/v1 (OpenAI)  │
@@ -323,6 +325,10 @@ Backend `app/usage_api.py` (`/api/admin/usage/*`, super-admin, fail-soft; People
 ## Brain (Workspace) — single-tenant merged view
 
 Brain is one unified view (single-tenant). The multi-tenant scope tiers (THIS AGENT / COMPANY / PERSONAL) and the Promote / Pull / Conflicts sharing layer are hidden — the backend `/api/brain/unified?scope=all` already unions everything, so the merge is display-only and reversible. Rows show a type-colour dot + inline value preview; each list has a filter box. The **Graph** view has a **MAP / LIST** toggle: MAP is a force-directed ECharts node-link (tables = circles, metrics = diamonds; value-spam predicates like `found_in_column` collapse to a single node).
+
+### 🧠 Cortex — the brain, visualized as a brain (2026-06-13)
+
+Agent Brain → BRAIN rail → **🧠 Cortex** (top item). A live, animated view of the knowledge base, four modes: **Anatomy** (SVG brain whose lobes = knowledge categories — they pulse when recently queried, dim when cold/blind-spot, click a lobe to jump to that tab), **Synapses** (the drug knowledge graph as a glowing neural net — synapses fire as you watch), **Memory** (consolidation lanes: short-term forming → review-gate approve/reject → long-term with a forgetting-curve decay bar → rejected "lesions"), and **Vitals** (a live EEG brainwave + health chips: memories, freshness %, blind spots, learned/week). All motion is CSS + requestAnimationFrame; it reuses existing endpoints only (no new backend). The dashboard's BRAIN card shows a compact mini-anatomy version that links into the full Cortex.
 
 ---
 

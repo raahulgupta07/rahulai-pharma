@@ -195,7 +195,7 @@
   .ink-border {
     border: 1px solid var(--pw-border, #e4ddd2);
     background: var(--pw-surface, #fff);
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
   }
 
   .search-form { padding: 14px 16px; margin-bottom: 16px; }
@@ -209,7 +209,7 @@
     flex: 1 1 320px;
     padding: 10px 12px;
     border: 1px solid var(--pw-border, #e4ddd2);
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     background: var(--pw-bg, #fbf7f1);
     font-size: 11px;
     color: var(--pw-ink, #2c2a26);
@@ -218,7 +218,7 @@
   .sel {
     padding: 8px 10px;
     border: 1px solid var(--pw-border, #e4ddd2);
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     background: var(--pw-bg, #fbf7f1);
     font-size: 11px;
   }
@@ -229,7 +229,7 @@
     background: var(--pw-accent, #c96342);
     color: #fff;
     border: none;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     font-weight: 600;
     font-size: 11px;
     cursor: pointer;
@@ -240,7 +240,7 @@
     padding: 8px 10px;
     background: rgba(255, 0, 0, 0.06);
     color: #b00;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     font-size: 11px;
   }
 

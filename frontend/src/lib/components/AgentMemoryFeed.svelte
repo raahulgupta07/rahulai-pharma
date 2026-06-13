@@ -175,7 +175,7 @@
   .amf-filter {
     background: var(--pw-bg-alt);
     border: 1px solid var(--pw-border);
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     padding: 4px 8px;
     font-size: 11px;
     color: var(--pw-ink);
@@ -208,7 +208,7 @@
   .amf-badge {
     display: inline-block;
     padding: 2px 8px;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     font-size: 10.5px;
     font-weight: 600;
     text-transform: uppercase;
@@ -240,7 +240,7 @@
   .amf-btn {
     background: var(--pw-bg-alt);
     border: 1px solid var(--pw-border);
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     padding: 6px 14px;
     font-size: 11px;
     font-weight: 600;

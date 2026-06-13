@@ -134,7 +134,7 @@
     font-family: inherit;
     color: #2c2a26;
     background: #f7f4ec;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
   }
 
   /* ── Skeletons ─────────────────────────────────────────────── */
@@ -154,7 +154,7 @@
 
   .mgl-skeleton {
     background: #efeadd;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     animation: mgl-pulse 1.4s ease-in-out infinite;
   }
 
@@ -198,7 +198,7 @@
     padding: 9px 12px;
     background: transparent;
     border: none;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     cursor: pointer;
     text-align: left;
     color: #2c2a26;
@@ -305,7 +305,7 @@
     margin: 0;
     background: #ffffff;
     border: 1px solid #e3ddd0;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     padding: 6px 8px;
     font-size: 11px;
     font-family: 'Menlo', 'Consolas', 'Monaco', monospace;
@@ -369,7 +369,7 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
     font-weight: 600;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     cursor: pointer;
     border: 1px solid transparent;
     transition: opacity 0.1s, background 0.1s;

@@ -278,7 +278,7 @@
     align-items: center;
     justify-content: center;
     width: 32px; height: 32px;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     border: 1px solid rgba(44, 42, 38, 0.15);
     background: #fff;
     color: var(--pw-ink, #2c2a26);
@@ -298,7 +298,7 @@
     border: 1px solid rgba(44, 42, 38, 0.15);
     background: #fff;
     color: var(--pw-ink, #2c2a26);
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     font-size: 13px;
     font-family: inherit;
   }
@@ -310,7 +310,7 @@
 
   .art-btn {
     padding: 8px 14px;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     border: 1px solid rgba(44, 42, 38, 0.15);
     background: #fff;
     color: var(--pw-ink, #2c2a26);
@@ -346,7 +346,7 @@
     border: 1px solid #d9534f;
     color: #d9534f;
     padding: 10px 14px;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     font-size: 11px;
     margin-bottom: 14px;
   }
@@ -356,7 +356,7 @@
     border: 1px dashed rgba(44, 42, 38, 0.18);
     padding: 60px 20px;
     text-align: center;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     color: rgba(44, 42, 38, 0.65);
   }
   .art-empty p { margin: 8px 0; }
@@ -370,7 +370,7 @@
   .art-tile {
     background: #fff;
     border: 1px solid rgba(44, 42, 38, 0.1);
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -403,7 +403,7 @@
     color: var(--pw-accent, #c96342);
     background: rgba(201, 99, 66, 0.08);
     padding: 2px 8px;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
   }
 
   .art-meta {
@@ -426,7 +426,7 @@
     font-size: 10px;
     padding: 2px 7px;
     background: var(--pw-bg-alt, #f1ede4);
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     color: rgba(44, 42, 38, 0.7);
   }
   .art-chip-run {

@@ -5,6 +5,7 @@
  import ScopeSwitch from '$lib/brain/ScopeSwitch.svelte';
  import RailNav from '$lib/brain/RailNav.svelte';
  import MergedList from '$lib/brain/MergedList.svelte';
+ import BrainCortex from '$lib/brain/BrainCortex.svelte';
  import { parseHash, writeHash, onHashChange } from '$lib/brain/hubRouting';
 
  // embedded=true when mounted inside Workspace settings: skip super-admin redirect
@@ -799,6 +800,8 @@
    } else if (item in SHARING_FILTER) {
      activeTab = '__unified__'; unifiedStatusFilter = SHARING_FILTER[item];
      await loadUnifiedAll();
+   } else if (item === 'cortex') {
+     activeTab = '__cortex__'; loading = false;
    } else if (item === 'accesslog' || item === 'activity') {
      await switchTab('log');
    } else if (item === 'training') {
@@ -1057,7 +1060,7 @@
         {#if getAliases(entry).length > 0}
           <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;">
             {#each getAliases(entry) as alias}
-              <span style="font-size: 11px; font-weight: 700; padding: 2px 8px; background: #c5934a; color: var(--pw-ink); border-radius: 0;">{alias}</span>
+              <span style="font-size: 11px; font-weight: 700; padding: 2px 8px; background: #c5934a; color: var(--pw-ink); border-radius: var(--pw-radius-sm);">{alias}</span>
             {/each}
           </div>
         {/if}
@@ -1313,6 +1316,8 @@
     </div>
     <MergedList items={unifiedItems} loading={unifiedLoading} statusFilter={unifiedStatusFilter} query={brainQuery} onAction={handleMergedAction} />
   {/if}
+{:else if activeTab === '__cortex__'}
+  <BrainCortex slug={LOCKED_SLUG} />
 {:else if activeTab === '__placeholder__'}
   <div class="brain-placeholder">
     <div class="brain-placeholder-title">{placeholderTitle(hubItem)}</div>
@@ -1662,7 +1667,7 @@
  background: transparent;
  border: none;
  padding: 8px 12px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-size: 12px;
  color: var(--pw-ink);
  font-family: inherit;
@@ -1699,7 +1704,7 @@
  width: 35%;
  height: 100%;
  background: var(--pw-accent);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  animation: brainLoadSlide 1.2s ease-in-out infinite;
  }
  @keyframes brainLoadSlide {
@@ -1783,7 +1788,7 @@
  :global(.brain-scope-pill) {
  padding: 6px 12px;
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font: inherit;
  font-size: 11px;
  font-weight: 500;
@@ -1807,7 +1812,7 @@
  /* Modal card */
  :global(.brain-modal-card) {
  background: #fff;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.16);
  width: 560px;
  max-width: 90vw;
@@ -1821,7 +1826,7 @@
  color: var(--pw-ink);
  padding: 14px 18px;
  border-bottom: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  display: flex;
  justify-content: space-between;
  align-items: center;
@@ -1848,7 +1853,7 @@
  :global(.brain-modal-input) {
  width: 100%;
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 10px 12px;
  font: inherit;
  font-size: 13px;
@@ -1901,7 +1906,7 @@
    color: #2c2a26;
    background: #fff;
    border: 1px solid #e3ddd0;
-   border-radius: 0;
+   border-radius: var(--pw-radius-sm);
    outline: none;
  }
  .brain-search-input:focus { border-color: #c96342; }

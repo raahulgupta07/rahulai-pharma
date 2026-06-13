@@ -191,7 +191,7 @@
     max-width: 100%;
     background: var(--pw-surface, #fff);
     border: 1px solid var(--pw-border, #e8e6dd);
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     padding: 16px;
     color: var(--pw-ink, #2c2c2c);
     font-size: 11px;
@@ -229,7 +229,7 @@
     gap: 8px;
     background: var(--pw-bg-alt, #f7f6f3);
     border: 1px solid var(--pw-border, #e8e6dd);
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     padding: 4px 10px;
   }
   .dot {
@@ -255,7 +255,7 @@
   .persona {
     background: var(--pw-bg-alt, #f7f6f3);
     border: 1px solid var(--pw-border, #e8e6dd);
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     padding: 12px;
     display: flex;
     flex-direction: column;
@@ -336,7 +336,7 @@
     color: var(--pw-error, #c0392b);
     background: rgba(192, 57, 43, 0.06);
     border: 1px solid rgba(192, 57, 43, 0.2);
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     padding: 6px 10px;
   }
 </style>

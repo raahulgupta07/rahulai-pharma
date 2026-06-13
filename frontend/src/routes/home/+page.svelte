@@ -369,7 +369,7 @@
  color: var(--pw-muted);
  background: var(--pw-bg-alt);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 2px 6px;
  flex-shrink: 0;
  }
@@ -536,7 +536,7 @@
  width: 40px;
  height: 40px;
  flex-shrink: 0;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  background: var(--pw-accent);
  color: #fff;
  display: flex;
@@ -577,7 +577,7 @@
  color: var(--pw-muted);
  width: 28px;
  height: 28px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  display: inline-flex;
  align-items: center;
  justify-content: center;

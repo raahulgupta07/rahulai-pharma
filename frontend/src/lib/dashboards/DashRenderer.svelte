@@ -114,12 +114,12 @@
  .dash { background: #fafaf7; padding: 16px; color: #1a1a1a; font-family: -apple-system, system-ui, sans-serif; }
  h1 { font-size: 14px; font-weight: 700; margin: 0 0 12px; }
  .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
- .chip { background: #fff; border: 1px solid #e0e0d8; border-radius: 0; padding: 4px 10px; font-size: 11px; color: #666; }
+ .chip { background: #fff; border: 1px solid #e0e0d8; border-radius: var(--pw-radius-sm); padding: 4px 10px; font-size: 11px; color: #666; }
  .chip b { color: #1a1a1a; }
  .insights { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
- .banner { padding: 8px 12px; border-radius: 0; font-size: 11px; }
+ .banner { padding: 8px 12px; border-radius: var(--pw-radius-sm); font-size: 11px; }
  .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; grid-auto-rows: minmax(120px, auto); }
- .card { background: transparent; border: none; border-radius: 0; padding: 0; min-width: 0; min-height: 140px; overflow: visible; transition: box-shadow 0.5s, border-color 0.5s; }
+ .card { background: transparent; border: none; border-radius: var(--pw-radius-sm); padding: 0; min-width: 0; min-height: 140px; overflow: visible; transition: box-shadow 0.5s, border-color 0.5s; }
  .cell { display: flex; }
  .cell[data-palette='danger'] { border-top: 3px solid #c62828; }
  .cell[data-palette='warning'] { border-top: 3px solid #e65100; }
@@ -132,12 +132,12 @@
  @keyframes panelfadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
  @keyframes cellflash { 0% { border-color: #2e7d32; box-shadow: 0 0 0 3px rgba(46,125,50,0.35); background: #f1f8e9; } 100% { border-color: #e0e0d8; box-shadow: none; background: #fff; } }
  .tpl-label { float: right; font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
- .drill-row { background: #f8f8f0; border: 1px dashed #2e7d32; border-radius: 0; padding: 12px; margin: 4px 0; }
+ .drill-row { background: #f8f8f0; border: 1px dashed #2e7d32; border-radius: var(--pw-radius-sm); padding: 12px; margin: 4px 0; }
  .drill-header { font-size: 11px; color: #666; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
  .drill-close { background: none; border: none; color: #666; cursor: pointer; font-size: 11px; padding: 0 4px; }
  .drill-close:hover { color: #c62828; }
  .drill-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
- .drill-cell { background: #fff; border: 1px solid #e0e0d8; border-radius: 0; min-height: 100px; padding: 6px; display: flex; }
+ .drill-cell { background: #fff; border: 1px solid #e0e0d8; border-radius: var(--pw-radius-sm); min-height: 100px; padding: 6px; display: flex; }
  .drill-cell > :global(*) { width: 100%; }
  .drill-empty { font-size: 11px; color: #999; padding: 8px; text-align: center; }
  @media (max-width: 767px) {

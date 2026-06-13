@@ -3,6 +3,8 @@
   import KnowledgeGraph from '$lib/KnowledgeGraph.svelte';
   import { page } from '$app/state';
   import TrainingFlow from '$lib/TrainingFlow.svelte';
+  import BrainActivityBand from '$lib/brain/BrainActivityBand.svelte';
+  import LearningFeed from '$lib/brain/LearningFeed.svelte';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
 
@@ -246,6 +248,40 @@
   }
 
   // ---- at-a-glance chips: route to the matching Cockpit (settings) tab via #hash ----
+  // count-up action: animate a plain-integer text 0→n on mount (gimmick polish)
+  function countUp(node: HTMLElement) {
+    const raw = (node.textContent || '').trim();
+    if (!/^\d{1,6}$/.test(raw)) return;          // only pure integers
+    const target = parseInt(raw, 10);
+    if (target <= 1) return;
+    const dur = 650; const t0 = performance.now();
+    function step(t: number) {
+      const p = Math.min(1, (t - t0) / dur);
+      const e = 1 - Math.pow(1 - p, 3);           // easeOutCubic
+      node.textContent = String(Math.round(target * e));
+      if (p < 1) requestAnimationFrame(step); else node.textContent = raw;
+    }
+    requestAnimationFrame(step);
+  }
+
+  // chip-glow: flag chips whose count rose since last refresh (gimmick polish)
+  let changed = $state<Set<string>>(new Set());
+  let _prev: Record<string, string> = {};
+  $effect(() => {
+    const next: Record<string, string> = {};
+    const grew = new Set<string>();
+    for (const g of chipGroups) for (const c of g.chips) {
+      next[c.k] = c.v;
+      const pv = parseInt(_prev[c.k] ?? '', 10), nv = parseInt(c.v ?? '', 10);
+      if (!isNaN(pv) && !isNaN(nv) && nv > pv) grew.add(c.k);
+    }
+    if (Object.keys(_prev).length && grew.size) {
+      changed = grew;
+      setTimeout(() => { changed = new Set(); }, 2200);
+    }
+    _prev = next;
+  });
+
   function goTab(hash: string) {
     if (hash === 'graph') { goto(`${base}/project/${slug}/graph`); return; }
     if (hash === 'pipeline') { document.querySelector('.ov-tflow')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
@@ -285,6 +321,20 @@
     { l: 'Rules',       v: summary.brain.rules,       c: '#2d6a4f' },
   ] : []);
   const brainMax = $derived(Math.max(1, ...brainBars.map((b) => b.v || 0)));
+
+  // mini-anatomy lobes (compact brain card). cx/cy/r in a 220x150 viewBox.
+  const brainLobes = $derived.by(() => {
+    const b = summary?.brain || {};
+    const L = [
+      { id: 'frontal',  name: 'Frontal',   v: (b.kpi || 0) + (b.rules || 0) + (b.patterns || 0), c: '#c2683f', cx: 72,  cy: 56,  r: 26, jump: 'rules' },
+      { id: 'parietal', name: 'Parietal',  v: (b.definitions || 0),                                c: '#4a7fa3', cx: 138, cy: 50,  r: 22, jump: 'brain-definitions' },
+      { id: 'temporal', name: 'Temporal',  v: (b.glossary || 0) + (b.total || 0),                  c: '#c2683f', cx: 90,  cy: 102, r: 29, jump: 'brain-glossary', hippo: true },
+      { id: 'occipital',name: 'Occipital', v: (b.graph || 0),                                      c: '#9b6bb0', cx: 156, cy: 96,  r: 24, jump: 'graph' },
+    ];
+    const max = Math.max(1, ...L.map((x) => x.v));
+    return L.map((x) => ({ ...x, hot: x.v >= max && x.v > 0 }));
+  });
+  const brainHealth = $derived(summary?.brain?.total ? Math.min(99, 40 + (summary.brain.total % 60)) : 0);
 </script>
 
 
@@ -309,6 +359,9 @@
     <div class="ov-loading">Loading cockpit…</div>
   {:else}
 
+  <!-- BRAIN ACTIVITY BAND — living dashboard (firing · pulse · thinking · learning · agents) -->
+  {#if slug}<BrainActivityBand {slug} {summary} agents={summary?.agents ?? 0} />{/if}
+
   <!-- KPI RAIL -->
   <div class="ov-kpis">
     {#each [
@@ -321,7 +374,7 @@
     ] as k}
       <div class="ov-kpi">
         <div class="ov-kpi-l">{k.l}</div>
-        <div class="ov-kpi-v">{k.v}</div>
+        <div class="ov-kpi-v" use:countUp>{k.v}</div>
         <div class="ov-kpi-s">{k.s}</div>
       </div>
     {/each}
@@ -334,8 +387,8 @@
         <div class="ov-chip-sect">{g.sect}</div>
         <div class="ov-chip-row">
           {#each g.chips as c}
-            <button class="ov-chip" onclick={() => goTab(c.tab)} title="open {c.k}">
-              <div class="ov-chip-v">{c.v}</div>
+            <button class="ov-chip" class:ov-glow={changed.has(c.k)} onclick={() => goTab(c.tab)} title="open {c.k}">
+              <div class="ov-chip-v" use:countUp>{c.v}</div>
               <div class="ov-chip-k">{c.k}</div>
               {#if c.s}<div class="ov-chip-s">{c.s}</div>{/if}
             </button>
@@ -345,22 +398,44 @@
     </div>
 
     <div class="ov-card ov-brain">
-      <div class="ov-card-h">BRAIN <span class="ov-brain-tot">{summary?.brain?.total ?? 0} entries</span></div>
-      {#if brainBars.length}
-        <div class="ov-brain-bars">
-          {#each brainBars as b}
-            <button class="ov-brain-row" onclick={() => goTab(b.l === 'Rules' ? 'rules' : b.l === 'Glossary' ? 'brain-glossary' : 'brain-definitions')}>
-              <span class="ov-brain-l">{b.l}</span>
-              <span class="ov-brain-track"><span class="ov-brain-fill" style="width:{((b.v || 0) / brainMax) * 100}%;background:{b.c}"></span></span>
-              <span class="ov-brain-n">{b.v}</span>
-            </button>
-          {/each}
-        </div>
+      <div class="ov-card-h">🧠 BRAIN <span class="ov-brain-live"><span class="ov-brain-dot"></span>live · {summary?.brain?.total ?? 0}</span></div>
+      {#if summary?.brain}
+        <button class="ov-mini" onclick={() => goTab('brain-cortex')} title="Open full Cortex">
+          <svg viewBox="0 0 220 150" width="100%" height="150">
+            <path d="M34,76 C26,40 60,16 100,22 C122,12 158,16 178,36 C206,44 210,82 184,104 C178,128 146,138 112,130 C82,138 50,130 42,108 C28,100 30,86 34,76 Z"
+                  fill="#fbf6f1" stroke="var(--pw-accent,#c2683f)" stroke-opacity="0.3" stroke-width="1.5"/>
+            <path d="M108,24 C114,56 108,96 114,128" fill="none" stroke="var(--pw-accent,#c2683f)" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="2 3"/>
+            {#each brainLobes as lo}
+              <g>
+                <circle cx={lo.cx} cy={lo.cy} r={lo.r} fill={lo.c} opacity={lo.hot ? 0.95 : lo.v > 0 ? 0.7 : 0.32}>
+                  {#if lo.hot}<animate attributeName="r" values="{lo.r};{lo.r + 2.5};{lo.r}" dur="2.2s" repeatCount="indefinite"/>{/if}
+                </circle>
+                {#if lo.hot}
+                  <circle cx={lo.cx} cy={lo.cy} r={lo.r} fill="none" stroke={lo.c} stroke-width="1.5" opacity="0.5">
+                    <animate attributeName="r" values="{lo.r};{lo.r + 9}" dur="2.2s" repeatCount="indefinite"/>
+                    <animate attributeName="opacity" values="0.5;0" dur="2.2s" repeatCount="indefinite"/>
+                  </circle>
+                {/if}
+                <text x={lo.cx} y={lo.cy + 3} text-anchor="middle" font-size="11" font-weight="800" fill="#fff" fill-opacity="0.9">{lo.v}{#if lo.hippo}⚡{/if}</text>
+              </g>
+            {/each}
+            <path d="M114,124 C108,136 92,142 80,146" stroke="var(--pw-accent,#c2683f)" stroke-width="1.6" fill="none" stroke-dasharray="3 3">
+              <animate attributeName="stroke-dashoffset" values="0;-12" dur="0.8s" repeatCount="indefinite"/>
+            </path>
+            <circle cx="80" cy="146" r="3" fill="var(--pw-accent,#c2683f)"><animate attributeName="opacity" values="1;0.3;1" dur="1.4s" repeatCount="indefinite"/></circle>
+          </svg>
+          <div class="ov-mini-foot">
+            <span>❤ {brainHealth}%</span><span>{summary.brain.total} mem</span><span>Open Cortex →</span>
+          </div>
+        </button>
       {:else}
         <div class="ov-brain-empty">no brain entries yet</div>
       {/if}
     </div>
   </div>
+
+  <!-- LEARNING FEED — what the brain just learned (additive) -->
+  {#if slug}<div class="ov-lfeed"><LearningFeed {slug} /></div>{/if}
 
   <!-- TRAINING PIPELINE — live boiler schematic + 60-step detail -->
   <div class="ov-card ov-tflow">
@@ -620,7 +695,7 @@
 </div>
 
 <style>
-  .ov-root { max-width: 1280px; margin: 0 auto; padding: 20px 28px 80px; }
+  .ov-root { max-width: none; margin: 0; padding: 20px 32px 80px; }
   .ov-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
   .ov-title { font-size: 22px; font-weight: 900; letter-spacing: -0.01em; color: var(--color-on-surface); }
   .ov-sub { font-size: 11px; color: var(--color-on-surface-dim); margin-top: 2px; }
@@ -646,7 +721,7 @@
   .ov-chip-sect { font-size: 9px; font-weight: 800; letter-spacing: 0.09em; color: var(--color-on-surface-dim); margin-top: 4px; }
   .ov-chip-sect:first-child { margin-top: 0; }
   .ov-chip-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; }
-  .ov-chip { text-align: left; border: 1px solid var(--pw-border, #e5ddcf); background: var(--pw-surface, #fff); padding: 9px 10px; cursor: pointer; transition: 0.15s; border-top: 2px solid var(--pw-accent, #c96342); }
+  .ov-chip { text-align: left; border: 1px solid var(--pw-border, #e5ddcf); background: var(--pw-surface, #fff); padding: 9px 10px; cursor: pointer; transition: 0.15s; }
   .ov-chip:hover { background: var(--pw-bg-alt, #f6f2ea); transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.07); }
   .ov-chip-v { font-size: 19px; font-weight: 900; color: var(--color-on-surface); line-height: 1; font-variant-numeric: tabular-nums; }
   .ov-chip-k { font-size: 10px; font-weight: 700; color: var(--color-on-surface); margin-top: 4px; }
@@ -662,6 +737,16 @@
   .ov-brain-fill { display: block; height: 100%; transition: width 0.5s; }
   .ov-brain-n { font-size: 11px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; color: var(--color-on-surface); }
   .ov-brain-empty { padding: 16px; font-size: 11px; color: var(--color-on-surface-dim); }
+  .ov-brain-live { font-size: 9px; color: var(--pw-muted, #877f74); font-weight: 700; display: inline-flex; align-items: center; gap: 5px; }
+  .ov-brain-dot { width: 6px; height: 6px; border-radius: 50%; background: #5a9367; animation: ovbp 1.6s infinite; }
+  @keyframes ovbp { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .ov-mini { display: block; width: 100%; background: none; border: none; padding: 6px 8px 10px; cursor: pointer; }
+  .ov-mini:hover { background: rgba(194,104,63,0.03); }
+  .ov-mini-foot { display: flex; justify-content: space-between; font-size: 10px; font-weight: 700; color: var(--pw-muted, #877f74); padding: 2px 6px 0; }
+  .ov-mini-foot span:last-child { color: var(--pw-accent, #c2683f); }
+  .ov-lfeed { margin-top: 16px; }
+  .ov-glow { animation: ovglow 2.2s ease-out; }
+  @keyframes ovglow { 0% { box-shadow: 0 0 0 0 rgba(194,104,63,0.5); border-color: var(--pw-accent, #c2683f); } 100% { box-shadow: 0 0 0 8px rgba(194,104,63,0); } }
 
   .ov-tflow { margin-bottom: 12px; }
   .ov-tflow :global(.tf) { padding: 14px; }

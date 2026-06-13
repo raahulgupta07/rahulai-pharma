@@ -153,11 +153,11 @@
   .back:hover { color: var(--pw-accent, #c96342); }
   h1 { font-family: var(--pw-serif, Georgia, serif); font-size: 18px; margin: 8px 0 4px; color: var(--pw-ink, #2c2a26); }
   .sub { color: var(--pw-ink-soft, #777); font-size: 11px; max-width: 720px; margin: 0; }
-  .err { background: rgba(220, 53, 53, 0.08); color: #c0392b; padding: 8px 12px; border: 1px solid rgba(220, 53, 53, 0.3); border-radius: 0; margin-bottom: 16px; font-size: 11px; }
-  .sec { background: var(--pw-surface, #fff); border: 1px solid var(--pw-border, #e5e2dc); border-radius: 0; padding: 16px 20px; margin-bottom: 20px; }
+  .err { background: rgba(220, 53, 53, 0.08); color: #c0392b; padding: 8px 12px; border: 1px solid rgba(220, 53, 53, 0.3); border-radius: var(--pw-radius-sm); margin-bottom: 16px; font-size: 11px; }
+  .sec { background: var(--pw-surface, #fff); border: 1px solid var(--pw-border, #e5e2dc); border-radius: var(--pw-radius-sm); padding: 16px 20px; margin-bottom: 20px; }
   .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
   h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--pw-ink-soft, #666); margin: 0; }
-  .count { display: inline-block; margin-left: 8px; padding: 1px 8px; background: var(--pw-bg-alt, #f5f1ea); border-radius: 0; font-size: 11px; color: var(--pw-ink, #2c2a26); }
+  .count { display: inline-block; margin-left: 8px; padding: 1px 8px; background: var(--pw-bg-alt, #f5f1ea); border-radius: var(--pw-radius-sm); font-size: 11px; color: var(--pw-ink, #2c2a26); }
   .chk { font-size: 11px; color: var(--pw-ink-soft, #666); cursor: pointer; }
   .empty, .muted { color: var(--pw-ink-soft, #888); font-size: 11px; }
   .tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
@@ -170,10 +170,10 @@
   .num { text-align: right; font-variant-numeric: tabular-nums; }
   .mono { font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
   .actions { white-space: nowrap; }
-  .btn { font-size: 11px; padding: 4px 10px; border: 1px solid var(--pw-border, #d8d4cc); background: var(--pw-bg, #fff); border-radius: 0; cursor: pointer; margin-left: 4px; }
+  .btn { font-size: 11px; padding: 4px 10px; border: 1px solid var(--pw-border, #d8d4cc); background: var(--pw-bg, #fff); border-radius: var(--pw-radius-sm); cursor: pointer; margin-left: 4px; }
   .btn:hover { background: var(--pw-bg-alt, #f5f1ea); }
   .btn.danger { color: #c0392b; border-color: rgba(220, 53, 53, 0.3); }
   .btn.danger:hover { background: rgba(220, 53, 53, 0.08); }
-  pre.diff { font-family: ui-monospace, Menlo, monospace; font-size: 11px; background: var(--pw-bg-alt, #f5f1ea); padding: 8px; border-radius: 0; max-height: 280px; overflow: auto; margin: 6px 0 0; white-space: pre-wrap; }
+  pre.diff { font-family: ui-monospace, Menlo, monospace; font-size: 11px; background: var(--pw-bg-alt, #f5f1ea); padding: 8px; border-radius: var(--pw-radius-sm); max-height: 280px; overflow: auto; margin: 6px 0 0; white-space: pre-wrap; }
   details summary { cursor: pointer; font-size: 11px; color: var(--pw-accent, #c96342); }
 </style>

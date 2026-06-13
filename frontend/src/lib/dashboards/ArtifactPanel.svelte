@@ -199,8 +199,8 @@
  .log-designer { color: #e91e63; }
  .log-orch { color: #4caf50; }
  .log-error { color: #f44336; }
- .findings-toggle { background: #f1f8e9; border: 1px solid #2e7d32; color: #2e7d32; padding: 4px 10px; border-radius: 0; font-size: 11px; cursor: pointer; font-family: inherit; font-weight: 700; }
- .findings-panel { position: absolute; top: 60px; right: 8px; bottom: 8px; width: 320px; background: #fff; border: 1px solid #e0e0d8; border-radius: 0; padding: 12px; overflow-y: auto; z-index: 50; box-shadow: -4px 0 12px rgba(0,0,0,0.1); }
+ .findings-toggle { background: #f1f8e9; border: 1px solid #2e7d32; color: #2e7d32; padding: 4px 10px; border-radius: var(--pw-radius-sm); font-size: 11px; cursor: pointer; font-family: inherit; font-weight: 700; }
+ .findings-panel { position: absolute; top: 60px; right: 8px; bottom: 8px; width: 320px; background: #fff; border: 1px solid #e0e0d8; border-radius: var(--pw-radius-sm); padding: 12px; overflow-y: auto; z-index: 50; box-shadow: -4px 0 12px rgba(0,0,0,0.1); }
  .findings-panel h3 { margin: 0 0 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
  .findings-empty { color: #888; font-size: 11px; }
  .finding-group { margin-bottom: 16px; }

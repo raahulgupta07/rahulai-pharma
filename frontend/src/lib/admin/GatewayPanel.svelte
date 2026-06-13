@@ -2385,7 +2385,7 @@ curl -X POST ${pubOrigin}/api/auth/api-key \\
     display: flex; align-items: center; gap: 10px; width: 100%;
     background: transparent; border: none; cursor: pointer;
     padding: 8px 12px; font-family: inherit; font-size: 12px; line-height: 1.3;
-    color: var(--pw-ink, #2c2a26); text-align: left; border-radius: 0;
+    color: var(--pw-ink, #2c2a26); text-align: left; border-radius: var(--pw-radius-sm);
     border-left: 2px solid transparent;
   }
   .gw-rg-item:hover { background: rgba(201, 99, 66, 0.04); }
@@ -2423,7 +2423,7 @@ curl -X POST ${pubOrigin}/api/auth/api-key \\
   .gw-pagetitle { font-family: var(--pw-serif, Georgia, serif); font-size: 26px; font-weight: 600; color: var(--pw-ink, #2c2a26); margin: 0 0 4px; }
   .gw-pagesub { color: var(--pw-muted, #877f74); font-size: 13px; margin: 0; }
 
-  .gw-panel { background: var(--pw-surface, #fff); border: 1px solid var(--pw-border, #e5ddcf); border-radius: 0; padding: 16px 18px; margin-bottom: 16px; }
+  .gw-panel { background: var(--pw-surface, #fff); border: 1px solid var(--pw-border, #e5ddcf); border-radius: var(--pw-radius-sm); padding: 16px 18px; margin-bottom: 16px; }
   .gw-h { color: var(--pw-accent); font-weight: 700; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 10px; }
   .gw-h-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 10px; }
   .gw-subh { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pw-muted, #877f74); }
@@ -2449,7 +2449,7 @@ curl -X POST ${pubOrigin}/api/auth/api-key \\
   .gw-method.gw-post { background: var(--pw-accent); }
 
   .gw-btnrow { display: flex; gap: 8px; flex-wrap: wrap; }
-  .gw-btn { background: transparent; color: var(--pw-ink-soft, #4a4438); border: 1px solid var(--pw-border-strong, #cdc6b8); padding: 6px 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; cursor: pointer; border-radius: 0; }
+  .gw-btn { background: transparent; color: var(--pw-ink-soft, #4a4438); border: 1px solid var(--pw-border-strong, #cdc6b8); padding: 6px 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; cursor: pointer; border-radius: var(--pw-radius-sm); }
   .gw-btn:hover { border-color: var(--pw-accent); color: var(--pw-accent); }
   .gw-btn:disabled { opacity: 0.5; cursor: default; }
   .gw-btn-sm { padding: 3px 10px; font-size: 11px; }
@@ -2464,7 +2464,7 @@ curl -X POST ${pubOrigin}/api/auth/api-key \\
   .gw-radio label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
   .gw-mint-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
-  .gw-input { background: var(--pw-bg-alt, #f6f2ea); border: 1px solid var(--pw-border-strong, #cdc6b8); padding: 6px 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--pw-ink, #2c2a26); border-radius: 0; outline: none; }
+  .gw-input { background: var(--pw-bg-alt, #f6f2ea); border: 1px solid var(--pw-border-strong, #cdc6b8); padding: 6px 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--pw-ink, #2c2a26); border-radius: var(--pw-radius-sm); outline: none; }
   .gw-input:focus { border-color: var(--pw-accent); }
   .gw-input-num { width: 90px; }
   .gw-input-search { width: 220px; }
@@ -2472,11 +2472,11 @@ curl -X POST ${pubOrigin}/api/auth/api-key \\
   .gw-picker { display: flex; gap: 8px; align-items: center; }
   .gw-picker .gw-input { flex: 1; }
   .gw-choices { display: flex; flex-wrap: wrap; gap: 5px; max-height: 120px; overflow-y: auto; padding: 4px; background: var(--pw-bg-alt, #f6f2ea); }
-  .gw-choice { background: var(--pw-surface, #fff); border: 1px solid var(--pw-border-strong, #cdc6b8); padding: 3px 9px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; cursor: pointer; border-radius: 0; }
+  .gw-choice { background: var(--pw-surface, #fff); border: 1px solid var(--pw-border-strong, #cdc6b8); padding: 3px 9px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; cursor: pointer; border-radius: var(--pw-radius-sm); }
   .gw-choice:hover { border-color: var(--pw-accent); color: var(--pw-accent); }
 
   .gw-outlet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
-  .gw-outlet { background: var(--pw-bg-alt, #f6f2ea); border: 1px solid var(--pw-border, #e5ddcf); padding: 6px 8px; text-align: left; cursor: pointer; border-radius: 0; }
+  .gw-outlet { background: var(--pw-bg-alt, #f6f2ea); border: 1px solid var(--pw-border, #e5ddcf); padding: 6px 8px; text-align: left; cursor: pointer; border-radius: var(--pw-radius-sm); }
   .gw-outlet:hover { border-color: var(--pw-accent); }
 
   .gw-chips { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -2503,7 +2503,7 @@ curl -X POST ${pubOrigin}/api/auth/api-key \\
   .gw-fineprint { font-size: 11px; margin-top: 8px; }
 
   .gw-pills { display: flex; gap: 4px; }
-  .gw-pill { background: transparent; border: 1px solid var(--pw-border-strong, #cdc6b8); padding: 3px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; cursor: pointer; border-radius: 0; color: var(--pw-ink-soft, #4a4438); }
+  .gw-pill { background: transparent; border: 1px solid var(--pw-border-strong, #cdc6b8); padding: 3px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; cursor: pointer; border-radius: var(--pw-radius-sm); color: var(--pw-ink-soft, #4a4438); }
   .gw-pill-on { background: var(--pw-accent); color: #fff; border-color: var(--pw-accent); }
 
   .gw-spark { display: flex; align-items: flex-end; gap: 3px; height: 60px; margin: 14px 0; padding: 4px; background: var(--pw-bg-alt, #f6f2ea); }
@@ -2516,7 +2516,7 @@ curl -X POST ${pubOrigin}/api/auth/api-key \\
   .gw-an-live { color: #2d8a4e; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.5px; }
   .gw-an-exports { display: flex; gap: 6px; }
   .gw-an-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
-  .gw-an-sel { border: 1px solid var(--pw-border-strong, #cdc6b8); background: #fff6ec; color: var(--pw-ink-soft, #4a4438); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; padding: 3px 8px; border-radius: 0; max-width: 200px; }
+  .gw-an-sel { border: 1px solid var(--pw-border-strong, #cdc6b8); background: #fff6ec; color: var(--pw-ink-soft, #4a4438); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; padding: 3px 8px; border-radius: var(--pw-radius-sm); max-width: 200px; }
   .gw-an-gran { margin-left: auto; }
   .gw-an-busy { font-size: 12px; }
   .gw-an-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -2607,8 +2607,8 @@ curl -X POST ${pubOrigin}/api/auth/api-key \\
   .gw-ul li { margin-bottom: 2px; }
   .gw-link { background: none; border: none; padding: 0; cursor: pointer; color: var(--pw-accent); text-decoration: underline; font-family: inherit; font-size: inherit; }
   .gw-codeblock { position: relative; margin: 8px 0 4px; }
-  .gw-pre { background: #1a1614; color: #e8e3d6; padding: 14px 16px; margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.55; overflow-x: auto; white-space: pre; border-radius: 0; }
-  .gw-copybtn { position: absolute; top: 8px; right: 8px; background: rgba(255,255,255,0.08); color: #e8e3d6; border: 1px solid rgba(255,255,255,0.18); padding: 3px 10px; font-size: 11px; cursor: pointer; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; border-radius: 0; }
+  .gw-pre { background: #1a1614; color: #e8e3d6; padding: 14px 16px; margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.55; overflow-x: auto; white-space: pre; border-radius: var(--pw-radius-sm); }
+  .gw-copybtn { position: absolute; top: 8px; right: 8px; background: rgba(255,255,255,0.08); color: #e8e3d6; border: 1px solid rgba(255,255,255,0.18); padding: 3px 10px; font-size: 11px; cursor: pointer; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; border-radius: var(--pw-radius-sm); }
   .gw-copybtn:hover { border-color: var(--pw-accent); color: #fff; }
 
   @media (max-width: 760px) {

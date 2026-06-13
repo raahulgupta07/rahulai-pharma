@@ -1099,7 +1099,7 @@
  background: transparent;
  border: none;
  padding: 8px 12px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-size: 11px;
  color: var(--pw-ink);
  font-family: inherit;
@@ -1118,7 +1118,7 @@
  font-size: 10px;
  font-weight: 700;
  padding: 1px 7px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-variant-numeric: tabular-nums;
  line-height: 1.4;
  }
@@ -1154,7 +1154,7 @@
  height: 14px;
  background: #ddd;
  margin: 8px 0;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  animation: ontologyPulse 1.4s ease-in-out infinite;
  }
  :global(body.ontology-dark) {
@@ -1183,7 +1183,7 @@
  .ow-page .ow-stat {
  background: #fff;
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 20px 22px;
  display: flex;
  flex-direction: column;
@@ -1285,7 +1285,7 @@
  background: var(--pw-bg-alt);
  color: var(--pw-ink-muted);
  padding: 1px 7px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-size: 10px;
  font-weight: 600;
  }
@@ -1305,7 +1305,7 @@
  .ow-page .ow-filter-pill {
  padding: 6px 14px;
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font: inherit;
  font-size: 11px;
  text-transform: uppercase;
@@ -1326,7 +1326,7 @@
  max-height: 60vh;
  overflow-y: auto;
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  background: #fff;
  }
  .ow-page .ow-table {
@@ -1367,7 +1367,7 @@
  .ow-page .ow-source-chip {
  display: inline-block;
  padding: 3px 10px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-size: 10px;
  font-weight: 600;
  text-transform: uppercase;
@@ -1383,7 +1383,7 @@
  .ow-page .ow-drill-btn {
  padding: 5px 12px;
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font: inherit;
  font-size: 11px;
  text-transform: uppercase;
@@ -1406,7 +1406,7 @@
  gap: 6px;
  height: 36px;
  padding: 0 16px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  border: 1px solid #d97757;
  background: #d97757;
  color: #fff;
@@ -1422,7 +1422,7 @@
  width: 280px;
  padding: 8px 12px;
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font: inherit;
  font-size: 13px;
  color: var(--pw-ink);
@@ -1438,7 +1438,7 @@
  .ow-page .ow-days-pill {
  padding: 6px 14px;
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font: inherit;
  font-size: 11px;
  text-transform: uppercase;
@@ -1459,7 +1459,7 @@
  .ow-page .ow-chart-container {
  background: #fff !important;
  border: 1px solid var(--pw-border) !important;
- border-radius: 0!important;
+ border-radius: var(--pw-radius-sm)!important;
  padding: 20px !important;
  }
 
@@ -1467,7 +1467,7 @@
  .ow-page .ow-mini-counter {
  background: #fff;
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 18px 20px;
  display: flex;
  flex-direction: column;
@@ -1494,7 +1494,7 @@
  padding: 2px 8px;
  background: rgba(201,99,66,0.10);
  color: var(--pw-accent);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-size: 11px;
  font-weight: 500;
  margin: 1px 2px;
@@ -1558,7 +1558,7 @@
       </div>
     {/each}
     {#if visibleStats.length === 0}
-      <div style="grid-column: 1 / -1; padding: 18px; text-align: center; font-size: 11px; color: var(--pw-muted); border: 1px dashed var(--pw-border); border-radius: 0;">
+      <div style="grid-column: 1 / -1; padding: 18px; text-align: center; font-size: 11px; color: var(--pw-muted); border: 1px dashed var(--pw-border); border-radius: var(--pw-radius-sm);">
         All stats are zero. Apply a template to a project to populate.
       </div>
     {/if}
@@ -1988,9 +1988,9 @@
         </div>
       {:else if lineageData && (lineageData.nodes || []).length > 0}
         <div style="position: relative;">
-          <div bind:this={lineageContainer} style="width: 100%; height: 600px; border: 1px solid var(--pw-border); border-radius: 0; background: #1a1714; overflow: hidden;"></div>
+          <div bind:this={lineageContainer} style="width: 100%; height: 600px; border: 1px solid var(--pw-border); border-radius: var(--pw-radius-sm); background: #1a1714; overflow: hidden;"></div>
           <!-- Zoom controls (top-right) -->
-          <div style="position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 4px; background: rgba(255,255,255,0.92); border: 1px solid var(--pw-border); border-radius: 0; padding: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+          <div style="position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 4px; background: rgba(255,255,255,0.92); border: 1px solid var(--pw-border); border-radius: var(--pw-radius-sm); padding: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
             <button onclick={() => lineageZoom(1.25)} title="Zoom in" style="background: none; border: none; cursor: pointer; padding: 6px 8px; font-size: 11px; color: var(--pw-ink);">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             </button>
@@ -2011,7 +2011,7 @@
           {#each ['template', 'learned', 'promoted', 'web', 'other'] as src}
             <button
               onclick={() => toggleLineageSource(src)}
-              style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--pw-border); border-radius: 0; background: {lineageHiddenSources[src] ? 'var(--pw-bg-alt)' : '#fff'}; cursor: pointer; font-size: 11px; opacity: {lineageHiddenSources[src] ? 0.5 : 1}; color: var(--pw-ink);"
+              style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--pw-border); border-radius: var(--pw-radius-sm); background: {lineageHiddenSources[src] ? 'var(--pw-bg-alt)' : '#fff'}; cursor: pointer; font-size: 11px; opacity: {lineageHiddenSources[src] ? 0.5 : 1}; color: var(--pw-ink);"
               title={lineageHiddenSources[src] ? `Show ${src}` : `Hide ${src}`}
             >
               <span style="width: 10px; height: 10px; background: {sourceColor(src)}; border-radius: 50%; display: inline-block;"></span>
@@ -2124,18 +2124,18 @@
                       <div style="font-size: 11px; color: var(--pw-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; margin-bottom: 8px;">Definition / Diff</div>
                       {#if diff}
                         <div style="display: grid; grid-template-columns: 1fr 32px 1fr; gap: 8px; align-items: center;">
-                          <div style="background: #fff; border: 1px solid var(--pw-border); border-left: 3px solid #dc2626; padding: 8px 12px; border-radius: 0; font-family: var(--pw-mono, monospace); font-size: 11px;">
+                          <div style="background: #fff; border: 1px solid var(--pw-border); border-left: 3px solid #dc2626; padding: 8px 12px; border-radius: var(--pw-radius-sm); font-family: var(--pw-mono, monospace); font-size: 11px;">
                             <div style="font-size: 11px; color: #dc2626; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 4px;">LEFT</div>
                             {diff.left}
                           </div>
                           <div style="text-align: center; color: var(--pw-accent); font-weight: 700; font-size: 12px;">→</div>
-                          <div style="background: #fff; border: 1px solid var(--pw-border); border-left: 3px solid var(--ds-success); padding: 8px 12px; border-radius: 0; font-family: var(--pw-mono, monospace); font-size: 11px;">
+                          <div style="background: #fff; border: 1px solid var(--pw-border); border-left: 3px solid var(--ds-success); padding: 8px 12px; border-radius: var(--pw-radius-sm); font-family: var(--pw-mono, monospace); font-size: 11px;">
                             <div style="font-size: 11px; color: var(--ds-success); font-weight: 700; letter-spacing: 0.08em; margin-bottom: 4px;">RIGHT (canonical)</div>
                             {diff.right}
                           </div>
                         </div>
                       {/if}
-                      <div style="margin-top: 8px; background: #fff; border: 1px solid var(--pw-border); padding: 8px 12px; border-radius: 0; font-size: 11px; color: var(--pw-ink);">
+                      <div style="margin-top: 8px; background: #fff; border: 1px solid var(--pw-border); padding: 8px 12px; border-radius: var(--pw-radius-sm); font-size: 11px; color: var(--pw-ink);">
                         {p.definition || '—'}
                       </div>
                     </td>
@@ -2154,17 +2154,17 @@
           <button
             onclick={bulkApprovePromote}
             disabled={promoteBulkBusy}
-            style="background: #16a34a; color: #fff; border: none; padding: 7px 14px; border-radius: 0; cursor: pointer; font-weight: 600; font-size: 11px; display: inline-flex; gap: 6px; align-items: center;"
+            style="background: #16a34a; color: #fff; border: none; padding: 7px 14px; border-radius: var(--pw-radius-sm); cursor: pointer; font-weight: 600; font-size: 11px; display: inline-flex; gap: 6px; align-items: center;"
           ><Icon name="check" size={14} /> Approve {promoteSelectedIds.length}</button>
           <button
             onclick={bulkRejectPromote}
             disabled={promoteBulkBusy}
-            style="background: #dc2626; color: #fff; border: none; padding: 7px 14px; border-radius: 0; cursor: pointer; font-weight: 600; font-size: 11px;"
+            style="background: #dc2626; color: #fff; border: none; padding: 7px 14px; border-radius: var(--pw-radius-sm); cursor: pointer; font-weight: 600; font-size: 11px;"
           ><Icon name="x" size={14} /> Reject {promoteSelectedIds.length}</button>
           <button
             onclick={clearPromoteSelection}
             disabled={promoteBulkBusy}
-            style="background: transparent; color: #fff; border: 1px solid rgba(255,255,255,0.3); padding: 7px 14px; border-radius: 0; cursor: pointer; font-size: 11px;"
+            style="background: transparent; color: #fff; border: 1px solid rgba(255,255,255,0.3); padding: 7px 14px; border-radius: var(--pw-radius-sm); cursor: pointer; font-size: 11px;"
           > Clear</button>
         </div>
       {/if}
@@ -2395,11 +2395,11 @@
             </div>
           {/if}
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-            <div style="background: var(--pw-bg-alt); padding: 10px 12px; border-radius: 0;">
+            <div style="background: var(--pw-bg-alt); padding: 10px 12px; border-radius: var(--pw-radius-sm);">
               <div style="font-size: 10px; color: var(--pw-muted); text-transform: uppercase; font-weight: 600;">Neighbors</div>
               <div style="font-family: var(--pw-serif, serif); font-size: 19px; font-weight: 500;">{(lineageSelectedNode.links_out || []).length + (lineageSelectedNode.links_in || []).length}</div>
             </div>
-            <div style="background: var(--pw-bg-alt); padding: 10px 12px; border-radius: 0;">
+            <div style="background: var(--pw-bg-alt); padding: 10px 12px; border-radius: var(--pw-radius-sm);">
               <div style="font-size: 10px; color: var(--pw-muted); text-transform: uppercase; font-weight: 600;">Used by</div>
               <div style="font-family: var(--pw-serif, serif); font-size: 19px; font-weight: 500;">{(lineageSelectedNode.active_agents || []).length}</div>
             </div>
@@ -2408,7 +2408,7 @@
             <div>
               <div style="font-size: 10px; color: var(--pw-muted); text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Confidence</div>
               <div style="display: flex; align-items: center; gap: 8px;">
-                <div style="flex: 1; height: 6px; background: var(--pw-bg-alt); border-radius: 0; overflow: hidden;">
+                <div style="flex: 1; height: 6px; background: var(--pw-bg-alt); border-radius: var(--pw-radius-sm); overflow: hidden;">
                   <div style="height: 100%; width: {Math.round((lineageSelectedNode.provenance.confidence || 0) * 100)}%; background: var(--pw-accent, #c96342);"></div>
                 </div>
                 <span style="font-size: 11px; font-weight: 600;">{((lineageSelectedNode.provenance.confidence || 0) * 100).toFixed(0)}%</span>

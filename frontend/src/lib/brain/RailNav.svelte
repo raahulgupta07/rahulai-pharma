@@ -3,6 +3,13 @@
 
   const groups = [
     {
+      id: 'brainmap',
+      label: 'BRAIN MAP',
+      items: [
+        { id: 'cortex', label: '🧠 Cortex' },
+      ],
+    },
+    {
       id: 'knowledge',
       label: 'KNOWLEDGE',
       items: [
@@ -109,7 +116,7 @@
     background: transparent;
     border: none;
     border-left: 2px solid transparent;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     cursor: pointer;
     transition: background 0.1s ease, color 0.1s ease;
     box-sizing: border-box;

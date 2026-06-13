@@ -61,7 +61,7 @@
  }
  .sm-card {
  width: 600px; max-width: 92vw; max-height: 70vh;
- background: #fff; border-radius: 0;
+ background: #fff; border-radius: var(--pw-radius-sm);
  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.18);
  display: flex; flex-direction: column; overflow: hidden;
  }
@@ -80,14 +80,14 @@
  font-family: inherit; font-size: 10px;
  color: var(--pw-muted, #807a72);
  background: var(--pw-bg-alt, #f7f6f3);
- padding: 2px 6px; border-radius: 0;
+ padding: 2px 6px; border-radius: var(--pw-radius-sm);
  }
  .sm-list { overflow-y: auto; padding: 6px; }
  .sm-row {
  display: flex; justify-content: space-between; align-items: center;
  width: 100%; padding: 10px 12px;
  border: 0; background: transparent;
- border-radius: 0; text-align: left;
+ border-radius: var(--pw-radius-sm); text-align: left;
  font: inherit; cursor: pointer;
  color: var(--pw-ink, #2c2c2c);
  }

@@ -255,15 +255,15 @@
 
 <style>
  .page { background: #fafaf7; min-height: 100vh; height: 100vh; overflow-y: auto; padding: 20px; box-sizing: border-box; }
- .back-btn { background: #fff; color: #2e7d32; border: 1px solid #e0e0d8; padding: 6px 12px; border-radius: 0; font-weight: 700; font-size: 11px; letter-spacing: 0.06em; cursor: pointer; margin-bottom: 12px; }
+ .back-btn { background: #fff; color: #2e7d32; border: 1px solid #e0e0d8; padding: 6px 12px; border-radius: var(--pw-radius-sm); font-weight: 700; font-size: 11px; letter-spacing: 0.06em; cursor: pointer; margin-bottom: 12px; }
  .back-btn:hover { background: #f0f5f0; border-color: #2e7d32; }
- .header { display: flex; align-items: center; justify-content: space-between; background: #fff; border: 1px solid #e0e0d8; border-radius: 0; padding: 10px 14px; margin-bottom: 14px; }
+ .header { display: flex; align-items: center; justify-content: space-between; background: #fff; border: 1px solid #e0e0d8; border-radius: var(--pw-radius-sm); padding: 10px 14px; margin-bottom: 14px; }
  .header h1 { margin: 0; font-size: 12px; color: #2e7d32; font-weight: 700; }
  .actions { display: flex; gap: 6px; }
- .render { background: #fff; border: 1px solid #e0e0d8; border-radius: 0; padding: 16px; }
- .msg { background: #fff; border: 1px solid #e0e0d8; border-radius: 0; padding: 24px; text-align: center; color: #666; }
+ .render { background: #fff; border: 1px solid #e0e0d8; border-radius: var(--pw-radius-sm); padding: 16px; }
+ .msg { background: #fff; border: 1px solid #e0e0d8; border-radius: var(--pw-radius-sm); padding: 24px; text-align: center; color: #666; }
  .err { color: #c62828; }
- .btn { background: #2e7d32; color: #fff; border: none; padding: 6px 12px; border-radius: 0; font-weight: 700; font-size: 11px; letter-spacing: 0.08em; cursor: pointer; }
+ .btn { background: #2e7d32; color: #fff; border: none; padding: 6px 12px; border-radius: var(--pw-radius-sm); font-weight: 700; font-size: 11px; letter-spacing: 0.08em; cursor: pointer; }
  .btn.small { padding: 4px 8px; font-size: 10px; }
  .btn.active { background: #1565c0; }
  .btn.deck { background: #c96342; }
@@ -271,8 +271,8 @@
  .deck-banner { background: #fff; border: 1px solid #c96342; color: #c96342; padding: 8px 12px; margin-bottom: 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; }
  .deck-banner.err { border-color: #c62828; color: #c62828; }
  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
- .share { background: #fff; border: 1px solid #e0e0d8; border-radius: 0; padding: 10px 14px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; font-size: 11px; }
- .share .url { flex: 1; padding: 4px 8px; border: 1px solid #ccc; border-radius: 0; font-family: monospace; font-size: 11px; }
+ .share { background: #fff; border: 1px solid #e0e0d8; border-radius: var(--pw-radius-sm); padding: 10px 14px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; font-size: 11px; }
+ .share .url { flex: 1; padding: 4px 8px; border: 1px solid #ccc; border-radius: var(--pw-radius-sm); font-family: monospace; font-size: 11px; }
  .share .hint { color: #888; font-style: italic; }
  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
  .compare .lbl { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; color: #2e7d32; margin-bottom: 6px; }
@@ -280,6 +280,6 @@
  .layout .main { flex: 1; min-width: 0; }
  .layout.has-edit > :global(aside.edit-panel) { width: 30%; flex: 0 0 30%; }
  .cell-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
- .x-btn { background: #fff; color: #c62828; border: 1px solid #f1c1c1; padding: 3px 8px; border-radius: 0; font-size: 11px; cursor: pointer; font-weight: 600; }
+ .x-btn { background: #fff; color: #c62828; border: 1px solid #f1c1c1; padding: 3px 8px; border-radius: var(--pw-radius-sm); font-size: 11px; cursor: pointer; font-weight: 600; }
  .x-btn:hover { background: #ffebee; border-color: #c62828; }
 </style>

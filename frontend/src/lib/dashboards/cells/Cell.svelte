@@ -476,7 +476,7 @@
  .insight-overlay {
  position: absolute; bottom: 26px; right: 4px;
  background: #1a1a1a; color: #fafaf7; padding: 12px;
- border-radius: 0; font-size: 11px; line-height: 1.5;
+ border-radius: var(--pw-radius-sm); font-size: 11px; line-height: 1.5;
  width: 280px; z-index: 100;
  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
  }
@@ -490,12 +490,12 @@
  .ng-head { font-size: 10px; color: #555; padding: 2px; position: sticky; top: 0; background: white; z-index: 1; text-align: center; height: 28px; display: flex; align-items: end; justify-content: center; }
  .ng-head.rotated span { transform: rotate(-45deg); transform-origin: left bottom; white-space: nowrap; display: inline-block; }
  .ng-ylabel { font-size: 10px; color: #333; padding: 0 6px; position: sticky; left: 0; background: white; z-index: 1; display: flex; align-items: center; height: 24px; white-space: nowrap; }
- .ng-cell { width: 24px; height: 24px; border-radius: 0; border: 1px solid rgba(0,0,0,0.08); cursor: pointer; padding: 0; }
+ .ng-cell { width: 24px; height: 24px; border-radius: var(--pw-radius-sm); border: 1px solid rgba(0,0,0,0.08); cursor: pointer; padding: 0; }
  .ng-cell:hover { outline: 1px solid #1a1a1a; }
  .ng-cell.empty-cell { background: #f5f5f5; background-image: repeating-linear-gradient(45deg, transparent, transparent 4px, #ddd 4px, #ddd 5px); cursor: default; }
  .ng-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 10px; font-family: ui-monospace, Menlo, monospace; color: #555; }
  .ng-leg-item { display: inline-flex; align-items: center; gap: 4px; }
- .ng-swatch { width: 10px; height: 10px; border-radius: 0; border: 1px solid rgba(0,0,0,0.1); display: inline-block; }
+ .ng-swatch { width: 10px; height: 10px; border-radius: var(--pw-radius-sm); border: 1px solid rgba(0,0,0,0.1); display: inline-block; }
  .narrative {
    font-family: 'Source Serif 4', Georgia, serif;
    font-style: italic;
@@ -515,7 +515,7 @@
    letter-spacing: 0.4px;
    text-transform: uppercase;
    padding: 2px 6px;
-   border-radius: 0;
+   border-radius: var(--pw-radius-sm);
    z-index: 2;
    font-family: 'Inter', system-ui, sans-serif;
  }
@@ -543,7 +543,7 @@
    font-weight: 600;
    letter-spacing: 0.3px;
    padding: 2px 6px;
-   border-radius: 0;
+   border-radius: var(--pw-radius-sm);
    background: rgba(201, 99, 66, 0.12);
    color: #c96342;
    border: 1px solid rgba(201, 99, 66, 0.3);

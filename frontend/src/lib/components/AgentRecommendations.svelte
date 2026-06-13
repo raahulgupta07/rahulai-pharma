@@ -65,7 +65,7 @@
  .ar-card {
  background: var(--pw-bg-alt, #faf6f1);
  border: 1px solid var(--pw-border, #e5ddd2);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
  width: 100%;
  min-height: 120px;
@@ -110,7 +110,7 @@
  font-size: 11px;
  color: var(--pw-ink, #2c2a26);
  padding: 4px 2px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  }
  .ar-row:hover { background: rgba(201,99,66,0.05); }
  .ar-row:hover .ar-arrow { opacity: 1; }

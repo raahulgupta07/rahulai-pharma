@@ -472,7 +472,7 @@
   .vp-mini:hover { background: #c96342; color: #fff; border-color: #c96342; }
   .vp-pill {
     display: inline-block; padding: 2px 8px; background: #f5f0e3;
-    border-radius: 0; font-size: 10px; text-transform: uppercase; color: #6b6557;
+    border-radius: var(--pw-radius-sm); font-size: 10px; text-transform: uppercase; color: #6b6557;
   }
   .vp-kpis { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
   .vp-kpi {

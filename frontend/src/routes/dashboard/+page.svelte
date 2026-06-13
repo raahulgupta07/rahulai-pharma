@@ -513,7 +513,7 @@
  padding: 0 56px 0 34px;
  background: var(--pw-surface);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-family: var(--pw-font-body);
  font-size: 12px;
  color: var(--pw-ink);
@@ -532,7 +532,7 @@
  color: var(--pw-muted);
  background: var(--pw-bg-alt);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 1px 5px;
  pointer-events: none;
  }
@@ -542,7 +542,7 @@
  display: inline-flex;
  background: var(--pw-bg-alt);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 3px;
  gap: 2px;
  }
@@ -555,7 +555,7 @@
  font-weight: 500;
  color: var(--pw-muted);
  cursor: pointer;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  transition: background 0.12s, color 0.12s;
  }
  .dash-pill:hover { color: var(--pw-ink); }
@@ -573,7 +573,7 @@
  background: var(--pw-accent);
  color: #fff;
  border: 1px solid var(--pw-accent);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  cursor: pointer;
  font-family: var(--pw-font-body);
  font-weight: 500;
@@ -619,7 +619,7 @@
 
  .dash-card-head { display: flex; align-items: flex-start; gap: 12px; }
  .dash-card-icon {
- width: 36px; height: 36px; border-radius: 0;
+ width: 36px; height: 36px; border-radius: var(--pw-radius-sm);
  background: var(--pw-accent); color: #fff;
  display: grid; place-items: center;
  font-family: var(--pw-font-headline);
@@ -665,7 +665,7 @@
  background: transparent;
  border: none;
  border-top: 1px solid var(--pw-border-soft);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font: inherit; font-size: 12px; font-weight: 500;
  color: var(--pw-accent);
  cursor: pointer;
@@ -689,7 +689,7 @@
  justify-content: center;
  width: 32px;
  height: 32px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  background: var(--pw-accent-soft);
  color: var(--pw-accent);
  flex-shrink: 0;
@@ -757,7 +757,7 @@
  padding: 1px 7px;
  background: var(--pw-bg-alt);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  color: var(--pw-muted);
  text-transform: uppercase;
  letter-spacing: 0.04em;
@@ -776,7 +776,7 @@
  background: var(--pw-accent);
  color: #fff;
  border: 1px solid var(--pw-accent);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  cursor: pointer;
  font-family: var(--pw-font-body);
  font-weight: 500;
@@ -790,7 +790,7 @@
  background: transparent;
  color: var(--pw-ink);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  cursor: pointer;
  font-family: var(--pw-font-body);
  font-weight: 500;
@@ -806,7 +806,7 @@
  padding: 6px 10px;
  background: none;
  border: 1px solid transparent;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  cursor: pointer;
  color: var(--pw-error);
  font-size: 11px;
@@ -820,7 +820,7 @@
  background: transparent;
  color: var(--pw-error);
  border: 1px solid var(--pw-error);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  cursor: pointer;
  font-family: var(--pw-font-body);
  font-weight: 500;
@@ -831,7 +831,7 @@
  padding: 9px 14px;
  font-size: 11px;
  font-weight: 600;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  border: 1px solid var(--pw-error);
  background: var(--pw-error);
  color: #fff;
@@ -878,7 +878,7 @@
  border: 1px solid var(--pw-border);
  width: 28px;
  height: 28px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  cursor: pointer;
  color: var(--pw-ink);
  font-size: 13px;
@@ -907,7 +907,7 @@
  .dash-widget {
  background: var(--pw-surface);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
  overflow: hidden;
  }
@@ -929,7 +929,7 @@
  padding: 2px 8px;
  background: var(--pw-accent-soft);
  color: var(--pw-accent);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  text-transform: uppercase;
  letter-spacing: 0.04em;
  font-weight: 600;
@@ -953,7 +953,7 @@
  padding: 4px 10px;
  background: transparent;
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  cursor: pointer;
  font-family: var(--pw-font-body);
  font-size: 11px;
@@ -1017,7 +1017,7 @@
  .dash-modal {
  background: var(--pw-surface);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  box-shadow: 0 12px 40px rgba(0,0,0,0.18);
  width: 100%;
  max-width: 420px;
@@ -1056,7 +1056,7 @@
  width: 100%;
  padding: 9px 12px;
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-family: var(--pw-font-body);
  font-size: 12px;
  background: var(--pw-surface);

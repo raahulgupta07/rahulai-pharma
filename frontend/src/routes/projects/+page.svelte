@@ -712,7 +712,7 @@
  color: var(--pw-muted);
  background: var(--pw-bg-alt);
  padding: 2px 6px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-family: ui-monospace, monospace;
  }
 
@@ -824,7 +824,7 @@
  .proj-card-icon {
  width: 36px;
  height: 36px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  background: var(--pw-accent);
  color: #fff;
  display: grid;
@@ -868,7 +868,7 @@
  border: none;
  background: transparent;
  color: var(--pw-muted);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  cursor: pointer;
  display: grid;
  place-items: center;
@@ -901,13 +901,13 @@
  .proj-card-progress-track {
  height: 6px;
  background: var(--pw-bg-alt);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  overflow: hidden;
  }
  .proj-card-progress-fill {
  height: 100%;
  background: var(--pw-accent);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  transition: width .3s ease;
  }
 
@@ -936,7 +936,7 @@
  display: inline-flex; align-items: center; justify-content: center;
  background: transparent;
  border: 1px solid transparent;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  color: var(--pw-muted);
  cursor: pointer;
  transition: background .12s, color .12s, border-color .12s;
@@ -960,7 +960,7 @@
  background: transparent;
  border: none;
  border-top: 1px solid var(--pw-border-soft);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font: inherit;
  font-size: 12px;
  font-weight: 500;
@@ -981,7 +981,7 @@
  min-width: 200px;
  background: var(--pw-surface, #fff);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  box-shadow: 0 12px 32px rgba(0,0,0,0.12);
  padding: 6px;
  z-index: 50;
@@ -990,7 +990,7 @@
  display: flex; align-items: center; gap: 10px;
  width: 100%; padding: 8px 12px;
  background: none; border: none;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font: inherit; font-size: 12px;
  color: var(--pw-ink); text-align: left;
  cursor: pointer;
@@ -1019,7 +1019,7 @@
  background: var(--pw-accent-soft, #d97757);
  color: #fff;
  border: 1px solid var(--pw-accent-soft, #d97757);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-family: inherit;
  font-size: 12px;
  font-weight: 500;
@@ -1197,7 +1197,7 @@
  padding: 14px;
  background: var(--pw-bg-alt);
  border-left: 3px solid var(--pw-accent);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  }
  .proj-steps-h {
  font-size: 11px;

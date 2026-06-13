@@ -2135,7 +2135,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
           {/if}
         </div>
         {#if imageInfo.stale_warning}
-          <span style="margin-left: auto; padding: 3px 10px; border-radius: 0; background: #fef3c7; color: #92400e; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;"><Icon name="alert-triangle" size={14} /> Stale &gt; 24h</span>
+          <span style="margin-left: auto; padding: 3px 10px; border-radius: var(--pw-radius-sm); background: #fef3c7; color: #92400e; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;"><Icon name="alert-triangle" size={14} /> Stale &gt; 24h</span>
         {/if}
       </div>
     {/if}
@@ -2195,7 +2195,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
       {:else if driftStatus}
         {@const _clean = driftStatus.drift_after_allowlist === 0}
         <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 14px;">
-          <span style="padding: 6px 16px; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.06em; background: {_clean ? '#d1fae5' : '#fee2e2'}; color: {_clean ? '#065f46' : '#991b1b'}; border-radius: 0;">
+          <span style="padding: 6px 16px; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.06em; background: {_clean ? '#d1fae5' : '#fee2e2'}; color: {_clean ? '#065f46' : '#991b1b'}; border-radius: var(--pw-radius-sm);">
             {_clean ? '✓ CLEAN' : '✗ DRIFT'}
           </span>
           {#if driftStatus.last_run_at}
@@ -3057,7 +3057,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
               {#if editForm.favicon_url}
                 <img src={editForm.favicon_url} alt="favicon" style="height: 14px; width: 14px;" onerror={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
               {:else}
-                <span style="display: inline-block; width: 14px; height: 14px; background: {editForm.primary_color}; border-radius: 0;"></span>
+                <span style="display: inline-block; width: 14px; height: 14px; background: {editForm.primary_color}; border-radius: var(--pw-radius-sm);"></span>
               {/if}
               <span style="opacity: 0.85;">{editForm.app_name || slug} — {editForm.full_name || 'Tenant'}</span>
             </div>
@@ -3613,7 +3613,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
 <aside class="cc-drawer" role="dialog" aria-label="User detail">
   <div class="cc-drawer-header">
     <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
-      <div style="background: rgba(201, 99, 66, 0.12); color: var(--pw-accent); width: 36px; height: 36px; border-radius: 0; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0;">
+      <div style="background: rgba(201, 99, 66, 0.12); color: var(--pw-accent); width: 36px; height: 36px; border-radius: var(--pw-radius-sm); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0;">
         {(drawerUserRow?.username || '?').charAt(0).toUpperCase()}
       </div>
       <div style="min-width: 0;">
@@ -3659,11 +3659,11 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
       <div class="cc-drawer-section">
         <div class="cc-drawer-section-title">Feedback Stats</div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-          <div style="padding: 12px; text-align: center; background: var(--pw-bg-alt); border: 1px solid var(--pw-border); border-radius: 0;">
+          <div style="padding: 12px; text-align: center; background: var(--pw-bg-alt); border: 1px solid var(--pw-border); border-radius: var(--pw-radius-sm);">
             <div style="font-size: 19px; font-weight: 600;">{userDetail.feedback?.good ?? userDetail.feedback_good ?? 0}</div>
             <div style="font-size: 10px; text-transform: uppercase; color: var(--pw-muted); letter-spacing: 0.04em;">Good</div>
           </div>
-          <div style="padding: 12px; text-align: center; background: var(--pw-bg-alt); border: 1px solid var(--pw-border); border-radius: 0;">
+          <div style="padding: 12px; text-align: center; background: var(--pw-bg-alt); border: 1px solid var(--pw-border); border-radius: var(--pw-radius-sm);">
             <div style="font-size: 19px; font-weight: 600;">{userDetail.feedback?.bad ?? userDetail.feedback_bad ?? 0}</div>
             <div style="font-size: 10px; text-transform: uppercase; color: var(--pw-muted); letter-spacing: 0.04em;">Bad</div>
           </div>
@@ -3683,7 +3683,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
 <aside class="cc-drawer" role="dialog" aria-label="Chat detail">
   <div class="cc-drawer-header">
     <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
-      <div style="background: rgba(201, 99, 66, 0.12); color: var(--pw-accent); width: 36px; height: 36px; border-radius: 0; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0;"><Icon name="message-circle" size={14} /></div>
+      <div style="background: rgba(201, 99, 66, 0.12); color: var(--pw-accent); width: 36px; height: 36px; border-radius: var(--pw-radius-sm); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0;"><Icon name="message-circle" size={14} /></div>
       <div style="min-width: 0;">
         <div style="font-family: var(--pw-font-serif, 'Source Serif 4', Georgia, serif); font-size: 16px; font-weight: 600; color: var(--pw-ink); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
           Session {drawerChatRow.session_id?.slice(0, 12)}…
@@ -3709,7 +3709,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
       <div class="cc-drawer-section-title">Full Conversation</div>
       {#if drawerChatRow.messages?.length}
         {#each drawerChatRow.messages as msg}
-          <div style="font-size: 11px; margin-bottom: 10px; padding: 8px 10px; border-left: 2px solid {msg.role === 'user' ? 'var(--pw-accent)' : 'var(--pw-border)'}; background: var(--pw-bg-alt); border-radius: 0;">
+          <div style="font-size: 11px; margin-bottom: 10px; padding: 8px 10px; border-left: 2px solid {msg.role === 'user' ? 'var(--pw-accent)' : 'var(--pw-border)'}; background: var(--pw-bg-alt); border-radius: var(--pw-radius-sm);">
             <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px;">
               <span style="font-weight: 600; text-transform: uppercase; font-size: 10px; color: {msg.role === 'user' ? 'var(--pw-accent)' : 'var(--pw-muted)'};">{msg.role || 'user'}</span>
               <span style="color: var(--pw-muted); font-size: 10px;">{fmtDate(msg.created_at)}</span>
@@ -3759,13 +3759,13 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  gap: 6px;
  background: var(--pw-bg-alt, #f1ede4);
  padding: 4px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  border: 1px solid var(--pw-border, #e7e3da);
  }
  :global(.pill-tab) {
  background: none;
  border: 1px solid transparent;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 8px 22px;
  cursor: pointer;
  font: 600 11px Inter, system-ui, sans-serif;
@@ -3789,7 +3789,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  :global(.pill-count) {
  background: rgba(255, 255, 255, 0.2);
  color: inherit;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 1px 7px;
  font-size: 10px;
  font-weight: 700;
@@ -3914,7 +3914,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
    display: flex; align-items: center; justify-content: space-between;
    width: 100%; text-align: left;
    background: transparent; border: none;
-   padding: 8px 12px; border-radius: 0;
+   padding: 8px 12px; border-radius: var(--pw-radius-sm);
    font-size: 12px; color: var(--pw-ink);
    font-family: inherit; cursor: pointer;
    border-left: 2px solid transparent;
@@ -3927,7 +3927,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
    display: block; width: 100%; text-align: left;
    background: transparent; border: none;
    padding: 6px 12px 6px 28px;
-   border-radius: 0;
+   border-radius: var(--pw-radius-sm);
    font-size: 12px; color: var(--pw-ink-soft);
    font-family: inherit; cursor: pointer;
    border-left: 2px solid transparent;
@@ -3993,7 +3993,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  border-collapse: separate;
  border-spacing: 0;
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  overflow: hidden;
  font-size: 12px;
  }
@@ -4007,14 +4007,14 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  padding: 10px 14px;
  text-align: left;
  border-bottom: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  }
  :global(.cc-shell .data-table thead th:first-child) { border-top-left-radius: 8px; }
  :global(.cc-shell .data-table thead th:last-child) { border-top-right-radius: 8px; }
  :global(.cc-shell .data-table tbody td) {
  padding: 10px 14px;
  border-bottom: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-size: 12px;
  color: var(--pw-ink);
  }
@@ -4036,14 +4036,14 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  font-size: 11px;
  background: rgba(201, 99, 66, 0.12);
  color: var(--pw-accent);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-weight: 600;
  border: none;
  }
 
  /* Force all .send-btn inside Command Center to be rounded-rectangle, not pill */
  :global(.cc-shell .send-btn) {
- border-radius: 0!important;
+ border-radius: var(--pw-radius-sm)!important;
  background: var(--pw-accent-soft-cta, #d97757) !important;
  border: 1px solid var(--pw-accent-soft-cta, #d97757) !important;
  color: #fff !important;
@@ -4079,7 +4079,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  font-size: 11px;
  text-transform: uppercase;
  letter-spacing: 0.04em;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-family: inherit;
  cursor: pointer;
  font-weight: 500;
@@ -4133,7 +4133,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  color: var(--pw-muted);
  cursor: pointer;
  padding: 4px 8px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  flex-shrink: 0;
  }
  :global(.cc-drawer-close:hover) { background: var(--pw-bg-alt); color: var(--pw-ink); }

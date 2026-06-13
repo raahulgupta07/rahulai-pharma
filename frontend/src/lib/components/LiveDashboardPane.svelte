@@ -199,7 +199,7 @@
     padding: 2px 8px;
     background: var(--pw-bg, #fdfaf5);
     border: 1px solid var(--pw-border, #e2ddd2);
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     font-family: ui-monospace, Menlo, monospace;
     font-size: 10px;
     color: var(--pw-ink, #2c2a26);

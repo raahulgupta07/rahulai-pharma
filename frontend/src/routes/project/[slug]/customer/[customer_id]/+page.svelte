@@ -528,7 +528,7 @@
                   </div>
                 {:else}
                   <div style="position:relative;margin-bottom:14px;">
-                    <span title="Conversion · ${it.data.revenue ?? 0} · {fmtTs(it.data.converted_at)}" style="position:absolute;left:-44px;top:0;width:22px;height:22px;border-radius: 0;background:#16a34a;border:2px solid #1a1a1a;color:#fafaf5;font-family:monospace;font-size:10px;font-weight:900;display:flex;align-items:center;justify-content:center;">$</span>
+                    <span title="Conversion · ${it.data.revenue ?? 0} · {fmtTs(it.data.converted_at)}" style="position:absolute;left:-44px;top:0;width:22px;height:22px;border-radius: var(--pw-radius-sm);background:#16a34a;border:2px solid #1a1a1a;color:#fafaf5;font-family:monospace;font-size:10px;font-weight:900;display:flex;align-items:center;justify-content:center;">$</span>
                     <div style="font-family:monospace;font-size:11px;">
                       <span style="font-weight:900;color:#16a34a;">CONVERSION</span>
                       <span style="color:#525252;"> · {fmtTs(it.data.converted_at)}</span>

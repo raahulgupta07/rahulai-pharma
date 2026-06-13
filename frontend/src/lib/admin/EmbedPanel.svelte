@@ -2308,7 +2308,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
     display: flex; align-items: center; gap: 10px; width: 100%;
     background: transparent; border: none; cursor: pointer;
     padding: 8px 12px; font-family: inherit; font-size: 12px; line-height: 1.3;
-    color: var(--pw-ink, #2c2a26); text-align: left; border-radius: 0;
+    color: var(--pw-ink, #2c2a26); text-align: left; border-radius: var(--pw-radius-sm);
     border-left: 2px solid transparent;
   }
   .emp-rg-item:hover { background: rgba(201, 99, 66, 0.04); }
@@ -2322,7 +2322,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
   .emp-pagetitle { font-family: var(--pw-serif, Georgia, serif); font-size: 26px; font-weight: 600; color: var(--pw-ink, #2c2a26); margin: 0 0 4px; }
   .emp-pagesub { color: var(--pw-muted, #877f74); font-size: 13px; margin: 0; }
 
-  .emp-panel { background: var(--pw-surface, #fff); border: 1px solid var(--pw-border, #e5ddcf); border-radius: 0; padding: 16px 18px; margin-bottom: 16px; }
+  .emp-panel { background: var(--pw-surface, #fff); border: 1px solid var(--pw-border, #e5ddcf); border-radius: var(--pw-radius-sm); padding: 16px 18px; margin-bottom: 16px; }
   .emp-h { color: var(--pw-accent); font-weight: 700; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 10px; }
   .emp-h-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 10px; }
   .emp-subh { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pw-muted, #877f74); }
@@ -2345,7 +2345,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
   .emp-method.emp-post { background: var(--pw-accent); }
 
   .emp-btnrow { display: flex; gap: 8px; flex-wrap: wrap; }
-  .emp-btn { background: transparent; color: var(--pw-ink-soft, #4a4438); border: 1px solid var(--pw-border-strong, #cdc6b8); padding: 6px 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; cursor: pointer; border-radius: 0; }
+  .emp-btn { background: transparent; color: var(--pw-ink-soft, #4a4438); border: 1px solid var(--pw-border-strong, #cdc6b8); padding: 6px 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; cursor: pointer; border-radius: var(--pw-radius-sm); }
   .emp-btn:hover { border-color: var(--pw-accent); color: var(--pw-accent); }
   .emp-btn:disabled { opacity: 0.5; cursor: default; }
   .emp-btn-sm { padding: 3px 10px; font-size: 11px; }
@@ -2421,14 +2421,14 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
   .emp-radio label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
   .emp-mint-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
-  .emp-input { background: var(--pw-bg-alt, #f6f2ea); border: 1px solid var(--pw-border-strong, #cdc6b8); padding: 6px 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--pw-ink, #2c2a26); border-radius: 0; outline: none; }
+  .emp-input { background: var(--pw-bg-alt, #f6f2ea); border: 1px solid var(--pw-border-strong, #cdc6b8); padding: 6px 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--pw-ink, #2c2a26); border-radius: var(--pw-radius-sm); outline: none; }
   .emp-input:focus { border-color: var(--pw-accent); }
   .emp-select { padding: 6px 10px; appearance: none; cursor: pointer; }
 
   .emp-picker { display: flex; gap: 8px; align-items: center; }
   .emp-picker .emp-input { flex: 1; }
   .emp-choices { display: flex; flex-wrap: wrap; gap: 5px; max-height: 120px; overflow-y: auto; padding: 4px; background: var(--pw-bg-alt, #f6f2ea); }
-  .emp-choice { background: var(--pw-surface, #fff); border: 1px solid var(--pw-border-strong, #cdc6b8); padding: 3px 9px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; cursor: pointer; border-radius: 0; }
+  .emp-choice { background: var(--pw-surface, #fff); border: 1px solid var(--pw-border-strong, #cdc6b8); padding: 3px 9px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; cursor: pointer; border-radius: var(--pw-radius-sm); }
   .emp-choice:hover { border-color: var(--pw-accent); color: var(--pw-accent); }
 
   .emp-chips { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -2467,7 +2467,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
   .emp-preview-logo { width: 22px; height: 22px; object-fit: contain; border-radius: 50%; }
   .emp-preview-welcome {
     position: absolute; bottom: 70px; right: 16px; left: 16px;
-    background: var(--pw-surface, #fff); border: 1px solid; border-radius: 0;
+    background: var(--pw-surface, #fff); border: 1px solid; border-radius: var(--pw-radius-sm);
     padding: 8px 10px; font-size: 11px; color: var(--pw-ink, #2c2a26);
     box-shadow: 0 1px 6px rgba(0,0,0,0.1);
   }
@@ -2483,7 +2483,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
 
   /* pills */
   .emp-pills { display: flex; gap: 4px; }
-  .emp-pill { background: transparent; border: 1px solid var(--pw-border-strong, #cdc6b8); padding: 3px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; cursor: pointer; border-radius: 0; color: var(--pw-ink-soft, #4a4438); }
+  .emp-pill { background: transparent; border: 1px solid var(--pw-border-strong, #cdc6b8); padding: 3px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; cursor: pointer; border-radius: var(--pw-radius-sm); color: var(--pw-ink-soft, #4a4438); }
   .emp-pill-on { background: var(--pw-accent); color: #fff; border-color: var(--pw-accent); }
 
   /* misc */
@@ -2496,8 +2496,8 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
   .emp-doc-p { margin: 0 0 10px; line-height: 1.55; color: var(--pw-ink, #2c2a26); font-size: 13px; }
 
   .emp-codeblock { position: relative; margin: 8px 0 4px; }
-  .emp-pre { background: #1a1614; color: #e8e3d6; padding: 14px 16px; margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.55; overflow-x: auto; white-space: pre; border-radius: 0; }
-  .emp-copybtn { position: absolute; top: 8px; right: 8px; background: rgba(255,255,255,0.08); color: #e8e3d6; border: 1px solid rgba(255,255,255,0.18); padding: 3px 10px; font-size: 11px; cursor: pointer; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; border-radius: 0; }
+  .emp-pre { background: #1a1614; color: #e8e3d6; padding: 14px 16px; margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.55; overflow-x: auto; white-space: pre; border-radius: var(--pw-radius-sm); }
+  .emp-copybtn { position: absolute; top: 8px; right: 8px; background: rgba(255,255,255,0.08); color: #e8e3d6; border: 1px solid rgba(255,255,255,0.18); padding: 3px 10px; font-size: 11px; cursor: pointer; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; border-radius: var(--pw-radius-sm); }
   .emp-copybtn:hover { border-color: var(--pw-accent); color: #fff; }
 
   /* logo upload row */

@@ -110,7 +110,7 @@
  width: 440px; max-width: calc(100vw - 32px);
  background: var(--pw-surface, #fff);
  border: 1px solid #d33;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  box-shadow: 0 12px 40px rgba(0,0,0,0.25), 0 0 0 4px rgba(211,51,51,0.08);
  overflow: hidden;
  animation: dcm-pop 0.14s ease-out;
@@ -164,7 +164,7 @@
  .dcm-label code {
  background: var(--pw-bg-alt, #f5f1eb);
  padding: 1px 6px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-family: var(--pw-font-mono, ui-monospace, monospace);
  font-size: 12px;
  color: #b91c1c;
@@ -175,7 +175,7 @@
  padding: 10px 14px;
  background: var(--pw-bg-alt, #f5f1eb);
  border: 1.5px solid var(--pw-border, #ddd);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-family: var(--pw-font-mono, ui-monospace, monospace);
  font-size: 14px;
  color: var(--pw-ink);
@@ -196,7 +196,7 @@
  padding: 10px 14px;
  background: rgba(211,51,51,0.08);
  border-left: 3px solid #d33;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-size: 13px;
  color: #b91c1c;
  }
@@ -209,7 +209,7 @@
  }
  .dcm-btn {
  padding: 8px 18px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-size: 13px;
  font-weight: 700;
  font-family: inherit;

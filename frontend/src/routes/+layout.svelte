@@ -935,6 +935,11 @@
  const chatHref = $derived(singleAgent && lockedSlug ? `/ui/project/${lockedSlug}` : '/ui/chat');
  const overviewHref = $derived(singleAgent && lockedSlug ? `/ui/project/${lockedSlug}/overview` : '/ui/projects');
  const agentBrainHref = $derived(singleAgent && lockedSlug ? `/ui/project/${lockedSlug}/settings#datasets` : '/ui/projects');
+ const brainTopHref = $derived(singleAgent && lockedSlug ? `/ui/project/${lockedSlug}/settings#brain-glossary` : '/ui/brain');
+ // Brain vs Settings share the /settings page — disambiguate by hash so only one highlights.
+ const isBrainHash = $derived(page.url.hash.startsWith('#brain'));
+ const isSettingsActive = $derived(page.url.pathname.includes('/settings') && !isBrainHash);
+ const isBrainTopActive = $derived(page.url.pathname.includes('/settings') && isBrainHash);
  const uploadHref = $derived(singleAgent && lockedSlug ? `/ui/project/${lockedSlug}/settings#upload` : '/ui/projects');
  let showDashPicker = $state(false);
 
@@ -1141,7 +1146,7 @@
       <button onclick={() => showApiKey = false} style="background: none; border: none; color: var(--pw-muted); cursor: pointer; font-size: 16px;">&#10005;</button>
     </div>
     <div style="padding: 20px;">
-      <div style="font-size: 12px; color: var(--pw-muted); margin-bottom: 14px; line-height: 1.5;">Use this key for programmatic access. Include as <code style="background: var(--pw-bg-alt); padding: 1px 6px; border-radius: 0; font-size: 12px;">Authorization: Bearer YOUR_KEY</code></div>
+      <div style="font-size: 12px; color: var(--pw-muted); margin-bottom: 14px; line-height: 1.5;">Use this key for programmatic access. Include as <code style="background: var(--pw-bg-alt); padding: 1px 6px; border-radius: var(--pw-radius-sm); font-size: 12px;">Authorization: Bearer YOUR_KEY</code></div>
       {#if apiKeyLoading}
         <div style="font-size: 12px; color: var(--pw-muted);">Loading…</div>
       {:else}
@@ -1280,23 +1285,23 @@
         <!-- Desktop Nav -->
         <nav class="pw-nav-row" onclick={(e) => e.stopPropagation()}>
         {#if singleAgent}
-          {#if canDashboard}
-          <button onclick={() => navTo(overviewHref)} class="pw-nav" class:pw-nav-active={page.url.pathname.includes('/overview')}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
-            <span class="pw-nav-label">Dashboard</span>
-          </button>
-          {/if}
           {#if canChat}
           <button onclick={() => navTo(chatHref)} class="pw-nav" class:pw-nav-active={page.url.pathname.includes('/project/') && !page.url.pathname.includes('/settings') && !page.url.pathname.includes('/overview')}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
             <span class="pw-nav-label">Chat</span>
           </button>
           {/if}
-          <!-- Data Source top button removed — it lives as the DATA SOURCE tab inside Workspace's left rail. -->
+          {#if canDashboard}
+          <button onclick={() => navTo(overviewHref)} class="pw-nav" class:pw-nav-active={page.url.pathname.includes('/overview')}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+            <span class="pw-nav-label">Dashboard</span>
+          </button>
+          {/if}
+          <!-- Brain lives inside the Settings left-rail (BRAIN section); top-nav Brain removed to dedupe. Settings → data source. -->
           {#if canWorkspace}
-          <button onclick={() => { openMenu = null; window.location.href = agentBrainHref; }} class="pw-nav" class:pw-nav-active={page.url.pathname.includes('/settings')}>
+          <button onclick={() => { openMenu = null; window.location.href = agentBrainHref; }} class="pw-nav" class:pw-nav-active={isSettingsActive}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-            <span class="pw-nav-label">Workspace</span>
+            <span class="pw-nav-label">Agent Brain</span>
           </button>
           {/if}
           <!-- Endpoints: ways to use the agent from other apps/sites (API + widget).
@@ -1621,7 +1626,8 @@
         <button class="pw-mobile-row" onclick={() => navTo('/ui/chat')}>Chat</button>
         {#if singleAgent}
           <button class="pw-mobile-row" onclick={() => { mobileNavOpen = false; window.location.href = overviewHref; }}>Dashboard</button>
-          <button class="pw-mobile-row" onclick={() => { mobileNavOpen = false; window.location.href = agentBrainHref; }}>Workspace</button>
+          <button class="pw-mobile-row" onclick={() => { mobileNavOpen = false; window.location.href = brainTopHref; }}>Brain</button>
+          <button class="pw-mobile-row" onclick={() => { mobileNavOpen = false; window.location.href = agentBrainHref; }}>Settings</button>
         {/if}
         <div class="pw-mobile-section">Build</div>
         <button class="pw-mobile-row pw-mobile-sub" onclick={() => navTo('/ui/dashboard')}>Dashboards</button>
@@ -1797,7 +1803,7 @@
  .sb-newchat, .sb-search {
  display: flex; align-items: center; gap: 10px;
  width: 100%; padding: 8px 12px;
- border-radius: 0; border: 0;
+ border-radius: var(--pw-radius-sm); border: 0;
  background: transparent; color: var(--pw-ink);
  font: inherit; font-size: 13px;
  cursor: pointer; text-align: left;
@@ -1845,7 +1851,7 @@
  display: block; width: 100%; padding: 7px 12px;
  border: 0; background: transparent; color: var(--pw-ink);
  font: inherit; font-size: 12px; line-height: 1.35; text-align: left;
- border-radius: 0; cursor: pointer;
+ border-radius: var(--pw-radius-sm); cursor: pointer;
  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
  flex-shrink: 0; min-height: 28px; box-sizing: border-box;
  }
@@ -1858,7 +1864,7 @@
  }
  .sb-collapse {
  margin-top: 8px; align-self: flex-start;
- padding: 6px 10px; border-radius: 0; border: 0;
+ padding: 6px 10px; border-radius: var(--pw-radius-sm); border: 0;
  background: transparent; cursor: pointer;
  color: var(--pw-muted);
  font-size: 14px; line-height: 1;
@@ -1924,7 +1930,7 @@
  @keyframes pw-slide-in { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
  /* mobile: full-bleed sheet */
  @media (max-width: 640px) {
-   .pw-agents-drawer { top: 0; right: 0; bottom: 0; width: 100vw; max-width: 100vw; border-radius: 0; border: none; }
+   .pw-agents-drawer { top: 0; right: 0; bottom: 0; width: 100vw; max-width: 100vw; border-radius: var(--pw-radius-sm); border: none; }
  }
  .pw-agents-close {
  position: absolute; top: 14px; right: 16px; z-index: 2;
@@ -1979,7 +1985,7 @@
  padding: 10px 4px;
  background: rgba(255,255,255,0.06);
  border: 1px solid rgba(255,255,255,0.1);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  backdrop-filter: blur(4px);
  }
  .pw-agents-stat-num { font-family: var(--pw-font-serif), Georgia, serif; font-size: 19px; color: #fff; line-height: 1; }
@@ -1992,7 +1998,7 @@
  margin-bottom: 12px;
  }
  .pw-agents-group-bar {
- width: 3px; height: 14px; background: var(--group-accent); border-radius: 0;
+ width: 3px; height: 14px; background: var(--group-accent); border-radius: var(--pw-radius-sm);
  }
  .pw-agents-group-name {
  font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;
@@ -2000,12 +2006,12 @@
  }
  .pw-agents-group-count {
  margin-left: auto; font-size: 11px; color: var(--pw-muted);
- background: rgba(0,0,0,0.04); padding: 2px 8px; border-radius: 0;
+ background: rgba(0,0,0,0.04); padding: 2px 8px; border-radius: var(--pw-radius-sm);
  }
  .pw-agents-grid { display: grid; grid-template-columns: 1fr; gap: 6px; }
  .pw-agents-card {
  display: flex; align-items: flex-start; gap: 12px;
- padding: 10px 12px; border-radius: 0;
+ padding: 10px 12px; border-radius: var(--pw-radius-sm);
  background: rgba(255,255,255,0.5);
  border: 1px solid transparent;
  transition: background 0.15s, border-color 0.15s, transform 0.15s;
@@ -2018,7 +2024,7 @@
  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
  }
  .pw-agents-avatar {
- width: 32px; height: 32px; border-radius: 0;
+ width: 32px; height: 32px; border-radius: var(--pw-radius-sm);
  display: flex; align-items: center; justify-content: center;
  background: linear-gradient(135deg, var(--group-accent), color-mix(in srgb, var(--group-accent) 60%, #000));
  color: #fff; font-weight: 600; font-size: 11px;
@@ -2042,7 +2048,7 @@
  .pw-feed-chip {
  padding: 5px 11px; font-size: 11.5px; font-weight: 500;
  background: transparent; color: var(--pw-muted);
- border: 1px solid var(--pw-border); border-radius: 0;
+ border: 1px solid var(--pw-border); border-radius: var(--pw-radius-sm);
  cursor: pointer; transition: all 0.15s;
  }
  .pw-feed-chip:hover { background: rgba(0,0,0,0.04); color: var(--pw-ink); }
@@ -2055,7 +2061,7 @@
  padding: 12px 14px; margin: 6px 12px;
  background: rgba(255,255,255,0.6);
  border: 1px solid transparent; border-left: 3px solid var(--feed-accent);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  transition: background 0.15s, border-color 0.15s, transform 0.15s;
  cursor: pointer; position: relative;
  }
@@ -2117,7 +2123,7 @@
  font-family: var(--pw-font-body);
  font-size: 13px;
  font-weight: 500;
- border-radius: var(--pw-radius-pill);
+ border-radius: var(--pw-radius);
  cursor: pointer;
  transition: background 0.15s, color 0.15s;
  }
@@ -2129,7 +2135,7 @@
  background: rgba(201, 99, 66, 0.14);
  color: var(--pw-accent);
  font-weight: 600;
- border-radius: 0;
+ border-radius: var(--pw-radius);
  }
  .pw-nav-active:hover {
  background: rgba(201, 99, 66, 0.20);
@@ -2288,7 +2294,7 @@
  font-size: 11px;
  font-weight: 500;
  padding: 3px 8px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  cursor: pointer;
  }
  .pw-bbar-btn:hover { background: rgba(255,255,255,0.18); color: #fff; }
@@ -2509,7 +2515,7 @@
  bottom: 4px;
  height: 2px;
  background: var(--pw-accent);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  }
  .pw-chev {
  transition: transform 0.18s ease;
@@ -2525,7 +2531,7 @@
  width: 280px;
  background: var(--pw-surface);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  box-shadow: var(--pw-shadow-md, 0 8px 24px rgba(0,0,0,0.08));
  padding: 8px;
  z-index: 200;
@@ -2546,7 +2552,7 @@
  background: transparent;
  border: none;
  border-left: 3px solid transparent;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  cursor: pointer;
  text-align: left;
  color: var(--pw-ink);
@@ -2835,7 +2841,7 @@
  font-size: 14px;
  line-height: 1;
  padding: 4px 6px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  }
  .pw-feed-close:hover { background: rgba(0,0,0,0.05); color: var(--pw-ink); }
 
@@ -2855,7 +2861,7 @@
  font-size: 11px;
  font-family: var(--pw-font-body);
  padding: 4px 11px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  cursor: pointer;
  white-space: nowrap;
  transition: all 0.12s;
@@ -3000,7 +3006,7 @@
  font-size: 13px;
  font-weight: 500;
  color: var(--pw-ink);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  cursor: pointer;
  }
  .pw-mobile-row:hover { background: var(--pw-surface-warm); color: var(--pw-accent); }
@@ -3037,8 +3043,8 @@
  .pw-nav-label { display: none; }
  .pw-nav { padding: 0 8px; gap: 0; }
  }
- .pw-badge-coral { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 16px; padding: 0 5px; margin-left: 4px; background: var(--pw-accent, #c96342); color: #fff; border-radius: 0; font: 600 10px Inter; }
- .pw-badge-gray { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 16px; padding: 0 5px; margin-left: 4px; background: var(--pw-bg-alt, #f1ede4); color: var(--pw-ink-soft, #87837a); border-radius: 0; font: 600 10px Inter; }
+ .pw-badge-coral { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 16px; padding: 0 5px; margin-left: 4px; background: var(--pw-accent, #c96342); color: #fff; border-radius: var(--pw-radius-sm); font: 600 10px Inter; }
+ .pw-badge-gray { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 16px; padding: 0 5px; margin-left: 4px; background: var(--pw-bg-alt, #f1ede4); color: var(--pw-ink-soft, #87837a); border-radius: var(--pw-radius-sm); font: 600 10px Inter; }
  .pw-menu-section { padding: 8px 12px 4px; font: 700 10px Inter; text-transform: uppercase; letter-spacing: 0.06em; color: var(--pw-ink-soft, #87837a); border-top: 1px solid var(--pw-border, #e7e3da); margin-top: 4px; }
  .pw-menu-section:first-child { border-top: none; margin-top: 0; }
 
@@ -3060,7 +3066,7 @@
  }
  .cn-pill {
    display: inline-flex; align-items: center; gap: 10px;
-   padding: 7px 14px; border-radius: 0;
+   padding: 7px 14px; border-radius: var(--pw-radius-sm);
    background: #1a1614; color: #e8e3d6;
    border: 1px solid #2a2522;
    font: 600 11px 'JetBrains Mono', monospace;
@@ -3104,14 +3110,14 @@
  .cn-btn {
    background: #2a2522; color: #e8e3d6; border: 1px solid #3a3530;
    padding: 3px 9px; font: 600 10.5px 'JetBrains Mono', monospace;
-   cursor: pointer; border-radius: 0;
+   cursor: pointer; border-radius: var(--pw-radius-sm);
  }
  .cn-btn:hover { background: #3a3530; color: var(--pw-accent, #c96342); }
  .cn-btn--icon { padding: 3px 7px; }
  .cn-sel {
    background: #2a2522; color: #e8e3d6; border: 1px solid #3a3530;
    padding: 2px 6px; font: 600 10.5px 'JetBrains Mono', monospace;
-   border-radius: 0; cursor: pointer;
+   border-radius: var(--pw-radius-sm); cursor: pointer;
  }
 
  .cn-body-wrap { position: relative; flex: 1; min-height: 0; display: flex; }
@@ -3133,7 +3139,7 @@
    position: absolute; bottom: 10px; right: 14px;
    background: var(--pw-accent, #c96342); color: #fff;
    border: 0; padding: 4px 10px; font: 600 10.5px monospace;
-   cursor: pointer; border-radius: 0;
+   cursor: pointer; border-radius: var(--pw-radius-sm);
  }
  .cn-jump:hover { background: #b8553a; }
 

@@ -34,7 +34,7 @@
     display: inline-flex;
     align-items: stretch;
     border: 1px solid #e3ddd0;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     overflow: hidden;
     background: transparent;
   }
@@ -46,7 +46,7 @@
     padding: 6px 14px;
     background: transparent;
     border: none;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     color: #2c2a26;
     font-size: 11px;
     font-weight: 400;

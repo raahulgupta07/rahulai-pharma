@@ -606,7 +606,7 @@
  .pw-card {
  background: var(--pw-surface);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 24px;
  box-shadow: var(--pw-shadow-sm);
  }
@@ -644,7 +644,7 @@
  box-sizing: border-box;
  background: var(--pw-surface);
  border: 1px solid var(--pw-border-strong);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 12px 14px;
  font-family: inherit;
  font-size: 14.5px;
@@ -675,7 +675,7 @@
  color: var(--pw-muted);
  cursor: pointer;
  padding: 4px 8px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  transition: background 0.15s ease, color 0.15s ease;
  }
 
@@ -690,7 +690,7 @@
  color: #fff;
  border: 1px solid #1c1c1c;
  padding: 13px 16px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-family: inherit;
  font-size: 14.5px;
  font-weight: 500;
@@ -741,7 +741,7 @@
  color: var(--pw-ink);
  border: 1px solid var(--pw-border-strong);
  padding: 11px 16px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-family: inherit;
  font-size: 13.5px;
  font-weight: 500;
@@ -767,7 +767,7 @@
  color: var(--pw-error);
  background: var(--pw-error-soft);
  border: 1px solid #f0c2c2;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 9px 12px;
  margin: 6px 0 12px;
  }
@@ -781,7 +781,7 @@
  color: var(--pw-accent);
  font-weight: 500;
  padding: 4px 8px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  }
 
  .pw-link-btn:hover {
@@ -810,7 +810,7 @@
  height: 540px;
  background: var(--pw-surface);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  overflow: hidden;
  box-shadow: var(--pw-shadow-sm);
  }
@@ -845,7 +845,7 @@
  .pw-tile {
  background: var(--pw-surface);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 12px 10px;
  font-size: 11.5px;
  font-weight: 500;
@@ -939,7 +939,7 @@
  position: absolute;
  background: var(--pw-surface);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 8px 12px;
  font-size: 12px;
  color: var(--pw-ink);
@@ -1004,7 +1004,7 @@
  right: 24px;
  background: var(--pw-surface);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 8px;
  display: flex;
  align-items: center;
@@ -1016,7 +1016,7 @@
  flex: 1;
  background: transparent;
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 8px 12px;
  font-family: inherit;
  font-size: 13px;
@@ -1028,7 +1028,7 @@
  .pw-dock-add {
  width: 32px;
  height: 32px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  background: transparent;
  border: 1px solid var(--pw-border);
  color: var(--pw-muted);
@@ -1044,7 +1044,7 @@
  background: var(--pw-accent-bg);
  color: var(--pw-accent);
  border: 1px solid var(--pw-accent-soft);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 8px 16px;
  font-family: inherit;
  font-size: 13px;

@@ -997,7 +997,7 @@
  .ico-btn {
  background: transparent; border: 1px solid transparent;
  color: #444; cursor: pointer; padding: 2px 6px;
- font-family: inherit; font-size: 11px; border-radius: 0;
+ font-family: inherit; font-size: 11px; border-radius: var(--pw-radius-sm);
  }
  .ico-btn:hover { background: #ede8d9; border-color: #ccc; }
 
@@ -1036,7 +1036,7 @@
  .pill.active { background: #1a1a1a; color: #faf7f0; }
  .pill-count {
  background: #faf7f0; color: #1a1a1a; padding: 0 5px;
- border-radius: 0; margin-left: 4px; font-size: 10px;
+ border-radius: var(--pw-radius-sm); margin-left: 4px; font-size: 10px;
  }
  .pill.active .pill-count { background: #faf7f0; color: #1a1a1a; }
  .search {
@@ -1072,7 +1072,7 @@
  .status-pill {
  display: inline-block; color: #fff;
  padding: 2px 8px; font-size: 10px; letter-spacing: 0.5px;
- text-transform: uppercase; border-radius: 0;
+ text-transform: uppercase; border-radius: var(--pw-radius-sm);
  }
  .status-pill.big { padding: 4px 12px; font-size: 11px; font-weight: 700; }
 
@@ -1105,7 +1105,7 @@
  background: #ede8d9;
  }
  .drw-id { display: flex; align-items: center; gap: 6px; }
- .drw-id code { background: #1a1a1a; color: #faf7f0; padding: 2px 6px; border-radius: 0; }
+ .drw-id code { background: #1a1a1a; color: #faf7f0; padding: 2px 6px; border-radius: var(--pw-radius-sm); }
  .drw-hdr .x { background: transparent; border: 1px solid #1a1a1a; padding: 2px 8px; cursor: pointer; font-family: inherit; }
  .drw-load { padding: 40px; text-align: center; color: #666; }
 
@@ -1226,7 +1226,7 @@
  .toast {
  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
  background: #1a1a1a; color: #faf7f0; padding: 8px 16px;
- border-radius: 0; z-index: 2000; font-size: 11px;
+ border-radius: var(--pw-radius-sm); z-index: 2000; font-size: 11px;
  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
  }
  .toast code { background: transparent; color: #fbbf24; }
@@ -1263,14 +1263,14 @@
  border: 1px solid #fb923c;
  color: #9a3412;
  padding: 8px 12px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  margin-bottom: 8px;
  font-size: 11px;
 }
 .auto-reasoning {
  background: linear-gradient(180deg,#fff7ed 0%, #ffedd5 100%);
  border: 1px solid #fb923c;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 12px 14px;
  margin-bottom: 14px;
 }
@@ -1284,7 +1284,7 @@
 .auto-reasoning-hdr code {
  background: #fed7aa;
  padding: 1px 6px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-size: 11px;
 }
 .auto-reasoning-row {

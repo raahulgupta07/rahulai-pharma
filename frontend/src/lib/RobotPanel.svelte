@@ -800,7 +800,7 @@
   .rp-bubble {
     width: 56px;
     height: 60px;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     background: transparent;
     border: none;
     box-shadow: none;

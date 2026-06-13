@@ -44,10 +44,10 @@
 </div>
 
 <style>
- .timeline { background: var(--pw-surface, #faf9f5); border: 1px solid var(--pw-border, #e7e3da); border-radius: 0; padding: 16px; font: 13px Inter; color: var(--pw-ink, #2c2a26); }
+ .timeline { background: var(--pw-surface, #faf9f5); border: 1px solid var(--pw-border, #e7e3da); border-radius: var(--pw-radius-sm); padding: 16px; font: 13px Inter; color: var(--pw-ink, #2c2a26); }
  header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
  h3 { font: 600 12px Inter; text-transform: uppercase; letter-spacing: 0.05em; margin: 0; }
- button.ghost { background: none; border: 1px solid var(--pw-border, #e7e3da); padding: 4px 10px; border-radius: 0; cursor: pointer; font: 11px Inter; }
+ button.ghost { background: none; border: 1px solid var(--pw-border, #e7e3da); padding: 4px 10px; border-radius: var(--pw-radius-sm); cursor: pointer; font: 11px Inter; }
  .step { padding: 6px 0; border-top: 1px solid var(--pw-border, #e7e3da); }
  .step:first-of-type { border-top: none; }
  .line { display: flex; gap: 10px; align-items: center; }

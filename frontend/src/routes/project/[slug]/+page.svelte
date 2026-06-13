@@ -2421,7 +2421,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
       {#if messages.length === 0}
         <!-- Issue #20 — first-chat template prompt banner (hidden: single-agent product) -->
         {#if false}
-          <div class="tpl-prompt-banner" style="max-width: 720px; margin: 24px auto 0; padding: 14px 18px; border: 1px solid rgba(201,99,66,0.30); background: rgba(201,99,66,0.06); border-radius: 0; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <div class="tpl-prompt-banner" style="max-width: 720px; margin: 24px auto 0; padding: 14px 18px; border: 1px solid rgba(201,99,66,0.30); background: rgba(201,99,66,0.06); border-radius: var(--pw-radius-sm); display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
             <div style="font-size: 12px; color: var(--pw-ink); flex: 1 1 280px;">
               <Icon name="lightbulb" size={14} /> <strong>Get domain-specific intelligence</strong> — apply a template
             </div>
@@ -2429,17 +2429,17 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
               {#each QUICK_TEMPLATES as t}
                 <button
                   class="tpl-pick-btn"
-                  style="padding: 5px 12px; font-size: 11px; border-radius: 0; border: 1px solid rgba(201,99,66,0.35); background: #fff; color: var(--pw-ink); cursor: pointer; text-transform: capitalize;"
+                  style="padding: 5px 12px; font-size: 11px; border-radius: var(--pw-radius-sm); border: 1px solid rgba(201,99,66,0.35); background: #fff; color: var(--pw-ink); cursor: pointer; text-transform: capitalize;"
                   disabled={!!applyingTemplate}
                   onclick={() => applyQuickTemplate(t)}
                 >{applyingTemplate === t ? 'Applying…' : t}</button>
               {/each}
               <button
-                style="padding: 5px 12px; font-size: 11px; border-radius: 0; border: 1px solid var(--pw-border, #ddd); background: #fff; color: var(--pw-ink); cursor: pointer;"
+                style="padding: 5px 12px; font-size: 11px; border-radius: var(--pw-radius-sm); border: 1px solid var(--pw-border, #ddd); background: #fff; color: var(--pw-ink); cursor: pointer;"
                 onclick={browseAllTemplates}
               >Browse all →</button>
               <button
-                style="padding: 5px 10px; font-size: 11px; border-radius: 0; border: 1px solid transparent; background: transparent; color: var(--pw-muted); cursor: pointer;"
+                style="padding: 5px 10px; font-size: 11px; border-radius: var(--pw-radius-sm); border: 1px solid transparent; background: transparent; color: var(--pw-muted); cursor: pointer;"
                 onclick={skipTemplatePrompt}
               >Skip</button>
             </div>
@@ -2514,7 +2514,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
                 <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
                   <button class="action-btn" onclick={shareConversation} disabled={shareBusy} title="Create a read-only public link to this conversation">🔗 {shareBusy ? 'Sharing…' : 'Share'}</button>
                   {#if shareLink}
-                    <input readonly value={shareLink} onclick={(e) => (e.currentTarget as HTMLInputElement).select()} style="flex:1; font-size:11px; font-family:monospace; padding:4px 8px; border:1px solid var(--pw-border); border-radius: 0; background:var(--pw-bg-alt); color:var(--pw-ink);" />
+                    <input readonly value={shareLink} onclick={(e) => (e.currentTarget as HTMLInputElement).select()} style="flex:1; font-size:11px; font-family:monospace; padding:4px 8px; border:1px solid var(--pw-border); border-radius: var(--pw-radius-sm); background:var(--pw-bg-alt); color:var(--pw-ink);" />
                   {/if}
                 </div>
               {/if}
@@ -3359,7 +3359,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 />
 
 {#if scheduleToast}
-  <div style="position: fixed; bottom: 20px; right: 20px; z-index: 240; background: var(--pw-ink); color: var(--pw-bg); padding: 10px 14px; border-radius: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 12px; display: flex; gap: 10px; align-items: center;">
+  <div style="position: fixed; bottom: 20px; right: 20px; z-index: 240; background: var(--pw-ink); color: var(--pw-bg); padding: 10px 14px; border-radius: var(--pw-radius-sm); box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 12px; display: flex; gap: 10px; align-items: center;">
     <span>Saved as workflow #{scheduleToast.wfId}</span>
     <a href="{base}/ui/agent-os/workflows" style="color: var(--pw-accent-soft, #f0c4b0); text-decoration: underline; font-weight: 700;">View →</a>
   </div>
@@ -3429,7 +3429,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 :global(.starter-card) {
  background: #ffffff;
  border: 1px solid #ebebeb;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 16px 18px;
  text-align: left;
  cursor: pointer;
@@ -3477,7 +3477,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 .sim-report-card {
  display:flex; align-items:center; gap:12px;
  margin: 8px 0 4px; padding: 10px 14px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  background: var(--pw-bg-alt, #faf2ed);
  border: 1px solid var(--pw-border, #e3e1dc);
 }
@@ -3491,7 +3491,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 .sim-link {
  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
  color: var(--pw-accent, #c96342); text-decoration: none;
- padding: 4px 10px; border: 1px solid var(--pw-accent, #c96342); border-radius: 0;
+ padding: 4px 10px; border: 1px solid var(--pw-accent, #c96342); border-radius: var(--pw-radius-sm);
 }
 .sim-link:hover { background: var(--pw-accent, #c96342); color: #fff; }
 .sim-link-done { color: #2e7d32; border-color: #2e7d32; }
@@ -3512,7 +3512,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  background: var(--pw-bg, #fff);
  border: 1px dashed var(--pw-border, #e3e1dc);
  color: var(--pw-ink, #2c2c2c);
- border-radius: 0; cursor: pointer;
+ border-radius: var(--pw-radius-sm); cursor: pointer;
  font-family: inherit;
 }
 .sim-chip:hover:not(:disabled) {
@@ -3523,7 +3523,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 .sim-chip:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* === Single-row composer card === */
-.composer-card { background:#fff; border:1px solid var(--pw-border); border-radius: 0; padding:0; margin:0 auto; max-width:1100px; overflow:visible; transition:box-shadow .15s, border-color .15s; box-shadow:0 2px 8px rgba(0,0,0,0.04); }
+.composer-card { background:#fff; border:1px solid var(--pw-border); border-radius: var(--pw-radius-sm); padding:0; margin:0 auto; max-width:1100px; overflow:visible; transition:box-shadow .15s, border-color .15s; box-shadow:0 2px 8px rgba(0,0,0,0.04); }
 .composer-card.focused, .composer-card:focus-within { border-color:var(--pw-accent, #c96342); box-shadow:0 0 0 3px rgba(201,99,66,0.10); }
 .composer-row { display:flex; align-items:center; gap:0; min-height:48px; padding:4px 6px; overflow:visible; }
 .composer-seg { display:flex; align-items:center; gap:4px; flex-shrink:0; padding:0 8px; position:relative; }
@@ -3556,7 +3556,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 @media (max-width: 720px) {
   .cmp-icon-label { display:none; }
 }
-.composer-filters button { padding:4px 8px; border-radius: 0; background:transparent; border:0; cursor:pointer; font-size:11px; font-weight:500; color:var(--pw-muted); display:inline-flex; align-items:center; gap:4px; font-family:inherit; }
+.composer-filters button { padding:4px 8px; border-radius: var(--pw-radius-sm); background:transparent; border:0; cursor:pointer; font-size:11px; font-weight:500; color:var(--pw-muted); display:inline-flex; align-items:center; gap:4px; font-family:inherit; }
 .composer-filters button:hover:not(:disabled) { background:var(--pw-bg-alt); color:var(--pw-ink); }
 .composer-filters button:disabled { opacity:.5; cursor:not-allowed; }
 .composer-filters .caret { font-size:10px; color:var(--pw-ink-muted, var(--pw-muted)); }
@@ -3567,11 +3567,11 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  .composer-input { width:100%; flex-basis:100%; border-left:0; border-top:1px solid var(--pw-border); margin-top:4px; }
  .composer-card { margin:0 12px; }
 }
-.cmp-chip { display:inline-flex; align-items:center; gap:5px; height:28px; padding:0 10px; border-radius: 0; border:1px solid var(--pw-border); background:transparent; cursor:pointer; font:inherit; font-size:11px; color:var(--pw-ink); }
+.cmp-chip { display:inline-flex; align-items:center; gap:5px; height:28px; padding:0 10px; border-radius: var(--pw-radius-sm); border:1px solid var(--pw-border); background:transparent; cursor:pointer; font:inherit; font-size:11px; color:var(--pw-ink); }
 .cmp-chip:hover:not(:disabled) { background:rgba(201,99,66,0.08); border-color:var(--pw-accent); color:var(--pw-accent); }
 .cmp-chip:disabled { opacity:.5; cursor:not-allowed; }
 .cmp-chip .caret { font-size: 11px; color:var(--pw-ink-muted, var(--pw-muted)); }
-.cmp-icon { width:30px; height:30px; border-radius: 0; border:1px solid var(--pw-border); background:#fff; cursor:pointer; font:inherit; font-size:11px; font-weight:600; color:var(--pw-ink); display:flex; align-items:center; justify-content:center; padding:0; }
+.cmp-icon { width:30px; height:30px; border-radius: var(--pw-radius-sm); border:1px solid var(--pw-border); background:#fff; cursor:pointer; font:inherit; font-size:11px; font-weight:600; color:var(--pw-ink); display:flex; align-items:center; justify-content:center; padding:0; }
 .cmp-icon:hover:not(:disabled) { border-color:var(--pw-accent); color:var(--pw-accent); }
 .cmp-icon:disabled { opacity:.4; cursor:not-allowed; }
 .cmp-pptx { color:#d97706; border-color:#fbbf24; }
@@ -3585,7 +3585,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 /* Sim wizard smart chips */
 .sim-chips { display:inline-flex; align-items:center; flex-wrap:wrap; gap:8px; margin:8px 24px 0; padding:6px 10px; font-size:11px; color:var(--pw-muted); }
 .sim-chips-lead { font-weight:700; color:var(--pw-muted); }
-.sim-chip { display:inline-flex; align-items:center; height:24px; padding:0 10px; border-radius: 0; border:1px solid var(--pw-border); background:var(--pw-bg-alt); color:var(--pw-ink); font:inherit; font-size:11px; cursor:pointer; }
+.sim-chip { display:inline-flex; align-items:center; height:24px; padding:0 10px; border-radius: var(--pw-radius-sm); border:1px solid var(--pw-border); background:var(--pw-bg-alt); color:var(--pw-ink); font:inherit; font-size:11px; cursor:pointer; }
 .sim-chip:hover { background:var(--pw-accent-soft, rgba(201,99,66,0.10)); border-color:var(--pw-accent); color:var(--pw-accent); }
 .sim-chip-sep { color:var(--pw-border); font-weight:700; }
 .cmp-stop { background:var(--pw-error); color:#fff; }
@@ -3598,14 +3598,14 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 
 /* === Action toolbar + feedback row === */
 .action-toolbar { display:flex; gap:6px; margin-top:12px; padding-top:10px; border-top:1px solid var(--pw-border); flex-wrap:wrap; }
-.action-btn { font-size:11px; padding:5px 12px; border:1px solid var(--pw-border); background:transparent; color:var(--pw-ink); border-radius: 0; cursor:pointer; font:inherit; font-size:11px; }
+.action-btn { font-size:11px; padding:5px 12px; border:1px solid var(--pw-border); background:transparent; color:var(--pw-ink); border-radius: var(--pw-radius-sm); cursor:pointer; font:inherit; font-size:11px; }
 .action-btn:hover { background:rgba(201,99,66,0.08); border-color:var(--pw-accent); color:var(--pw-accent); }
 .fb-row { display:flex; gap:4px; margin-top:8px; }
-.fb-ic { width:28px; height:28px; border:0; border-radius: 0; background:transparent; cursor:pointer; font-size:13px; color:var(--pw-ink-muted, var(--pw-muted)); display:flex; align-items:center; justify-content:center; padding:0; }
+.fb-ic { width:28px; height:28px; border:0; border-radius: var(--pw-radius-sm); background:transparent; cursor:pointer; font-size:13px; color:var(--pw-ink-muted, var(--pw-muted)); display:flex; align-items:center; justify-content:center; padding:0; }
 .fb-ic:hover { background:var(--pw-bg-alt); color:var(--pw-ink); }
 
 /* === Soften route CLI cards === */
-:global(.cli-terminal) { background:var(--pw-bg-alt) !important; border-radius: 0!important; border:1px solid var(--pw-border) !important; font-family:'JetBrains Mono', ui-monospace, monospace !important; color:var(--pw-ink) !important; }
+:global(.cli-terminal) { background:var(--pw-bg-alt) !important; border-radius: var(--pw-radius-sm)!important; border:1px solid var(--pw-border) !important; font-family:'JetBrains Mono', ui-monospace, monospace !important; color:var(--pw-ink) !important; }
 :global(.cli-terminal .cli-prompt) { color:var(--pw-accent) !important; }
 :global(.cli-terminal .cli-command) { color:#3a8dff !important; }
 :global(.cli-terminal .cli-output) { color:var(--pw-ink) !important; }
@@ -3616,15 +3616,15 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 :global(.cli-spinner span), :global(.typing-indicator span) { background:var(--pw-accent) !important; }
 
 /* === Auto-saved learnings — soft green === */
-:global(.learning-card) { background:#f0f9f4 !important; border:1px solid #cfe6d7 !important; border-radius: 0!important; padding:14px !important; margin-top:10px; }
+:global(.learning-card) { background:#f0f9f4 !important; border:1px solid #cfe6d7 !important; border-radius: var(--pw-radius-sm)!important; padding:14px !important; margin-top:10px; }
 :global(.learning-card-header) { color:#2c6e3f !important; font-size:12px !important; font-weight:500 !important; text-transform:none !important; letter-spacing:0 !important; display:flex; align-items:center; gap:8px; }
 :global(.learning-card-facts .learning-fact) { font-size:12px !important; font-weight:400 !important; color:var(--pw-ink-soft, var(--pw-ink)) !important; }
 :global(.learning-card-facts .learning-fact span:last-child) { background:rgba(0,0,0,0.04) !important; color:#807a72 !important; font-size:10px !important; font-weight:500 !important; }
-:global(.learning-approve-btn) { background:#2c6e3f !important; color:#fff !important; border:0 !important; padding:7px 14px !important; font-size:11px !important; text-transform:none !important; letter-spacing:0 !important; border-radius: 0!important; cursor:pointer; }
-:global(.learning-dismiss-btn) { background:transparent !important; color:var(--pw-ink-muted, var(--pw-muted)) !important; border:1px solid var(--pw-border) !important; padding:7px 14px !important; font-size:11px !important; text-transform:none !important; letter-spacing:0 !important; border-radius: 0!important; cursor:pointer; }
+:global(.learning-approve-btn) { background:#2c6e3f !important; color:#fff !important; border:0 !important; padding:7px 14px !important; font-size:11px !important; text-transform:none !important; letter-spacing:0 !important; border-radius: var(--pw-radius-sm)!important; cursor:pointer; }
+:global(.learning-dismiss-btn) { background:transparent !important; color:var(--pw-ink-muted, var(--pw-muted)) !important; border:1px solid var(--pw-border) !important; padding:7px 14px !important; font-size:11px !important; text-transform:none !important; letter-spacing:0 !important; border-radius: var(--pw-radius-sm)!important; cursor:pointer; }
 
 /* === Follow-up pills — ghost rounded === */
-:global(.suggestion-btn) { background:transparent !important; border:1px solid var(--pw-border) !important; color:var(--pw-ink) !important; padding:8px 14px !important; font-size:12px !important; text-transform:none !important; letter-spacing:0 !important; font-weight:400 !important; border-radius: 0!important; cursor:pointer; font:inherit; font-size:12px; }
+:global(.suggestion-btn) { background:transparent !important; border:1px solid var(--pw-border) !important; color:var(--pw-ink) !important; padding:8px 14px !important; font-size:12px !important; text-transform:none !important; letter-spacing:0 !important; font-weight:400 !important; border-radius: var(--pw-radius-sm)!important; cursor:pointer; font:inherit; font-size:12px; }
 :global(.suggestion-btn:hover) { background:rgba(201,99,66,0.08) !important; border-color:var(--pw-accent) !important; color:var(--pw-accent) !important; }
 
 /* === Response tabs — underline only === */
@@ -3632,11 +3632,11 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 :global(.response-tab) { padding:8px 12px !important; font:inherit !important; font-size:11px !important; border:0 !important; background:transparent !important; color:var(--pw-ink-muted, var(--pw-muted)) !important; cursor:pointer; border-bottom:2px solid transparent !important; margin-bottom:-1px !important; text-transform:none !important; letter-spacing:0 !important; font-weight:400 !important; }
 :global(.response-tab:hover) { color:var(--pw-ink) !important; }
 :global(.response-tab.response-tab-active) { color:var(--pw-accent) !important; border-bottom-color:var(--pw-accent) !important; font-weight:500 !important; }
-:global(.response-tab .tab-badge) { display:inline-block !important; margin-left:5px !important; padding:1px 5px !important; border-radius: 0!important; background:var(--pw-bg-alt) !important; color:var(--pw-ink-muted, var(--pw-muted)) !important; font-size: 11px !important; border:0 !important; }
+:global(.response-tab .tab-badge) { display:inline-block !important; margin-left:5px !important; padding:1px 5px !important; border-radius: var(--pw-radius-sm)!important; background:var(--pw-bg-alt) !important; color:var(--pw-ink-muted, var(--pw-muted)) !important; font-size: 11px !important; border:0 !important; }
 
 .recent-dashboards { padding: 8px; border-top: 1px solid var(--pw-border); }
 .recent-dashboards .rd-header { font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; color: var(--pw-muted); padding: 6px 4px 8px; }
-.recent-dashboards .dash-item { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; font-size: 11px; text-decoration: none; color: inherit; border-radius: 0; }
+.recent-dashboards .dash-item { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; font-size: 11px; text-decoration: none; color: inherit; border-radius: var(--pw-radius-sm); }
 .recent-dashboards .dash-item:hover { background: rgba(0,0,0,0.05); }
 .recent-dashboards .dash-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recent-dashboards .dash-time { font-size: 11px; color: var(--pw-muted); }
@@ -3650,7 +3650,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 .bell-btn:hover { color: var(--pw-accent); border-color: var(--pw-accent); }
 .bell-dot {
  position: absolute; top: -4px; right: -4px; background: var(--pw-error);
- color: white; border-radius: 0; padding: 1px 5px; font-size: 10px;
+ color: white; border-radius: var(--pw-radius-sm); padding: 1px 5px; font-size: 10px;
  font-weight: bold; min-width: 14px; text-align: center;
 }
 .drift-dropdown {
@@ -3682,7 +3682,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 :global(.cli-terminal), :global(.cli-exec), :global(.exec-block) {
  background: var(--pw-bg-alt) !important;
  border: 1px solid var(--pw-border) !important;
- border-radius: 0!important;
+ border-radius: var(--pw-radius-sm)!important;
  padding: 10px 14px !important;
  font-family: 'JetBrains Mono', ui-monospace, monospace !important;
  font-size: 12px !important;
@@ -3701,7 +3701,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  font-size: 11px !important;
  font-weight: 600 !important;
  padding: 8px 14px !important;
- border-radius: 0!important;
+ border-radius: var(--pw-radius-sm)!important;
  border: 1px solid var(--pw-border) !important;
  border-bottom: 0 !important;
 }
@@ -3730,7 +3730,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 /* 5. Chart container — soften thick black border */
 :global(.chart-frame), :global(.chart-container), :global(.chart-wrap) {
  border: 1px solid var(--pw-border) !important;
- border-radius: 0!important;
+ border-radius: var(--pw-radius-sm)!important;
  background: #fff !important;
  padding: 16px !important;
 }
@@ -3739,7 +3739,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 :global(.chart-type-btn), :global(.chart-pill) {
  background: transparent !important;
  border: 1px solid var(--pw-border) !important;
- border-radius: 0!important;
+ border-radius: var(--pw-radius-sm)!important;
  padding: 6px 12px !important;
  color: var(--pw-ink) !important;
  font-size: 11px !important;
@@ -3764,7 +3764,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 :global(.kpi-card), :global(.metric-card), :global(.kpi-grid > *), :global(.kpi-tile) {
  background: #fff !important;
  border: 1px solid var(--pw-border) !important;
- border-radius: 0!important;
+ border-radius: var(--pw-radius-sm)!important;
  padding: 16px !important;
  box-shadow: none !important;
 }
@@ -3776,14 +3776,14 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 /* 8. CONFIDENCE bar — warm coral */
 :global(.confidence-bar), :global(.conf-bar) {
  background: var(--pw-bg-alt) !important;
- border-radius: 0!important;
+ border-radius: var(--pw-radius-sm)!important;
  height: 6px !important;
  overflow: hidden !important;
 }
 :global(.confidence-fill), :global(.conf-fill) {
  background: var(--pw-accent, #c96342) !important;
  height: 100% !important;
- border-radius: 0!important;
+ border-radius: var(--pw-radius-sm)!important;
 }
 :global(.confidence-fill.high), :global(.conf-fill.high) { background: #16a34a !important; }
 :global(.confidence-fill.medium), :global(.conf-fill.medium) { background: #f59e0b !important; }
@@ -3796,7 +3796,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  background: #f0f0f0 !important;
  color: #1a1614;
  border: none;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 8px 14px;
  max-width: 60ch;
  width: fit-content;
@@ -3819,7 +3819,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 :global(.kpi-tile-inline) {
  background: #fff !important;
  border: 1px solid var(--pw-border) !important;
- border-radius: 0!important;
+ border-radius: var(--pw-radius-sm)!important;
  padding: 18px 20px !important;
  box-shadow: none !important;
  max-width: none !important;
@@ -3851,7 +3851,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 :global(.src-stat) {
  background: #fff !important;
  border: 1px solid var(--pw-border) !important;
- border-radius: 0!important;
+ border-radius: var(--pw-radius-sm)!important;
  padding: 14px 16px !important;
  box-shadow: none !important;
 }
@@ -3875,7 +3875,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 :global(.src-confidence) {
  background: #fff !important;
  border: 1px solid var(--pw-border) !important;
- border-radius: 0!important;
+ border-radius: var(--pw-radius-sm)!important;
 }
 :global(.src-confidence .src-conf-value) {
  font-weight: 500 !important;
@@ -3885,14 +3885,14 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 :global(.src-confidence.low .src-conf-value) { color: #c96342 !important; }
 :global(.src-confidence .src-conf-bar) {
  background: var(--pw-bg-alt) !important;
- border-radius: 0!important;
+ border-radius: var(--pw-radius-sm)!important;
  overflow: hidden !important;
 }
 
 /* Sources block containers (DATA SOURCES / RESULT DATA / EXECUTION LOG wrappers) */
 :global(.src-block) {
  border: 1px solid var(--pw-border) !important;
- border-radius: 0!important;
+ border-radius: var(--pw-radius-sm)!important;
  background: #fff !important;
  overflow: hidden !important;
 }
@@ -3914,7 +3914,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  background: #f0f9f4 !important;
  border: 1px solid #cfe6d7 !important;
  border-left: 3px solid #16a34a !important;
- border-radius: 0!important;
+ border-radius: var(--pw-radius-sm)!important;
  padding: 12px 14px !important;
 }
 
@@ -3923,7 +3923,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 :global(.chat-msg div[style*="border: 2px solid var(--pw-ink)"]) {
  border-width: 1px !important;
  border-color: var(--pw-border) !important;
- border-radius: 0!important;
+ border-radius: var(--pw-radius-sm)!important;
 }
 
 .query-empty {
@@ -3935,7 +3935,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  text-align: center;
  color: var(--pw-ink-muted);
  border: 1px dashed var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  margin: 8px 0;
 }
 .query-empty-icon { font-size: 24px; margin-bottom: 10px; opacity: 0.5; }
@@ -3996,7 +3996,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  text-decoration: none;
  color: var(--pw-ink);
  flex-shrink: 0;
- padding: 4px 8px; border-radius: 0;
+ padding: 4px 8px; border-radius: var(--pw-radius-sm);
  transition: background .12s;
 }
 .proj-topnav-brand:hover { background: rgba(201,99,66,0.06); }
@@ -4035,7 +4035,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 .proj-topnav-link {
  display: inline-flex; align-items: center;
  padding: 5px 12px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-family: var(--pw-font-body);
  font-size: 12px;
  font-weight: 500;
@@ -4065,16 +4065,16 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
   padding: 14px 16px;
   background: rgba(201, 99, 66, 0.06);
   border: 1px solid var(--pw-accent, #c96342);
-  border-radius: 0;
+  border-radius: var(--pw-radius-sm);
 }
 .sim-launch-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .sim-launch-title { font-weight: 600; font-size: 13px; color: var(--pw-accent, #c96342); }
-.sim-launch-id { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--pw-ink-soft); background: rgba(0,0,0,0.04); padding: 2px 6px; border-radius: 0; }
+.sim-launch-id { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--pw-ink-soft); background: rgba(0,0,0,0.04); padding: 2px 6px; border-radius: var(--pw-radius-sm); }
 .sim-launch-body { font-size: 12px; color: var(--pw-ink-soft); margin-bottom: 10px; }
 .sim-launch-open {
   display: inline-flex; align-items: center; gap: 4px;
   background: var(--pw-accent, #c96342); color: #fff; border: none;
-  padding: 6px 14px; border-radius: 0; font-size: 12px; font-weight: 600;
+  padding: 6px 14px; border-radius: var(--pw-radius-sm); font-size: 12px; font-weight: 600;
   cursor: pointer;
 }
 .sim-launch-open:hover { filter: brightness(0.95); }

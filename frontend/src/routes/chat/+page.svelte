@@ -1665,7 +1665,7 @@ import { parseClarify } from '$lib/chat/tag-parsers';
 />
 
 {#if scheduleToast}
-  <div style="position: fixed; bottom: 20px; right: 20px; z-index: 240; background: var(--pw-ink); color: var(--pw-bg); padding: 10px 14px; border-radius: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 12px; display: flex; gap: 10px; align-items: center;">
+  <div style="position: fixed; bottom: 20px; right: 20px; z-index: 240; background: var(--pw-ink); color: var(--pw-bg); padding: 10px 14px; border-radius: var(--pw-radius-sm); box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 12px; display: flex; gap: 10px; align-items: center;">
     <span>Saved as workflow #{scheduleToast.wfId}</span>
     <a href="{base}/ui/agent-os/workflows" style="color: var(--pw-accent-soft, #f0c4b0); text-decoration: underline; font-weight: 700;">View →</a>
   </div>
@@ -2071,7 +2071,7 @@ import { parseClarify } from '$lib/chat/tag-parsers';
 .hero-sub { color: var(--pw-ink-muted, var(--pw-muted)); font-size: 13px; margin: 0; }
 
 /* Composer card — single-row layout */
-.composer-card { background:#fff; border:1px solid var(--pw-border); border-radius: 0; padding:0; margin:0 auto; max-width:1100px; overflow:visible; transition:box-shadow .15s, border-color .15s; box-shadow:0 2px 8px rgba(0,0,0,0.04); }
+.composer-card { background:#fff; border:1px solid var(--pw-border); border-radius: var(--pw-radius-sm); padding:0; margin:0 auto; max-width:1100px; overflow:visible; transition:box-shadow .15s, border-color .15s; box-shadow:0 2px 8px rgba(0,0,0,0.04); }
 .composer-card.focused, .composer-card:focus-within { border-color:var(--pw-accent, #c96342); box-shadow:0 0 0 3px rgba(201,99,66,0.10); }
 .composer-row { display:flex; align-items:center; gap:0; min-height:48px; padding:4px 6px; overflow:visible; }
 .composer-seg { display:flex; align-items:center; gap:4px; flex-shrink:0; padding:0 8px; position:relative; }
@@ -2083,10 +2083,10 @@ import { parseClarify } from '$lib/chat/tag-parsers';
 .composer-send:hover:not(:disabled) { background:#b85a3a; box-shadow:0 4px 10px rgba(201,99,66,0.35); }
 .composer-send:disabled { background:#e5b4b4; cursor:not-allowed; box-shadow:none; }
 .composer-actions { border-left:1px solid var(--pw-border); }
-.composer-actions button { padding:6px 8px; border-radius: 0; background:transparent; border:1px solid transparent; cursor:pointer; font-size:11px; font-weight:600; color:var(--pw-ink); transition:all .15s; }
+.composer-actions button { padding:6px 8px; border-radius: var(--pw-radius-sm); background:transparent; border:1px solid transparent; cursor:pointer; font-size:11px; font-weight:600; color:var(--pw-ink); transition:all .15s; }
 .composer-actions button:hover:not(:disabled) { background:var(--pw-bg-alt); border-color:var(--pw-border); }
 .composer-actions button:disabled { color:var(--pw-muted); cursor:not-allowed; }
-.composer-filters button, .composer-mode > button, .composer-mode .mode-selector > button { padding:4px 8px; border-radius: 0; background:transparent; border:0; cursor:pointer; font-size:11px; font-weight:500; color:var(--pw-muted); display:inline-flex; align-items:center; gap:4px; font-family:inherit; }
+.composer-filters button, .composer-mode > button, .composer-mode .mode-selector > button { padding:4px 8px; border-radius: var(--pw-radius-sm); background:transparent; border:0; cursor:pointer; font-size:11px; font-weight:500; color:var(--pw-muted); display:inline-flex; align-items:center; gap:4px; font-family:inherit; }
 .composer-filters button:hover:not(:disabled), .composer-mode > button:hover:not(:disabled), .composer-mode .mode-selector > button:hover:not(:disabled) { background:var(--pw-bg-alt); color:var(--pw-ink); }
 .composer-filters button.active, .composer-mode > button.active { background:rgba(201,99,66,0.10); color:var(--pw-accent, #c96342); font-weight:600; }
 .composer-filters button:disabled, .composer-mode > button:disabled { opacity:.5; cursor:not-allowed; }
@@ -2102,7 +2102,7 @@ import { parseClarify } from '$lib/chat/tag-parsers';
  gap: 5px;
  height: 28px;
  padding: 0 10px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  border: 1px solid var(--pw-border);
  background: transparent;
  cursor: pointer;
@@ -2121,7 +2121,7 @@ import { parseClarify } from '$lib/chat/tag-parsers';
 .cmp-icon {
  width: 30px;
  height: 30px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  border: 1px solid var(--pw-border);
  background: #fff;
  cursor: pointer;
@@ -2159,7 +2159,7 @@ import { parseClarify } from '$lib/chat/tag-parsers';
 .cmp-tile {
  width: 30px;
  height: 30px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  border: 1px solid var(--pw-border);
  background: #fff;
  cursor: pointer;
@@ -2194,7 +2194,7 @@ import { parseClarify } from '$lib/chat/tag-parsers';
 .autosave-card {
  background: #f0f9f4;
  border: 1px solid #cfe6d7;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 14px;
  margin-top: 10px;
 }
@@ -2216,7 +2216,7 @@ import { parseClarify } from '$lib/chat/tag-parsers';
 .autosave-conf {
  font-size: 10px;
  padding: 2px 8px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  background: rgba(0,0,0,0.04);
  color: #807a72;
  flex-shrink: 0;
@@ -2237,7 +2237,7 @@ import { parseClarify } from '$lib/chat/tag-parsers';
 .followup-pill {
  background: transparent;
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-size: 12px;
  padding: 8px 14px;
  color: var(--pw-ink);
@@ -2260,7 +2260,7 @@ import { parseClarify } from '$lib/chat/tag-parsers';
 .fb-btn {
  width: 28px;
  height: 28px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  background: transparent;
  border: 0;
  cursor: pointer;
@@ -2274,7 +2274,7 @@ import { parseClarify } from '$lib/chat/tag-parsers';
 /* CLI Route card softening */
 :global(.cli-terminal) {
  background: var(--pw-bg-alt) !important;
- border-radius: 0!important;
+ border-radius: var(--pw-radius-sm)!important;
  font-family: 'JetBrains Mono', ui-monospace, monospace !important;
 }
 :global(.cli-terminal .cli-prompt) { color: var(--pw-accent, #c96342) !important; }
@@ -2291,9 +2291,9 @@ import { parseClarify } from '$lib/chat/tag-parsers';
  padding-bottom: 8px;
  margin-bottom: 4px;
 }
-.mode-bar-left { display: inline-flex; gap: 4px; padding: 2px; border: 1px solid var(--pw-border, #e8e3d6); border-radius: 0; background: var(--pw-bg-alt, #faf6f1); }
+.mode-bar-left { display: inline-flex; gap: 4px; padding: 2px; border: 1px solid var(--pw-border, #e8e3d6); border-radius: var(--pw-radius-sm); background: var(--pw-bg-alt, #faf6f1); }
 .mode-bar-right { position: relative; }
-.chatmode-group { padding: 2px; border: 1px solid var(--pw-border); border-radius: 0; background: var(--pw-bg-alt, #faf6f1); }
+.chatmode-group { padding: 2px; border: 1px solid var(--pw-border); border-radius: var(--pw-radius-sm); background: var(--pw-bg-alt, #faf6f1); }
 .chatmode-pill { border: 1px solid transparent !important; background: transparent !important; padding: 4px 10px !important; font-size: 12.5px !important; }
 .chatmode-pill.chatmode-active {
  background: var(--pw-bg, #fff) !important;

@@ -45,7 +45,7 @@
  height: 36px;
  width: 200px;
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  overflow: hidden;
  background: transparent;
  }

@@ -358,7 +358,7 @@ import AnswerCard from './AnswerCard.svelte';
 {#each messages as msg, i (i)}
   {#if msg.role === 'assistant'}
     <div class="msg-row" style="display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px;">
-      <div style="width: 28px; height: 28px; border-radius: 0; background: var(--pw-bg-alt); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+      <div style="width: 28px; height: 28px; border-radius: var(--pw-radius-sm); background: var(--pw-bg-alt); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
         <RobotAvatar size={20} mood={msg.status === 'error' ? 'error' : (msg.status === 'streaming' ? (msg.content ? 'typing' : 'thinking') : 'done')} />
       </div>
       <div style="flex: 1; min-width: 0;">
@@ -368,7 +368,7 @@ import AnswerCard from './AnswerCard.svelte';
           {@const rd = (msg as any).routing}
           {@const tColor = rd.tier === 'TRIVIAL' ? 'var(--pw-muted)' : rd.tier === 'LOOKUP' ? 'var(--pw-success)' : rd.tier === 'AGENTIC' ? '#6b21a8' : rd.tier === 'REASONING' ? '#4c1d95' : rd.tier === 'ULTRA' ? '#1e1b4b' : 'var(--pw-accent)'}
           <div title={`${rd.reason || ''}${rd.cached ? ' · cached' : ''}${Array.isArray(rd.signals) ? '\n' + rd.signals.join(', ') : ''}`}
-               style="display:inline-flex; align-items:center; gap:6px; margin-bottom:6px; font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:0.06em; padding:2px 7px; border-radius: 0; color:white; background:{tColor};">
+               style="display:inline-flex; align-items:center; gap:6px; margin-bottom:6px; font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:0.06em; padding:2px 7px; border-radius: var(--pw-radius-sm); color:white; background:{tColor};">
             <span>{rd.override ? 'MANUAL' : rd.tier}</span>
             <span style="opacity:0.85; font-weight:700; text-transform:none;">{(rd.model || '').split('/').pop()}</span>
             {#if rd.override && rd.suggested_tier}<span style="opacity:0.6; font-weight:700; text-transform:none;">· auto: {rd.suggested_tier.toLowerCase()}</span>{:else if typeof rd.score === 'number'}<span style="opacity:0.7; font-weight:700;">{rd.score.toFixed(2)}</span>{/if}
@@ -403,7 +403,7 @@ import AnswerCard from './AnswerCard.svelte';
                   <div style="flex: 1; min-width: 180px; max-width: 280px; border: 2px solid var(--pw-ink); background: var(--pw-surface); padding: 10px;">
                     <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
                       <span style="font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; color: {meta.color};">{meta.label}</span>
-                      <span style="font-size: 11px; font-weight: 900; padding: 1px 5px; border-radius: 0; color: white; background: {isLLM ? '#6b21a8' : 'var(--pw-success)'};">{meta.tier}</span>
+                      <span style="font-size: 11px; font-weight: 900; padding: 1px 5px; border-radius: var(--pw-radius-sm); color: white; background: {isLLM ? '#6b21a8' : 'var(--pw-success)'};">{meta.tier}</span>
                     </div>
                     <div style="font-size: 11px; font-weight: 700; margin-bottom: 4px;">{meta.algo}</div>
                     {#if mlTool.duration}<div style="font-size: 10px; color: var(--pw-muted);">Completed in {mlTool.duration}</div>{/if}
@@ -1317,7 +1317,7 @@ import AnswerCard from './AnswerCard.svelte';
    padding: 6px 10px 6px 6px;
    border: 1px solid rgba(201, 99, 66, 0.25);
    background: rgba(201, 99, 66, 0.05);
-   border-radius: 0;
+   border-radius: var(--pw-radius-sm);
    cursor: pointer;
    font-family: 'Inter', system-ui, sans-serif;
    font-size: 12px;
@@ -1365,7 +1365,7 @@ import AnswerCard from './AnswerCard.svelte';
  background: none;
  border: none;
  padding: 6px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-size: 13px;
  line-height: 1;
  cursor: pointer;
@@ -1403,7 +1403,7 @@ import AnswerCard from './AnswerCard.svelte';
  display: inline-flex;
  gap: 2px;
  background: #f0ece4; /* warm cream pill track */
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 4px;
  margin-bottom: 16px;
  flex-wrap: wrap;
@@ -1411,7 +1411,7 @@ import AnswerCard from './AnswerCard.svelte';
  .response-tabs-top button {
  background: transparent;
  border: none;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 6px 16px;
  font-size: 11px;
  font-weight: 600;
@@ -1444,7 +1444,7 @@ import AnswerCard from './AnswerCard.svelte';
  padding: 10px 16px !important;
  font-size: 12px !important;
  line-height: 1.4 !important;
- border-radius: 0!important;
+ border-radius: var(--pw-radius-sm)!important;
  display: flex !important;
  align-items: center !important;
  }
@@ -1497,7 +1497,7 @@ import AnswerCard from './AnswerCard.svelte';
  .bubble-user { display: inline-block; }
  .verdict-card {
  padding: 14px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  border-left: 4px solid;
  background: var(--pw-surface, #fff);
  }
@@ -1521,7 +1521,7 @@ import AnswerCard from './AnswerCard.svelte';
  background: var(--pw-surface, #fff);
  color: var(--pw-accent, #c96342);
  cursor: pointer;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  }
  .verdict-actions button:hover { background: var(--pw-accent, #c96342); color: #fff; }
 
@@ -1546,7 +1546,7 @@ import AnswerCard from './AnswerCard.svelte';
  padding: 14px 18px;
  background: linear-gradient(135deg, rgba(201,99,66,0.06) 0%, var(--pw-surface) 60%);
  border-left: 4px solid var(--pw-accent);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  margin: 0 0 14px 0;
  font-family: var(--pw-font-serif, var(--pw-font-body));
  }
@@ -1567,7 +1567,7 @@ import AnswerCard from './AnswerCard.svelte';
  .cp-because-card {
  background: var(--pw-bg-alt);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 12px 14px;
  margin: 0 0 14px 0;
  }
@@ -1595,15 +1595,15 @@ import AnswerCard from './AnswerCard.svelte';
  .cp-conf3-card {
  background: var(--pw-surface);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 10px 14px;
  margin: 0 0 14px 0;
  display: flex; flex-direction: column; gap: 6px;
  }
  .cp-conf3-row { display: flex; align-items: center; gap: 10px; font-size: 11px; }
  .cp-conf3-label { width: 90px; color: var(--pw-muted); }
- .cp-conf3-bar { flex: 1; height: 6px; background: var(--pw-bg-alt); border-radius: 0; overflow: hidden; }
- .cp-conf3-fill { height: 100%; border-radius: 0; transition: width .3s; }
+ .cp-conf3-bar { flex: 1; height: 6px; background: var(--pw-bg-alt); border-radius: var(--pw-radius-sm); overflow: hidden; }
+ .cp-conf3-fill { height: 100%; border-radius: var(--pw-radius-sm); transition: width .3s; }
  .cp-conf3-val { width: 36px; text-align: right; font-weight: 700; color: var(--pw-ink); font-variant-numeric: tabular-nums; }
 
  /* Storytelling: ACTION buttons */
@@ -1616,7 +1616,7 @@ import AnswerCard from './AnswerCard.svelte';
  padding: 6px 14px;
  background: var(--pw-surface);
  border: 1px solid var(--pw-border);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-size: 12px; font-weight: 600;
  color: var(--pw-accent);
  cursor: pointer;
@@ -1638,7 +1638,7 @@ import AnswerCard from './AnswerCard.svelte';
  padding: 8px 12px;
  background: rgba(245,158,11,0.06);
  border-left: 3px solid #f59e0b;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  margin: 14px 0 0 0;
  font-size: 11px;
  font-style: italic;
@@ -1652,7 +1652,7 @@ import AnswerCard from './AnswerCard.svelte';
  color: #b91c1c;
  font-weight: 700;
  padding: 1px 4px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  cursor: help;
  }
  :global(.cell-anomaly[data-severity="warn"]) {

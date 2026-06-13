@@ -109,21 +109,21 @@
 </aside>
 
 <style>
-  .edit-panel { background: #1a1a1a; color: #fafaf7; border-radius: 0; padding: 10px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; align-self: flex-start; position: sticky; top: 20px; max-height: 80vh; overflow-y: auto; }
+  .edit-panel { background: #1a1a1a; color: #fafaf7; border-radius: var(--pw-radius-sm); padding: 10px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; align-self: flex-start; position: sticky; top: 20px; max-height: 80vh; overflow-y: auto; }
   .hdr { color: #4caf50; font-weight: 700; letter-spacing: 0.15em; padding: 4px 4px 8px; border-bottom: 1px solid #333; margin-bottom: 8px; }
   .input-row { display: flex; gap: 6px; }
-  .ipt { flex: 1; background: #0e0e0e; color: #fafaf7; border: 1px solid #333; border-radius: 0; padding: 6px 8px; font-family: inherit; font-size: 11px; outline: none; }
+  .ipt { flex: 1; background: #0e0e0e; color: #fafaf7; border: 1px solid #333; border-radius: var(--pw-radius-sm); padding: 6px 8px; font-family: inherit; font-size: 11px; outline: none; }
   .ipt:focus { border-color: #4caf50; }
-  .go { background: #2e7d32; color: #fff; border: none; border-radius: 0; padding: 0 12px; font-weight: 700; cursor: pointer; }
+  .go { background: #2e7d32; color: #fff; border: none; border-radius: var(--pw-radius-sm); padding: 0 12px; font-weight: 700; cursor: pointer; }
   .go:disabled { opacity: 0.5; cursor: not-allowed; }
-  .err { background: #4a1212; color: #ff8a80; padding: 6px 8px; border-radius: 0; margin-top: 6px; font-size: 11px; }
+  .err { background: #4a1212; color: #ff8a80; padding: 6px 8px; border-radius: var(--pw-radius-sm); margin-top: 6px; font-size: 11px; }
   .hist-hdr { color: #888; font-size: 10px; letter-spacing: 0.15em; margin: 12px 4px 6px; }
   .hist { display: flex; flex-direction: column; gap: 6px; }
-  .row { display: flex; gap: 6px; align-items: flex-start; background: #0e0e0e; border: 1px solid #2a2a2a; border-radius: 0; padding: 6px 8px; }
+  .row { display: flex; gap: 6px; align-items: flex-start; background: #0e0e0e; border: 1px solid #2a2a2a; border-radius: var(--pw-radius-sm); padding: 6px 8px; }
   .row-main { flex: 1; min-width: 0; }
   .prompt { color: #fafaf7; word-break: break-word; }
   .rat { color: #aaa; font-size: 11px; margin-top: 2px; word-break: break-word; }
   .ops { color: #4caf50; font-size: 10px; margin-top: 2px; }
-  .undo { background: transparent; color: #aaa; border: 1px solid #333; border-radius: 0; padding: 2px 8px; cursor: pointer; font-size: 11px; }
+  .undo { background: transparent; color: #aaa; border: 1px solid #333; border-radius: var(--pw-radius-sm); padding: 2px 8px; cursor: pointer; font-size: 11px; }
   .undo:hover { color: #4caf50; border-color: #4caf50; }
 </style>

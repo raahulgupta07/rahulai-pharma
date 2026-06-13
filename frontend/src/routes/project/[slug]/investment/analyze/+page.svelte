@@ -437,7 +437,7 @@
  .back-btn {
  background: none;
  border: 1px solid var(--pw-border, #d8d3c4);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  width: 32px; height: 32px;
  font-size: 12px;
  cursor: pointer;
@@ -455,7 +455,7 @@
  background: var(--pw-bg-alt, #f0ebdc);
  color: var(--pw-ink-soft, #6b6660);
  padding: 3px 8px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-size: 10.5px;
  font-weight: 600;
  letter-spacing: 0.04em;
@@ -473,7 +473,7 @@
  border: 1px solid var(--pw-border, #d8d3c4);
  color: var(--pw-ink);
  padding: 6px 12px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-size: 11px;
  font-weight: 600;
  letter-spacing: 0.04em;
@@ -549,7 +549,7 @@
  border: 1px solid var(--pw-border, #d8d3c4);
  border-left: 3px solid var(--pw-border, #d8d3c4);
  background: var(--pw-surface, #fff);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 10px 12px;
  min-height: 70px;
  transition: border-color 0.2s, background 0.2s;
@@ -578,7 +578,7 @@
  text-transform: uppercase;
  letter-spacing: 0.05em;
  padding: 2px 6px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  display: inline-flex;
  align-items: center;
  gap: 4px;
@@ -617,7 +617,7 @@
  margin-top: 16px;
  border: 1px solid var(--pw-accent, #c96342);
  background: var(--pw-surface, #fff);
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  padding: 16px;
  box-shadow: 0 4px 12px rgba(201,99,66,0.12);
  }
@@ -635,7 +635,7 @@
  }
  .verdict-pill {
  padding: 4px 10px;
- border-radius: 0;
+ border-radius: var(--pw-radius-sm);
  font-size: 11px;
  font-weight: 700;
  letter-spacing: 0.05em;

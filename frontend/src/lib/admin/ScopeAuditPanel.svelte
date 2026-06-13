@@ -738,7 +738,7 @@
   }
   .tabs button {
     background: transparent; border: none; border-bottom: 2px solid transparent;
-    border-radius: 0;
+    border-radius: var(--pw-radius-sm);
     padding: 8px 16px; font-size: 13px; font-weight: 500;
     color: #777;
   }
