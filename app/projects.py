@@ -1989,6 +1989,20 @@ async def project_chat(slug: str, request: Request):
             except Exception as e:
                 _logger.debug(f"dream_poignancy_hook failed for {slug}: {e}")
 
+            # 10. maybe_learn (Build A — teach-by-chat). If the user message was an
+            # explicit "remember …" / correction, distil ONE durable fact → pending
+            # memory (Intern Rule: admin approves before it reaches chat). The gate
+            # is a zero-cost regex, so normal questions are a no-op here.
+            try:
+                from dash.learning.chat_teach import maybe_learn as _maybe_learn
+                _maybe_learn(
+                    slug, question, answer,
+                    user_id=(user.get("user_id") or user.get("id")) if user else None,
+                    conv_id=session_id or "",
+                )
+            except Exception as e:
+                _logger.debug(f"Background task chat_teach failed for {slug}: {e}")
+
         # ONE batched job for all tasks (was ~11 separate submissions), on the
         # bounded pool rather than a raw per-request thread.
         _bg_executor.submit(_batched_bg)
@@ -2215,6 +2229,23 @@ async def project_chat(slug: str, request: Request):
             # rule (E1) is the primary fix for the streamed display; this guard
             # protects everything that consumes the final assembled text.
             answer = _dedupe_greeting("".join(full_content))
+            # Build A — teach-by-chat: if the user explicitly taught a fact this
+            # turn ("remember …" / correction), surface an optimistic chip. The
+            # actual distil+store runs in the bg batch (task #10) under the review
+            # gate (status='pending') — nothing reaches chat until an admin approves.
+            try:
+                from dash.learning.chat_teach import wants_to_teach as _wants_teach
+                if _wants_teach(message):
+                    yield (
+                        "event: TeachLearned\ndata: "
+                        + _json.dumps({
+                            "status": "pending",
+                            "note": "📝 Noted — saved to your review queue (pending approval).",
+                        })
+                        + "\n\n"
+                    )
+            except Exception:
+                pass
             if answer:
                 _run_background_tasks(message, answer)
 
