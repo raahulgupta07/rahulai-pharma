@@ -213,16 +213,27 @@ def _search_facts(query: str, project_slug: str | None = None) -> list[dict]:
 
 def create_search_all_tool(project_slug: str | None = None):
     """Create unified semantic search tool for an agent."""
+    # Authoritative slug bound at tool-creation time. Kept under a distinct name
+    # so the tolerant `project_slug` parameter below can't shadow it.
+    _bound_slug = project_slug
 
     @tool(name="search_all", description="Search ALL knowledge sources — documents, brain, knowledge graph, grounded facts. Use when you need context beyond SQL data. Returns top results ranked by relevance. Args: query (str) — what to search for")
-    def search_all(query: str) -> str:
-        """Search all knowledge sources and return reranked results."""
-        # Search 4 sources
+    def search_all(query: str, project_slug: str | None = None, **_kwargs) -> str:
+        """Search all knowledge sources and return reranked results.
+
+        `project_slug` and any other extra kwargs (**_kwargs) are accepted but
+        IGNORED — the LLM passes unprompted args like project_slug='…' or
+        agent='analyst', which used to raise a ToolCallError ("Unexpected
+        keyword argument") and force a degraded fallback that produced wrong
+        answers (e.g. COUNT DISTINCT). This is a single-project agent, so the
+        slug bound at tool creation is authoritative. **_kwargs makes the tool
+        tolerant of any future invented argument. 2026-06-14."""
+        # Search 4 sources (always with the bound slug, never the passed one).
         all_results = []
-        all_results.extend(_search_pgvector(query, project_slug))
-        all_results.extend(_search_brain(query, project_slug))
-        all_results.extend(_search_kg(query, project_slug))
-        all_results.extend(_search_facts(query, project_slug))
+        all_results.extend(_search_pgvector(query, _bound_slug))
+        all_results.extend(_search_brain(query, _bound_slug))
+        all_results.extend(_search_kg(query, _bound_slug))
+        all_results.extend(_search_facts(query, _bound_slug))
 
         if not all_results:
             return "No relevant knowledge found across any source."
