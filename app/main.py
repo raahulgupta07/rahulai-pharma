@@ -1153,6 +1153,7 @@ try:
 except Exception:
     dashboard_to_deck_router = None  # Phase 3 — Dashboard → Deck (POST /api/dashboards/{id}/to-deck)
 from app.accuracy_api import router as accuracy_router
+from app.okf_api import router as okf_router
 from app.research_api import router as research_router
 from app.golden_api import router as golden_router
 from app.scope_audit_api import router as scope_audit_router
@@ -1298,6 +1299,7 @@ except Exception as _e:
     import logging as _aos_log
     _aos_log.getLogger(__name__).warning(f"agent_os_admin_api not mounted: {_e}")
 app.include_router(projects_router)
+app.include_router(okf_router)
 # OpenAI-compatible API gateway (/api/v1) for external apps (e.g. PHP storefront)
 try:
     from app.api_gateway import router as api_gateway_router
