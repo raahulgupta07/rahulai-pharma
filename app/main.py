@@ -2894,6 +2894,13 @@ async def super_chat(request: Request):
     mode = form.get("mode", "auto")           # "auto" or project slug
     reasoning = form.get("reasoning", "auto")  # "auto" | "fast" | "deep"
     analysis_type = form.get("analysis_type", "auto")  # "auto" | "descriptive" | "diagnostic" | etc.
+    # OKF opt-in: surface the imported okf knowledge lane for this request only
+    # (default off → identical to today). Per-request contextvar.
+    try:
+        from dash.tools.semantic_search import set_okf_lane
+        set_okf_lane(str(form.get("use_okf", "")).lower() in ("1", "true", "yes", "on"))
+    except Exception:
+        pass
 
     if not message:
         from fastapi import HTTPException

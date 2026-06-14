@@ -1000,6 +1000,12 @@ async def project_chat(slug: str, request: Request):
     session_id = form.get("session_id")
     reasoning = form.get("reasoning", "auto")  # "auto" | "fast" | "deep"
     analysis_type = form.get("analysis_type", "auto")  # "auto" | "descriptive" | etc.
+    # OKF opt-in lane (default off → identical to today).
+    try:
+        from dash.tools.semantic_search import set_okf_lane
+        set_okf_lane(str(form.get("use_okf", "")).lower() in ("1", "true", "yes", "on"))
+    except Exception:
+        pass
     # Composer model picker (Claude-Code style): model_pref overrides the router's
     # auto choice; effort maps to the reasoning/thinking mode.
     model_pref = (form.get("model_pref") or "auto").strip().lower()  # auto|lite|mid|deep

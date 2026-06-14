@@ -10,9 +10,31 @@ Reranking: Cohere via OpenRouter → keyword fallback → raw fallback
 import os
 import json
 import logging
+from contextvars import ContextVar
 from agno.tools import tool
 
 logger = logging.getLogger(__name__)
+
+# OKF opt-in lane (Phase 2). Imported OKF knowledge lives tagged source='okf'
+# (source_type='okf' for triples) and is EXCLUDED from chat retrieval by default,
+# so the live agent behaves byte-identically. A chat request sets this flag (from
+# the use_okf form param) to ALSO surface the okf lane — used for side-by-side
+# testing without disturbing the default path. Per-request contextvar. 2026-06-14.
+OKF_LANE_ENABLED: ContextVar[bool] = ContextVar("okf_lane_enabled", default=False)
+
+
+def set_okf_lane(enabled: bool) -> None:
+    try:
+        OKF_LANE_ENABLED.set(bool(enabled))
+    except Exception:
+        pass
+
+
+def _okf_on() -> bool:
+    try:
+        return bool(OKF_LANE_ENABLED.get())
+    except Exception:
+        return False
 
 # Rerank models to try in order (first success wins)
 RERANK_MODELS = [
@@ -128,10 +150,14 @@ def _search_brain(query: str, project_slug: str | None = None) -> list[dict]:
             params["slug"] = project_slug
         scope_filter += ")"
 
+        # Default: exclude the opt-in OKF lane (source='okf'). When use_okf is set
+        # on the request, surface it too (side-by-side testing).
+        okf_filter = "" if _okf_on() else " AND COALESCE(source,'') <> 'okf'"
+
         with engine.connect() as conn:
             rows = conn.execute(text(
                 f"SELECT category, name, definition, project_slug FROM public.dash_company_brain "
-                f"WHERE {scope_filter} AND ({placeholders_name} OR {placeholders_def}) "
+                f"WHERE {scope_filter} AND ({placeholders_name} OR {placeholders_def}){okf_filter} "
                 f"ORDER BY CASE WHEN project_slug IS NOT NULL THEN 0 ELSE 1 END "
                 f"LIMIT 10"
             ), params).fetchall()
@@ -170,10 +196,13 @@ def _search_kg(query: str, project_slug: str | None = None) -> list[dict]:
             slug_filter = " AND project_slug = :slug"
             params["slug"] = project_slug
 
+        # Default: exclude the opt-in OKF lane (source_type='okf').
+        okf_filter = "" if _okf_on() else " AND COALESCE(source_type,'') <> 'okf'"
+
         with engine.connect() as conn:
             rows = conn.execute(text(
                 f"SELECT subject, predicate, object, source FROM public.dash_knowledge_triples "
-                f"WHERE ({subject_match} OR {object_match}){slug_filter} LIMIT 10"
+                f"WHERE ({subject_match} OR {object_match}){slug_filter}{okf_filter} LIMIT 10"
             ), params).fetchall()
 
             for r in rows:
