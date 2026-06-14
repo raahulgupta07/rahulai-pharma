@@ -13299,7 +13299,10 @@ async def retrain_project(slug: str, request: Request):
         # failure never breaks training; catalog_search falls back to ILIKE.
         try:
             from scripts.build_catalog_vectors import run as _build_catalog
-            _cv = _build_catalog()
+            # Pass _master_log so each embed batch emits a heartbeat — without it
+            # a large/slow catalog embed runs silent > 12 min and the watchdog
+            # (_reap_stale_runs) FALSE-aborts this still-working run.
+            _cv = _build_catalog(log_fn=lambda m: _master_log(m, "", total_tables))
             _master_log(f"✓ catalog vectors: {_cv.get('embedded',0)} products", "", total_tables)
         except Exception as _cve:
             import logging as _l
@@ -13356,7 +13359,9 @@ async def retrain_project(slug: str, request: Request):
             if _gos.getenv("PHARMA_GRAPH_BUILD_DISABLED") == "1":
                 raise RuntimeError("graph build disabled")
             from scripts.build_pharma_graph import main as _build_graph
-            _build_graph()
+            # Pass _master_log so the MERGE loop heartbeats into the run's logs —
+            # otherwise the watchdog is blind to this step (print() → stdout only).
+            _build_graph(log_fn=lambda m: _master_log(m, "", total_tables))
             _master_log("✓ knowledge graph rebuilt", "", total_tables)
         except Exception as _ge:
             import logging as _l

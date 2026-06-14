@@ -83,7 +83,7 @@ One FastAPI backend (gunicorn + uvicorn workers) serving a SvelteKit 5 SPA, fron
 
 ## Workflow (end-to-end)
 
-**1 · Load → Train.** Upload CSV/Excel/docs in the Workspace → the 14-step per-table pipeline runs (drift → profile → dimension catalog → sample → Q&A gen verified against the real DB → persona → knowledge index → brain fill → bilingual twins), then a master tail (knowledge graph → vector backfill → scope guardrail → evals). Untrained tables also auto-train 24/7 via the leader-gated daemon. Live progress streams in the floating robot console + Dashboard Training Pipeline.
+**1 · Load → Train.** Upload CSV/Excel/docs in the Workspace → the 14-step per-table pipeline runs (drift → profile → dimension catalog → sample → Q&A gen verified against the real DB → persona → knowledge index → brain fill → bilingual twins), then a master tail (knowledge graph → vector backfill → scope guardrail → evals). Untrained tables also auto-train 24/7 via the leader-gated daemon. Live progress streams in the floating robot console + Dashboard Training Pipeline. A watchdog auto-fails any run that makes no progress for 12 minutes so the UI never spins forever; every long step (catalog embedding, knowledge-graph build, scope derivation) emits a per-batch progress heartbeat so a slow-but-healthy run is never mistaken for a hung one.
 
 ```
 upload ─▶ per-table pipeline ─▶ master tail ─▶ embeddings + brain + graph ─▶ agent grounded
@@ -201,8 +201,8 @@ Missing catalog fields (e.g. ~1,566 rows with no `generic_name`) can be **sugges
 
 ### OKF — portable knowledge bundles, in & out (2026-06-14)
 Knowledge can be exported, edited, and imported back as an **[Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog) bundle** — a directory of markdown files with YAML frontmatter (tables, verified queries, facts), git-diffable and vendor-neutral. The agent's knowledge lives in the DB; OKF is the portable/reviewable packaging around it. **The default chat is never affected — the whole feature is additive and opt-in.** Find it at **Agent Brain → BRAIN → OKF Exchange**.
-- **Export** (`GET /okf-export`) — read-only; downloads a zip of the bundle plus a self-contained interactive `viz.html` graph.
-- **Import** (`POST /okf-import`) — a `.zip` lands in an **isolated, tagged lane** (`source='okf'`, `status='pending'`) that **chat ignores**. It never touches live knowledge.
+- **Export** (`GET /okf-export`) — read-only; downloads a zip of the bundle plus a self-contained interactive `viz.html` graph. (Each project exports only its own knowledge — facts, queries and join-edges are all scoped to the project, deduplicated, and the bundle now includes the brain facts that an earlier version silently omitted.)
+- **Import** (`POST /okf-import`) — a `.zip` lands in an **isolated, tagged lane** (`source='okf'`, `status='pending'`) that **chat ignores**. It never touches live knowledge. Re-importing the same bundle is safe and idempotent: knowledge you already promoted stays put, anything already present is skipped (the response reports `imported` vs `skipped_existing`), so a repeat import never grows the lane or clobbers live facts.
 - **Preview before committing** — a **🧪 OKF** toggle in the chat header (next to the Claude/Classic toggle) makes *your* chat session also read the pending lane (`use_okf`), so you can see the effect side-by-side. Off by default = identical behaviour.
 - **Review gate** — in the OKF Exchange panel, **✓ Promote** flips the pending lane to live (now used by everyone, no flag) or **✕ Reject** discards it. Nothing reaches the live agent until you promote.
 
@@ -410,7 +410,7 @@ Large ID/code values exported as scientific notation (`1E+12`) or read as float 
 - **Data Quality** (`/datasource`): flags an ID column with **≤1 distinct value across many rows**, and a shared key with **0 cross-table value overlap** → `summary.join_warnings`. Surfaces a broken join before you trust an answer.
 - **Tools** (`stock_check`): if a matched drug's `article_code` links to **zero** stock rows, returns `stock_linkable:false` + a `linkage_warning` and the agent says *stock unavailable (data issue)* — never a false "out of stock".
 
-If drug↔stock questions return "can't link", the fix is a **clean re-export of the stock file** (article codes as text, not `1E+12`).
+If drug↔stock questions return "can't link", the fix is a **clean re-export of the stock file** (article codes as text, not `1E+12`). **The `.xlsx` keeps the true numeric codes even when its CSV twin is mangled** — a corrupt CSV is recoverable by converting the xlsx straight to CSV (read raw cell values, convert any Excel date-serial column to `DD/MM/YYYY HH24:MI`) then re-uploading as a replace. Only if no xlsx exists are the codes truly lost (need a fresh source export).
 
 ---
 

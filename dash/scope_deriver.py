@@ -412,15 +412,30 @@ def _write_run_progress(project_slug: str, step: str, progress: int) -> None:
     exist (older DBs) or the table is locked.
     """
     try:
+        import time as _t
+        import json as _j
         from dash.tools.skill_refinery import _get_engine
         eng = _get_engine()
+        # Also APPEND a logs heartbeat. The auto-train watchdog
+        # (_reap_stale_runs) measures liveness ONLY from the newest logs[].tsabs
+        # — current_step/stage_progress updates are invisible to it. Without this
+        # a scope step that bumps progress but logs nothing still FALSE-trips the
+        # 12-min stale abort (exactly how run #22 died at scope_derivation with
+        # empty logs). Fail-soft.
+        _hb = _j.dumps([{
+            "ts": _t.strftime("%H:%M:%S"),
+            "tsabs": _t.time(),
+            "msg": f"· {step}: {progress}%",
+        }])
         with eng.connect() as conn:
             conn.execute(
                 text(
                     "UPDATE public.dash_training_runs SET current_step = :s, "
-                    "stage_progress = :p WHERE project_slug = :slug AND status = 'running'"
+                    "stage_progress = :p, "
+                    "logs = COALESCE(logs, '[]'::jsonb) || CAST(:hb AS jsonb) "
+                    "WHERE project_slug = :slug AND status IN ('running','finalizing')"
                 ),
-                {"s": step, "p": progress, "slug": project_slug},
+                {"s": step, "p": progress, "slug": project_slug, "hb": _hb},
             )
             conn.commit()
     except Exception as e:

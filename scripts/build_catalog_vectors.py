@@ -62,8 +62,22 @@ def _blob(brand, generic, comp, indication, dosage, side, cat) -> str:
     return " | ".join(parts)
 
 
-def run() -> dict:
-    """Build/refresh catalog vectors. Returns a count dict."""
+def run(log_fn=None) -> dict:
+    """Build/refresh catalog vectors. Returns a count dict.
+
+    log_fn: optional callback (str -> None) the training-complete hook passes so
+    each embed batch emits a progress line. CRITICAL — the auto-train watchdog
+    treats "no new log line for 12 min" as a hung run and aborts it. Embedding
+    the whole catalog (≈5k products / ~50 batches of 96) on a slow/rate-limited
+    embed API silently exceeds 12 min, so without a per-batch heartbeat the
+    watchdog FALSE-aborts a run that is actually still working. Defaults to the
+    module logger when called standalone."""
+    def _hb(msg: str) -> None:
+        try:
+            (log_fn or log.info)(msg)
+        except Exception:
+            pass
+
     from dash.tools.embeddings_helper import embed_batch, vec_to_pg, text_hash
     from dash.tools.table_sync import latest_table, CATALOG_COLS
 
@@ -107,9 +121,15 @@ def run() -> dict:
             pending.append((sid, blob, th, json.dumps(meta)))
 
         embedded = 0
+        _nbatch = (len(pending) + _CHUNK - 1) // _CHUNK
+        if _nbatch:
+            _hb(f"· embedding catalog: {len(pending)} products in {_nbatch} batches…")
         for start in range(0, len(pending), _CHUNK):
             batch = pending[start:start + _CHUNK]
             texts = [b[1] for b in batch]
+            # Heartbeat BEFORE the (slow, network-bound) embed call so the
+            # watchdog sees progress even if this single batch is what stalls.
+            _hb(f"· embedding batch {start // _CHUNK + 1}/{_nbatch} ({embedded} done)…")
             res = asyncio.run(embed_batch(texts))
             if isinstance(res, tuple):  # may return (list, tokens)
                 res = res[0]

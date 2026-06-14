@@ -35,7 +35,20 @@ def _clean(v) -> str:
     return s[:200]
 
 
-def main() -> int:
+def main(log_fn=None) -> int:
+    # log_fn: optional callback the training-complete hook passes so graph-build
+    # progress reaches the run's `logs` jsonb. The print()s below go to container
+    # stdout, which the auto-train watchdog CANNOT see (it reads only the logs
+    # jsonb's newest tsabs). On a ~5k-article catalog the MERGE loop can run
+    # several minutes silent-to-the-watchdog and FALSE-trip the 12-min stale
+    # abort. Mirror milestones to log_fn so the watchdog sees progress.
+    def _hb(msg: str) -> None:
+        try:
+            if log_fn:
+                log_fn(msg)
+        except Exception:
+            pass
+
     host = os.getenv("GRAPH_DB_HOST", "dash-db")          # direct to postgres, NOT pgbouncer
     port = int(os.getenv("GRAPH_DB_PORT", "5432"))
     user = os.getenv("DB_USER", "ai")
@@ -75,6 +88,7 @@ def main() -> int:
     )
     rows = cur.fetchall()
     print(f"[graph] {len(rows)} articles to load", flush=True)
+    _hb(f"· knowledge graph: loading {len(rows)} articles…")
 
     def cy(q: str):
         cur.execute(f"SELECT * FROM cypher('{GRAPH}', $$ {q} $$) AS (a agtype);")
@@ -95,6 +109,7 @@ def main() -> int:
         n += 1
         if n % 500 == 0:
             print(f"[graph]   {n}/{len(rows)} articles", flush=True)
+            _hb(f"· knowledge graph: {n}/{len(rows)} articles loaded…")
 
     # SUBSTITUTE_OF: articles sharing a generic become mutual substitutes (2-hop made explicit)
     cy("""MATCH (a:Article)-[:HAS_GENERIC]->(g:Generic)<-[:HAS_GENERIC]-(b:Article)
