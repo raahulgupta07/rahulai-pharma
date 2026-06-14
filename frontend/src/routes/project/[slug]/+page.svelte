@@ -2719,6 +2719,12 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
           {/if}
         </div>
 
+        <!-- OKF test toggle (always visible — empty state + active chat) -->
+        <button class="cmp-chip" class:okf-chip-on={useOkf} onclick={toggleOkf} disabled={isStreaming}
+          title={useOkf ? 'OKF test lane ON — chat also reads imported (pending) OKF knowledge' : 'OKF test lane OFF — live knowledge only. Click to preview imported OKF before promoting.'}>
+          <span>🧪</span><span style="font-weight:700;">{useOkf ? 'OKF on' : 'OKF off'}</span>
+        </button>
+
           </div>
 
           <!-- Segment 3: Input -->
@@ -3643,6 +3649,8 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 .cmp-chip:hover:not(:disabled) { background:rgba(201,99,66,0.08); border-color:var(--pw-accent); color:var(--pw-accent); }
 .cmp-chip:disabled { opacity:.5; cursor:not-allowed; }
 .cmp-chip .caret { font-size: 11px; color:var(--pw-ink-muted, var(--pw-muted)); }
+.cmp-chip.okf-chip-on { background:#7b6bd6; border-color:#7b6bd6; color:#fff; }
+.cmp-chip.okf-chip-on:hover:not(:disabled) { background:#6a5ac5; border-color:#6a5ac5; color:#fff; }
 .cmp-icon { width:30px; height:30px; border-radius: var(--pw-radius-sm); border:1px solid var(--pw-border); background:#fff; cursor:pointer; font:inherit; font-size:11px; font-weight:600; color:var(--pw-ink); display:flex; align-items:center; justify-content:center; padding:0; }
 .cmp-icon:hover:not(:disabled) { border-color:var(--pw-accent); color:var(--pw-accent); }
 .cmp-icon:disabled { opacity:.4; cursor:not-allowed; }
