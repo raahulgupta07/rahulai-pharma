@@ -18,6 +18,7 @@ import zipfile
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 router = APIRouter(prefix="/api/projects", tags=["okf"])
 
@@ -63,8 +64,8 @@ def _build_bundle(slug: str) -> dict[str, str]:
         try:
             for s, _p, o in c.execute(text(
                 "SELECT subject, predicate, object FROM public.dash_knowledge_triples "
-                "WHERE predicate = 'joins_with'"
-            )).fetchall():
+                "WHERE predicate = 'joins_with' AND project_slug = :s"
+            ), {"s": slug}).fetchall():
                 joins.setdefault(s, []).append(o)
         except Exception:
             pass
@@ -72,15 +73,20 @@ def _build_bundle(slug: str) -> dict[str, str]:
         try:
             qs = c.execute(text(
                 "SELECT question, sql, status, uses FROM public.dash_query_patterns "
+                "WHERE project_slug = :s "
                 "ORDER BY uses DESC NULLS LAST LIMIT 200"
-            )).fetchall()
+            ), {"s": slug}).fetchall()
         except Exception:
             qs = []
-        # brain facts
+        # brain facts — column is `definition` (not `fact`); scope to this
+        # project + active rows so a bundle never leaks another project's facts.
         try:
             facts = c.execute(text(
-                "SELECT fact FROM public.dash_company_brain LIMIT 500"
-            )).fetchall()
+                "SELECT DISTINCT definition FROM public.dash_company_brain "
+                "WHERE project_slug = :s AND COALESCE(status,'active') = 'active' "
+                "AND COALESCE(TRIM(definition),'') <> '' "
+                "ORDER BY definition LIMIT 500"
+            ), {"s": slug}).fetchall()
         except Exception:
             facts = []
 
@@ -113,11 +119,21 @@ def _build_bundle(slug: str) -> dict[str, str]:
             f"```sql\n{(sql or '').strip()[:1200]}\n```\n"
         )
 
-    # facts as one concept
+    # facts as one concept — dedup AFTER normalize (strip+truncate): SQL DISTINCT
+    # keeps rows differing only by trailing space/case, which collapse to the same
+    # bullet here and would otherwise emit visible dups.
     if facts:
-        lines = ["---", "type: Reference", "title: Brain Facts", "tags: [brain]", "---", "", "# Facts", ""]
-        lines += [f"- {(f[0] or '').strip()[:300]}" for f in facts if f[0]]
-        files["facts/brain.md"] = "\n".join(lines) + "\n"
+        seen: set[str] = set()
+        norm = []
+        for f in facts:
+            v = (f[0] or "").strip()[:300]
+            if v and v.lower() not in seen:
+                seen.add(v.lower())
+                norm.append(v)
+        if norm:
+            lines = ["---", "type: Reference", "title: Brain Facts", "tags: [brain]", "---", "", "# Facts", ""]
+            lines += [f"- {v}" for v in norm]
+            files["facts/brain.md"] = "\n".join(lines) + "\n"
 
     # index.md (progressive disclosure)
     idx = [f"# {slug} — Knowledge Bundle\n", "## Tables"]
@@ -171,7 +187,21 @@ def _viz(files: dict[str, str], name: str) -> str:
             edges.append({"data": {"source": cid, "target": tgt.lstrip("/")}})
     ids = {n["data"]["id"] for n in nodes}
     edges = [e for e in edges if e["data"]["target"] in ids]
-    return _VIZ_HTML.replace("__GRAPH__", json.dumps({"nodes": nodes, "edges": edges})).replace("__NAME__", name)
+    # anchor: any concept with no edge (facts, standalone queries) would float as a
+    # disconnected component. Connect those to a synthetic bundle root so the graph
+    # reads as one map instead of scattered islands.
+    if nodes:
+        linked = {e["data"]["source"] for e in edges} | {e["data"]["target"] for e in edges}
+        orphans = [n["data"]["id"] for n in nodes if n["data"]["id"] not in linked]
+        if orphans:
+            root = "__bundle__"
+            nodes.append({"data": {"id": root, "label": name, "type": "Concept",
+                                   "status": "", "body": "", "fm": {}}})
+            edges += [{"data": {"source": root, "target": o}} for o in orphans]
+    # escape "</" so a fact/body containing literal </script> can't break out of
+    # the inline <script> tag that hosts __GRAPH__.
+    graph_json = json.dumps({"nodes": nodes, "edges": edges}).replace("</", "<\\/")
+    return _VIZ_HTML.replace("__GRAPH__", graph_json).replace("__NAME__", name.replace("</", "<\\/"))
 
 
 @router.get("/{slug}/okf-export")
@@ -248,35 +278,65 @@ async def okf_import(slug: str, request: Request, file: UploadFile):
                 t = line.strip()
                 if t.startswith(("- ", "* ")):
                     fact = t[2:].strip()
-                    if len(fact) > 8:
+                    if len(fact) >= 3:
                         facts.append(fact)
         elif typ == "table":
             for j in re.findall(r"joins_with \[([^\]]+)\]", body):
                 triples.append((title, "joins_with", j.strip()))
 
+    # dedup before insert so a re-export→re-import cycle can't grow the lane
+    facts = list(dict.fromkeys(facts))
+    queries = list(dict.fromkeys(queries))
+    triples = list(dict.fromkeys(triples))
+
     eng = _write_engine()
     with eng.begin() as c:
-        # idempotent: clear prior okf lane for this project
-        c.execute(text("DELETE FROM public.dash_company_brain WHERE project_slug=:s AND source='okf'"), {"s": slug})
-        c.execute(text("DELETE FROM public.dash_query_patterns WHERE project_slug=:s AND source='okf'"), {"s": slug})
+        # idempotent: clear prior PENDING okf lane only. Promote keeps source='okf'
+        # and just flips status→active, so an unscoped delete here would destroy
+        # already-promoted (live) facts/queries on a re-import. Scope to pending to
+        # match the triples path (promote retags those source_type→okf_active, so the
+        # 'okf' delete below already skips promoted triples).
+        c.execute(text("DELETE FROM public.dash_company_brain WHERE project_slug=:s AND source='okf' AND status='pending'"), {"s": slug})
+        c.execute(text("DELETE FROM public.dash_query_patterns WHERE project_slug=:s AND source='okf' AND status='pending'"), {"s": slug})
         c.execute(text("DELETE FROM public.dash_knowledge_triples WHERE project_slug=:s AND source_type='okf'"), {"s": slug})
-        for q, sql in queries:
-            c.execute(text(
-                "INSERT INTO public.dash_query_patterns (project_slug, question, sql, source, status) "
-                "VALUES (:s,:q,:sql,'okf','pending')"
-            ), {"s": slug, "q": q[:500], "sql": sql})
-        for fact in facts:
-            c.execute(text(
-                "INSERT INTO public.dash_company_brain (project_slug, category, name, definition, source, status) "
-                "VALUES (:s,'okf',:n,:d,'okf','pending')"
-            ), {"s": slug, "n": fact[:80], "d": fact})
-        for subj, pred, obj in triples:
-            c.execute(text(
-                "INSERT INTO public.dash_knowledge_triples (project_slug, subject, predicate, object, source_type) "
-                "VALUES (:s,:su,:p,:o,'okf')"
-            ), {"s": slug, "su": subj, "p": pred, "o": obj})
 
-    return {"status": "ok", "imported": {"queries": len(queries), "facts": len(facts), "triples": len(triples)},
+        # Each table carries unique indexes (patterns: md5(sql) + question_norm;
+        # brain: project_slug+name; triples: project_slug+s+p+o). A bundle item that
+        # already exists — as a PROMOTED okf row or as unrelated live knowledge —
+        # would raise UniqueViolation and abort the whole import. Insert each row in
+        # its own SAVEPOINT and skip the duplicate so re-import is truly idempotent.
+        def _ins(sql_text: str, params: dict) -> bool:
+            sp = c.begin_nested()
+            try:
+                c.execute(text(sql_text), params)
+                sp.commit()
+                return True
+            except IntegrityError:
+                sp.rollback()
+                return False
+
+        ins = {"queries": 0, "facts": 0, "triples": 0}
+        skipped = {"queries": 0, "facts": 0, "triples": 0}
+        for q, sql in queries:
+            ok = _ins(
+                "INSERT INTO public.dash_query_patterns (project_slug, question, sql, source, status) "
+                "VALUES (:s,:q,:sql,'okf','pending')",
+                {"s": slug, "q": q[:500], "sql": sql})
+            ins["queries"] += ok; skipped["queries"] += (not ok)
+        for fact in facts:
+            ok = _ins(
+                "INSERT INTO public.dash_company_brain (project_slug, category, name, definition, source, status) "
+                "VALUES (:s,'okf',:n,:d,'okf','pending')",
+                {"s": slug, "n": fact[:80], "d": fact})
+            ins["facts"] += ok; skipped["facts"] += (not ok)
+        for subj, pred, obj in triples:
+            ok = _ins(
+                "INSERT INTO public.dash_knowledge_triples (project_slug, subject, predicate, object, source_type) "
+                "VALUES (:s,:su,:p,:o,'okf')",
+                {"s": slug, "su": subj, "p": pred, "o": obj})
+            ins["triples"] += ok; skipped["triples"] += (not ok)
+
+    return {"status": "ok", "imported": ins, "skipped_existing": skipped,
             "lane": "source='okf', status='pending' (isolated — chat ignores unless use_okf=1)"}
 
 
