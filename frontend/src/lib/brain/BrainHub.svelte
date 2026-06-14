@@ -807,6 +807,8 @@
      await loadUnifiedAll();
    } else if (item === 'cortex') {
      activeTab = '__cortex__'; loading = false;
+   } else if (item === 'okf') {
+     activeTab = 'okf'; loading = false;
    } else if (item === 'accesslog' || item === 'activity') {
      await switchTab('log');
    } else if (item === 'training') {

@@ -4901,6 +4901,7 @@ function signUserJWT($user) {
  { id: 'brain-rules', label: 'RULES' },
  { id: 'brain-graph', label: 'GRAPH' },
  { id: 'brain-schema', label: 'SCHEMA' },
+ { id: 'brain-okf', label: 'OKF EXCHANGE' },
  { id: 'knowledge', label: 'FILES' },
  { id: 'training', label: 'TRAINING' },
  { id: 'docs', label: 'DOCS' },
@@ -6760,6 +6761,7 @@ function signUserJWT($user) {
         { id: 'brain-rules', label: 'Rules' },
         { id: 'brain-graph', label: 'Graph' },
         { id: 'brain-schema', label: 'Schema' },
+        { id: 'brain-okf', label: 'OKF Exchange' },
       ]},
       { label: 'Agents', icon: 'agents', items: [
         { id: 'agents', label: 'Agents' },
