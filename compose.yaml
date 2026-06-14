@@ -196,6 +196,7 @@ services:
       - KEYWORD_TOPICS_TICK_SECONDS=${KEYWORD_TOPICS_TICK_SECONDS:-3600}
       - VERTICAL_DAEMONS_DISABLED=${VERTICAL_DAEMONS_DISABLED:-1}
       - QUERY_CURATOR_ENABLED=${QUERY_CURATOR_ENABLED:-0}
+      - CACHE_CURATOR_ENABLED=${CACHE_CURATOR_ENABLED:-0}
       # Tuned (Q4) on a real paraphrase sim distribution — text-embedding-3-small
       # spreads genuine analytical paraphrases 0.81-0.95 (unrelated <0.80), so the
       # old 0.96 serve bar caught almost none. 0.93 = tight enough for a zero-LLM

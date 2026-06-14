@@ -511,116 +511,78 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
         import logging as _ce_log
         _ce_log.getLogger(__name__).warning(f"chemist_eval not started: {_e}")
 
-    # Cache Curator daemon (24h). Answer-cache P3 — leader judges frequent
-    # questions + auto-promotes stable ones into dash.dash_answer_cache.
-    # DEFAULT OFF (writes to cache): enable with CACHE_CURATOR_ENABLED=1.
+    # ── Self-learning async daemons (cache / query / insight / distiller / s3 /
+    # keyword) ──────────────────────────────────────────────────────────────
+    # Each runs as an asyncio task on the main loop. Historically each was armed
+    # INLINE and ONLY when this worker won leadership AT BOOT. That has a silent
+    # failure mode after a redeploy: on `--force-recreate` the OLD container's
+    # leader-lease is still warm (< LEASE_S), so every new worker LOSES the boot
+    # claim → these daemons never armed until the next *clean* restart (the exact
+    # "silently never ran" trap the WORKER_RANK gate also hit). workflow_runner
+    # already dodges this by re-arming from the daemon-leader POST-CLAIM retry
+    # path. We now do the same: one idempotent bootstrap, called at boot if we're
+    # the leader, AND registered as a post-claim callback so the worker that wins
+    # leadership ~LEASE_S later still arms them. Leadership is decided by the
+    # caller; the bootstrap only honors each daemon's own *_ENABLED flag (and the
+    # loops self-check their *_DISABLED hard-off internally).
+    import asyncio as _asyncio_ld
     try:
-        import os as _os_cc
-        if _os_cc.environ.get("CACHE_CURATOR_ENABLED") not in ("1", "true", "TRUE", "yes"):
-            raise RuntimeError("cache curator daemon disabled (default OFF)")
-        if not _should_run_daemons():
-            raise RuntimeError("daemons disabled")
-        import asyncio as _asyncio_cc
-        from dash.cron.cache_curator_daemon import cache_curator_loop as _cache_curator_loop
-        _asyncio_cc.create_task(_cache_curator_loop())
-        import logging as _cc_log
-        _cc_log.getLogger(__name__).info("cache_curator daemon started (24h)")
-    except Exception as _e:
-        import logging as _cc_log
-        _cc_log.getLogger(__name__).warning(f"cache_curator not started: {_e}")
+        _MAIN_LOOP = _asyncio_ld.get_running_loop()
+    except Exception:
+        _MAIN_LOOP = None
 
-    # Query-bank curator daemon (continuous query learning P3) — verifies +
-    # promotes admin-approved candidate chat patterns to 'proven'. DEFAULT OFF
-    # (mutates pattern status). Leader-gated. Set QUERY_CURATOR_ENABLED=1.
-    try:
-        import os as _os_qc
-        if _os_qc.environ.get("QUERY_CURATOR_ENABLED") not in ("1", "true", "TRUE", "yes"):
-            raise RuntimeError("query curator daemon disabled (default OFF)")
-        if not _should_run_daemons():
-            raise RuntimeError("daemons disabled")
-        import asyncio as _asyncio_qc
-        from dash.cron.query_curator_daemon import query_curator_loop as _query_curator_loop
-        _asyncio_qc.create_task(_query_curator_loop())
-        import logging as _qc_log
-        _qc_log.getLogger(__name__).info("query_curator daemon started (24h)")
-    except Exception as _e:
-        import logging as _qc_log
-        _qc_log.getLogger(__name__).warning(f"query_curator not started: {_e}")
+    def _arm_async_learning_daemons(via: str = "lifespan") -> None:
+        # Runs ON the main event-loop thread (directly at boot, or via
+        # call_soon_threadsafe from the post-claim retry thread). Idempotent.
+        if globals().get("_ASYNC_LEARNING_ARMED"):
+            return
+        import os as _os_ld
+        import asyncio as _aio_ld
+        import logging as _ld_log
+        _log_ld = _ld_log.getLogger(__name__)
+        _specs = (
+            ("CACHE_CURATOR_ENABLED",  "dash.cron.cache_curator_daemon", "cache_curator_loop",  "cache_curator daemon"),
+            ("QUERY_CURATOR_ENABLED",  "dash.cron.query_curator_daemon", "query_curator_loop",  "query_curator daemon"),
+            ("INSIGHT_DAEMON_ENABLED", "dash.cron.insight_daemon",       "insight_daemon_loop", "insight daemon"),
+            ("DISTILLER_ENABLED",      "dash.cron.distiller_daemon",     "distiller_loop",      "distiller daemon"),
+            ("S3_SYNC_ENABLED",        "dash.cron.s3_sync_daemon",       "s3_sync_loop",        "s3 sync daemon"),
+            ("KEYWORD_TOPICS_ENABLED", "dash.cron.keyword_topics_daemon","keyword_topics_loop", "keyword topics daemon"),
+        )
+        _armed_any = False
+        for _flag, _mod, _fn, _name in _specs:
+            try:
+                if _os_ld.environ.get(_flag) not in ("1", "true", "TRUE", "yes"):
+                    continue
+                _module = __import__(_mod, fromlist=[_fn])
+                _loop_fn = getattr(_module, _fn)
+                _aio_ld.get_running_loop().create_task(_loop_fn())
+                _armed_any = True
+                _log_ld.info("%s started (24h, via %s)", _name, via)
+            except Exception as _e:  # noqa: BLE001
+                _log_ld.warning("%s not started: %s", _name, _e)
+        if _armed_any:
+            globals()["_ASYNC_LEARNING_ARMED"] = True
 
-    # Insight compilation daemon (#1) — distils durable INSIGHT notes from query
-    # history + live data into the company brain as status='pending' (admin-
-    # approved before chat) + flags stale facts (#4). DEFAULT OFF (writes brain).
-    # Leader-gated. Set INSIGHT_DAEMON_ENABLED=1. Pure SQL, no LLM.
-    try:
-        import os as _os_in
-        if _os_in.environ.get("INSIGHT_DAEMON_ENABLED") not in ("1", "true", "TRUE", "yes"):
-            raise RuntimeError("insight daemon disabled (default OFF)")
-        if not _should_run_daemons():
-            raise RuntimeError("daemons disabled")
-        import asyncio as _asyncio_in
-        from dash.cron.insight_daemon import insight_daemon_loop as _insight_daemon_loop
-        _asyncio_in.create_task(_insight_daemon_loop())
-        import logging as _in_log
-        _in_log.getLogger(__name__).info("insight daemon started (24h)")
-    except Exception as _e:
-        import logging as _in_log
-        _in_log.getLogger(__name__).warning(f"insight daemon not started: {_e}")
-
-    # Self-distill daemon (#5) — distils pending memory facts from recent 👎
-    # corrections (admin-approved before chat). DEFAULT OFF (LLM cost + writes
-    # memory). Leader-gated. Set DISTILLER_ENABLED=1.
-    try:
-        import os as _os_ds
-        if _os_ds.environ.get("DISTILLER_ENABLED") not in ("1", "true", "TRUE", "yes"):
-            raise RuntimeError("distiller disabled (default OFF)")
-        if not _should_run_daemons():
-            raise RuntimeError("daemons disabled")
-        import asyncio as _asyncio_ds
-        from dash.cron.distiller_daemon import distiller_loop as _distiller_loop
-        _asyncio_ds.create_task(_distiller_loop())
-        import logging as _ds_log
-        _ds_log.getLogger(__name__).info("distiller daemon started (24h)")
-    except Exception as _e:
-        import logging as _ds_log
-        _ds_log.getLogger(__name__).warning(f"distiller daemon not started: {_e}")
-
-    # S3 auto-sync daemon — polls due S3 sources, replaces tables from changed
-    # objects, retrains. DEFAULT OFF (S3_SYNC_ENABLED=1). Leader-gated. Per-source
-    # schedule + ETag change-detection live in the source rows, so an enabled-but-
-    # idle bucket is a cheap no-op every tick.
-    try:
-        import os as _os_s3
-        if _os_s3.environ.get("S3_SYNC_ENABLED") not in ("1", "true", "TRUE", "yes"):
-            raise RuntimeError("s3 sync disabled (default OFF)")
-        if not _should_run_daemons():
-            raise RuntimeError("daemons disabled")
-        import asyncio as _asyncio_s3
-        from dash.cron.s3_sync_daemon import s3_sync_loop as _s3_loop
-        _asyncio_s3.create_task(_s3_loop())
-        import logging as _s3_log
-        _s3_log.getLogger(__name__).info("s3 sync daemon started")
-    except Exception as _e:
-        import logging as _s3_log
-        _s3_log.getLogger(__name__).warning(f"s3 sync daemon not started: {_e}")
-
-    # Keyword topic-cluster daemon — privacy-safe analytics. Samples recent
-    # question text, LLM-clusters into named topics, stores AGGREGATES ONLY
-    # (no raw chat). Feeds the Keywords dashboard. DEFAULT OFF
-    # (KEYWORD_TOPICS_ENABLED=1). Leader-gated. Hourly.
-    try:
-        import os as _os_kt
-        if _os_kt.environ.get("KEYWORD_TOPICS_ENABLED") not in ("1", "true", "TRUE", "yes"):
-            raise RuntimeError("keyword topics disabled (default OFF)")
-        if not _should_run_daemons():
-            raise RuntimeError("daemons disabled")
-        import asyncio as _asyncio_kt
-        from dash.cron.keyword_topics_daemon import keyword_topics_loop as _kt_loop
-        _asyncio_kt.create_task(_kt_loop())
-        import logging as _kt_log
-        _kt_log.getLogger(__name__).info("keyword topics daemon started")
-    except Exception as _e:
-        import logging as _kt_log
-        _kt_log.getLogger(__name__).warning(f"keyword topics daemon not started: {_e}")
+    if _should_run_daemons():
+        # We won leadership at boot — arm immediately on this loop.
+        _arm_async_learning_daemons("lifespan")
+    elif _MAIN_LOOP is not None:
+        # Not leader at boot (likely a warm predecessor lease after redeploy).
+        # Re-arm if/when this worker wins leadership via the retry path. The
+        # callback fires on the leader-retry THREAD, so it must hop back onto the
+        # main loop before touching asyncio task creation.
+        try:
+            from dash.runtime.daemon_leader import register_post_claim_callback as _reg_cb_ld
+            _reg_cb_ld(
+                lambda: _MAIN_LOOP.call_soon_threadsafe(
+                    _arm_async_learning_daemons, "post-claim"
+                )
+            )
+        except Exception as _rce:  # noqa: BLE001
+            import logging as _ld_log2
+            _ld_log2.getLogger(__name__).warning(
+                "could not register learning-daemon post-claim callback: %s", _rce
+            )
 
     # Ontology auto-cluster daemon (~6h cadence). Mirrors reembed_loop pattern.
     # default OFF (Phase-1 trim: pure-burn daemon, output not consumed). Set ONTOLOGY_CLUSTER_ENABLED=1 to re-enable.
