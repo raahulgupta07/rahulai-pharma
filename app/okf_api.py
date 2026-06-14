@@ -15,11 +15,24 @@ import json
 import re
 import zipfile
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 
 router = APIRouter(prefix="/api/projects", tags=["okf"])
+
+
+def _parse_md(raw: str) -> tuple[dict, str]:
+    """Split an OKF concept into (frontmatter dict, body)."""
+    fm, body = {}, raw
+    m = re.match(r"^---\n(.*?)\n---\n?(.*)$", raw, re.S)
+    if m:
+        body = m.group(2)
+        for line in m.group(1).splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                fm[k.strip()] = v.strip()
+    return fm, body
 
 
 def _engine():
@@ -184,3 +197,84 @@ def okf_export(slug: str, request: Request):
         buf, media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{slug}-okf-bundle.zip"'},
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# OKF IMPORT (Phase 1) — parse a bundle into an ISOLATED, tagged knowledge lane.
+# Everything lands as source='okf' (source_type='okf' for triples) + status=
+# 'pending'. It NEVER touches live rows (source != 'okf') and chat does NOT read
+# the okf lane unless a request opts in (Phase 2 use_okf flag). Idempotent: a
+# re-import wipes the prior okf lane for this project, then re-inserts. 2026-06-14.
+# ──────────────────────────────────────────────────────────────────────────
+def _write_engine():
+    from db.session import get_write_engine
+    return get_write_engine()
+
+
+@router.post("/{slug}/okf-import")
+async def okf_import(slug: str, request: Request, file: UploadFile):
+    """Import an OKF bundle (.zip) into the isolated okf lane (pending). Editor."""
+    user = getattr(getattr(request, "state", None), "user", None)
+    if not user:
+        raise HTTPException(401, "Not authenticated")
+    from app.auth import check_project_permission
+    if not check_project_permission(user, slug, required_role="editor"):
+        raise HTTPException(403, "Editor access required")
+
+    data = await file.read()
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except Exception:
+        raise HTTPException(400, "not a valid .zip OKF bundle")
+
+    queries, facts, triples = [], [], []
+    for nm in zf.namelist():
+        if not nm.endswith(".md") or nm.rsplit("/", 1)[-1] in ("index.md", "log.md"):
+            continue
+        try:
+            raw = zf.read(nm).decode("utf-8", "ignore")
+        except Exception:
+            continue
+        fm, body = _parse_md(raw)
+        typ = (fm.get("type") or "").lower()
+        title = fm.get("title") or nm.rsplit("/", 1)[-1][:-3]
+        if typ == "verified query":
+            m = re.search(r"```sql\n(.*?)```", body, re.S)
+            sql = (m.group(1).strip() if m else "").strip()
+            if title and sql:
+                queries.append((title, sql))
+        elif typ in ("reference", "playbook") or "# facts" in body.lower():
+            for line in body.splitlines():
+                t = line.strip()
+                if t.startswith(("- ", "* ")):
+                    fact = t[2:].strip()
+                    if len(fact) > 8:
+                        facts.append(fact)
+        elif typ == "table":
+            for j in re.findall(r"joins_with \[([^\]]+)\]", body):
+                triples.append((title, "joins_with", j.strip()))
+
+    eng = _write_engine()
+    with eng.begin() as c:
+        # idempotent: clear prior okf lane for this project
+        c.execute(text("DELETE FROM public.dash_company_brain WHERE project_slug=:s AND source='okf'"), {"s": slug})
+        c.execute(text("DELETE FROM public.dash_query_patterns WHERE project_slug=:s AND source='okf'"), {"s": slug})
+        c.execute(text("DELETE FROM public.dash_knowledge_triples WHERE project_slug=:s AND source_type='okf'"), {"s": slug})
+        for q, sql in queries:
+            c.execute(text(
+                "INSERT INTO public.dash_query_patterns (project_slug, question, sql, source, status) "
+                "VALUES (:s,:q,:sql,'okf','pending')"
+            ), {"s": slug, "q": q[:500], "sql": sql})
+        for fact in facts:
+            c.execute(text(
+                "INSERT INTO public.dash_company_brain (project_slug, category, name, definition, source, status) "
+                "VALUES (:s,'okf',:n,:d,'okf','pending')"
+            ), {"s": slug, "n": fact[:80], "d": fact})
+        for subj, pred, obj in triples:
+            c.execute(text(
+                "INSERT INTO public.dash_knowledge_triples (project_slug, subject, predicate, object, source_type) "
+                "VALUES (:s,:su,:p,:o,'okf')"
+            ), {"s": slug, "su": subj, "p": pred, "o": obj})
+
+    return {"status": "ok", "imported": {"queries": len(queries), "facts": len(facts), "triples": len(triples)},
+            "lane": "source='okf', status='pending' (isolated — chat ignores unless use_okf=1)"}
