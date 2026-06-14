@@ -278,3 +278,68 @@ async def okf_import(slug: str, request: Request, file: UploadFile):
 
     return {"status": "ok", "imported": {"queries": len(queries), "facts": len(facts), "triples": len(triples)},
             "lane": "source='okf', status='pending' (isolated — chat ignores unless use_okf=1)"}
+
+
+@router.get("/{slug}/okf-pending")
+def okf_pending(slug: str, request: Request):
+    """List the pending okf-lane items (for review UI). Read-only. Editor."""
+    user = getattr(getattr(request, "state", None), "user", None)
+    if not user:
+        raise HTTPException(401, "Not authenticated")
+    from app.auth import check_project_permission
+    if not check_project_permission(user, slug, required_role="editor"):
+        raise HTTPException(403, "Editor access required")
+    eng = _engine()
+    with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as c:
+        facts = [{"id": r[0], "text": r[1]} for r in c.execute(text(
+            "SELECT id, definition FROM public.dash_company_brain "
+            "WHERE project_slug=:s AND source='okf' AND status='pending' ORDER BY id"), {"s": slug}).fetchall()]
+        queries = [{"id": r[0], "question": r[1], "sql": r[2]} for r in c.execute(text(
+            "SELECT id, question, sql FROM public.dash_query_patterns "
+            "WHERE project_slug=:s AND source='okf' AND status='pending' ORDER BY id"), {"s": slug}).fetchall()]
+        triples = [{"id": r[0], "text": f"{r[1]} → {r[2]} → {r[3]}"} for r in c.execute(text(
+            "SELECT id, subject, predicate, object FROM public.dash_knowledge_triples "
+            "WHERE project_slug=:s AND source_type='okf' ORDER BY id"), {"s": slug}).fetchall()]
+    return {"facts": facts, "queries": queries, "triples": triples,
+            "total": len(facts) + len(queries) + len(triples)}
+
+
+@router.post("/{slug}/okf-promote")
+async def okf_promote(slug: str, request: Request):
+    """Promote the pending okf lane → ACTIVE so the live agent uses it (no flag
+    needed afterward). The review gate: nothing reaches default chat until here.
+    Editor."""
+    user = getattr(getattr(request, "state", None), "user", None)
+    if not user:
+        raise HTTPException(401, "Not authenticated")
+    from app.auth import check_project_permission
+    if not check_project_permission(user, slug, required_role="editor"):
+        raise HTTPException(403, "Editor access required")
+    eng = _write_engine()
+    with eng.begin() as c:
+        f = c.execute(text("UPDATE public.dash_company_brain SET status='active' "
+                           "WHERE project_slug=:s AND source='okf' AND status='pending'"), {"s": slug}).rowcount
+        q = c.execute(text("UPDATE public.dash_query_patterns SET status='active' "
+                           "WHERE project_slug=:s AND source='okf' AND status='pending'"), {"s": slug}).rowcount
+        # triples have no status → flip the tag so the default gate stops hiding them
+        t = c.execute(text("UPDATE public.dash_knowledge_triples SET source_type='okf_active' "
+                           "WHERE project_slug=:s AND source_type='okf'"), {"s": slug}).rowcount
+    return {"status": "ok", "promoted": {"facts": f, "queries": q, "triples": t},
+            "note": "now LIVE — default chat uses these (no use_okf flag needed)"}
+
+
+@router.post("/{slug}/okf-reject")
+async def okf_reject(slug: str, request: Request):
+    """Discard the pending okf lane (delete). Editor."""
+    user = getattr(getattr(request, "state", None), "user", None)
+    if not user:
+        raise HTTPException(401, "Not authenticated")
+    from app.auth import check_project_permission
+    if not check_project_permission(user, slug, required_role="editor"):
+        raise HTTPException(403, "Editor access required")
+    eng = _write_engine()
+    with eng.begin() as c:
+        f = c.execute(text("DELETE FROM public.dash_company_brain WHERE project_slug=:s AND source='okf' AND status='pending'"), {"s": slug}).rowcount
+        q = c.execute(text("DELETE FROM public.dash_query_patterns WHERE project_slug=:s AND source='okf' AND status='pending'"), {"s": slug}).rowcount
+        t = c.execute(text("DELETE FROM public.dash_knowledge_triples WHERE project_slug=:s AND source_type='okf'"), {"s": slug}).rowcount
+    return {"status": "ok", "rejected": {"facts": f, "queries": q, "triples": t}}

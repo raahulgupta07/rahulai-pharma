@@ -150,9 +150,10 @@ def _search_brain(query: str, project_slug: str | None = None) -> list[dict]:
             params["slug"] = project_slug
         scope_filter += ")"
 
-        # Default: exclude the opt-in OKF lane (source='okf'). When use_okf is set
-        # on the request, surface it too (side-by-side testing).
-        okf_filter = "" if _okf_on() else " AND COALESCE(source,'') <> 'okf'"
+        # Default: hide only PENDING okf imports (the test lane). Once promoted
+        # (status='active', Phase 4) they become live and show by default. use_okf
+        # surfaces the pending lane too for side-by-side testing.
+        okf_filter = "" if _okf_on() else " AND NOT (COALESCE(source,'')='okf' AND COALESCE(status,'')='pending')"
 
         with engine.connect() as conn:
             rows = conn.execute(text(

@@ -97,6 +97,15 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
    chatStyle = chatStyle === 'claude' ? 'classic' : 'claude';
    try { localStorage.setItem('cp_chat_style', chatStyle); } catch {}
  }
+ // OKF test toggle: when on, chat also reads the imported (pending) OKF lane.
+ // Default OFF = live behaviour. sendMessage() reads localStorage 'cp_use_okf'.
+ let useOkf = $state<boolean>(
+   typeof localStorage !== 'undefined' && localStorage.getItem('cp_use_okf') === '1'
+ );
+ function toggleOkf() {
+   useOkf = !useOkf;
+   try { localStorage.setItem('cp_use_okf', useOkf ? '1' : '0'); } catch {}
+ }
  // Claude-style empty state: signed-in user + time-based greeting
  let userName = $state('');
  const greeting = $derived.by(() => {
@@ -2435,6 +2444,12 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
             onclick={toggleChatStyle}
             title={chatStyle === 'claude' ? 'Switch to Classic look (robot avatar + full trace)' : 'Switch to Claude look (clean, full-width)'}
           >{chatStyle === 'claude' ? '✻ Claude' : '🤖 Classic'}</button>
+          <button
+            class="chatstyle-toggle"
+            class:okf-on={useOkf}
+            onclick={toggleOkf}
+            title={useOkf ? 'OKF test lane ON — chat also reads imported (pending) OKF knowledge' : 'OKF test lane OFF — chat uses live knowledge only'}
+          >{useOkf ? '🧪 OKF: on' : '🧪 OKF: off'}</button>
         </div>
       {/if}
       {#if sessionStartTime}
@@ -3519,6 +3534,11 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  background: rgba(194,104,63,0.07);
  border-color: var(--pw-accent, #c2683f);
  color: var(--pw-accent, #c2683f);
+}
+:global(.chatstyle-toggle.okf-on) {
+ background: #7b6bd6;
+ border-color: #7b6bd6;
+ color: #fff;
 }
 @media (max-width: 640px) {
  :global(.ce-chip) { max-width: 88vw; }

@@ -123,6 +123,9 @@ export async function sendMessage(
     if (analysisType) formData.append('analysis_type', analysisType);
     if (modelPref) formData.append('model_pref', modelPref);
     if (effort) formData.append('effort', effort);
+    // OKF opt-in lane (test toggle). Read from a UI pref so the long positional
+    // signature doesn't change. Default off → backend behaves identically.
+    try { if (localStorage.getItem('cp_use_okf') === '1') formData.append('use_okf', '1'); } catch {}
     // Global (no-slug) chat = super-chat: carry the routing mode selector.
     if (!projectSlug && mode) formData.append('mode', mode);
 
