@@ -6,6 +6,7 @@
  import RailNav from '$lib/brain/RailNav.svelte';
  import MergedList from '$lib/brain/MergedList.svelte';
  import BrainCortex from '$lib/brain/BrainCortex.svelte';
+ import OkfPanel from '$lib/brain/OkfPanel.svelte';
  import { parseHash, writeHash, onHashChange } from '$lib/brain/hubRouting';
 
  // embedded=true when mounted inside Workspace settings: skip super-admin redirect
@@ -144,12 +145,14 @@
  { id: 'thresholds', label: 'Rules' },
  { id: 'graph', label: 'Graph' },
  { id: 'log', label: 'Access log' },
+ { id: 'okf', label: 'OKF' },
  ];
 
  const navGroups = [
  { label: 'Knowledge', items: ['glossary', 'formulas', 'aliases', 'patterns'] },
  { label: 'Structure', items: ['org', 'thresholds'] },
  { label: 'Activity', items: ['graph', 'log'] },
+ { label: 'Exchange', items: ['okf'] },
  ];
 
  function _byCat(key: string): number {
@@ -192,6 +195,8 @@
  if (!graphData?.nodes?.length) await loadGraph();
  } else if (id === 'log') {
  await loadLog();
+ } else if (id === 'okf') {
+ // OkfPanel self-loads its own data — skip the brain-entries fetch.
  } else {
  await loadEntries();
  }
@@ -1316,6 +1321,9 @@
     </div>
     <MergedList items={unifiedItems} loading={unifiedLoading} statusFilter={unifiedStatusFilter} query={brainQuery} onAction={handleMergedAction} />
   {/if}
+{:else if activeTab === 'okf'}
+  <OkfPanel slug={LOCKED_SLUG} />
+
 {:else if activeTab === '__cortex__'}
   <BrainCortex slug={LOCKED_SLUG} />
 {:else if activeTab === '__placeholder__'}
