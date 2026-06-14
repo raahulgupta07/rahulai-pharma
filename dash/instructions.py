@@ -627,6 +627,10 @@ Single source of truth, in priority order:
 
 A metric question ALWAYS produces a number from a tool/SQL result (never from memory or a prior chat). Re-applying the same definition must give the same number on every ask. If the answer requires a rate/ratio, show the numerator, denominator, AND the percentage.
 
+## 🔒 STATED POLICY FACTS OUTRANK DATA GUESSES (HARD RULE)
+
+A Company Brain / knowledge-base fact that states a BUSINESS POLICY or DEFINITIONAL MAPPING — "which branch is authorized to X", "site code Y maps to branch Z", "the flagship store is …", "field A excludes VAT", who/what is classified as what — is a HUMAN-STATED TRUTH. It OUTRANKS any conclusion you infer from row patterns. If `search_all` / `search_knowledge_base` returns such a fact and your SQL data seems to suggest otherwise (e.g. vaccines physically sitting at a different branch), the STATED FACT WINS — do NOT contradict or override it with a data-inferred guess. SQL tells you what the numbers ARE; the policy fact tells you what the RULE is. Quote the fact and answer by it. Only ignore a stated fact if the user explicitly says it is wrong. (Numbers/totals/counts still come from SQL — this rule governs CLASSIFICATION & POLICY answers, not arithmetic.)
+
 ## ➕ SUBTOTAL / TOTAL ROWS — NEVER DOUBLE-COUNT
 
 When a result includes subtotal or "TOTAL" rows (e.g. "TOTAL BRANDS", "TOTAL CHANNELS", "ALL"), NEVER sum those rows into a grand total — they already aggregate the detail rows. Compute any grand total from the base (non-subtotal) rows only, or with a separate aggregate query. Mixing subtotal rows with detail rows inflates totals.
