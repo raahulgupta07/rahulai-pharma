@@ -472,6 +472,13 @@ Triggered by the floating robot showing ⚠ "1" — auto-train runs aborted `sta
 
 LANDMINES: curl auth header must be `-H "Authorization: Bearer $TOK"` (a `Bearer\ ` escape → Caddy "Invalid HTTP request"); `.env` admin pw key is `SUPER_ADMIN_PASSWORD`; uploads strip a leading `_` from `table_name` (`_smoke_guard`→`smoke_guard`); column is `dash_users.is_active` (not `active`) and roles are only `super`/`user` (no `admin` row, query harmless). Defaults all safe: `RETRAIN_TABLE_TIMEOUT_S=600`, `AUTO_TRAIN_MAX_RETRY=2`, `REPLACE_BACKUP_MAX_ROWS=2000000`, `REPLACE_MIN_ROW_PCT=50`.
 
+### Connector/S3 credential key — now AUTO-GENERATED (2026-06-14)
+
+`dash/connectors/crypto.py` `get_fernet()` no longer raises when neither `CONNECTION_ENCRYPTION_KEY` nor `JWT_SECRET` env is set. It now follows the **Open WebUI `WEBUI_SECRET_KEY` pattern**: auto-generate a Fernet key on first boot and persist it to `{KNOWLEDGE_DIR}/.connection_encryption_key` (default `/app/knowledge/.connection_encryption_key`), reuse it on every restart. Resolution order: **explicit `CONNECTION_ENCRYPTION_KEY` env → derive from `JWT_SECRET` env → persisted key file (auto-created)**. This removes the prod blocker — a fresh install can create S3/DB connector sources with **zero key config**. Atomic `O_EXCL` create so the 4 gunicorn workers can't each generate a *different* key (loser re-reads the winner's file). File is mode `0600`, owned by the non-root `dash` user (knowledge volume is chowned `dash:dash`).
+- **The key file lives on the `knowledge_data` volume** → survives `--force-recreate` AND image rebuild. **It IS the master key for all stored connector creds — back up the knowledge volume; losing it orphans existing ciphertext** (re-enter creds). Only raises now if the dir is genuinely unwritable.
+- **Prefer an explicit `CONNECTION_ENCRYPTION_KEY` env for multi-host / multi-replica** (a per-container auto-key wouldn't match across hosts). Single-host Docker = auto-key is fine.
+- VERIFIED live 2026-06-14: created an S3 source with both envs unset (was a hard 500 before) → `200`; key file written (`44` bytes, `0600 dash:dash`); after `--force-recreate` the key hash is identical and source creds still decrypt. Note: this is why login/JWT "works without a secret" is a RED HERRING — the auth token is an opaque DB session token (`secrets.token_urlsafe(32)`, `auth.py:1104`), not a signed JWT, so `JWT_SECRET` was never set and the crypto fallback never had one to derive from.
+
 ---
 
 ## Session changelog → `docs/DEVLOG.md`
