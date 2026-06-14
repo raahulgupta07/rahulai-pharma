@@ -479,6 +479,26 @@ LANDMINES: curl auth header must be `-H "Authorization: Bearer $TOK"` (a `Bearer
 - **Prefer an explicit `CONNECTION_ENCRYPTION_KEY` env for multi-host / multi-replica** (a per-container auto-key wouldn't match across hosts). Single-host Docker = auto-key is fine.
 - VERIFIED live 2026-06-14: created an S3 source with both envs unset (was a hard 500 before) → `200`; key file written (`44` bytes, `0600 dash:dash`); after `--force-recreate` the key hash is identical and source creds still decrypt. Note: this is why login/JWT "works without a secret" is a RED HERRING — the auth token is an opaque DB session token (`secrets.token_urlsafe(32)`, `auth.py:1104`), not a signed JWT, so `JWT_SECRET` was never set and the crypto fallback never had one to derive from.
 
+### OKF — Open Knowledge Format export/import/review + chat wire (2026-06-14)
+
+`app/okf_api.py` — knowledge as a portable [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog) bundle (md + YAML frontmatter). The GCP Dataplex *product* is NOT used (paid cloud); we adopted only the open *format*. CityPharma already had the substance (query bank = verified queries, brain facts, KG, table metadata) — OKF is the portable/diffable/reviewable packaging. **Default chat is unchanged throughout — everything is additive + opt-in.**
+
+- **`GET /okf-export`** — DB → zip bundle (tables/queries/facts md + `index.md`/`log.md` + self-contained `viz.html` Cytoscape graph). **READ-ONLY**, AUTOCOMMIT reads (a half-built-table COUNT can't poison the tx). LANDMINE: the facts query selects `fact` but `dash_company_brain` has `definition` → export facts always empty (harmless, pre-existing).
+- **`POST /okf-import`** (.zip) → an **isolated tagged lane**: `dash_query_patterns`+`dash_company_brain` `source='okf', status='pending'`; `dash_knowledge_triples` `source_type='okf'`. NEVER touches live rows (`source != 'okf'`). Idempotent (wipes prior okf lane, re-inserts). Editor-gated.
+- **`GET /okf-pending`** (review list) · **`POST /okf-promote`** (pending → `status='active'` / triples `source_type='okf_active'` = the **review gate**, now live for chat with no flag) · **`POST /okf-reject`** (delete the lane).
+
+**`use_okf` flag = the chat wire** (`dash/tools/semantic_search.py`). **Caught a leak**: `_search_brain`/`_search_kg` had NO source filter, so okf-pending rows would have leaked into chat (row-isolation ≠ retrieval-isolation). Fixed with a per-request `OKF_LANE_ENABLED` ContextVar (`set_okf_lane`/`_okf_on`): brain gate `AND NOT (source='okf' AND status='pending')` (hides only pending; promoted shows by default), kg gate `AND source_type<>'okf'`. `super_chat`/`project_chat` set the flag from the `use_okf` form param. Absent/false → byte-identical (0 okf rows). Verified OFF=0 / ON=1.
+
+**UI:** (1) chat header **🧪 OKF on/off** pill (`+page.svelte`, beside `✻ Claude`; `localStorage cp_use_okf`; `api.ts sendMessage` reads it → appends `use_okf`, no signature change). **The pill only shows in an ACTIVE conversation, not the empty-state hero** (toggles live in the `{#if messages.length>0}` agent-name header). (2) **Review panel** `lib/brain/OkfPanel.svelte` = **Agent Brain → BRAIN → OKF Exchange** (Import .zip / pending list / ✓ Promote / ✕ Reject / ⬇ Export).
+
+**LANDMINE — TWO Brain rails.** `BrainHub.svelte` has its own `navGroups` rail, BUT when `embedded` in Settings it hides that and follows the **Settings rail** via the `item` prop (the live UI). So a new Brain tab needs BOTH: (a) BrainHub `tabs`+`navGroups`+`selectHubItem` (`item==='okf'` → `activeTab='okf'`) + render branch; (b) Settings `brain-okf` entries in `tabs` (~4903) and the nav list (~6762) — Settings renders `activeTab.startsWith('brain-')` → `<BrainHub embedded item={activeTab.slice(6)} />` so `brain-okf` → item `okf`. (First attempt only did BrainHub's rail → invisible; fixed in `7c5e97e`.)
+
+**The loop:** export ⬇ → edit → import ⬆ → [pending, chat ignores] → 🧪 `use_okf=1` preview (your session) → ✓ promote (live) / ✕ reject. Review-gated (the Intern Rule extended to all knowledge). **NOT built:** an in-app bundle *graph* viewer (only the zip export + list review exist). Commits: `9d34802` export · `0556710` import · `694daef` flag · `f174308` promote+pill · `2074b9d` review UI · `7c5e97e` settings rail.
+
+### search_all tool kwargs fix + real data (2026-06-14)
+
+Loaded **real** data via the app — `articles_list_07052026` (4,886) + `balance_stock_07052026` (102,107) from `~/Downloads/New Folder With Items/OneDrive_1_5-6-2026/*.csv`. Benchmark = **11/11 correct** (counts, sums, value 11.34B MMK, per-site, Burmese, honest refusal). **Found + fixed a real bug** (`8ff786e`): `search_all` only accepted `query`, but the LLM passes extra kwargs unprompted (`project_slug`, `agent`) → Agno raised `ToolCallError` → the agent fell back to a degraded path that skipped `COUNT(DISTINCT)` → **confidently wrong** ("10" categories vs the real 101), no error shown. Fix: bind the slug as `_bound_slug` (so a tolerant `project_slug` param can't shadow it) + `**_kwargs` to swallow any invented arg. Affected EVERY "how many distinct/unique X" question — a high-frequency pharma query type. Verified Agno `@tool` tolerates `**kwargs` (both direct-call and pydantic validate_call) before rebuilding.
+
 ---
 
 ## Session changelog → `docs/DEVLOG.md`

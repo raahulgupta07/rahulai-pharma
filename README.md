@@ -199,6 +199,15 @@ Missing catalog fields (e.g. ~1,566 rows with no `generic_name`) can be **sugges
 - Approvals go live via the **`articles_enriched` view** = `COALESCE(source, approved suggestion)` + an `is_enriched` flag (`app/catalog_apply.py`). Rejecting or re-uploading instantly reverts; `shop_flat` reads the enriched view so filled names flow downstream.
 - Review at **Data Source → Catalog Gaps** (`/api/projects/{slug}/catalog-enrich/{gaps,run,suggestions,decide}`). `CATALOG_ENRICH=0` by default (the LLM gap-fill costs); the view and manual approvals work regardless.
 
+### OKF — portable knowledge bundles, in & out (2026-06-14)
+Knowledge can be exported, edited, and imported back as an **[Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog) bundle** — a directory of markdown files with YAML frontmatter (tables, verified queries, facts), git-diffable and vendor-neutral. The agent's knowledge lives in the DB; OKF is the portable/reviewable packaging around it. **The default chat is never affected — the whole feature is additive and opt-in.** Find it at **Agent Brain → BRAIN → OKF Exchange**.
+- **Export** (`GET /okf-export`) — read-only; downloads a zip of the bundle plus a self-contained interactive `viz.html` graph.
+- **Import** (`POST /okf-import`) — a `.zip` lands in an **isolated, tagged lane** (`source='okf'`, `status='pending'`) that **chat ignores**. It never touches live knowledge.
+- **Preview before committing** — a **🧪 OKF** toggle in the chat header (next to the Claude/Classic toggle) makes *your* chat session also read the pending lane (`use_okf`), so you can see the effect side-by-side. Off by default = identical behaviour.
+- **Review gate** — in the OKF Exchange panel, **✓ Promote** flips the pending lane to live (now used by everyone, no flag) or **✕ Reject** discards it. Nothing reaches the live agent until you promote.
+
+So the loop is: *export → edit → import → preview with the toggle → promote or reject.* It extends the same review-gated model used for chat-learned facts to all knowledge.
+
 ---
 
 ## API Gateway — OpenAI-compatible (`/api/v1`)
