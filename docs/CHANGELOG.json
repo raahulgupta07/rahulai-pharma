@@ -2,6 +2,16 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.44.0",
+      "date": "2026-06-15",
+      "title": "Cleaner chat, meet Dash 1.0",
+      "items": [
+        "The chat screen has a fresh, calmer look — answers read like clean prose, the assistant's thinking shows as a quiet one-line summary you can expand, and each answer lists the sources it used.",
+        "Your assistant now has a name: Dash 1.0. You'll see it on the model label and below the answer.",
+        "Fixed stray symbols that were showing on some buttons across the admin screens."
+      ]
+    },
+    {
       "version": "1.43.0",
       "date": "2026-06-13",
       "title": "Private analytics — keywords, not chats",
