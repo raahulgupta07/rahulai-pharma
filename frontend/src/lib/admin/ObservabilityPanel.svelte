@@ -141,7 +141,7 @@
         <button class="obs-pill" class:obs-pill-on={days === n} onclick={() => setDays(n)}>{n}d</button>
       {/each}
     </div>
-    <button class="obs-pill obs-refresh" onclick={load} disabled={loading}>{loading ? '◐ …' : '&gt; refresh'}</button>
+    <button class="obs-pill obs-refresh" onclick={load} disabled={loading}>{loading ? '◐ …' : '> refresh'}</button>
   </div>
 
   <!-- (b) ROLLUP STRIP -->

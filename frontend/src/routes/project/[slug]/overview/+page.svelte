@@ -348,10 +348,10 @@
     </div>
     <div class="ov-head-actions">
       <span class="ov-upd">{syncMsg ? syncMsg : (loading ? 'loading…' : (lastUpdate ? 'updated ' + lastUpdate : ''))}</span>
-      <button class="ov-btn ov-btn-up" onclick={gotoUpload}><Icon name="arrow-up" size={16} /> Upload data</button>
-      <button class="ov-btn" onclick={syncNow} disabled={syncing}>{syncing ? '&gt; syncing…' : ' Sync'}</button>
-      <button class="ov-btn" class:on={auto} onclick={() => (auto = !auto)}>{auto ? '&gt; auto 30s' : ' paused'}</button>
-      <button class="ov-btn" onclick={() => load()}><Icon name="refresh" size={16} /> refresh</button>
+      <button class="ov-btn ov-btn-up" onclick={gotoUpload}><Icon name="upload" size={16} /> Upload data</button>
+      <button class="ov-btn" onclick={syncNow} disabled={syncing}><Icon name="refresh" size={16} /> {syncing ? 'Syncing…' : 'Sync'}</button>
+      <button class="ov-btn" class:on={auto} onclick={() => (auto = !auto)}><Icon name={auto ? 'play' : 'pause'} size={16} /> {auto ? 'Auto 30s' : 'Paused'}</button>
+      <button class="ov-btn" onclick={() => load()}><Icon name="refresh" size={16} /> Refresh</button>
       <button class="ov-btn ov-btn-primary" onclick={() => goto(`${base}/project/${slug}`)}>Open chat <Icon name="arrow-right" size={16} /></button>
     </div>
   </div>
@@ -455,7 +455,7 @@
           <option value="trained">sort: trained</option>
           <option value="name">sort: name</option>
         </select>
-        <button class="ov-btn ov-btn-primary" disabled={training || atStatus?.is_training || !dsTables.length} onclick={trainAll}>{(training || atStatus?.is_training) ? '&gt; training…' : '&gt; Train all'}</button>
+        <button class="ov-btn ov-btn-primary" disabled={training || atStatus?.is_training || !dsTables.length} onclick={trainAll}><Icon name="play" size={16} /> {(training || atStatus?.is_training) ? 'Training…' : 'Train all'}</button>
       </div>
     </div>
     {#if trainErr}<div class="ov-empty" style="color:#c0392b"><Icon name="alert-triangle" size={16} /> {trainErr}</div>{/if}

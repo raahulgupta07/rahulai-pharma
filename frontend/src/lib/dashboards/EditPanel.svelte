@@ -87,7 +87,7 @@
       onkeydown={(e) => e.key === 'Enter' && submit()}
     />
     <button class="go" onclick={submit} disabled={busy || !prompt.trim()}>
-      {busy ? '…' : '&gt;'}
+      {busy ? '…' : '>'}
     </button>
   </div>
   {#if error}<div class="err">{error}</div>{/if}

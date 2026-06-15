@@ -331,7 +331,7 @@
     </div>
     <div class="llm-actions">
       <button class="llm-btn" onclick={syncModels} disabled={syncing}>
-        {syncing ? '&gt; Syncing…' : '&gt; Sync models'}
+        {syncing ? '> Syncing…' : '> Sync models'}
       </button>
       <button class="llm-btn" onclick={loadAll}><Icon name="refresh" size={16} /> Refresh</button>
       <button class="llm-btn llm-btn-primary" onclick={() => (showAdd = !showAdd)}>+ Add Key</button>

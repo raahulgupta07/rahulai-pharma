@@ -255,7 +255,7 @@
     <div class="gv-spacer"></div>
     <span class="gv-count">{meta.nodes.toLocaleString()} nodes · {meta.edges.toLocaleString()} edges</span>
     <button class="gv-live" class:on={animating} onclick={toggleAnimate}>{animating ? '* animating' : '* frozen'}</button>
-    <button class="gv-live" class:on={live} onclick={() => (live = !live)}>{live ? '&gt; live 15s' : ' static'}</button>
+    <button class="gv-live" class:on={live} onclick={() => (live = !live)}>{live ? '> live 15s' : ' static'}</button>
     <button class="gv-live" onclick={reload}><Icon name="refresh" size={16} /></button>
   </div>
 

@@ -203,7 +203,7 @@
                 onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') submitPrompt(); }}
               />
               <button class="sp-btn-primary" disabled={regeneratingIdx !== null || !promptText.trim()} onclick={submitPrompt}>
-                {regeneratingIdx === i ? 'REWRITING…' : '&lt; REWRITE'}
+                {regeneratingIdx === i ? 'REWRITING…' : '< REWRITE'}
               </button>
               <button class="sp-btn-ghost" onclick={() => { promptIdx = null; promptText = ''; }}>CANCEL</button>
             </div>

@@ -267,7 +267,7 @@
             disabled={syncing}
             title="Sync from OpenRouter"
           >
-            {syncing ? '…' : '&gt;'} Sync
+            {syncing ? '…' : '>'} Sync
           </button>
           <button class="mpm-btn-close" onclick={close} aria-label="Close"><Icon name="x" size={16} /></button>
         </div>

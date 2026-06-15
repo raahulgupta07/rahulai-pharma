@@ -1332,7 +1332,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
                   {@const scope = e.bound_scope_id || e.store_id || ''}
                   {@const isStore = isStoreEmbed(e)}
                   <tr class="emp-row-click wg-row" class:emp-row-open={isOpen} class:wg-row-off={!isLive} onclick={() => toggleRow(eid)} title="Expand — keys, snippet, full PHP code + deploy">
-                    <td><span class="emp-row-go">{isOpen ? '▾' : '&gt;'}</span> <code class="emp-code">{e.name || eid}</code></td>
+                    <td><span class="emp-row-go">{isOpen ? '▾' : '>'}</span> <code class="emp-code">{e.name || eid}</code></td>
                     <td>
                       <select class="wg-auth-sel" title="Authentication mode — public (key only) · hmac (signed) · jwt (app identity)"
                         value={e.auth_mode ?? 'public'}
@@ -1410,7 +1410,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
                             <span class="emp-dl-k">PUBLIC KEY</span>
                             <code class="emp-code emp-code-key">{e.public_key || '—'}</code>
                             {#if e.public_key}<button class="emp-btn emp-btn-sm" onclick={() => copyText(e.public_key, `pk-${eid}`)}>{copied === `pk-${eid}` ? 'OK' : 'copy'}</button>{/if}
-                            <button class="emp-btn emp-btn-sm" disabled={rotatingKey === eid} onclick={() => rotateEmbedKey(eid)} title="Generate a new public key — the old one stops working">{rotatingKey === eid ? '◐…' : '&gt; rotate'}</button>
+                            <button class="emp-btn emp-btn-sm" disabled={rotatingKey === eid} onclick={() => rotateEmbedKey(eid)} title="Generate a new public key — the old one stops working">{rotatingKey === eid ? '◐…' : '> rotate'}</button>
                           </div>
                           <div class="emp-detail-line">
                             <span class="emp-dl-k">SECRET</span>
@@ -1936,7 +1936,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
                       <td>{c.msg_chars}&gt;{c.resp_chars}ch</td>
                       <td>{fmtS(c.latency_ms)}</td>
                       <td class="emp-muted">{c.origin}</td>
-                      <td class="emp-mon-chev">{wdCallOpen === c.id ? '▾' : '&gt;'}</td>
+                      <td class="emp-mon-chev">{wdCallOpen === c.id ? '▾' : '>'}</td>
                     </tr>
                     {#if wdCallOpen === c.id}
                       <tr class="emp-wd-calldetail"><td colspan="7">

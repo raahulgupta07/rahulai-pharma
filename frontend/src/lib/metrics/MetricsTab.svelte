@@ -1132,7 +1132,7 @@
                   <div class="met-buildcard">
                     <div class="met-buildtop">
                       <span class="met-buildmark met-bm-{c.status}">
-                        {c.status === 'done' ? 'OK' : c.status === 'fail' ? 'x' : c.status === 'testing' ? '&gt;' : '○'}
+                        {c.status === 'done' ? 'OK' : c.status === 'fail' ? 'x' : c.status === 'testing' ? '>' : '○'}
                       </span>
                       <span class="met-recname">{c.spec.name}</span>
                       <span class="met-buildval met-bm-{c.status}">

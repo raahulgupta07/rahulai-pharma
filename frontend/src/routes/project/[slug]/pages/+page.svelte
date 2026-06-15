@@ -189,7 +189,7 @@
             </div>
           </div>
           <div class="actions">
-            <button class="btn" onclick={recompile} disabled={recompiling}>{recompiling ? 'Recompiling…' : '&gt; Recompile'}</button>
+            <button class="btn" onclick={recompile} disabled={recompiling}>{recompiling ? 'Recompiling…' : '> Recompile'}</button>
             <button class="btn danger" onclick={() => deletePage(selected.id)}>Delete</button>
           </div>
         </div>

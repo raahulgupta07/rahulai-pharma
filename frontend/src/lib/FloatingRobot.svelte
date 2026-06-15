@@ -521,7 +521,7 @@
         {#if lastTrained}<span class="fr-last">· last train {lastTrained}</span>{/if}
         <span class="fr-sp"></span>
         <span class="fr-auto" class:fr-auto-off={!autoOn} title="auto-train daemon"><Icon name="zap" size={16} /> auto {autoOn ? 'on' : 'off'}</span>
-        <button class="fr-train" disabled={training || atStatus?.is_training} onclick={trainNow}>{(training || atStatus?.is_training) ? '&gt;' : ' train'}</button>
+        <button class="fr-train" disabled={training || atStatus?.is_training} onclick={trainNow}>{(training || atStatus?.is_training) ? '>' : ' train'}</button>
         <button class="fr-close" onclick={toggleOpen} aria-label="close"><Icon name="x" size={16} /></button>
       </div>
 

@@ -1345,7 +1345,7 @@ curl -X POST ${pubOrigin}/api/auth/api-key \\
           <div class="gw-chat-composer">
             <textarea class="gw-chat-input" rows="1" placeholder="ask something…" bind:value={sbInput}
               onkeydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSandbox(); } }}></textarea>
-            <button class="gw-chat-send" disabled={sbBusy} onclick={sendSandbox} aria-label="Send">{sbBusy ? '◐' : '&gt;'}</button>
+            <button class="gw-chat-send" disabled={sbBusy} onclick={sendSandbox} aria-label="Send">{sbBusy ? '◐' : '>'}</button>
             {#if sbTurns.length}<button class="gw-btn gw-btn-sm gw-chat-reset" onclick={sbReset}>Reset</button>{/if}
           </div>
           <div class="gw-muted gw-fineprint">real request · multi-turn · masking enforced server-side · ▸ inspect any reply for curl + raw JSON · Enter to send</div>
@@ -1459,7 +1459,7 @@ curl -X POST ${pubOrigin}/api/auth/api-key \\
             <span class="gw-dot gw-on">●</span>
             <span class="gw-fresh-live">live</span>
             <span class="gw-muted">auto-tracks latest upload (≤30s, no restart)</span>
-            <button class="gw-btn gw-btn-sm gw-fresh-refresh" disabled={outletsBusy} onclick={loadOutlets}>{outletsBusy ? '◐' : '&gt; refresh'}</button>
+            <button class="gw-btn gw-btn-sm gw-fresh-refresh" disabled={outletsBusy} onclick={loadOutlets}>{outletsBusy ? '◐' : '> refresh'}</button>
           </div>
           <div class="gw-fresh-stats">
             <div><span class="gw-k">source</span><code class="gw-code">{outletMeta?.source_table ?? '—'}</code></div>
@@ -1525,7 +1525,7 @@ curl -X POST ${pubOrigin}/api/auth/api-key \\
                 <button class="gw-pill" class:gw-pill-on={outletStatsDays === 7} onclick={() => setOutletStatsDays(7)}>7d</button>
                 <button class="gw-pill" class:gw-pill-on={outletStatsDays === 30} onclick={() => setOutletStatsDays(30)}>30d</button>
               </div>
-              <button class="gw-btn gw-btn-sm" disabled={provBusy} onclick={loadProvision}>{provBusy ? '◐' : '&gt; sync'}</button>
+              <button class="gw-btn gw-btn-sm" disabled={provBusy} onclick={loadProvision}>{provBusy ? '◐' : '> sync'}</button>
               <button class="gw-btn gw-btn-accent" disabled={provBusy || provSummary.missing === 0} onclick={provGenAllMissing}>{provBusy ? '◐ working…' : `+ Generate all(${provSummary.missing})`}</button>
             </div>
           </div>
@@ -1723,7 +1723,7 @@ curl -X POST ${pubOrigin}/api/auth/api-key \\
             <div class="gw-drawer-composer">
               <textarea class="gw-chat-input" rows="1" placeholder="ask something…" bind:value={sbInput}
                 onkeydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSandbox(); } }}></textarea>
-              <button class="gw-chat-send" disabled={sbBusy || chatKeyMissing} onclick={sendSandbox} aria-label="Send">{sbBusy ? '◐' : '&gt;'}</button>
+              <button class="gw-chat-send" disabled={sbBusy || chatKeyMissing} onclick={sendSandbox} aria-label="Send">{sbBusy ? '◐' : '>'}</button>
             </div>
             <div class="gw-muted gw-fineprint gw-drawer-foot">real key · multi-turn · ▸ inspect for curl + JSON · Enter to send</div>
           </div>

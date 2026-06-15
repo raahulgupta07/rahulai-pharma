@@ -7039,7 +7039,7 @@ function signUserJWT($user) {
             </button>
             <button onclick={runReconcile} disabled={agentTplReconciling}
               style="padding:5px 12px; background:var(--pw-ink); border:1px solid var(--pw-accent); color:var(--pw-accent); cursor:pointer; font-family:monospace; font-size:10px; font-weight:700; letter-spacing:0.05em;">
-              {agentTplReconciling ? 'RECONCILING…' : '&gt; RECONCILE'}
+              {agentTplReconciling ? 'RECONCILING…' : '> RECONCILE'}
             </button>
           {/if}
         </div>
@@ -8745,7 +8745,7 @@ function signUserJWT($user) {
                       }
                     } catch { alert('Failed to extract workflow'); }
                     docToWorkflowLoading = null;
-                  }}>{docToWorkflowLoading === d.name ? 'EXTRACTING...' : '&gt; WORKFLOW'}</button>
+                  }}>{docToWorkflowLoading === d.name ? 'EXTRACTING...' : '> WORKFLOW'}</button>
               {/if}
             {/if}
             <span style="color: var(--pw-muted); font-size: 10px;">{(d.size / 1024).toFixed(1)} KB</span>
@@ -8999,7 +8999,7 @@ function signUserJWT($user) {
                     <td style="padding:4px 6px; text-align:right; color:{scoreColor(p.confidence)}; font-weight:700;">{p.confidence}%</td>
                     <td style="padding:4px 6px; text-align:right; color:var(--pw-dim);">{p.shadow_pass_rate ? Number(p.shadow_pass_rate).toFixed(0) + '%' : '—'}</td>
                     <td style="padding:4px 6px; text-align:right; color:var(--pw-dim);">
-                      {#if p.score_before !== null}{Number(p.score_before).toFixed(0)}{p.score_after !== null ? '&gt;' + Number(p.score_after).toFixed(0) : ''}{:else}—{/if}
+                      {#if p.score_before !== null}{Number(p.score_before).toFixed(0)}{p.score_after !== null ? '>' + Number(p.score_after).toFixed(0) : ''}{:else}—{/if}
                     </td>
                     <td style="padding:4px 6px; color:var(--pw-dim); max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{(p.reason || '').slice(0,80)}</td>
                     <td style="padding:4px 6px; text-align:right;">
@@ -9108,7 +9108,7 @@ function signUserJWT($user) {
                                 <span class="cli-dim" style="margin-left:6px;">shadow {Number(p.shadow_pass_rate).toFixed(0)}%</span>
                               {/if}
                               {#if p.score_before !== null}
-                                <span class="cli-dim" style="margin-left:6px;">{Number(p.score_before).toFixed(0)}{p.score_after !== null ? '&gt;' + Number(p.score_after).toFixed(0) : '&gt;…'}</span>
+                                <span class="cli-dim" style="margin-left:6px;">{Number(p.score_before).toFixed(0)}{p.score_after !== null ? '>' + Number(p.score_after).toFixed(0) : '>…'}</span>
                               {/if}
                               {#if p.reason}
                                 <div style="color:var(--pw-dim); font-size: 11px; margin-top:2px; line-height:1.3;">{(p.reason || '').slice(0,120)}</div>
@@ -11917,7 +11917,7 @@ function signUserJWT($user) {
                       style="margin-left:auto; padding:7px 16px; background:var(--pw-accent); border:none; color:#fff; cursor:pointer; font-family:inherit; font-size:11px; font-weight:900; letter-spacing:0.05em; opacity:{!wizardAnswers.scope ? 0.5 : 1};">NEXT <Icon name="arrow-right" size={16} /></button>
                   {:else if wizardStep === 3}
                     <button onclick={() => generateWizardPreview(ce.embed_id)} disabled={wizardPreviewLoading}
-                      style="margin-left:auto; padding:7px 16px; background:var(--pw-accent); border:none; color:#fff; cursor:pointer; font-family:inherit; font-size:11px; font-weight:900; letter-spacing:0.05em; opacity:{wizardPreviewLoading ? 0.6 : 1};">{wizardPreviewLoading ? 'GENERATING…' : 'GENERATE &gt;'}</button>
+                      style="margin-left:auto; padding:7px 16px; background:var(--pw-accent); border:none; color:#fff; cursor:pointer; font-family:inherit; font-size:11px; font-weight:900; letter-spacing:0.05em; opacity:{wizardPreviewLoading ? 0.6 : 1};">{wizardPreviewLoading ? 'GENERATING…' : 'GENERATE >'}</button>
                   {:else if wizardStep === 4}
                     {@const keepCount = wizardPreview && Array.isArray(wizardPreview.policies) ? wizardPreview.policies.filter((_: any, i: number) => wizardPolicyEnabled[`p_${i}`] !== false).length : 0}
                     <button onclick={() => applyWizard(ce.embed_id)} disabled={wizardApplying || keepCount === 0}
@@ -14168,7 +14168,7 @@ function signUserJWT($user) {
                 style="padding:5px 12px; background:var(--pw-surface); border:1px solid var(--pw-muted); color:var(--pw-ink-soft); cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">Edit</button>
               <button onclick={deriveScope} disabled={scopeDeriving}
                 style="padding:5px 12px; background:#e0eeff; border:1px solid #66aaff; color:#0050aa; cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">
-                {scopeDeriving ? 'DERIVING…' : '&gt; RE-DERIVE'}
+                {scopeDeriving ? 'DERIVING…' : '> RE-DERIVE'}
               </button>
             {/if}
           </div>
@@ -15644,7 +15644,7 @@ function signUserJWT($user) {
           <button onclick={() => deriveGoals(false)} disabled={derivingGoals}
             title="Auto-generate from persona + tables + docs + KG + bad-feedback signals (LLM, ~$0.0002)"
             style="padding:5px 10px; background:#fff4d4; border:1px solid #cc7a00; color:#cc7a00; cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">
-            {derivingGoals ? 'DERIVING…' : '&lt; AUTO-DERIVE'}
+            {derivingGoals ? 'DERIVING…' : '< AUTO-DERIVE'}
           </button>
           <button onclick={() => deriveGoals(true)} disabled={derivingGoals}
             title="Overwrite even if you edited the file"
@@ -15886,7 +15886,7 @@ function signUserJWT($user) {
             {#if _STEP_RERUN_ID[sel.name]}
               <button onclick={() => runStep(_STEP_RERUN_ID[sel.name], _STEP_RERUN_ID[sel.name]==='goals')} disabled={!!stepRunning}
                 style="margin-top:12px; padding:4px 12px; background:{stepRunning ? '#3a322c' : '#c96342'}; color:#fff; border:none; cursor:{stepRunning ? 'not-allowed':'pointer'}; font-family:inherit; font-size:11px; font-weight:700;">
-                {stepRunning === _STEP_RERUN_ID[sel.name] ? 'RUNNING…' : '&gt; re-run this step'}
+                {stepRunning === _STEP_RERUN_ID[sel.name] ? 'RUNNING…' : '> re-run this step'}
               </button>
             {/if}
           {/if}

@@ -203,7 +203,7 @@
         <button class="btn" onclick={toggleCompare}>{spec.compare_to ? 'COMPARE ON' : 'COMPARE'}</button>
         <button class="btn" onclick={exportPng}>EXPORT PNG</button>
         <button class="btn deck" onclick={convertToDeck} disabled={convertingDeck} title="Convert this dashboard to a PowerPoint deck">
-          {convertingDeck ? 'CONVERTING…' : '&gt; CONVERT TO DECK'}
+          {convertingDeck ? 'CONVERTING…' : '> CONVERT TO DECK'}
         </button>
         <button class="btn" onclick={() => (showShare = !showShare)}>SHARE</button>
         <button class="btn" class:active={showEdit} onclick={() => (showEdit = !showEdit)}>EDIT</button>

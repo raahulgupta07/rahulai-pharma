@@ -1158,7 +1158,7 @@
             <td>{#each (c.keywords ?? kw(c.representative)) as k}<span class="kwchip">{k}</span>{/each}{#if !((c.keywords ?? kw(c.representative)).length)}<span class="dim">—</span>{/if}</td>
             <td style="text-align:right">
               <button class="u-btn ghost sm" onclick={() => cacheThis(c.representative)} disabled={cacheBusy === c.representative}>
-                {cacheBusy === c.representative ? 'caching…' : 'Cache this &gt;'}
+                {cacheBusy === c.representative ? 'caching…' : 'Cache this >'}
               </button>
             </td>
           </tr>
