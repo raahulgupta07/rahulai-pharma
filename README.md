@@ -127,6 +127,14 @@ The Dashboard's live training-pipeline view shows the 10-stage / 60-step flow wi
 
 ---
 
+## Data ingest — SFTP drop folder (v1.45.0)
+
+Three ways data gets in: **web upload** (drag a file in the UI), **S3 sync** (auto-pull from a bucket), and **SFTP** (a partner drops a file). See **`docs/SFTP.md`** for the full SFTP guide.
+
+SFTP in one line: a pharmacy `sftp put`s a CSV/Excel into their own jailed folder; a watcher auto-ingests it through the same guarded pipeline as everything else (empty/drift/cliff guards + pre-replace backup) and retrains. Managed from **`/command-center` → Data → SFTP Access** (superadmin): add a partner, issue an SSH key or password, pick which table their files feed, browse drops, purge old files. Partners are virtual SFTPGo users (not app accounts) — chrooted, no shell, no app/DB access; "upload-only" means they can't even download their own files back. SFTP port `2222` (firewall to known IPs on AWS); the SFTPGo admin port is localhost-only. Container is digest-pinned, runs with dropped capabilities + brute-force auto-ban.
+
+---
+
 ## Pharmacy capabilities
 
 Primary persona = **pharmacy counter staff**. The chat answers branch-scoped medicine questions:

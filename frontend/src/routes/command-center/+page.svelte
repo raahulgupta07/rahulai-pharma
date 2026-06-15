@@ -16,6 +16,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  import GatewayPanel from '$lib/admin/GatewayPanel.svelte';
  import AuthAdminPanel from '$lib/admin/AuthAdminPanel.svelte';
  import ObservabilityPanel from '$lib/admin/ObservabilityPanel.svelte';
+import SftpAccessPanel from '$lib/admin/SftpAccessPanel.svelte';
  import VersionCard from '$lib/VersionCard.svelte';
 
  /* ─── state ─── */
@@ -127,6 +128,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  health: { label: 'System health', subtitle: 'Live status of services, workers, and connectors' },
  stats: { label: 'Platform stats', subtitle: 'Usage, growth, and system metrics' },
  integrations: { label: 'Integrations', subtitle: 'Connector configuration and admin setup' },
+ sftp: { label: 'SFTP Access', subtitle: 'Drop-folder ingest — users, keys, quotas, browse drops' },
  connectors: { label: 'External connectors', subtitle: 'PostgreSQL · MySQL · BigQuery · PowerBI (super-admin)' },
  governance: { label: 'Governance', subtitle: 'Secret leaks · hooks · refusal audit' },
  'agent-os-admin': { label: 'Agent OS admin', subtitle: 'Drafts · fleet · workflows · evals' },
@@ -156,7 +158,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  const _railGroupsBase: { label: string; items: string[] }[] = [
  { label: 'Overview', items: ['cockpit'] },
  { label: 'People', items: ['projects'] },
- { label: 'Data', items: ['schemas','integrations'] },
+ { label: 'Data', items: ['schemas','integrations','sftp'] },
  { label: 'Platform', items: ['auth'] },
  { label: 'System', items: ['traces','logs','admin-settings','llm'] },
  { label: 'Trust & Governance', items: ['accuracy','golden','scope-audit'] },
@@ -1639,6 +1641,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
                 {:else if id === 'observability'}<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/>
                 {:else if id === 'stats'}<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
                 {:else if id === 'integrations'}<path d="M16 3h5v5M21 3l-7 7M8 21H3v-5M3 21l7-7"/>
+                {:else if id === 'sftp'}<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
                 {:else if id === 'architecture'}<circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M9 6h6M6 9v6M18 9v6"/>
                 {:else if id === 'branding'}<circle cx="12" cy="12" r="9"/><path d="M12 3a14 14 0 0 1 0 18M3 12h18"/>
                 {:else if id === 'drift'}<path d="M3 12h4l3-8 4 16 3-8h4"/>
@@ -3599,6 +3602,9 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
 
 {:else if activeTab === 'observability'}
   <ObservabilityPanel embedded />
+
+{:else if activeTab === 'sftp'}
+  <SftpAccessPanel embedded />
 
 {/if}
 

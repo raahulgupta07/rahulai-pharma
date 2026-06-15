@@ -547,6 +547,7 @@ async def lifespan(app): # type: ignore[no-untyped-def]
             ("DISTILLER_ENABLED", "dash.cron.distiller_daemon", "distiller_loop", "distiller daemon"),
             ("S3_SYNC_ENABLED", "dash.cron.s3_sync_daemon", "s3_sync_loop", "s3 sync daemon"),
             ("KEYWORD_TOPICS_ENABLED", "dash.cron.keyword_topics_daemon","keyword_topics_loop", "keyword topics daemon"),
+            ("SFTP_WATCH_ENABLED", "dash.cron.sftp_watch_daemon", "sftp_watch_loop", "sftp watch daemon"),
         )
         _armed_any = False
         for _flag, _mod, _fn, _name in _specs:
@@ -1635,6 +1636,14 @@ try:
 except Exception as _e:
     import logging as _logging
     _logging.warning(f"admin_api router not loaded: {_e}")
+
+# SFTP drop-folder admin — manage SFTP users via SFTPGo sidecar (super-admin only)
+try:
+    from app.sftp_admin import router as sftp_admin_router
+    app.include_router(sftp_admin_router)
+except Exception as _e:
+    import logging as _logging
+    _logging.warning(f"sftp_admin router not loaded: {_e}")
 
 # Traces API — admin observability over public.dash_traces (super-admin only)
 try:

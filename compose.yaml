@@ -308,8 +308,26 @@ services:
       - PPTX_ENGINE=${PPTX_ENGINE:-native}
       # Training Pipeline V2 — Phase E (vertical detect+apply via fingerprint-cached step runner). Default off.
       - TRAINING_V2_PHASE_E=${TRAINING_V2_PHASE_E:-0}
+      # SFTP drop-folder ingest — app talks to the SFTPGo sidecar's admin REST
+      # (internal network) to manage virtual SFTP users from /command-center.
+      - SFTPGO_BASE_URL=${SFTPGO_BASE_URL:-http://cp-sftpgo:8080}
+      - SFTPGO_ADMIN_USER=${SFTPGO_ADMIN_USER:-sftpadmin}
+      - SFTPGO_ADMIN_PASS=${SFTPGO_ADMIN_PASS:-}
+      - SFTP_DATA_DIR=/app/sftp_data
+      - SFTP_PUBLIC_HOST=${SFTP_PUBLIC_HOST:-}
+      - SFTP_PUBLIC_PORT=${SFTP_PUBLIC_PORT:-2222}
+      # Phase 2 watcher — ingest dropped files via guarded /api/upload. On by default.
+      - SFTP_WATCH_ENABLED=${SFTP_WATCH_ENABLED:-1}
+      - SFTP_WATCH_TICK_SECONDS=${SFTP_WATCH_TICK_SECONDS:-30}
+      - SFTP_STABLE_SECONDS=${SFTP_STABLE_SECONDS:-20}
+      - SFTP_MAX_FILE_MB=${SFTP_MAX_FILE_MB:-1024}
+      # Auto-delete drops older than N hours (0 = keep forever; manual purge in UI). 168 = 7 days.
+      - SFTP_RETENTION_HOURS=${SFTP_RETENTION_HOURS:-0}
+      - SFTP_RETENTION_SWEEP_SECONDS=${SFTP_RETENTION_SWEEP_SECONDS:-21600}
     volumes:
       - knowledge_data:/app/knowledge
+      # SFTP drops (Phase 1 watcher reads here; app never writes — sftpgo owns it).
+      - sftp_data:/app/sftp_data:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 30s
@@ -492,6 +510,65 @@ services:
         limits:
           memory: 256M
 
+  # SFTP drop-folder ingest. Pharmacy users `sftp put` a CSV/Excel into their own
+  # jailed folder; a watcher (Phase 1) ingests it via the existing /api/upload.
+  # Virtual users live in OUR Postgres (prefix sftpgo_) — managed from the admin
+  # console (Phase 1), NOT from this file. This block is the engineer one-time
+  # hardening only. SFTP user accounts are NEVER app (dash_users) accounts.
+  dash-sftpgo:
+    # Digest-pinned (supply-chain): drakkan/sftpgo:alpine as pulled 2026-06-15.
+    # Re-pin deliberately on upgrade: docker pull drakkan/sftpgo:alpine && update sha.
+    image: drakkan/sftpgo@sha256:c6b11975122f1210aa5eed426cf39a9f5136759ff41b724a6d54486390711100
+    container_name: cp-sftpgo
+    restart: unless-stopped
+    # Hardening (see docs/SFTP.md for the AWS-side firewall — Security Group on 2222):
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
+    environment:
+      # User store = our Postgres (direct to dash-db, its own migrated tables).
+      - SFTPGO_DATA_PROVIDER__DRIVER=postgresql
+      - SFTPGO_DATA_PROVIDER__HOST=dash-db
+      - SFTPGO_DATA_PROVIDER__PORT=5432
+      - SFTPGO_DATA_PROVIDER__NAME=${DB_DATABASE:?DB_DATABASE required}
+      - SFTPGO_DATA_PROVIDER__USERNAME=${DB_USER:?DB_USER required}
+      - SFTPGO_DATA_PROVIDER__PASSWORD=${DB_PASS:?DB_PASS required}
+      - SFTPGO_DATA_PROVIDER__SQL_TABLES_PREFIX=sftpgo_
+      - SFTPGO_DATA_PROVIDER__USERS_BASE_DIR=/srv/sftpgo/data
+      # Bootstrap admin (used by app REST calls in Phase 1). Override in .env.
+      - SFTPGO_DATA_PROVIDER__CREATE_DEFAULT_ADMIN=true
+      - SFTPGO_DEFAULT_ADMIN_USERNAME=${SFTPGO_ADMIN_USER:-sftpadmin}
+      - SFTPGO_DEFAULT_ADMIN_PASSWORD=${SFTPGO_ADMIN_PASS:?SFTPGO_ADMIN_PASS required}
+      # SFTP listener on 2022 (mapped to host 2222). High port → no NET_BIND cap.
+      - SFTPGO_SFTPD__BINDINGS__0__PORT=2022
+      # Admin/web API on 8080 (mapped to 127.0.0.1 only — never public).
+      - SFTPGO_HTTPD__BINDINGS__0__PORT=8080
+      - SFTPGO_HTTPD__BINDINGS__0__ADDRESS=0.0.0.0
+      # Brute-force auto-ban.
+      - SFTPGO_COMMON__DEFENDER__ENABLED=true
+      - SFTPGO_COMMON__DEFENDER__THRESHOLD=5
+      - SFTPGO_COMMON__DEFENDER__BAN_TIME=30
+      - SFTPGO_COMMON__DEFENDER__BAN_TIME_INCREMENT=100
+    ports:
+      # SFTP — FIREWALL to known pharmacy IPs on AWS (Security Group). Not 0.0.0.0.
+      - "2222:2022"
+      # Admin/web REST — localhost only; the app proxies it. Never internet-facing.
+      - "127.0.0.1:8092:8080"
+    volumes:
+      - sftp_data:/srv/sftpgo/data
+    depends_on:
+      dash-db:
+        condition: service_healthy
+    networks:
+      - dash
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
 networks:
   dash:
 
@@ -502,3 +579,4 @@ volumes:
   caddy_data:
   caddy_config:
   redis_data:
+  sftp_data:

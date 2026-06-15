@@ -2,6 +2,15 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.45.0",
+      "date": "2026-06-15",
+      "title": "Send data by SFTP",
+      "items": [
+        "Pharmacies can now drop data files straight into the platform over SFTP — the file is picked up automatically, loaded into the right table, and the assistant retrains. No login, no manual upload.",
+        "Admins manage SFTP access from the console: add a partner, hand them a key or password, and pick which table their files feed. Each partner is locked to their own folder and can't see anything else."
+      ]
+    },
+    {
       "version": "1.44.0",
       "date": "2026-06-15",
       "title": "Cleaner chat, meet Dash 1.0",
