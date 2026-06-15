@@ -229,16 +229,16 @@ def run_s3_sync(source_id: int, force: bool = False, triggered_by: str = "daemon
                 if not table:
                     continue
                 if not force and known.get(obj["key"]) == obj["etag"]:
-                    continue  # unchanged
+                    continue # unchanged
 
-                # download → upload(action) → record etag
+                # download > upload(action) > record etag
                 tmp = tempfile.NamedTemporaryFile(delete=False,
                                                   suffix="_" + obj["key"].rsplit("/", 1)[-1])
                 tmp.close()
                 try:
                     s3_client.download_object(cl, src["bucket"], obj["key"], tmp.name)
                     with open(tmp.name, "rb") as fh:
-                        # guarded=1 → upload enforces the safety holds (empty file,
+                        # guarded=1 > upload enforces the safety holds (empty file,
                         # schema drift, row-count cliff) since this is unattended.
                         resp = http.post(
                             "/api/upload",
@@ -254,7 +254,7 @@ def run_s3_sync(source_id: int, force: bool = False, triggered_by: str = "daemon
                         # below — the `continue` skips it) so a corrected file
                         # re-syncs automatically next cycle.
                         _held = " [HELD — old data kept]" if resp.status_code == 409 else ""
-                        lines.append(f"✗ {obj['key']} -> {table} ({action}): HTTP {resp.status_code}{_held} {resp.text[:200]}")
+                        lines.append(f"x {obj['key']} -> {table} ({action}): HTTP {resp.status_code}{_held} {resp.text[:200]}")
                         continue
                     rows = 0
                     try:
@@ -262,7 +262,7 @@ def run_s3_sync(source_id: int, force: bool = False, triggered_by: str = "daemon
                     except Exception:
                         pass
                     changed += 1
-                    lines.append(f"✓ {obj['key']} -> {table} ({action}) {rows} rows")
+                    lines.append(f"OK {obj['key']} -> {table} ({action}) {rows} rows")
                     with _engine.connect() as conn:
                         conn.execute(text(
                             "INSERT INTO public.dash_s3_object_state "
@@ -321,8 +321,8 @@ def due_source_ids() -> list[int]:
         with _engine.connect() as conn:
             rows = conn.execute(text(
                 "SELECT id FROM public.dash_s3_sources WHERE enabled = TRUE AND ("
-                "  last_sync_at IS NULL OR "
-                "  now() - last_sync_at >= make_interval(secs => GREATEST(schedule_seconds, 60))"
+                " last_sync_at IS NULL OR "
+                " now() - last_sync_at >= make_interval(secs => GREATEST(schedule_seconds, 60))"
                 ")"
             )).fetchall()
         return [r[0] for r in rows]

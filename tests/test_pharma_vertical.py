@@ -17,7 +17,7 @@ def test_pharma_bundle_shape():
     assert bundle["icon"]
     assert bundle["description"]
     assert bundle.get("visibility_template") == "pharmacy"
-    # Brain: aliases (>=30) + glossary (10) + pattern (5+5=10) + formula (5) → >=55
+    # Brain: aliases (>=30) + glossary (10) + pattern (5+5=10) + formula (5) > >=55
     entries = bundle["brain_entries"]
     assert isinstance(entries, list) and len(entries) >= 50
     cats = {e["category"] for e in entries}
@@ -184,7 +184,7 @@ def test_apply_vertical_idempotent(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Test 4: bad vertical name → 404
+# Test 4: bad vertical name > 404
 # ---------------------------------------------------------------------------
 
 def test_apply_vertical_bad_name_returns_404(monkeypatch):

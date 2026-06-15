@@ -1,10 +1,10 @@
 """Eval runner: executes suite cases, dispatches by layer kind.
 
 Layers:
-- smoke      — endpoint reachable + non-empty response
+- smoke — endpoint reachable + non-empty response
 - reliability — expected tool calls observed (via SSE event capture)
-- llm_judge   — judge LLM scores 0..1 against rubric
-- regression  — compare suite pass_rate to baseline, flag if drop > threshold
+- llm_judge — judge LLM scores 0..1 against rubric
+- regression — compare suite pass_rate to baseline, flag if drop > threshold
 
 Behind EXPERIMENTAL_AGI=1 enables LLM judge calls; otherwise judge layer
 returns stub score=1.0 (treats as pass — no false alarms in CI).
@@ -35,7 +35,7 @@ def _get_engine():
         return get_sql_engine()
     except Exception:
         try:
-            from db import get_sql_engine  # type: ignore
+            from db import get_sql_engine # type: ignore
             return get_sql_engine()
         except Exception:
             return None
@@ -118,7 +118,7 @@ def _judge_llm(case: Dict[str, Any], actual: str, tools: List[str], latency_ms: 
     if not _enabled():
         return "pass", 1.0, "LLM judge stub (EXPERIMENTAL_AGI off)"
     try:
-        from dash.settings import training_llm_call  # type: ignore
+        from dash.settings import training_llm_call # type: ignore
         rubric = case.get("judge_prompt") or "Score 0..1 how well response answers prompt."
         prompt = (
             f"You are an eval judge. Given:\n"
@@ -149,8 +149,8 @@ def _judge_regression(suite_id: str, current_pass_rate: float) -> Tuple[str, str
         return "pass", "no baseline set"
     drop = float(base["pass_rate"]) - current_pass_rate
     if drop > REGRESSION_DROP_THRESHOLD:
-        return "fail", f"regression: baseline {base['pass_rate']:.2f} → current {current_pass_rate:.2f} (drop {drop:.2%})"
-    return "pass", f"baseline {base['pass_rate']:.2f} → current {current_pass_rate:.2f}"
+        return "fail", f"regression: baseline {base['pass_rate']:.2f} > current {current_pass_rate:.2f} (drop {drop:.2%})"
+    return "pass", f"baseline {base['pass_rate']:.2f} > current {current_pass_rate:.2f}"
 
 
 # ── Agent dispatch ──────────────────────────────────────────────────────

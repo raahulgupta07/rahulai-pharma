@@ -10,7 +10,7 @@ from ._common import (
     title_color, subtitle_color, bg_is_dark,
 )
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING: # pragma: no cover
     from pptx.slide import Slide
     from dash.pptx_renderer.themes import Theme
 
@@ -59,10 +59,10 @@ def render(slide: "Slide", data: dict, theme: "Theme") -> None:
             color=sub_color,
         )
 
-    # Bullets shape (dashboard_to_deck path): list of strings → numbered cards
+    # Bullets shape (dashboard_to_deck path): list of strings > numbered cards
     bullets = data.get("bullets")
     if isinstance(bullets, list) and bullets and not data.get("next_steps"):
-        data = dict(data)  # don't mutate caller
+        data = dict(data) # don't mutate caller
         data["next_steps"] = [{"title": str(b)[:60], "body": ""} for b in bullets[:3]]
 
     steps = data.get("next_steps") or []

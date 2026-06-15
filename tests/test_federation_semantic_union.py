@@ -125,7 +125,7 @@ def test_join_suggestion_name_match_with_id_suffix():
     nm = [s for s in sugs if s.reason == "name_match"]
     assert any(s.left_column == "customer_id" and s.right_column == "customer_id"
                for s in nm)
-    # _id suffix → 0.80 confidence
+    # _id suffix > 0.80 confidence
     assert any(s.confidence == 0.80 for s in nm)
 
 
@@ -151,7 +151,7 @@ def test_join_suggestion_skips_generic_cols():
     ]
     sugs = _suggest_joins(tables)
     nm = [s for s in sugs if s.reason == "name_match"]
-    # 0.65 - 0.30 = 0.35 → still passes the 0.30 floor; ensure they are *low*
+    # 0.65 - 0.30 = 0.35 > still passes the 0.30 floor; ensure they are *low*
     for s in nm:
         assert s.confidence <= 0.36, f"generic col not penalized: {s}"
 
@@ -164,7 +164,7 @@ def test_join_suggestion_skips_same_provider():
                    columns=["customer_id"]),
     ]
     sugs = _suggest_joins(tables)
-    assert sugs == []  # same source — not federation-relevant
+    assert sugs == [] # same source — not federation-relevant
 
 
 def test_normalize_strips_suffixes():

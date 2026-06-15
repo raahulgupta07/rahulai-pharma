@@ -161,7 +161,7 @@ def test_band_inserts_case(sql_pair, pol_tuple):
 
 
 def test_alias_lookup_aggregate():
-    """Direct test: SUM(qty) AS qty + band rule on qty → CASE in output."""
+    """Direct test: SUM(qty) AS qty + band rule on qty > CASE in output."""
     eng = PolicyEngine()
     pol = VisibilityPolicy(
         public=AudienceRules(fields={

@@ -111,7 +111,7 @@ def _make_tools(slug: str, schema: str, db_url: str):
         return json.dumps(out)[:6000]
 
     @tool(name="get_relationships",
-          description="List verified join keys between tables (from_table.from_column → to_table.to_column with confidence). No args.")
+          description="List verified join keys between tables (from_table.from_column > to_table.to_column with confidence). No args.")
     def get_relationships() -> str:
         import json
         rels = []

@@ -1,6 +1,6 @@
 """Sign-off workflow for visibility policy publication.
 
-2-admin approval gate. Drafts move draft → pending → approved/rejected.
+2-admin approval gate. Drafts move draft > pending > approved/rejected.
 Once approvals threshold met (and no rejects), auto-publishes via save_policy().
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ from .schema import VisibilityPolicy
 
 def _row_to_dict(row) -> dict:
     if row is None:
-        return None  # type: ignore[return-value]
+        return None # type: ignore[return-value]
     d = dict(row._mapping) if hasattr(row, "_mapping") else dict(row)
     # parse JSON fields if stringified
     for k in ("policy_json", "approvals"):
@@ -60,7 +60,7 @@ def create_draft(project_slug: str, policy: dict, user_id: int, comment: str = "
 
 
 def submit_draft(draft_id: int, user_id: int) -> Optional[dict]:
-    """Move draft → pending. Returns updated draft."""
+    """Move draft > pending. Returns updated draft."""
     try:
         eng = _engine()
         with eng.connect() as conn:

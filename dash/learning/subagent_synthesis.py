@@ -35,7 +35,7 @@ def _safe_log(logger: Optional[Callable[[str], None]], msg: str) -> None:
 
 
 def _parse_json_4tier(raw: str) -> Optional[dict]:
-    """4-tier JSON parse: direct → strip fences → regex extract → trailing-comma repair."""
+    """4-tier JSON parse: direct > strip fences > regex extract > trailing-comma repair."""
     if not raw or not isinstance(raw, str):
         return None
     # Tier 1: direct
@@ -88,7 +88,7 @@ def _cluster_qa_sklearn(qa_rows: list[dict]) -> Optional[list[list[int]]]:
     clustering in ``_cluster_qa_fallback``.
     """
     return None
-    try:  # pragma: no cover - dead code, ML clustering disabled in this build
+    try: # pragma: no cover - dead code, ML clustering disabled in this build
         texts = [(r.get("question") or "") + " " + (r.get("sql") or "") for r in qa_rows]
         if len(texts) < MIN_QUESTIONS_PER_CLUSTER * 2:
             return None
@@ -193,7 +193,7 @@ def synthesize_subagents(project_slug: str, logger=None) -> dict:
             result["reason"] = "disabled_by_config"
             return result
     except Exception as e:
-        _safe_log(logger, f"⚠ feature_config import failed, assuming enabled: {str(e)[:80]}")
+        _safe_log(logger, f" feature_config import failed, assuming enabled: {str(e)[:80]}")
 
     try:
         from sqlalchemy import text
@@ -201,7 +201,7 @@ def synthesize_subagents(project_slug: str, logger=None) -> dict:
         from db.session import get_sql_engine
     except Exception as e:
         result["error"] = f"db import failed: {str(e)[:120]}"
-        _safe_log(logger, f"✗ {result['error']}")
+        _safe_log(logger, f"x {result['error']}")
         return result
 
     engine = None
@@ -209,7 +209,7 @@ def synthesize_subagents(project_slug: str, logger=None) -> dict:
         engine = get_sql_engine()
     except Exception as e:
         result["error"] = f"engine init failed: {str(e)[:120]}"
-        _safe_log(logger, f"✗ {result['error']}")
+        _safe_log(logger, f"x {result['error']}")
         return result
 
     try:
@@ -225,7 +225,7 @@ def synthesize_subagents(project_slug: str, logger=None) -> dict:
                 qa_rows = [dict(r) for r in rows]
         except Exception as e:
             result["error"] = f"qa fetch failed: {str(e)[:120]}"
-            _safe_log(logger, f"✗ {result['error']}")
+            _safe_log(logger, f"x {result['error']}")
             return result
 
         _safe_log(logger, f"sub-agent synthesis: fetched {len(qa_rows)} training Q&A rows")
@@ -260,7 +260,7 @@ def synthesize_subagents(project_slug: str, logger=None) -> dict:
                                 col_names.append(c)
                     catalog_lines.append(f"- {r['table_name']}: {desc} (cols: {', '.join(col_names)})")
         except Exception as e:
-            _safe_log(logger, f"⚠ catalog fetch failed: {str(e)[:80]}")
+            _safe_log(logger, f" catalog fetch failed: {str(e)[:80]}")
         catalog_summary = "\n".join(catalog_lines) if catalog_lines else "(no catalog)"
 
         # Step 3: fetch brain KPIs/glossary
@@ -274,7 +274,7 @@ def synthesize_subagents(project_slug: str, logger=None) -> dict:
                 ), {"s": project_slug}).mappings().all()
                 brain_terms = [r["name"] for r in rows if r.get("name")]
         except Exception as e:
-            _safe_log(logger, f"⚠ brain fetch failed: {str(e)[:80]}")
+            _safe_log(logger, f" brain fetch failed: {str(e)[:80]}")
 
         # Step 4: cluster
         clusters = _cluster_qa_sklearn(qa_rows)
@@ -295,7 +295,7 @@ def synthesize_subagents(project_slug: str, logger=None) -> dict:
             from dash.settings import training_llm_call
         except Exception as e:
             result["error"] = f"llm import failed: {str(e)[:120]}"
-            _safe_log(logger, f"✗ {result['error']}")
+            _safe_log(logger, f"x {result['error']}")
             return result
 
         # Fetch existing names for dedup
@@ -315,7 +315,7 @@ def synthesize_subagents(project_slug: str, logger=None) -> dict:
                     ), {"s": project_slug}).mappings().all()
                     existing_names = {(r["name"] or "").strip().lower() for r in rows}
             except Exception as e:
-                _safe_log(logger, f"⚠ existing-agents lookup failed: {str(e)[:80]}")
+                _safe_log(logger, f" existing-agents lookup failed: {str(e)[:80]}")
 
         llm_calls = 0
         proposals: list[dict] = []
@@ -350,7 +350,7 @@ def synthesize_subagents(project_slug: str, logger=None) -> dict:
                     raw = training_llm_call(prompt, "extraction")
                     llm_calls += 1
                 except Exception as e:
-                    _safe_log(logger, f"⚠ cluster {ci} LLM call failed: {str(e)[:80]}")
+                    _safe_log(logger, f" cluster {ci} LLM call failed: {str(e)[:80]}")
                     break
                 if not raw:
                     continue
@@ -361,7 +361,7 @@ def synthesize_subagents(project_slug: str, logger=None) -> dict:
                 parsed = None
 
             if not parsed:
-                _safe_log(logger, f"⚠ cluster {ci}: LLM parse failed (raw len={len(last_raw)}), skipping")
+                _safe_log(logger, f" cluster {ci}: LLM parse failed (raw len={len(last_raw)}), skipping")
                 result["skipped"] += 1
                 continue
 
@@ -433,17 +433,17 @@ def synthesize_subagents(project_slug: str, logger=None) -> dict:
                     continue
             if inserted:
                 result["created"] += 1
-                _safe_log(logger, f"✓ created sub-agent '{p['name']}' (draft, enabled=false)")
+                _safe_log(logger, f"OK created sub-agent '{p['name']}' (draft, enabled=false)")
             else:
                 result["skipped"] += 1
-                _safe_log(logger, f"⚠ insert failed for '{p['name']}': {last_err}")
+                _safe_log(logger, f" insert failed for '{p['name']}': {last_err}")
 
         _safe_log(logger, f"sub-agent synthesis complete: created={result['created']} skipped={result['skipped']} clusters={result['clusters']}")
         return result
 
     except Exception as e:
         result["error"] = f"unexpected: {str(e)[:200]}"
-        _safe_log(logger, f"✗ subagent_synthesis error: {result['error']}")
+        _safe_log(logger, f"x subagent_synthesis error: {result['error']}")
         return result
     finally:
         try:

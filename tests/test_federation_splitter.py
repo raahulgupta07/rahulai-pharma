@@ -14,7 +14,7 @@ from dash.providers.federation.splitter import (
 )
 
 try:
-    import sqlglot  # noqa: F401
+    import sqlglot # noqa: F401
     _HAS_SQLGLOT = True
 except ImportError:
     _HAS_SQLGLOT = False
@@ -168,7 +168,7 @@ def test_join_keys_extracted():
 
 @pytestmark_sqlglot
 def test_columns_collected_per_source():
-    """SELECT a.x, b.y → only `x` collected for source_a, only `y` for source_b
+    """SELECT a.x, b.y > only `x` collected for source_a, only `y` for source_b
     (plus join columns)."""
     sql = (
         "SELECT a.x, b.y FROM source_a.t1 a "
@@ -181,7 +181,7 @@ def test_columns_collected_per_source():
     a_cols = set(by_pid["source_a"].columns_needed)
     b_cols = set(by_pid["source_b"].columns_needed)
     assert "x" in a_cols
-    assert "k" in a_cols  # join key
+    assert "k" in a_cols # join key
     assert "y" not in a_cols
     assert "y" in b_cols
     assert "k" in b_cols
@@ -265,8 +265,8 @@ def test_pushdown_with_aliases_and_multiple_filters():
     by_pid = {sq.provider_id: sq for sq in plan.subqueries}
     a_filters = by_pid["source_a"].pushed_filters
     b_filters = by_pid["source_b"].pushed_filters
-    assert len(a_filters) == 2  # created, status
-    assert len(b_filters) == 1  # region
+    assert len(a_filters) == 2 # created, status
+    assert len(b_filters) == 1 # region
     assert any("created" in f for f in a_filters)
     assert any("status" in f for f in a_filters)
     assert any("region" in f for f in b_filters)

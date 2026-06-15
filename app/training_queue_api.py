@@ -4,10 +4,10 @@ Training queue API — Option B (in-process workers + Redis).
 Endpoints:
   POST /api/projects/{slug}/retrain-queued
        body (optional): {"tables": [...], "steps": [...]}
-       → 202 {"run_id", "jobs_enqueued", "queue_depth"}
+       > 202 {"run_id", "jobs_enqueued", "queue_depth"}
 
-  GET  /api/projects/{slug}/training-runs/{run_id}/status-v2
-       → get_run_status(run_id) rollup
+  GET /api/projects/{slug}/training-runs/{run_id}/status-v2
+       > get_run_status(run_id) rollup
 
 Auth: editor (POST), viewer (GET). Kill switch: TRAINING_QUEUE_DISABLED=1
 returns 503 on POST. Fail-soft: never raises 500 unhandled.

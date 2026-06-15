@@ -22,14 +22,14 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 COLORS = [
-    "#00fc40",  # green (primary / positive)
-    "#0078d4",  # blue
-    "#ff9d00",  # orange
-    "#e74c3c",  # red (negative)
-    "#9b59b6",  # purple
-    "#1abc9c",  # teal
-    "#f39c12",  # amber
-    "#e91e63",  # pink
+    "#00fc40", # green (primary / positive)
+    "#0078d4", # blue
+    "#ff9d00", # orange
+    "#e74c3c", # red (negative)
+    "#9b59b6", # purple
+    "#1abc9c", # teal
+    "#f39c12", # amber
+    "#e91e63", # pink
 ]
 
 COLOR_POSITIVE = "#00fc40"
@@ -75,8 +75,8 @@ def auto_visualize(question: str, project_slug: str, data: list[dict] | None = N
         title = _derive_title(question)
         config = _generate_echarts_config(chart_type, data, columns, title)
         if isinstance(config, dict):
-            config["chart_via"] = chart_via       # rules | llm | rules-fallback
-            config["chart_reason"] = chart_reason  # why this chart was chosen
+            config["chart_via"] = chart_via # rules | llm | rules-fallback
+            config["chart_reason"] = chart_reason # why this chart was chosen
 
         return f"[CHART_CONFIG:{json.dumps(config, default=str)}]"
 
@@ -181,7 +181,7 @@ def _rules_confident(question: str, row_count: int, chart: str) -> bool:
         return True
     if chart == "pie" and row_count <= 8:
         return True
-    return False  # bare "bar" fallback → ambiguous, ask the LLM
+    return False # bare "bar" fallback > ambiguous, ask the LLM
 
 
 def _llm_pick_chart(question: str, columns: list[dict], row_count: int):

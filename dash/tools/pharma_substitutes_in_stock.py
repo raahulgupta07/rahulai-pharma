@@ -1,8 +1,8 @@
 """Substitutes that are IN STOCK — "alternative to <brand>, and where can I get it".
 
 The killer counter question: a brand is out, what else (same molecule) can I sell
-RIGHT NOW, and which shop has it. Today the agent must chain find_substitutes →
-stock_check → find_nearby_stock across 3 tool calls and stitch the result (and can
+RIGHT NOW, and which shop has it. Today the agent must chain find_substitutes >
+stock_check > find_nearby_stock across 3 tool calls and stitch the result (and can
 drop a hop). This tool does the whole chain server-side, deterministically, over
 the denormalized `citypharma.shop_flat` (one row per article×store).
 
@@ -141,13 +141,13 @@ def substitutes_in_stock(drug: str = "", outlet: str = "", limit: int = 20) -> d
                                           "qty": int(qty)})
 
             # 5) assemble — only substitutes available SOMEWHERE (your branch or
-            #    another shop), ranked by your-branch stock then reach.
+            # another shop), ranked by your-branch stock then reach.
             results = []
             for ak in art_keys:
                 yq = int(your_qty.get(ak, 0))
                 others = other.get(ak, [])
                 if yq == 0 and not others:
-                    continue  # truly unavailable substitute — drop
+                    continue # truly unavailable substitute — drop
                 _row = {
                     "article_code": _ac(ak),
                     "brand": subs[ak]["brand"],

@@ -134,7 +134,7 @@ def _solve_irr(cf: np.ndarray, guess: float = 0.1, max_iter: int = 200,
             return float(r_new)
         r = r_new
         if r < -0.99:
-            r = -0.99  # clamp
+            r = -0.99 # clamp
     return None
 
 
@@ -155,7 +155,7 @@ def sensitivity_grid(base_cashflows: List[float], wacc_range: List[float],
         row = []
         for g in growth_range:
             if g >= w:
-                row.append(None)  # invalid combo
+                row.append(None) # invalid combo
                 continue
             r = dcf(base_cashflows, w, g)
             row.append(r.get("npv") if r.get("ok") else None)
@@ -203,7 +203,7 @@ def load_capability_weights(project_slug: str) -> dict[str, float]:
     and (project_slug=:p OR project_slug IS NULL). Project-scoped rows override
     global rows on same name.
 
-    Returns {capability_lowercase: weight (0-1)}. Fail-soft → {} on any DB error.
+    Returns {capability_lowercase: weight (0-1)}. Fail-soft > {} on any DB error.
     """
     try:
         eng = _engine()
@@ -231,7 +231,7 @@ def load_capability_weights(project_slug: str) -> dict[str, float]:
                 continue
             # Clamp 0-1
             w = max(0.0, min(1.0, w))
-            weights[name] = w  # project rows come last, override global
+            weights[name] = w # project rows come last, override global
         return weights
     except Exception:
         logger.exception("load_capability_weights failed")
@@ -244,8 +244,8 @@ def partner_fit_score(self_caps, partner_caps,
     """
     Complementarity score. Two modes:
 
-    - list[str] x list[str] → returns 0..100 `fit_score` (legacy behavior).
-    - dict[str, float] x dict[str, float] (cap scores 0..1 each) → returns
+    - list[str] x list[str] > returns 0..100 `fit_score` (legacy behavior).
+    - dict[str, float] x dict[str, float] (cap scores 0..1 each) > returns
       0..1 `score` computed as weighted complement on the shared 0..1 cap
       scale. Output keys: {score, overlap, complement, gaps}.
 
@@ -274,7 +274,7 @@ def partner_fit_score(self_caps, partner_caps,
 
         # Complement strength = partner's score on caps where self is weak.
         # For each cap in union, contribution = max(0, p - s) * importance.
-        # Normalize by sum of importance over union → score in [0, 1].
+        # Normalize by sum of importance over union > score in [0, 1].
         union = sorted(set(s_map) | set(p_map))
         total_w = 0.0
         gained = 0.0

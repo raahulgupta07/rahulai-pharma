@@ -21,7 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FIX = os.path.join(HERE, "..", "examples", "outlet-test", "fixtures.json")
 JUDGE_MODEL = "google/gemini-3-flash-preview"
 
-# Burmese-pass threshold: ≥40% of alpha chars Burmese ⇒ "answered in Burmese"
+# Burmese-pass threshold: ≥40% of alpha chars Burmese > "answered in Burmese"
 # (the rest is unavoidable English brand names + Arabic digits).
 MY_THRESHOLD = 40.0
 
@@ -102,7 +102,7 @@ def main():
             try:
                 ans, lat = ask(c["key"], c["q"], f"gate-{c['id']}-{k}")
             except Exception as e:
-                print(f"  {c['id']} run{k+1}: ERROR {str(e)[:50]}")
+                print(f" {c['id']} run{k+1}: ERROR {str(e)[:50]}")
                 my_pcts.append(0.0); all_runs.append(False); continue
             r = my_ratio(ans)
             is_my = r >= MY_THRESHOLD
@@ -112,15 +112,15 @@ def main():
                 ok = judge_correct(c["q"], ans, c.get("gist", ""))
             passed = is_my and ok
             my_pcts.append(r); lats.append(lat); passes += int(passed); all_runs.append(passed)
-            print(f"  {c['id']:14} run{k+1}: {r:4.0f}%MY  correct={ok}  -> {'PASS' if passed else 'FAIL'}  {lat:.0f}s")
+            print(f" {c['id']:14} run{k+1}: {r:4.0f}%MY correct={ok} -> {'PASS' if passed else 'FAIL'} {lat:.0f}s")
         band = f"{min(my_pcts):.0f}-{max(my_pcts):.0f}%" if my_pcts else "-"
-        print(f"  └ {c['id']}: {passes}/{args.runs} pass · %MY band {band} · "
+        print(f" └ {c['id']}: {passes}/{args.runs} pass · %MY band {band} · "
               f"σ={statistics.pstdev(my_pcts):.0f}\n")
 
     rate = 100 * sum(all_runs) / len(all_runs) if all_runs else 0
     verdict = "PASS" if rate >= args.min_pass else "FAIL"
     print("=" * 48)
-    print(f"BILINGUAL GATE: pass_rate={rate:.0f}%  threshold={args.min_pass:.0f}%  -> {verdict}")
+    print(f"BILINGUAL GATE: pass_rate={rate:.0f}% threshold={args.min_pass:.0f}% -> {verdict}")
     raise SystemExit(0 if verdict == "PASS" else 1)
 
 

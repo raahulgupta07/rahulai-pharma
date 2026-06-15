@@ -2,7 +2,7 @@
 
 For each project's `_golden.json` entry, re-execute the SQL and compare
 result rowcount/value against `expected_*` fields. If drift exceeds
-threshold → demote (remove from corpus + log to audit).
+threshold > demote (remove from corpus + log to audit).
 
 Inspired by Dataherald's golden_sql auto-validation pattern: a pinned
 query that no longer returns the truth class must not keep matching
@@ -25,7 +25,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_INTERVAL_S = 86400  # 24h
+_DEFAULT_INTERVAL_S = 86400 # 24h
 _ROWCOUNT_DRIFT_PCT = 0.50
 _SCALAR_DRIFT_REL = 0.015
 
@@ -107,7 +107,7 @@ def check_project(slug: str, dry_run: bool = False) -> dict:
         checked += 1
         current = _run_sql_safe(slug, sql)
         if current is None:
-            # exec error → demote (broken SQL helps nobody)
+            # exec error > demote (broken SQL helps nobody)
             drifted.append({"entry": entry, "reason": "exec_failed"})
             if not dry_run:
                 demote(slug, sql=sql)

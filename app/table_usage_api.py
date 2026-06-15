@@ -39,7 +39,7 @@ def _engine():
         from db.session import get_sql_engine
         return get_sql_engine()
     except Exception:
-        from db import get_sql_engine  # type: ignore
+        from db import get_sql_engine # type: ignore
         return get_sql_engine()
 
 
@@ -63,7 +63,7 @@ def _iso(v):
         return str(v)
 
 
-# ── Refresh: parse traces → stats → MV ────────────────────────────────────
+# ── Refresh: parse traces > stats > MV ────────────────────────────────────
 def refresh_table_usage() -> dict[str, Any]:
     """Parse last 30d of dash_traces SQL, populate stats table, refresh MV.
 
@@ -94,11 +94,11 @@ def refresh_table_usage() -> dict[str, Any]:
         with eng.connect() as conn:
             rows = conn.execute(_t(
                 "SELECT started_at, duration_ms, status, project_slug, "
-                "       meta->>'sql' AS sql, meta->>'user_id' AS uid "
+                " meta->>'sql' AS sql, meta->>'user_id' AS uid "
                 "FROM public.dash_traces "
                 "WHERE started_at >= now() - interval '30 days' "
-                "  AND meta ? 'sql' "
-                "  AND meta->>'sql' <> ''"
+                " AND meta ? 'sql' "
+                " AND meta->>'sql' <> ''"
             )).fetchall()
     except Exception as e:
         logger.warning("table_usage refresh: trace read failed: %s", e)
@@ -223,7 +223,7 @@ def hot_tables(request: Request, limit: int = 20):
         with eng.connect() as conn:
             rows = conn.execute(_t(
                 "SELECT table_fqn, query_count_7d, query_count_30d, "
-                "       last_used_at, distinct_users, avg_latency_ms, error_rate "
+                " last_used_at, distinct_users, avg_latency_ms, error_rate "
                 "FROM public.mv_table_usage "
                 "ORDER BY query_count_30d DESC, last_used_at DESC NULLS LAST "
                 "LIMIT :lim"
@@ -246,7 +246,7 @@ def cold_tables(request: Request, limit: int = 20):
         with eng.connect() as conn:
             rows = conn.execute(_t(
                 "SELECT table_fqn, query_count_7d, query_count_30d, "
-                "       last_used_at, distinct_users, avg_latency_ms, error_rate "
+                " last_used_at, distinct_users, avg_latency_ms, error_rate "
                 "FROM public.mv_table_usage "
                 "WHERE query_count_30d > 0 "
                 "ORDER BY query_count_30d ASC, last_used_at ASC NULLS FIRST "
@@ -268,7 +268,7 @@ def table_detail(request: Request, fqn: str):
         with eng.connect() as conn:
             r = conn.execute(_t(
                 "SELECT table_fqn, query_count_7d, query_count_30d, "
-                "       last_used_at, distinct_users, avg_latency_ms, error_rate "
+                " last_used_at, distinct_users, avg_latency_ms, error_rate "
                 "FROM public.mv_table_usage "
                 "WHERE table_fqn = lower(:fqn)"
             ), {"fqn": fqn}).fetchone()

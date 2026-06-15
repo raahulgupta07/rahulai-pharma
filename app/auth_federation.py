@@ -6,14 +6,14 @@ Adds LDAP (bind-search-bind) and generic OIDC (Google / Microsoft / Keycloak /
 any OpenID provider) on top of the existing local username+password auth in
 `app/auth.py`. Modeled on Open WebUI's federated-auth design:
 
-  - LDAP: app-bind → search by username attr (filter chars escaped) → rebind as
+  - LDAP: app-bind > search by username attr (filter chars escaped) > rebind as
     the discovered user DN with the supplied password. Auto-provision a local
     user; password stored as a random bcrypt placeholder (never the LDAP pw).
   - OIDC: authorization-code flow with **state + nonce + PKCE (S256)** and
     **JWKS id_token signature verification** (pyjwt). Generic via the provider's
     `/.well-known/openid-configuration` discovery doc. Account-merge by email.
   - Role gate: reject login unless the user holds an allowed role (if configured).
-  - Pharma twist: map an LDAP group / OIDC group-claim value → `dash_users.site_code`
+  - Pharma twist: map an LDAP group / OIDC group-claim value > `dash_users.site_code`
     so SSO/LDAP users land bound to their branch (drives Shop-Counter mode).
 
 Config = ENV (12-factor, secrets) merged with a single JSON override row in
@@ -22,12 +22,12 @@ super-admin Authentication tab. **Secrets (LDAP bind pw, OIDC client secrets)
 live in ENV only — never written to the DB.**
 
 Endpoints (all under /api/auth, registered as `fed_router`):
-    GET  /methods                       — public; which methods are enabled (for the login page)
-    POST /ldap/login                    — public; {username, password} → token
-    GET  /oidc/{provider}/login         — public; 302 to the IdP
-    GET  /oidc/{provider}/callback      — public; IdP redirect target → sets cookie, 302 to /ui
-    GET  /config                        — super-admin; current (secret-redacted) auth config
-    POST /config                        — super-admin; persist the JSON override row
+    GET /methods — public; which methods are enabled (for the login page)
+    POST /ldap/login — public; {username, password} > token
+    GET /oidc/{provider}/login — public; 302 to the IdP
+    GET /oidc/{provider}/callback — public; IdP redirect target > sets cookie, 302 to /ui
+    GET /config — super-admin; current (secret-redacted) auth config
+    POST /config — super-admin; persist the JSON override row
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ from sqlalchemy import text
 from starlette.responses import RedirectResponse
 
 # Reuse the engine + helpers from the core auth module (single source of truth).
-from app.auth import (  # noqa: E402
+from app.auth import ( # noqa: E402
     _engine,
     _hash_password,
     _token_cache,
@@ -64,7 +64,7 @@ fed_router = APIRouter(prefix="/api/auth", tags=["Auth-Federated"])
 
 # Where the IdP sends the browser back; the frontend serves under /ui.
 _PUBLIC_URL = getenv("PUBLIC_URL", getenv("WEBUI_URL", "")).rstrip("/")
-_SSO_COOKIE = "dash_sso"  # short-lived, JS-readable; login page moves it to localStorage then clears it
+_SSO_COOKIE = "dash_sso" # short-lived, JS-readable; login page moves it to localStorage then clears it
 
 _CFG_CACHE: dict[str, Any] = {"t": 0.0, "v": None}
 _CFG_TTL_S = 30.0
@@ -134,7 +134,7 @@ def _env_config() -> dict:
             "mail_attr": getenv("LDAP_ATTRIBUTE_FOR_MAIL", "mail"),
             "group_attr": getenv("LDAP_ATTRIBUTE_FOR_GROUPS", "memberOf"),
             "search_filter": getenv("LDAP_SEARCH_FILTER", ""),
-            "group_to_site": {},  # {groupCN: site_code} — admin-tab only
+            "group_to_site": {}, # {groupCN: site_code} — admin-tab only
         },
         # OIDC providers as a list; secrets resolved from env per-id at use time.
         "oidc": _env_oidc_providers(),
@@ -261,7 +261,7 @@ def _find_provider(cfg: dict, provider_id: str) -> Optional[dict]:
 
 def _map_site_and_role(values: list[str], group_to_site: dict, allowed_roles: list[str]) -> tuple[Optional[str], bool]:
     """Returns (site_code or None, allowed). `values` = role/group claim values.
-    allowed=False ⇒ reject login (user holds none of the allowed roles)."""
+    allowed=False > reject login (user holds none of the allowed roles)."""
     vals = set(values or [])
     allowed = True
     if allowed_roles:
@@ -414,7 +414,7 @@ def ldap_login(req: LdapLoginRequest):
     email = _attr(mail_attr)
     first = _attr("givenName")
     last = _attr("sn")
-    # groups → list of CNs (memberOf returns full DNs; take the CN= component)
+    # groups > list of CNs (memberOf returns full DNs; take the CN= component)
     groups: list[str] = []
     try:
         raw = entry[group_attr].values if group_attr in entry else []
@@ -432,7 +432,7 @@ def ldap_login(req: LdapLoginRequest):
     return _provision_and_issue(username=req.username, email=email, first=first, last=last,
                                 provider="ldap", external_id=user_dn, site_code=site,
                                 merge_by_email=bool(cfg.get("merge_by_email")),
-                                email_verified=True)  # LDAP directory is authoritative for email
+                                email_verified=True) # LDAP directory is authoritative for email
 
 
 # ---------------------------------------------------------------------------
@@ -529,7 +529,7 @@ def oidc_callback(provider: str, request: Request, code: str = "", state: str = 
         raise HTTPException(404, "Unknown OIDC provider")
     disco = _discover(p["issuer"])
 
-    # exchange code → tokens (PKCE verifier + confidential client secret)
+    # exchange code > tokens (PKCE verifier + confidential client secret)
     try:
         tok = httpx.post(disco["token_endpoint"], data={
             "grant_type": "authorization_code",
@@ -584,7 +584,7 @@ def oidc_callback(provider: str, request: Request, code: str = "", state: str = 
         username=username, email=email, first=first, last=last,
         provider=f"oidc:{provider}", external_id=str(claims.get("sub", "")),
         site_code=site, merge_by_email=bool(cfg.get("merge_by_email")),
-        email_verified=bool(claims.get("email_verified")),  # IdP-asserted, required for email-merge
+        email_verified=bool(claims.get("email_verified")), # IdP-asserted, required for email-merge
     )
 
     # Hand the token to the SPA WITHOUT putting it in the URL (no access-log /
@@ -640,7 +640,7 @@ class AuthConfigRequest(BaseModel):
 def set_config(req: AuthConfigRequest, request: Request):
     user = _require_super(request)
     # strip any secret-ish keys before persisting (defense in depth)
-    cfg = json.loads(json.dumps(req.config))  # deep copy
+    cfg = json.loads(json.dumps(req.config)) # deep copy
     cfg.get("ldap", {}).pop("app_password", None)
     for p in cfg.get("oidc", []) or []:
         p.pop("client_secret", None)
@@ -655,5 +655,5 @@ def set_config(req: AuthConfigRequest, request: Request):
             ), {"v": payload, "uid": user.get("user_id")})
     except Exception as e:
         raise HTTPException(500, f"save failed: {e}")
-    _CFG_CACHE["v"] = None  # invalidate
+    _CFG_CACHE["v"] = None # invalidate
     return {"status": "ok"}

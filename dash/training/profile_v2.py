@@ -27,9 +27,9 @@ Returns:
           "role": "id"|"state"|"dimension"|"measure"|"temporal"|"text",
           "n_distinct_approx": int,
           "n_distinct_exact": int | None,
-          "null_pct": float,             # 0-100
+          "null_pct": float, # 0-100
           "top_values": [{"v": str, "freq_pct": float}],
-          "stats": {                       # only for measure/temporal, else None
+          "stats": { # only for measure/temporal, else None
             "min": str|None, "max": str|None,
             "mean": float|None, "stddev": float|None,
             "p25": float|None, "p50": float|None,
@@ -42,7 +42,7 @@ Returns:
       ]
     }
 
-Kill switch: env `PROFILE_V2_DISABLED=1` → returns `{"disabled": True}`.
+Kill switch: env `PROFILE_V2_DISABLED=1` > returns `{"disabled": True}`.
 
 Persistence: `_persist_profile` upserts into `public.dash_table_metadata.metadata`
 under JSONB key `profile_v2`. Uses `get_write_engine()` (public-schema write rule)
@@ -70,12 +70,12 @@ logger = logging.getLogger(__name__)
 # Tunables
 # ───────────────────────────────────────────────────────────────────────────
 
-MAX_COLS_PER_SCAN = 200                  # PG planner guard — batch beyond this
-TOP_VALUES_CAP = 10                      # frontend renders ≤10
-LOW_CARD_THRESHOLD = 500                 # below = candidate for variant detect
-TABLESAMPLE_ROW_THRESHOLD = 1_000_000    # use TABLESAMPLE above this
-TABLESAMPLE_PCT = 1                      # SYSTEM(1) ≈ 1% pages
-TABLESAMPLE_SEED = 42                    # deterministic
+MAX_COLS_PER_SCAN = 200 # PG planner guard — batch beyond this
+TOP_VALUES_CAP = 10 # frontend renders ≤10
+LOW_CARD_THRESHOLD = 500 # below = candidate for variant detect
+TABLESAMPLE_ROW_THRESHOLD = 1_000_000 # use TABLESAMPLE above this
+TABLESAMPLE_PCT = 1 # SYSTEM(1) ≈ 1% pages
+TABLESAMPLE_SEED = 42 # deterministic
 NUMERIC_PG_TYPES = {
     "integer", "bigint", "smallint",
     "numeric", "double precision", "real",
@@ -139,7 +139,7 @@ def _read_pg_stats(slug: str, table: str) -> dict[str, dict]:
     Returns: `{col_name: {n_distinct: int|float, most_common_vals: list, most_common_freqs: list}}`
 
     Notes:
-      - PG omits most_common_vals/freqs for very high-cardinality columns → None.
+      - PG omits most_common_vals/freqs for very high-cardinality columns > None.
       - n_distinct can be negative (negative fraction of total rows) — caller
         converts via abs(n) * total_rows.
     """
@@ -236,9 +236,9 @@ def _build_combined_query(qualified_table: str, columns: list[tuple[str, str]]) 
     Caller is responsible for batching at MAX_COLS_PER_SCAN.
 
     Output column order (per input col `c`):
-        nn_{c}    — COUNT(c) non-null
-        min_{c}   — MIN(c)::text
-        max_{c}   — MAX(c)::text
+        nn_{c} — COUNT(c) non-null
+        min_{c} — MIN(c)::text
+        max_{c} — MAX(c)::text
     Plus a single leading `total_rows = COUNT(*)`.
     """
     parts: list[str] = ["COUNT(*) AS total_rows"]
@@ -248,14 +248,14 @@ def _build_combined_query(qualified_table: str, columns: list[tuple[str, str]]) 
         parts.append(f"COUNT({safe}) AS nn_{alias}")
         parts.append(f"MIN({safe})::text AS min_{alias}")
         parts.append(f"MAX({safe})::text AS max_{alias}")
-    select_list = ",\n  ".join(parts)
-    return f"SELECT\n  {select_list}\nFROM {qualified_table}"
+    select_list = ",\n ".join(parts)
+    return f"SELECT\n {select_list}\nFROM {qualified_table}"
 
 
 def _run_combined_scan(
     qualified_table: str, columns: list[tuple[str, str]]
 ) -> tuple[int, dict[str, dict]]:
-    """Run combined scan in batches; return (total_rows, {col → {non_null, min_text, max_text}})."""
+    """Run combined scan in batches; return (total_rows, {col > {non_null, min_text, max_text}})."""
     total_rows = 0
     per_col: dict[str, dict] = {}
     if not columns:
@@ -278,7 +278,7 @@ def _run_combined_scan(
                     continue
                 if row is None:
                     continue
-                mapping = row._mapping  # type: ignore[attr-defined]
+                mapping = row._mapping # type: ignore[attr-defined]
                 total_rows = int(mapping.get("total_rows") or 0)
                 for (name, _pg_type) in batch:
                     alias = _safe_ident(name)
@@ -318,7 +318,7 @@ def _compute_percentiles(
         from db.session import get_sql_engine
         eng = get_sql_engine()
         with eng.connect() as conn:
-            for start in range(0, len(numeric_cols), 50):  # smaller batch — percentiles are heavier
+            for start in range(0, len(numeric_cols), 50): # smaller batch — percentiles are heavier
                 batch = numeric_cols[start:start + 50]
                 parts: list[str] = []
                 for name in batch:
@@ -333,8 +333,8 @@ def _compute_percentiles(
                         f"AVG({expr}) AS mean_{alias}, "
                         f"STDDEV_SAMP({expr}) AS sd_{alias}"
                     )
-                select_list = ",\n  ".join(parts)
-                sql = f"SELECT\n  {select_list}\nFROM {source}"
+                select_list = ",\n ".join(parts)
+                sql = f"SELECT\n {select_list}\nFROM {source}"
                 try:
                     row = conn.execute(text(sql)).fetchone()
                 except Exception as e:
@@ -345,7 +345,7 @@ def _compute_percentiles(
                     continue
                 if row is None:
                     continue
-                mapping = row._mapping  # type: ignore[attr-defined]
+                mapping = row._mapping # type: ignore[attr-defined]
                 for name in batch:
                     alias = _safe_ident(name)
                     def _f(k: str):
@@ -383,7 +383,7 @@ def _detect_variants(
                flag cols where raw_n > norm_n (variants present)
       Pass 2 — only for flagged cols, fetch sample variant strings (cheap, few cols)
 
-    Cuts 30 queries → 1 + N_flagged. On 21K rows × 30 dim cols: 30s → ~2s.
+    Cuts 30 queries > 1 + N_flagged. On 21K rows × 30 dim cols: 30s > ~2s.
     """
     out: dict[str, str] = {}
     if not low_card_cols:
@@ -413,7 +413,7 @@ def _detect_variants(
                     continue
                 if row is None:
                     continue
-                mapping = row._mapping  # type: ignore[attr-defined]
+                mapping = row._mapping # type: ignore[attr-defined]
                 for c in batch:
                     delta = mapping.get(f"vd_{_safe_ident(c)}")
                     try:
@@ -464,7 +464,7 @@ def _classify_role(
     pg_type_lc = (pg_type or "").lower()
     nd_ratio = (n_distinct / total_rows) if total_rows > 0 else 0.0
 
-    # id-like NAME (id/code/key/sku…) that's mostly unique → id. Checked BEFORE
+    # id-like NAME (id/code/key/sku…) that's mostly unique > id. Checked BEFORE
     # measure so a numeric code isn't mistaken for a metric. Covers article_code.
     if (name_lc in ("id", "code", "sku", "barcode", "uuid", "guid")
             or name_lc.endswith(("_id", "_code", "_key", "_no", "_num", "_sku"))) \
@@ -569,8 +569,8 @@ def _persist_profile(slug: str, table: str, profile: dict) -> None:
                     "VALUES (:s, :t, jsonb_build_object('profile_v2', CAST(:p AS jsonb))) "
                     "ON CONFLICT (project_slug, table_name) DO UPDATE "
                     "SET metadata = COALESCE(public.dash_table_metadata.metadata, '{}'::jsonb) "
-                    "             || jsonb_build_object('profile_v2', CAST(:p AS jsonb)), "
-                    "    updated_at = now()"
+                    " || jsonb_build_object('profile_v2', CAST(:p AS jsonb)), "
+                    " updated_at = now()"
                 ),
                 {"s": _safe_ident(slug), "t": _safe_ident(table), "p": payload},
             )
@@ -690,7 +690,7 @@ def profile_table_v2(slug: str, table: str) -> dict:
                         continue
                     if row is None:
                         continue
-                    mapping = row._mapping  # type: ignore[attr-defined]
+                    mapping = row._mapping # type: ignore[attr-defined]
                     for c in batch:
                         v = mapping.get(f"nd_{_safe_ident(c)}")
                         if v is not None:

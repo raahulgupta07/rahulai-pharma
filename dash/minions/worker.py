@@ -21,11 +21,11 @@ logger = logging.getLogger(__name__)
 # Observability tracing (fail-soft; no-op if unavailable or TRACING_DISABLED).
 try:
     from dash.obs.trace import trace_span
-except Exception:  # noqa: BLE001
+except Exception: # noqa: BLE001
     from contextlib import contextmanager as _cm
 
     @_cm
-    def trace_span(*_a, **_k):  # type: ignore
+    def trace_span(*_a, **_k): # type: ignore
         yield None
 
 
@@ -244,7 +244,7 @@ def handle_reembed_stale_chunks(payload: Dict[str, Any], engine) -> Dict[str, An
     current_model = payload.get("current_model")
     if not current_model:
         try:
-            from dash import settings as _settings  # type: ignore
+            from dash import settings as _settings # type: ignore
             current_model = getattr(_settings, "EMBEDDING_MODEL", None)
         except Exception:
             current_model = None
@@ -257,7 +257,7 @@ def handle_reembed_stale_chunks(payload: Dict[str, Any], engine) -> Dict[str, An
         except Exception as e:
             return {"ok": False, "error": f"embedder unavailable: {e}"}
 
-        # dash_vectors has no `embedding_model` column (migration 028) → treat all
+        # dash_vectors has no `embedding_model` column (migration 028) > treat all
         # rows for the project as candidates and limit. Caller-friendly: only
         # re-embeds up to `max_chunks` per cycle so it's bounded.
         with engine.connect() as conn:
@@ -475,7 +475,7 @@ def run_worker_loop(
 ) -> None:
     """Continuously claim + dispatch pending minions until stopped.
 
-    Drains as fast as the queue has work (claim returns True → immediately try
+    Drains as fast as the queue has work (claim returns True > immediately try
     the next), then backs off `idle_sleep` seconds when the queue is empty.
     Fully fail-soft: any exception in a cycle is logged and the loop continues.
     """

@@ -8,7 +8,7 @@ Heuristic, not a hard gate. Returns advisory dict consumed by chat path:
 
     from dash.guards import audit_numbers
     result = audit_numbers(answer_text, tool_outputs_concatenated)
-    # → {ok, flagged: [{number, context}], total_numbers, cited, fabricated_pct}
+    # > {ok, flagged: [{number, context}], total_numbers, cited, fabricated_pct}
 
 Tolerances:
   - Numbers parsed as floats; ±0.5% relative match allowed (rounding)
@@ -16,9 +16,9 @@ Tolerances:
   - Years 1900-2100 ignored (calendar context, not data)
   - Percentages (`32%`) checked separately against raw 32 and 0.32
   - Currency symbols + commas stripped before parse
-  - Scientific notation supported (1.5e6 → 1500000)
+  - Scientific notation supported (1.5e6 > 1500000)
 
-Fail-soft: any parse error → return ok=True w/ empty flagged list. Better
+Fail-soft: any parse error > return ok=True w/ empty flagged list. Better
 to miss a hallucination than block a real answer.
 """
 
@@ -32,20 +32,20 @@ logger = logging.getLogger(__name__)
 
 # Match: optional $/€/£/¥/₹ + digits (possibly with commas/decimal) + optional %/M/K/B
 _NUM_RE = re.compile(
-    r"(?<![A-Za-z_])"                       # not glued to a word
-    r"([$€£¥₹]?-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|"  # 1,234,567.89
-    r"[$€£¥₹]?-?\d+\.\d+|"                  # 12.5
-    r"[$€£¥₹]?-?\d+)"                       # 42
+    r"(?<![A-Za-z_])" # not glued to a word
+    r"([$€£¥₹]?-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|" # 1,234,567.89
+    r"[$€£¥₹]?-?\d+\.\d+|" # 12.5
+    r"[$€£¥₹]?-?\d+)" # 42
     r"(\s*%|\s*[MKB]\b|\s*million|\s*billion|\s*thousand)?"
 )
-_TOL_REL = 0.005   # 0.5%
-_TOL_ABS = 0.01    # for sub-unit values
+_TOL_REL = 0.005 # 0.5%
+_TOL_ABS = 0.01 # for sub-unit values
 _MIN_INT_TO_AUDIT = 10
 _YEAR_MIN, _YEAR_MAX = 1900, 2100
 
 
 def _parse(raw: str) -> float | None:
-    """Coerce '$1,234.5M' → 1234500000.0. None on parse fail."""
+    """Coerce '$1,234.5M' > 1234500000.0. None on parse fail."""
     if not raw:
         return None
     s = raw.strip().replace(",", "").lstrip("$€£¥₹")

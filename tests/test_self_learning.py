@@ -33,7 +33,7 @@ if "db.session" not in sys.modules:
 
 
 # Imports of subsystem under test (after the stubs are in place)
-from dash.learning.base import (  # noqa: E402
+from dash.learning.base import ( # noqa: E402
     ConsolidationResult,
     Hypothesis,
     HypothesisType,
@@ -45,12 +45,12 @@ from dash.learning.base import (  # noqa: E402
     VerificationResult,
     VerificationStatus,
 )
-from dash.learning.curiosity import CuriosityEngine  # noqa: E402
-from dash.learning.researcher import ResearcherLoop  # noqa: E402
-from dash.learning.hypothesis import HypothesisEngine  # noqa: E402
-from dash.learning.verifier import Verifier  # noqa: E402
-from dash.learning.consolidator import Consolidator  # noqa: E402
-from dash.learning import forgetting as fg  # noqa: E402
+from dash.learning.curiosity import CuriosityEngine # noqa: E402
+from dash.learning.researcher import ResearcherLoop # noqa: E402
+from dash.learning.hypothesis import HypothesisEngine # noqa: E402
+from dash.learning.verifier import Verifier # noqa: E402
+from dash.learning.consolidator import Consolidator # noqa: E402
+from dash.learning import forgetting as fg # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +143,7 @@ class TestCuriosityEngine:
         assert ce._is_duplicate("", "p") is False
 
     def test_generate_with_no_signals_returns_empty(self):
-        eng, _, _ = _mk_engine_with_conn()  # fetchall returns []
+        eng, _, _ = _mk_engine_with_conn() # fetchall returns []
         ce = CuriosityEngine(project_slug="p", dash_engine=eng)
         out = ce.generate(max_questions=20, cycle_num=1)
         assert out == []
@@ -160,15 +160,15 @@ class TestCuriosityEngine:
         ]
         for n in method_names:
             setattr(ce, n, MagicMock(return_value=[]))
-        ce._persist = MagicMock(return_value=0)  # bypass DB
+        ce._persist = MagicMock(return_value=0) # bypass DB
         ce.generate(max_questions=5)
         for n in method_names:
             getattr(ce, n).assert_called_once()
 
     def test_generate_aggregates_and_dedups(self):
-        eng, _, _ = _mk_engine_with_conn(fetchone_row=None)  # nothing existing
+        eng, _, _ = _mk_engine_with_conn(fetchone_row=None) # nothing existing
         ce = CuriosityEngine(project_slug="p", dash_engine=eng)
-        # one source returns two identical questions → should dedupe
+        # one source returns two identical questions > should dedupe
         ce._from_kg_holes = MagicMock(return_value=[
             ("Same Q?", "topic", "kg_hole", 70, None),
             ("Same Q?", "topic", "kg_hole", 70, None),
@@ -229,7 +229,7 @@ class TestResearcherLoop:
         assert d.triangulation_count == 3
 
     def test_triangulation_count_correct(self):
-        # 3 tiers, but 1 below 0.5 confidence → only 2 should count
+        # 3 tiers, but 1 below 0.5 confidence > only 2 should count
         rl = ResearcherLoop(project_slug="p", llm_call_fn=None,
                             enabled_tiers=[
                                 ResearchTier.INTERNAL_DB.value,
@@ -307,7 +307,7 @@ class TestHypothesisEngine:
 
     def test_form_from_dossier_with_summary_falls_back(self):
         he = HypothesisEngine(project_slug="p", llm_call_fn=None)
-        # No LLM → _llm_extract returns []; falls back to summary-based hypothesis
+        # No LLM > _llm_extract returns []; falls back to summary-based hypothesis
         d = ResearchDossier(
             sources=[ResearchSource(tier="internal_db", source="t",
                                     confidence=0.7)],
@@ -397,7 +397,7 @@ class TestVerifier:
         assert res.method == "llm_review"
 
     def test_verify_via_sql_blocks_unsafe_query(self):
-        # LLM returns a write-statement → must be blocked
+        # LLM returns a write-statement > must be blocked
         llm = MagicMock(return_value="DROP TABLE customers;")
         v = Verifier(project_slug="p", llm_call_fn=llm)
         # Inject a fake provider with engine_ro
@@ -417,7 +417,7 @@ class TestVerifier:
         assert "```" not in cleaned
 
     def test_verify_marks_failed_on_exec_error(self):
-        # First LLM call → SQL string.  Then execution raises.
+        # First LLM call > SQL string. Then execution raises.
         llm = MagicMock(return_value="SELECT * FROM nope")
         v = Verifier(project_slug="p", llm_call_fn=llm)
         provider = MagicMock()
@@ -560,7 +560,7 @@ class TestConsolidator:
         )
         res = c.consolidate(h)
         assert "memory" in res.targets
-        # KG triple needs SPO extraction; statement has " drives " → ok
+        # KG triple needs SPO extraction; statement has " drives " > ok
         assert "kg" in res.targets
 
     def test_dedup_returns_duplicate_skipped(self):

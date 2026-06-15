@@ -1,5 +1,5 @@
 <script>
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import DashRenderer from '$lib/dashboards/DashRenderer.svelte';
  let { open = false, spec = null, data = {}, thinkingLog = [], deepening = false, findings = [], onClose, onSave, onRegenerate = null } = $props();
  let logExpanded = $state(false);
@@ -59,7 +59,7 @@
                 {#each group as f}
                   <div class="finding-item">
                     <div class="f-headline">{f.headline}</div>
-                    {#if f.cause_hypothesis}<div class="f-cause">→ {f.cause_hypothesis}</div>{/if}
+                    {#if f.cause_hypothesis}<div class="f-cause"><Icon name="arrow-right" size={16} /> {f.cause_hypothesis}</div>{/if}
                     {#if f.suggested_action}<div class="f-action"><Icon name="zap" size={14} /> {f.suggested_action}</div>{/if}
                     {#if f.domain_tags?.length}<div class="f-tags">{f.domain_tags.join(' · ')}</div>{/if}
                   </div>

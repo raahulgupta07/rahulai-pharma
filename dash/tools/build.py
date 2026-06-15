@@ -19,30 +19,30 @@ from agno.tools.sql import SQLTools
 # Imported inside try/except so a missing module never breaks tool
 # registration. When unavailable, the names resolve to no-op shims.
 try:
-    from dash.obs.trace import trace_span as _trace_span, record_cost as _record_cost  # noqa: F401
+    from dash.obs.trace import trace_span as _trace_span, record_cost as _record_cost # noqa: F401
     _TRACE_OK = True
-except Exception:  # noqa: BLE001
+except Exception: # noqa: BLE001
     _TRACE_OK = False
 
     from contextlib import contextmanager as _ctxmgr
 
     @_ctxmgr
-    def _trace_span(*_a, **_k):  # type: ignore
+    def _trace_span(*_a, **_k): # type: ignore
         yield None
 
-    def _record_cost(*_a, **_k):  # type: ignore
+    def _record_cost(*_a, **_k): # type: ignore
         return None
 
 try:
-    from dash.guards.context import cap_tool_result as _cap_tool_result, _enabled as _guards_enabled  # noqa: F401
+    from dash.guards.context import cap_tool_result as _cap_tool_result, _enabled as _guards_enabled # noqa: F401
     _GUARDS_OK = True
-except Exception:  # noqa: BLE001
+except Exception: # noqa: BLE001
     _GUARDS_OK = False
 
-    def _cap_tool_result(payload, max_tokens=None):  # type: ignore
+    def _cap_tool_result(payload, max_tokens=None): # type: ignore
         return payload, False, 0
 
-    def _guards_enabled():  # type: ignore
+    def _guards_enabled(): # type: ignore
         return False
 
 
@@ -53,28 +53,28 @@ def _preview_args(*args, **kwargs) -> str:
         parts += [f"{k}={v!r}" for k, v in kwargs.items()]
         s = ", ".join(parts)
         return s[:300]
-    except Exception:  # noqa: BLE001
+    except Exception: # noqa: BLE001
         return ""
 
 
 class RLSAwareSQLTools(SQLTools):
     """Wraps SQLTools.run_sql_query so RLS PermissionError surfaces to the agent
     as a structured tool result instead of being swallowed by Agno's generic
-    exception handler. Fixes issue #4: silent "no rows" → user-visible
+    exception handler. Fixes issue #4: silent "no rows" > user-visible
     "access denied" message.
 
-    Also: MDL compile pass (semantic SQL → raw SQL) when `project_slug` set
+    Also: MDL compile pass (semantic SQL > raw SQL) when `project_slug` set
     and MDL models exist for project. Pass-through when no models. Fail-soft.
     """
     def __init__(self, *args, project_slug: str | None = None, **kwargs):
         super().__init__(*args, **kwargs)
         self._mdl_slug = project_slug
 
-    def run_sql_query(self, query: str = None, *args, **extra):  # type: ignore[override]
+    def run_sql_query(self, query: str = None, *args, **extra): # type: ignore[override]
         # ── Malformed-call guard ──────────────────────────────────────────
         # Some models wrap the call in {"args":"{}","kwargs":"{}","query":"SELECT…"}
         # or pass the real SQL as a JSON string. Agno's SQLTools then rejects it
-        # ("got unexpected keyword argument 'args'") → wasted failed call + retry.
+        # ("got unexpected keyword argument 'args'") > wasted failed call + retry.
         # Tolerate: swallow stray args/kwargs keys via **extra, and unwrap a
         # JSON-string `query` that nests the real SQL. Fail-soft.
         try:
@@ -122,7 +122,7 @@ class RLSAwareSQLTools(SQLTools):
                 return _decision.synthetic_result
         except Exception:
             pass
-        # MDL compile: semantic table/col names → raw. Pass-through when no models.
+        # MDL compile: semantic table/col names > raw. Pass-through when no models.
         # Fail-soft: any error keeps original SQL.
         if getattr(self, "_mdl_slug", None):
             try:
@@ -131,7 +131,7 @@ class RLSAwareSQLTools(SQLTools):
                 if _compiled and _compiled != query:
                     import logging as _mlog
                     _mlog.getLogger(__name__).debug(
-                        f"[mdl] compiled for {self._mdl_slug}: {query[:80]}... → {_compiled[:80]}..."
+                        f"[mdl] compiled for {self._mdl_slug}: {query[:80]}... > {_compiled[:80]}..."
                     )
                     query = _compiled
             except Exception as _me:
@@ -241,7 +241,7 @@ class RLSAwareSQLTools(SQLTools):
         try:
             with _trace_span(f"chat.analyst.run_sql_query", kind="chat",
                              project_slug=getattr(self, "_mdl_slug", None),
-                             meta=_span_meta) as _sp:  # noqa: F841
+                             meta=_span_meta) as _sp: # noqa: F841
                 # Only forward the cleaned SQL string. Stray wrapper keys
                 # (args/kwargs/query/...) in **extra are intentionally dropped so
                 # the parent SQLTools never sees an unexpected keyword argument.
@@ -280,7 +280,7 @@ class RLSAwareSQLTools(SQLTools):
                         if _was_capped:
                             _result = _capped
                             try:
-                                _record_cost()  # touch current span (no-op tokens)
+                                _record_cost() # touch current span (no-op tokens)
                             except Exception:
                                 pass
                             _span_meta["capped"] = True
@@ -349,7 +349,7 @@ def _attach_rls_rewrite(engine, project_slug: str | None) -> None:
         return
 
     @_sa_event.listens_for(engine, "before_cursor_execute", retval=True)
-    def _rewrite_listener(conn, cursor, statement, params, context, executemany):  # noqa: ARG001
+    def _rewrite_listener(conn, cursor, statement, params, context, executemany): # noqa: ARG001
         try:
             from dash.rls.rewriter import rewrite as _rls_rewrite
             attrs = _rls_get_attrs() or {}
@@ -433,7 +433,7 @@ def _attach_embed_rls(engine) -> None:
         return
 
     @_sa_event.listens_for(engine, "before_cursor_execute", retval=True)
-    def _embed_rls_listener(conn, cursor, statement, params, context, executemany):  # noqa: ARG001
+    def _embed_rls_listener(conn, cursor, statement, params, context, executemany): # noqa: ARG001
         try:
             from dash.embed.rls import (
                 EMBED_RLS_POLICIES as _POL,
@@ -580,7 +580,7 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
     # is not. Drop run_sql_query + introspect_schema at BUILD TIME so a store-locked
     # key physically cannot run arbitrary SQL against other branches. Scoped pharma
     # tools (stock_check / find_substitutes / …) enforce Tier-2 masking instead.
-    # Global-mode / human-UI keys keep raw SQL (is_store_locked() → False).
+    # Global-mode / human-UI keys keep raw SQL (is_store_locked() > False).
     try:
         from dash.api_scope import is_store_locked as _is_locked
         _store_locked = _is_locked()
@@ -870,7 +870,7 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
     # Replaces raw SQL for "show me all values" / "cross-tab" / "monthly trend" Qs.
     # Fail-soft + gated by EDA_TOOLS_DISABLED=1.
     # Store-scope: these run arbitrary SELECT/COUNT/cross-tab against ANY table+
-    # column with no per-branch filter (e.g. distributions over balance_stock) →
+    # column with no per-branch filter (e.g. distributions over balance_stock) >
     # a cross-branch leak. Treated as raw-SQL and dropped for store-locked keys.
     if project_slug and not _store_locked:
         try:
@@ -887,7 +887,7 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
     # tools win. The 11 underlying analyzers still live in analysis_types.py and
     # are routed to internally by `analyze(analysis_type=...)`.
     # Store-scope: `analyze` runs arbitrary aggregations (SUM/AVG/GROUP BY) over
-    # ANY table+column with no per-branch filter → cross-branch leak. Raw-SQL
+    # ANY table+column with no per-branch filter > cross-branch leak. Raw-SQL
     # class; dropped for store-locked keys (scoped pharma tools cover their needs).
     if not _store_locked:
         try:
@@ -929,7 +929,7 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
         pass
 
     # Apply Skill tool — execute proven SQL from skill library (Layer 15).
-    # Store-scope: executes saved SQL (potentially cross-branch aggregates) →
+    # Store-scope: executes saved SQL (potentially cross-branch aggregates) >
     # raw-SQL class, dropped for store-locked keys.
     if not _store_locked:
         try:
@@ -979,7 +979,7 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
     # Hybrid lookup — routes exact metrics (count/sum/total) to deterministic
     # SQL and meaning questions to semantic search. Guards counts against the
     # similarity-search miscount class. Fail-soft: never break tool assembly.
-    # Store-scope: runs arbitrary count/sum/total SQL → cross-branch leak,
+    # Store-scope: runs arbitrary count/sum/total SQL > cross-branch leak,
     # dropped for store-locked keys (raw-SQL class).
     if not _store_locked:
         try:
@@ -995,7 +995,7 @@ def build_analyst_tools(knowledge: Knowledge, user_id: str | None = None, projec
     # agent to use the ONE canonical SQL per business metric instead of
     # re-deriving (and dropping) filters. Fixes the drop-off/contribution drift
     # class (benchmark 2026-05). Fail-soft: never break tool assembly.
-    # Store-scope: canonical metric SQL can aggregate cross-branch → dropped for
+    # Store-scope: canonical metric SQL can aggregate cross-branch > dropped for
     # store-locked keys (raw-SQL class).
     if not _store_locked:
         try:

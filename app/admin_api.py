@@ -158,7 +158,7 @@ def llm_costs_endpoint(request: Request, days: int = 30):
             {"day": r[0], "project": r[1], "model": r[2], "cost": float(r[3] or 0)}
             for r in rows
         ]
-    except Exception as e:  # table missing / DB hiccup → fail-soft empty
+    except Exception as e: # table missing / DB hiccup > fail-soft empty
         logger.warning("llm-costs query failed: %s", e)
         items = []
     # NOTE: get_sql_engine() returns the cached shared engine — never dispose it.
@@ -174,7 +174,7 @@ def sse_audit(
 ):
     """Phase 7: SSE audit query — observability for emit events.
 
-    Default mode returns a rollup of event_name → count/errors/avg_bytes over
+    Default mode returns a rollup of event_name > count/errors/avg_bytes over
     the lookback window. When `missing_event` is provided, returns the list of
     sessions that emitted at least one event in the window but never emitted
     that target event (catches broken streams where e.g. TeamRunContent never
@@ -371,7 +371,7 @@ _LLM_GROUPS = [
     {
         "id": "chat", "label": "CHAT", "note": "2 modes + AUTO",
         "modes": [
-            {"mode": "FAST",   "key": "lite_model", "glyph": "⚡",
+            {"mode": "FAST", "key": "lite_model", "glyph": "",
              "hint": "quick lookup · <500ms",
              "tools": ["stock_check", "drug_profile", "substitutes", "find_nearby_stock"]},
             {"mode": "REASON", "key": "chat_model", "glyph": "◆",
@@ -397,35 +397,35 @@ _LLM_GROUPS = [
 _LLM_USAGE: dict[str, dict] = {
     "chat_model": {
         "triggers": ["Agno team default model (chat agents)", "training_llm_call when task uses CHAT_MODEL constant"],
-        "used_by":  ["Leader / Analyst / Engineer / Researcher / Data Scientist", "Q&A generation", "dashboard generation", "vision tasks"],
+        "used_by": ["Leader / Analyst / Engineer / Researcher / Data Scientist", "Q&A generation", "dashboard generation", "vision tasks"],
     },
     "mid_model": {
         "triggers": ["Complexity router: ANALYSIS tier (score 0.34–0.67)", "Cues: compare / vs / trend / why / breakdown / drop / correlat / over time"],
-        "used_by":  ["Per-chat model when question is mid-complexity analytical"],
+        "used_by": ["Per-chat model when question is mid-complexity analytical"],
     },
     "deep_model": {
         "triggers": ["Complexity router: AGENTIC tier (score 0.67–0.88)", "Cues: build / plan / step-by-step / forecast / simulate / pipeline / orchestrate / strategy"],
-        "used_by":  ["DEEP synthesis (deep_deck stages)", "Auto-evolve instructions", "Knowledge graph entity standardize", "Self-learning researcher", "Meta-learning consolidator", "Skill Refinery drafter", "Deck vision judge (TACL different-model rule)"],
+        "used_by": ["DEEP synthesis (deep_deck stages)", "Auto-evolve instructions", "Knowledge graph entity standardize", "Self-learning researcher", "Meta-learning consolidator", "Skill Refinery drafter", "Deck vision judge (TACL different-model rule)"],
     },
     "reasoning_model": {
         "triggers": ["Complexity router: REASONING tier (score ≥ 0.88, no ULTRA escalation)", "Heaviest multi-step prompts"],
-        "used_by":  ["Per-chat model when question is heavy multi-step reasoning"],
+        "used_by": ["Per-chat model when question is heavy multi-step reasoning"],
     },
     "ultra_model": {
         "triggers": ["Complexity router: ULTRA tier escalation", "Requires `across N datasets` + 2+ agentic verbs"],
-        "used_by":  ["Per-chat model on hardest multi-dataset planning questions"],
+        "used_by": ["Per-chat model on hardest multi-dataset planning questions"],
     },
     "lite_model": {
         "triggers": ["Complexity router: TRIVIAL / LOOKUP tier (score < 0.34)", "Cues: how many / count / list / show / what is + greetings/acks"],
-        "used_by":  ["Scoring / routing / extraction / meta-learning tasks", "Complexity router LLM tiebreak", "Scope classifier", "Skill audit", "Follow-up suggestion", "Context loader"],
+        "used_by": ["Scoring / routing / extraction / meta-learning tasks", "Complexity router LLM tiebreak", "Scope classifier", "Skill audit", "Follow-up suggestion", "Context loader"],
     },
     "embedding_model": {
-        "triggers": ["All vector embedding calls (any text → vector)"],
-        "used_by":  ["dash_vectors PgVector index (semantic search)", "Knowledge graph entity matching", "Brain embedding tier", "Skill library similarity", "RAG retrieval"],
+        "triggers": ["All vector embedding calls (any text > vector)"],
+        "used_by": ["dash_vectors PgVector index (semantic search)", "Knowledge graph entity matching", "Brain embedding tier", "Skill library similarity", "RAG retrieval"],
     },
     "training_model": {
         "triggers": ["training_llm_call tasks with no explicit model (empty = follow CHAT)"],
-        "used_by":  ["Q&A generation", "vision OCR", "fact extraction", "dashboard generation", "table profiling", "persona enrichment"],
+        "used_by": ["Q&A generation", "vision OCR", "fact extraction", "dashboard generation", "table profiling", "persona enrichment"],
     },
 }
 
@@ -440,12 +440,12 @@ def llm_models_get(request: Request):
         spec = REGISTRY.get(k, {})
         usage = _LLM_USAGE.get(k, {})
         out[k] = {
-            "value":    get_setting(k),
-            "default":  spec.get("default", ""),
-            "env":      spec.get("env"),
-            "desc":     spec.get("desc", ""),
+            "value": get_setting(k),
+            "default": spec.get("default", ""),
+            "env": spec.get("env"),
+            "desc": spec.get("desc", ""),
             "triggers": usage.get("triggers", []),
-            "used_by":  usage.get("used_by", []),
+            "used_by": usage.get("used_by", []),
         }
     # training_model with no override follows CHAT — show the effective model
     # (flagged so the UI can render it as inherited rather than a hard value).

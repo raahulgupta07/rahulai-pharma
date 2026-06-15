@@ -7,7 +7,7 @@ with an *oracle*: run the proven SQL, get the true number, and check whether the
 agent's answer matches it. Provably-correct beats a judge's opinion.
 
 `score_verified()` runs in the post-chat background (next to judge_response).
-Fail-soft: any failure → verified='unknown', never raises, never blocks chat.
+Fail-soft: any failure > verified='unknown', never raises, never blocks chat.
 
 Result is written to public.dash_verified_scores (migration 107).
 """
@@ -51,7 +51,7 @@ def _similarity(a: str, b: str) -> float:
 
 
 def _to_num(raw: str):
-    """Parse '1,544' / '$21,198' / '64.3%' / '64.3' → float. None if not a number."""
+    """Parse '1,544' / '$21,198' / '64.3%' / '64.3' > float. None if not a number."""
     if raw is None:
         return None
     s = str(raw).strip().replace(",", "").replace("$", "").replace("%", "").strip()
@@ -116,7 +116,7 @@ def _best_proven_pair(project_slug: str, question: str):
     best = None
     for q, sql in pairs:
         overlap = qtok & _tokens(q)
-        if len(overlap) < 2:           # need ≥2 shared meaningful terms to trust it
+        if len(overlap) < 2: # need ≥2 shared meaningful terms to trust it
             continue
         score = sum(math.log((n + 1) / df.get(t, 1)) for t in overlap)
         if best is None or score > best[0]:
@@ -129,13 +129,13 @@ def _best_proven_pair(project_slug: str, question: str):
 def try_metric_shortcut(project_slug: str, question: str) -> dict | None:
     """Pre-flight metric oracle: if `question` STRONGLY matches a verified
     proven Q&A pair (≥3 shared rare-term tokens — tighter than the grading
-    matcher's ≥2), run that proven SQL → return the truth.
+    matcher's ≥2), run that proven SQL > return the truth.
 
     Lets the chat layer answer pinned-metric questions deterministically
     in ~30ms instead of risking LITE-model flakiness on the `metric` tool.
-    Returns None on any miss / low confidence → caller falls through to team.run.
+    Returns None on any miss / low confidence > caller falls through to team.run.
 
-    Fail-soft: any error → None (never raises).
+    Fail-soft: any error > None (never raises).
     """
     try:
         from dash.paths import KNOWLEDGE_DIR
@@ -168,7 +168,7 @@ def try_metric_shortcut(project_slug: str, question: str) -> dict | None:
         best = None
         for q, sql, shash in pairs:
             overlap = qtok & _tokens(q)
-            if len(overlap) < 3:               # STRONGER than grading (≥2)
+            if len(overlap) < 3: # STRONGER than grading (≥2)
                 continue
             score = sum(math.log((n + 1) / df.get(t, 1)) for t in overlap)
             if best is None or score > best[0]:
@@ -190,9 +190,9 @@ def try_metric_shortcut(project_slug: str, question: str) -> dict | None:
         sim = _similarity(question, proven_q)
         n_overlap = len(qtok & _tokens(proven_q))
         if sim >= 0.95:
-            pass  # essentially identical question — accept
+            pass # essentially identical question — accept
         elif score >= MIN_SHORTCUT_SCORE and n_overlap >= 4:
-            pass  # high-confidence rare-term match — accept
+            pass # high-confidence rare-term match — accept
         else:
             logger.debug(
                 "metric_shortcut rejected: sim=%.2f overlap=%d score=%.2f (min=%.1f)",
@@ -216,7 +216,7 @@ def try_metric_shortcut(project_slug: str, question: str) -> dict | None:
                     )
                     return None
             except Exception:
-                pass  # fail-open: never block a serve on the guard itself
+                pass # fail-open: never block a serve on the guard itself
         run = _run_rows(project_slug, sql, limit=20)
         if not run or run.get("value") is None:
             return None
@@ -226,7 +226,7 @@ def try_metric_shortcut(project_slug: str, question: str) -> dict | None:
                 "columns": run.get("columns") or [],
                 "row_count": run.get("row_count") or 0,
                 "elapsed_ms": run.get("elapsed_ms") or 0}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("try_metric_shortcut failed for %s: %s", project_slug, exc)
         return None
 
@@ -295,7 +295,7 @@ def score_verified(project_slug: str, question: str, answer: str,
                    session_id: str | None = None) -> dict:
     """Grade an answer against ground truth. Writes one dash_verified_scores row.
 
-    Returns {verified, expected, got, source_q}. Fail-soft → 'unknown'.
+    Returns {verified, expected, got, source_q}. Fail-soft > 'unknown'.
     """
     result = {"verified": "unknown", "expected": None, "got": None, "source_q": None}
     try:
@@ -309,7 +309,7 @@ def score_verified(project_slug: str, question: str, answer: str,
                     "verified": "pass" if _matches(expected, got) else "fail",
                     "expected": expected, "got": got, "source_q": proven_q,
                 }
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("score_verified failed for %s: %s", project_slug, exc)
 
     # Prometheus counter — pass|fail|unknown.
@@ -332,7 +332,7 @@ def score_verified(project_slug: str, question: str, answer: str,
             ), {"s": project_slug, "sid": session_id or "", "q": (question or "")[:1000],
                 "v": result["verified"], "e": result["expected"], "g": result["got"],
                 "sq": (result["source_q"] or "")[:1000]})
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("score_verified persist failed for %s: %s", project_slug, exc)
 
     return result

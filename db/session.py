@@ -8,7 +8,7 @@ Two schemas:
 - ``public``: Company data (loaded externally). Read-only for agents.
 - ``dash``: Agent-managed data (views, summary tables). Owned by Engineer.
 
-All engines route through PgBouncer (transaction mode).  PgBouncer ignores
+All engines route through PgBouncer (transaction mode). PgBouncer ignores
 the ``options`` startup parameter and runs DISCARD ALL between server
 assignments, so we set ``search_path`` and ``default_transaction_read_only``
 via ``SET LOCAL`` after each BEGIN using SQLAlchemy's ``after_begin`` event.
@@ -249,7 +249,7 @@ _user_ro_engines: dict[str, Engine] = {}
 _engine_timestamps: dict[str, float] = {}
 _engine_lock = threading.Lock()
 _ENGINE_CACHE_MAX = 100
-_ENGINE_CACHE_TTL = 1800  # 30 minutes
+_ENGINE_CACHE_TTL = 1800 # 30 minutes
 
 
 def _dispose_key(k: str) -> bool:
@@ -506,12 +506,12 @@ _embed_logger = _logging.getLogger("embedding")
 # Embedding model cascade — try in order, first success wins.
 # All via OpenRouter (same API key). Add/remove/reorder as needed.
 # Order matters — first success wins. Put native-1536 models first to avoid
-# lossy truncation from 3072→1536 (vector(1536) schema in dash_vectors).
+# lossy truncation from 3072>1536 (vector(1536) schema in dash_vectors).
 _EMBEDDING_MODELS = [
-    "openai/text-embedding-3-small",        # 1536 native — no truncation, matches schema exactly
-    "openai/text-embedding-3-large",        # 3072 native — clean dim reduction via `dimensions` param
-    "google/gemini-embedding-2-preview",    # 3072 native — truncated to 1536 (lossy but functional)
-    "cohere/embed-v4.0",                    # last resort
+    "openai/text-embedding-3-small", # 1536 native — no truncation, matches schema exactly
+    "openai/text-embedding-3-large", # 3072 native — clean dim reduction via `dimensions` param
+    "google/gemini-embedding-2-preview", # 3072 native — truncated to 1536 (lossy but functional)
+    "cohere/embed-v4.0", # last resort
 ]
 
 # Track which model is active (for model-change detection)
@@ -633,7 +633,7 @@ def _create_embedder(project_slug: str | None = None) -> OpenAIEmbedder:
             # Model change detection
             if _active_embedding_model and _active_embedding_model != model:
                 _embed_logger.warning(
-                    f"Embedding model changed: {_active_embedding_model} → {model}. "
+                    f"Embedding model changed: {_active_embedding_model} > {model}. "
                     f"Retrain projects for optimal search quality."
                 )
             _active_embedding_model = model
@@ -677,7 +677,7 @@ def _get_embedder() -> OpenAIEmbedder | None:
 
 def get_active_embedding_model() -> str | None:
     """Return the currently active embedding model ID (None if all models failed)."""
-    _get_embedder()  # ensure initialized
+    _get_embedder() # ensure initialized
     return _active_embedding_model
 
 

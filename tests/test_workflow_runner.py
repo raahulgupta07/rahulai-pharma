@@ -5,11 +5,11 @@ module shipped by Agent #3. Skip-soft if either prerequisite is missing so CI
 stays fast.
 
 Tests:
-- test_run_endpoint_returns_run_id        — POST /api/agent-os/workflows/{id}/run
-- test_runner_atomic_claim                — 2 concurrent claims on same row
-- test_dashboard_built_on_success         — 2-step in-memory workflow produces dashboard
-- test_failed_step_doesnt_block           — partial-success workflow finishes
-- test_notify_hooks_invoked               — notify_workflow_done called once
+- test_run_endpoint_returns_run_id — POST /api/agent-os/workflows/{id}/run
+- test_runner_atomic_claim — 2 concurrent claims on same row
+- test_dashboard_built_on_success — 2-step in-memory workflow produces dashboard
+- test_failed_step_doesnt_block — partial-success workflow finishes
+- test_notify_hooks_invoked — notify_workflow_done called once
 """
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def _try_engine():
 
 
 def test_run_endpoint_returns_run_id():
-    """POST /api/agent-os/workflows/{id}/run with valid auth → 200 + {run_id, stream_url}."""
+    """POST /api/agent-os/workflows/{id}/run with valid auth > 200 + {run_id, stream_url}."""
     try:
         from fastapi.testclient import TestClient
         from app.main import app
@@ -103,7 +103,7 @@ def test_runner_atomic_claim():
 
 
 def test_dashboard_built_on_success():
-    """Mock workflow w/ 2 in-memory steps each returning a DataFrame → dashboard row exists."""
+    """Mock workflow w/ 2 in-memory steps each returning a DataFrame > dashboard row exists."""
     runner = _try_import_runner()
     if runner is None:
         pytest.skip("dash.cron.workflow_runner not shipped yet")
@@ -111,7 +111,7 @@ def test_dashboard_built_on_success():
     if run_fn is None:
         pytest.skip("runner has no _run_workflow/execute_run helper")
     try:
-        import pandas as pd  # noqa: F401
+        import pandas as pd # noqa: F401
     except Exception:
         pytest.skip("pandas unavailable")
     # Caller responsible for fixture workflow id that returns 2 steps of DataFrames

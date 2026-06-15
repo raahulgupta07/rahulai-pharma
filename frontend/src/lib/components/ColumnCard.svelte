@@ -1,114 +1,115 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
+  import Icon from '$lib/Icon.svelte';
+ import { createEventDispatcher } from 'svelte';
 
-  let { col, meta, slug, table_name } = $props<{
-    col: { name: string; type: string; description?: string };
-    meta: any | null;
-    slug: string;
-    table_name: string;
-  }>();
+ let { col, meta, slug, table_name } = $props<{
+ col: { name: string; type: string; description?: string };
+ meta: any | null;
+ slug: string;
+ table_name: string;
+ }>();
 
-  const dispatch = createEventDispatcher();
+ const dispatch = createEventDispatcher();
 
-  let expanded = $state(false);
-  let aiBusy = $state(false);
-  let editBusy = $state(false);
-  let localDesc = $state<string>('');
-  let liveMeta = $state<any>(null);
+ let expanded = $state(false);
+ let aiBusy = $state(false);
+ let editBusy = $state(false);
+ let localDesc = $state<string>('');
+ let liveMeta = $state<any>(null);
 
-  // Derived display data — prefer liveMeta (post-regenerate) else prop meta
-  const m = $derived(liveMeta || meta);
-  const semanticType = $derived(m?.semantic_type || null);
-  const cardinality = $derived(m?.cardinality_class || null);
-  const blurb = $derived(m?.description || col.description || '');
-  const samples = $derived(Array.isArray(m?.samples) ? m.samples : []);
-  const quality = $derived(m?.quality || null);
-  const relationships = $derived(Array.isArray(m?.relationships) ? m.relationships : []);
-  const suggestedQuestions = $derived(Array.isArray(m?.suggested_questions) ? m.suggested_questions : []);
-  const hasLLMBlurb = $derived(Boolean(m?.description && m.description.trim().length > 0));
+ // Derived display data — prefer liveMeta (post-regenerate) else prop meta
+ const m = $derived(liveMeta || meta);
+ const semanticType = $derived(m?.semantic_type || null);
+ const cardinality = $derived(m?.cardinality_class || null);
+ const blurb = $derived(m?.description || col.description || '');
+ const samples = $derived(Array.isArray(m?.samples) ? m.samples : []);
+ const quality = $derived(m?.quality || null);
+ const relationships = $derived(Array.isArray(m?.relationships) ? m.relationships : []);
+ const suggestedQuestions = $derived(Array.isArray(m?.suggested_questions) ? m.suggested_questions : []);
+ const hasLLMBlurb = $derived(Boolean(m?.description && m.description.trim().length > 0));
 
-  // Description may carry an inline Burmese twin as "English\n[မြန်မာ] Burmese".
-  // Split it into the English line + an optional Burmese line (prefix stripped).
-  const descParts = $derived((() => {
-    const lines = String(blurb || '').split('\n');
-    const myIdx = lines.findIndex((l) => l.trim().startsWith('[မြန်မာ]'));
-    if (myIdx === -1) return { en: blurb || '', my: '' };
-    const my = lines[myIdx].trim().replace(/^\[မြန်မာ\]\s*/, '');
-    const en = lines.filter((_, i) => i !== myIdx).join('\n').trim();
-    return { en, my };
-  })());
+ // Description may carry an inline Burmese twin as "English\n[မြန်မာ] Burmese".
+ // Split it into the English line + an optional Burmese line (prefix stripped).
+ const descParts = $derived((() => {
+ const lines = String(blurb || '').split('\n');
+ const myIdx = lines.findIndex((l) => l.trim().startsWith('[မြန်မာ]'));
+ if (myIdx === -1) return { en: blurb || '', my: '' };
+ const my = lines[myIdx].trim().replace(/^\[မြန်မာ\]\s*/, '');
+ const en = lines.filter((_, i) => i !== myIdx).join('\n').trim();
+ return { en, my };
+ })());
 
-  function _h(): Record<string, string> {
-    const t = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
-    return t ? { Authorization: `Bearer ${t}` } : {};
-  }
+ function _h(): Record<string, string> {
+ const t = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
+ return t ? { Authorization: `Bearer ${t}` } : {};
+ }
 
-  function toggleExpand() {
-    expanded = !expanded;
-  }
+ function toggleExpand() {
+ expanded = !expanded;
+ }
 
-  function overlapColor(pct: number): string {
-    if (pct >= 80) return '#2d8659';
-    if (pct >= 50) return '#a06000';
-    return 'var(--pw-muted)';
-  }
+ function overlapColor(pct: number): string {
+ if (pct >= 80) return '#2d8659';
+ if (pct >= 50) return '#a06000';
+ return 'var(--pw-muted)';
+ }
 
-  async function handleEdit(e: MouseEvent) {
-    e.stopPropagation();
-    const current = blurb || '';
-    const newVal = prompt(`Business meaning for ${col.name}:`, current);
-    if (!newVal || newVal === current) return;
-    editBusy = true;
-    try {
-      await fetch(`/api/projects/${slug}/annotations`, {
-        method: 'PUT',
-        headers: { ..._h(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ table_name, column_name: col.name, annotation: newVal }),
-      });
-      localDesc = newVal;
-      // Patch liveMeta description so UI updates instantly
-      liveMeta = { ...(liveMeta || meta || {}), description: newVal };
-    } catch (err) {
-      console.warn('annotation save failed', err);
-    } finally {
-      editBusy = false;
-    }
-  }
+ async function handleEdit(e: MouseEvent) {
+ e.stopPropagation();
+ const current = blurb || '';
+ const newVal = prompt(`Business meaning for ${col.name}:`, current);
+ if (!newVal || newVal === current) return;
+ editBusy = true;
+ try {
+ await fetch(`/api/projects/${slug}/annotations`, {
+ method: 'PUT',
+ headers: { ..._h(), 'Content-Type': 'application/json' },
+ body: JSON.stringify({ table_name, column_name: col.name, annotation: newVal }),
+ });
+ localDesc = newVal;
+ // Patch liveMeta description so UI updates instantly
+ liveMeta = { ...(liveMeta || meta || {}), description: newVal };
+ } catch (err) {
+ console.warn('annotation save failed', err);
+ } finally {
+ editBusy = false;
+ }
+ }
 
-  async function handleAIRegenerate(e: MouseEvent) {
-    e.stopPropagation();
-    if (aiBusy) return;
-    aiBusy = true;
-    try {
-      const r = await fetch(`/api/projects/${slug}/columns/describe`, {
-        method: 'POST',
-        headers: { ..._h(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ table_name, column_names: [col.name] }),
-      });
-      if (r.ok) {
-        // Refetch column metadata for this table
-        const r2 = await fetch(`/api/projects/${slug}/columns/${table_name}`, { headers: _h() });
-        if (r2.ok) {
-          const d = await r2.json();
-          const found = (Array.isArray(d?.columns) ? d.columns : []).find(
-            (c: any) => c?.column_name === col.name,
-          );
-          if (found) liveMeta = found;
-        }
-      }
-    } catch (err) {
-      console.warn('AI regenerate failed', err);
-    } finally {
-      aiBusy = false;
-    }
-  }
+ async function handleAIRegenerate(e: MouseEvent) {
+ e.stopPropagation();
+ if (aiBusy) return;
+ aiBusy = true;
+ try {
+ const r = await fetch(`/api/projects/${slug}/columns/describe`, {
+ method: 'POST',
+ headers: { ..._h(), 'Content-Type': 'application/json' },
+ body: JSON.stringify({ table_name, column_names: [col.name] }),
+ });
+ if (r.ok) {
+ // Refetch column metadata for this table
+ const r2 = await fetch(`/api/projects/${slug}/columns/${table_name}`, { headers: _h() });
+ if (r2.ok) {
+ const d = await r2.json();
+ const found = (Array.isArray(d?.columns) ? d.columns : []).find(
+ (c: any) => c?.column_name === col.name,
+ );
+ if (found) liveMeta = found;
+ }
+ }
+ } catch (err) {
+ console.warn('AI regenerate failed', err);
+ } finally {
+ aiBusy = false;
+ }
+ }
 
-  function askQuestion(q: string, e: MouseEvent) {
-    e.stopPropagation();
-    dispatch('askQuestion', q);
-    // Fallback log so parent that doesn't yet forward still surfaces it
-    console.log('[ColumnCard] askQuestion →', q);
-  }
+ function askQuestion(q: string, e: MouseEvent) {
+ e.stopPropagation();
+ dispatch('askQuestion', q);
+ // Fallback log so parent that doesn't yet forward still surfaces it
+ console.log('[ColumnCard] askQuestion >', q);
+ }
 </script>
 
 <!-- Collapsed row: matches existing 4-col table layout (Name · Type · Description · Edit) -->
@@ -194,7 +195,7 @@
       onclick={handleAIRegenerate}
       title="Regenerate via LLM"
     >
-      {aiBusy ? '…' : '🤖 AI'}
+      {aiBusy ? '…' : ' AI'}
     </button>
   </td>
 </tr>
@@ -236,7 +237,7 @@
                     {' · '}DUP {Number(quality.dup_pct).toFixed(quality.dup_pct < 1 ? 2 : 0)}%
                   {/if}
                   <br />
-                  Format ✓ · PII {quality.pii_risk || 'none'}
+                  Format <Icon name="check" size={16} /> · PII {quality.pii_risk || 'none'}
                 </div>
               </div>
             {/if}
@@ -255,7 +256,7 @@
               {#each relationships as r}
                 {@const pct = Number(r?.overlap_pct ?? 0)}
                 <li>
-                  🔗
+                  <Icon name="link" size={16} />
                   <span style="font-family: ui-monospace, Menlo, monospace; color: var(--pw-ink);">
                     {r.target_table || '?'}.{r.target_column || '?'}
                   </span>
@@ -287,8 +288,8 @@
                   type="button"
                   style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; background: transparent; border: 1px solid transparent; border-radius: 3px; cursor: pointer; text-align: left; font: inherit; color: inherit;"
                 >
-                  <span style="font-size: 12px; color: var(--pw-ink);">💡 {q}</span>
-                  <span style="font-size: 11px; color: var(--pw-accent); font-weight: 700; white-space: nowrap;">Ask →</span>
+                  <span style="font-size: 12px; color: var(--pw-ink);"><Icon name="lightbulb" size={16} /> {q}</span>
+                  <span style="font-size: 11px; color: var(--pw-accent); font-weight: 700; white-space: nowrap;">Ask <Icon name="arrow-right" size={16} /></span>
                 </button>
               {/each}
             </div>
@@ -298,7 +299,7 @@
         <!-- Fallback: nothing enriched -->
         {#if !samples.length && !quality && !relationships.length && !suggestedQuestions.length && !semanticType}
           <div style="font-size: 11px; color: var(--pw-muted); font-style: italic;">
-            No enriched metadata yet. Click 🤖 AI to generate.
+            No enriched metadata yet. Click <Icon name="bot" size={16} /> AI to generate.
           </div>
         {/if}
       </div>
@@ -307,34 +308,34 @@
 {/if}
 
 <style>
-  .col-card-row:hover {
-    background: rgba(201, 99, 66, 0.04);
-  }
-  .col-card-row.expanded {
-    background: rgba(201, 99, 66, 0.06);
-  }
-  .col-card-ask:hover {
-    background: rgba(201, 99, 66, 0.08);
-    border-color: rgba(201, 99, 66, 0.20) !important;
-  }
-  .col-bi-line {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-  }
-  .col-bi-badge {
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 14px;
-    height: 14px;
-    font-size: 9px;
-    font-weight: 700;
-    line-height: 1;
-    color: var(--pw-ink);
-    background: var(--pw-bg-alt);
-    border: 1px solid var(--pw-border);
-    border-radius: 50%;
-  }
+ .col-card-row:hover {
+ background: rgba(201, 99, 66, 0.04);
+ }
+ .col-card-row.expanded {
+ background: rgba(201, 99, 66, 0.06);
+ }
+ .col-card-ask:hover {
+ background: rgba(201, 99, 66, 0.08);
+ border-color: rgba(201, 99, 66, 0.20) !important;
+ }
+ .col-bi-line {
+ display: flex;
+ align-items: baseline;
+ gap: 6px;
+ }
+ .col-bi-badge {
+ flex-shrink: 0;
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ width: 14px;
+ height: 14px;
+ font-size: 9px;
+ font-weight: 700;
+ line-height: 1;
+ color: var(--pw-ink);
+ background: var(--pw-bg-alt);
+ border: 1px solid var(--pw-border);
+ border-radius: 50%;
+ }
 </style>

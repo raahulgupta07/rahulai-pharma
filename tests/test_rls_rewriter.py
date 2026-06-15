@@ -30,14 +30,14 @@ def test_rewrite_simple(monkeypatch):
         {"store_id": 42},
     )
     assert "store_id = 42" in out
-    assert "date" in out  # original predicate preserved
+    assert "date" in out # original predicate preserved
 
 
 def test_rewrite_no_filter_no_op(monkeypatch):
     rewriter = _stub_cfg(monkeypatch)
     sql = "SELECT 1 FROM other_table"
     out = rewriter.rewrite(sql, "demo", {"store_id": 42})
-    # No filter for `other_table` → unchanged semantics (sqlglot may reformat,
+    # No filter for `other_table` > unchanged semantics (sqlglot may reformat,
     # but no store_id should leak in).
     assert "store_id" not in out
 
@@ -57,4 +57,4 @@ def test_disabled_no_op(monkeypatch):
 def test_default_deny_missing_attr(monkeypatch):
     rewriter = _stub_cfg(monkeypatch, default_deny=True)
     with pytest.raises(PermissionError):
-        rewriter.rewrite("SELECT * FROM sales", "demo", {})  # no store_id
+        rewriter.rewrite("SELECT * FROM sales", "demo", {}) # no store_id

@@ -2,15 +2,15 @@
 
 All endpoints sit behind the AuthMiddleware (no SKIP_PATHS additions).
 
-  POST /api/learning/cycle/{project_slug}   -- SSE stream of a project cycle
-  POST /api/learning/cycle/central          -- SSE stream of the central cycle
-  POST /api/projects/{slug}/learning/run    -- on-demand cycle (background thread)
-  GET  /api/projects/{slug}/learning/runs   -- last N runs with logs
-  GET  /api/learning/runs                    -- list past runs (super admin)
-  GET  /api/learning/runs/{slug}             -- runs scoped to a project
-  GET  /api/learning/questions/{slug}        -- current curiosity questions
-  GET  /api/learning/hypotheses/{slug}       -- recent hypotheses
-  GET  /api/learning/stats/{slug}            -- forgetting + cycle stats
+  POST /api/learning/cycle/{project_slug} -- SSE stream of a project cycle
+  POST /api/learning/cycle/central -- SSE stream of the central cycle
+  POST /api/projects/{slug}/learning/run -- on-demand cycle (background thread)
+  GET /api/projects/{slug}/learning/runs -- last N runs with logs
+  GET /api/learning/runs -- list past runs (super admin)
+  GET /api/learning/runs/{slug} -- runs scoped to a project
+  GET /api/learning/questions/{slug} -- current curiosity questions
+  GET /api/learning/hypotheses/{slug} -- recent hypotheses
+  GET /api/learning/stats/{slug} -- forgetting + cycle stats
 """
 from __future__ import annotations
 
@@ -91,7 +91,7 @@ async def run_project_cycle(
     try:
         from dash.settings import training_llm_call
     except Exception:
-        training_llm_call = None  # type: ignore
+        training_llm_call = None # type: ignore
 
     cycle = LearningCycle(
         project_slug=project_slug,
@@ -123,7 +123,7 @@ async def run_central_cycle(request: Request, dry_run: bool = False):
     try:
         from dash.settings import training_llm_call
     except Exception:
-        training_llm_call = None  # type: ignore
+        training_llm_call = None # type: ignore
 
     cycle = LearningCycle(
         project_slug=None,
@@ -219,7 +219,7 @@ def list_questions(slug: str, request: Request, limit: int = 100):
         with _engine().connect() as conn:
             rows = conn.execute(text(
                 "SELECT id, question, topic, reason, priority, status, "
-                "       cycle_num, created_at, answered_at "
+                " cycle_num, created_at, answered_at "
                 "FROM public.dash_curiosity_questions "
                 "WHERE project_slug = :s "
                 "ORDER BY priority DESC, created_at DESC LIMIT :n"
@@ -254,9 +254,9 @@ def list_hypotheses(slug: str, request: Request, limit: int = 100):
         with _engine().connect() as conn:
             rows = conn.execute(text(
                 "SELECT id, statement, hypothesis_type, confidence, "
-                "       verification_status, verified_by, "
-                "       triangulation_count, promoted_to_central, "
-                "       created_at, verified_at "
+                " verification_status, verified_by, "
+                " triangulation_count, promoted_to_central, "
+                " created_at, verified_at "
                 "FROM public.dash_hypotheses "
                 "WHERE project_slug = :s "
                 "ORDER BY created_at DESC LIMIT :n"
@@ -294,12 +294,12 @@ def project_stats(slug: str, request: Request):
         with _engine().connect() as conn:
             row = conn.execute(text(
                 "SELECT COUNT(*), "
-                "       COALESCE(SUM(questions_generated),0), "
-                "       COALESCE(SUM(hypotheses_verified),0), "
-                "       COALESCE(SUM(facts_consolidated),0), "
-                "       COALESCE(SUM(facts_promoted),0), "
-                "       COALESCE(SUM(cost_usd),0.0), "
-                "       MAX(started_at) "
+                " COALESCE(SUM(questions_generated),0), "
+                " COALESCE(SUM(hypotheses_verified),0), "
+                " COALESCE(SUM(facts_consolidated),0), "
+                " COALESCE(SUM(facts_promoted),0), "
+                " COALESCE(SUM(cost_usd),0.0), "
+                " MAX(started_at) "
                 "FROM public.dash_self_learning_runs "
                 "WHERE project_slug = :s"
             ), {"s": slug}).fetchone()
@@ -466,7 +466,7 @@ def list_steps(slug: str, request: Request):
             {"id": "kg", "label": "Knowledge Graph", "desc": "Re-extract SPO triples + entity standardization across tables/docs/facts"},
             {"id": "persona", "label": "Persona", "desc": "Re-generate persona from current tables + rules"},
             {"id": "relationships", "label": "Relationships", "desc": "LLM rediscover joins/foreign keys across tables"},
-            {"id": "evolved_instructions", "label": "Evolved Instructions", "desc": "Run auto-evolve pass over recent learnings → bump v_N"},
+            {"id": "evolved_instructions", "label": "Evolved Instructions", "desc": "Run auto-evolve pass over recent learnings > bump v_N"},
         ]
     }
 
@@ -641,7 +641,7 @@ def list_optin_projects(request: Request):
             rows = conn.execute(text(
                 "SELECT slug FROM public.dash_projects "
                 "WHERE COALESCE(contribute_to_central, TRUE) = TRUE "
-                "   OR COALESCE(receive_from_central, TRUE) = TRUE "
+                " OR COALESCE(receive_from_central, TRUE) = TRUE "
                 "ORDER BY slug"
             )).fetchall()
         return {"slugs": [r[0] for r in rows]}
@@ -741,8 +741,8 @@ def list_domains(request: Request):
 # On-demand learning runs (UI-triggered, background thread)
 # ---------------------------------------------------------------------------
 
-# Step name -> 1-based ordinal in the 8-step cycle (curiosity → researcher →
-# hypothesis → verifier → consolidator → forgetter → promotion → digest).
+# Step name -> 1-based ordinal in the 8-step cycle (curiosity > researcher >
+# hypothesis > verifier > consolidator > forgetter > promotion > digest).
 _STEP_ORDER = {
     "curiosity": 1,
     "research": 2,
@@ -884,8 +884,8 @@ def _ondemand_run_thread(slug: str, run_id: int, force: bool, focus: Optional[st
     try:
         from dash.settings import set_llm_project, training_llm_call
     except Exception:
-        set_llm_project = None  # type: ignore
-        training_llm_call = None  # type: ignore
+        set_llm_project = None # type: ignore
+        training_llm_call = None # type: ignore
 
     set_llm_project and set_llm_project(slug)
     summary: Optional[str] = None
@@ -898,7 +898,7 @@ def _ondemand_run_thread(slug: str, run_id: int, force: bool, focus: Optional[st
             project_slug=slug,
             llm_call_fn=training_llm_call,
             run_decay=True,
-            run_promotion=False,  # don't auto-promote from a manual UI kick
+            run_promotion=False, # don't auto-promote from a manual UI kick
             dry_run=False,
         )
 
@@ -936,7 +936,7 @@ def _ondemand_run_thread(slug: str, run_id: int, force: bool, focus: Optional[st
                 with _engine().connect() as conn:
                     row = conn.execute(text(
                         "SELECT questions_generated, hypotheses_verified, "
-                        "       facts_consolidated, facts_promoted, cost_usd "
+                        " facts_consolidated, facts_promoted, cost_usd "
                         "FROM public.dash_self_learning_runs WHERE id = :id"
                     ), {"id": run_id}).fetchone()
                     if row:

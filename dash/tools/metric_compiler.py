@@ -6,8 +6,8 @@ Shared SQL compiler + DB CRUD for the generic, DB-backed metric engine.
 Design contract
 ---------------
 * All DB writes to public.dash_* go through get_write_engine() (read-write, no
-  public guard).  Project-schema reads go through get_project_readonly_engine().
-* NEVER use :x::jsonb — always CAST(:x AS jsonb)  (PgBouncer + SQLAlchemy
+  public guard). Project-schema reads go through get_project_readonly_engine().
+* NEVER use :x::jsonb — always CAST(:x AS jsonb) (PgBouncer + SQLAlchemy
   named-param collision safety).
 * NEVER dispose the cached shared engines.
 * TTL cache (60 s) on load_definition; bust via cache_bust(project_slug).
@@ -44,8 +44,8 @@ _TEXT_OPS = {"=", "!=", "<>", "LIKE", "ILIKE", "IN", "NOT IN"}
 
 # ── Cache ────────────────────────────────────────────────────────────────────
 
-_def_cache: dict[str, tuple[float, Any]] = {}  # (slug, lower_name) -> (ts, row)
-_DEF_TTL = 60.0  # seconds
+_def_cache: dict[str, tuple[float, Any]] = {} # (slug, lower_name) -> (ts, row)
+_DEF_TTL = 60.0 # seconds
 
 
 def cache_bust(project_slug: str) -> None:
@@ -65,7 +65,7 @@ def _slug_to_schema(slug: str) -> str:
 
 def resolve_engine(project_slug: str):
     """Return (engine, schema) for a project's read-only engine."""
-    from db import get_project_readonly_engine  # type: ignore[import]
+    from db import get_project_readonly_engine # type: ignore[import]
     engine = get_project_readonly_engine(project_slug)
     schema = _slug_to_schema(project_slug)
     return engine, schema
@@ -82,9 +82,9 @@ def month_tables(
     """Return [(table_name, 'YYYY-MM'), …] sorted by label.
 
     Priority:
-    1. source_tables given → use them directly (detect month from name).
-    2. source_glob given   → filter schema tables by fnmatch pattern.
-    3. Neither             → all tables in schema.
+    1. source_tables given > use them directly (detect month from name).
+    2. source_glob given > filter schema tables by fnmatch pattern.
+    3. Neither > all tables in schema.
 
     If no month token in name, label is ''.
     """
@@ -119,7 +119,7 @@ def _quote_col(col: str) -> str:
     """Quote column name safely; reject unsafe identifiers."""
     if not _SAFE_COL_RE.match(col):
         raise ValueError(f"Unsafe column name rejected: {col!r}")
-    return col  # plain identifier (no quotes needed for safe names)
+    return col # plain identifier (no quotes needed for safe names)
 
 
 def build_where(
@@ -130,14 +130,14 @@ def build_where(
     """Compile a list of filter dicts to a SQL predicate string + bound params.
 
     Filter dict schema:
-        col   : str   — column name (must match [A-Za-z0-9_])
-        op    : str   — operator (see below)
-        value : any   — scalar or list (for IN / BETWEEN)
-        trim  : bool  — per-filter trim override (optional; falls back to global `trim`)
+        col : str — column name (must match [A-Za-z0-9_])
+        op : str — operator (see below)
+        value : any — scalar or list (for IN / BETWEEN)
+        trim : bool — per-filter trim override (optional; falls back to global `trim`)
 
     Supported ops:
-        =  !=  <>  >  >=  <  <=  LIKE  ILIKE
-        IN  NOT IN  BETWEEN  IS NULL  IS NOT NULL
+        = != <> > >= < <= LIKE ILIKE
+        IN NOT IN BETWEEN IS NULL IS NOT NULL
 
     Returns (predicate_sql, params_dict).
     Returns ('TRUE', {}) when filters is empty.
@@ -204,7 +204,7 @@ def _union_cte(schema: str, tables: list[tuple[str, str]], cols: list[str]) -> s
     parts = []
     for tname, label in tables:
         parts.append(
-            f"  SELECT '{label}' AS month, {col_list} FROM \"{schema}\".\"{tname}\""
+            f" SELECT '{label}' AS month, {col_list} FROM \"{schema}\".\"{tname}\""
         )
     return "\nUNION ALL\n".join(parts)
 
@@ -221,15 +221,15 @@ def compile_metric_sql(
     Returns (sql, params).
 
     Spec keys used:
-        kind           : count | sum | avg | rate | ratio | contribution
-        filters        : list[{col,op,value,trim}]   numerator/main filter
-        denom_filters  : list[{col,op,value,trim}]   denominator filter (rate/ratio)
-        measure_col    : str   column for sum/avg
-        group_dims     : list[str]  available group dimensions
-        default_group  : list[str]  default if group_by not supplied
-        trim_values    : bool
+        kind : count | sum | avg | rate | ratio | contribution
+        filters : list[{col,op,value,trim}] numerator/main filter
+        denom_filters : list[{col,op,value,trim}] denominator filter (rate/ratio)
+        measure_col : str column for sum/avg
+        group_dims : list[str] available group dimensions
+        default_group : list[str] default if group_by not supplied
+        trim_values : bool
 
-    group_by=None → use spec['default_group'].
+    group_by=None > use spec['default_group'].
     extra_filters are AND-merged into the numerator filters.
     Special dim 'month' resolves to the synthesized literal column.
     """
@@ -282,7 +282,7 @@ def compile_metric_sql(
             _seen.add(c)
             _cols.append(_quote_col(c))
     if not _cols:
-        _cols = ["1 AS _dummy"]  # contribution-by-nothing edge case
+        _cols = ["1 AS _dummy"] # contribution-by-nothing edge case
     cte_body = _union_cte(schema, tables, _cols)
     cte = f"WITH base AS (\n{cte_body}\n)"
 
@@ -295,7 +295,7 @@ def compile_metric_sql(
         return f"TRIM({col})" if trim else col
 
     def dim_alias(d: str) -> str:
-        return d  # alias = dim name
+        return d # alias = dim name
 
     if kind in ("count",):
         gsel_parts = [f"{dim_expr(d)} AS {dim_alias(d)}" for d in dims]
@@ -382,7 +382,7 @@ def _md_table(headers: list[str], rows: list) -> str:
 
 
 def _coerce(o: Any) -> Any:
-    """JSON serialisation default — Decimal → float."""
+    """JSON serialisation default — Decimal > float."""
     if isinstance(o, decimal.Decimal):
         return float(o)
     return str(o)
@@ -475,15 +475,15 @@ def load_definition(project_slug: str, name: str) -> dict | None:
         return cached[1]
 
     try:
-        from db.session import get_write_engine  # type: ignore[import]
+        from db.session import get_write_engine # type: ignore[import]
         engine = get_write_engine()
         with engine.connect() as conn:
             row = conn.execute(
                 text(
                     "SELECT * FROM public.dash_metric_definitions "
                     "WHERE project_slug = :slug "
-                    "  AND (LOWER(name) = LOWER(:name) "
-                    "       OR synonyms @> CAST(:jname AS jsonb)) "
+                    " AND (LOWER(name) = LOWER(:name) "
+                    " OR synonyms @> CAST(:jname AS jsonb)) "
                     "LIMIT 1"
                 ),
                 {
@@ -503,7 +503,7 @@ def load_definition(project_slug: str, name: str) -> dict | None:
 def list_definitions(project_slug: str, status: str | None = None) -> list[dict]:
     """List all metric definitions for a project, optionally filtered by status."""
     try:
-        from db.session import get_write_engine  # type: ignore[import]
+        from db.session import get_write_engine # type: ignore[import]
         engine = get_write_engine()
         with engine.connect() as conn:
             if status:
@@ -537,11 +537,11 @@ def save_definition(project_slug: str, spec: dict, user: str | None = None) -> d
 
     Returns the saved row as a dict.
     """
-    from db.session import get_write_engine  # type: ignore[import]
+    from db.session import get_write_engine # type: ignore[import]
     engine = get_write_engine()
 
     name = spec["name"]
-    now_ts = "now()"  # server-side
+    now_ts = "now()" # server-side
 
     upsert_sql = text(
         """
@@ -566,22 +566,22 @@ def save_definition(project_slug: str, spec: dict, user: str | None = None) -> d
              :status, 1,
              :user, :user, now(), now())
         ON CONFLICT (project_slug, name) DO UPDATE
-            SET synonyms        = CAST(:synonyms AS jsonb),
-                description     = :description,
-                kind            = :kind,
-                source_glob     = :source_glob,
-                source_tables   = CAST(:source_tables AS jsonb),
-                measure_col     = :measure_col,
-                filters         = CAST(:filters AS jsonb),
-                denom_filters   = CAST(:denom_filters AS jsonb),
-                group_dims      = CAST(:group_dims AS jsonb),
-                default_group   = CAST(:default_group AS jsonb),
-                trim_values     = :trim_values,
+            SET synonyms = CAST(:synonyms AS jsonb),
+                description = :description,
+                kind = :kind,
+                source_glob = :source_glob,
+                source_tables = CAST(:source_tables AS jsonb),
+                measure_col = :measure_col,
+                filters = CAST(:filters AS jsonb),
+                denom_filters = CAST(:denom_filters AS jsonb),
+                group_dims = CAST(:group_dims AS jsonb),
+                default_group = CAST(:default_group AS jsonb),
+                trim_values = :trim_values,
                 verified_answer = CAST(:verified_answer AS jsonb),
-                status          = :status,
-                version         = public.dash_metric_definitions.version + 1,
-                updated_by      = :user,
-                updated_at      = now()
+                status = :status,
+                version = public.dash_metric_definitions.version + 1,
+                updated_by = :user,
+                updated_at = now()
         RETURNING *
         """
     )
@@ -641,7 +641,7 @@ def set_status(
     project_slug: str, name: str, status: str, user: str | None = None
 ) -> dict:
     """Update the status of a metric definition (soft delete = 'deprecated')."""
-    from db.session import get_write_engine  # type: ignore[import]
+    from db.session import get_write_engine # type: ignore[import]
     engine = get_write_engine()
     with engine.begin() as conn:
         row = conn.execute(
@@ -665,7 +665,7 @@ def delete_definition(project_slug: str, name: str) -> dict:
 def list_versions(project_slug: str, name: str) -> list[dict]:
     """List version history for a metric definition."""
     try:
-        from db.session import get_write_engine  # type: ignore[import]
+        from db.session import get_write_engine # type: ignore[import]
         engine = get_write_engine()
         with engine.connect() as conn:
             rows = conn.execute(
@@ -688,7 +688,7 @@ def rollback(
 ) -> dict:
     """Restore a metric definition from a specific historical snapshot."""
     try:
-        from db.session import get_write_engine  # type: ignore[import]
+        from db.session import get_write_engine # type: ignore[import]
         engine = get_write_engine()
         with engine.connect() as conn:
             row = conn.execute(
@@ -696,7 +696,7 @@ def rollback(
                     "SELECT v.snapshot FROM public.dash_metric_versions v "
                     "JOIN public.dash_metric_definitions d ON d.id = v.metric_id "
                     "WHERE v.project_slug = :slug AND LOWER(v.name) = LOWER(:name) "
-                    "  AND (v.snapshot->>'version')::int = :ver "
+                    " AND (v.snapshot->>'version')::int = :ver "
                     "ORDER BY v.created_at LIMIT 1"
                 ),
                 {"slug": project_slug, "name": name, "ver": version},

@@ -8,7 +8,7 @@ TACL different-model rule: this MUST use DEEP_MODEL (via the
 "deep_analysis" task) while the generator uses CHAT_MODEL. Enforced
 by hardcoding the task name in `judge_slide`.
 
-Fail-soft: any error → returns {score: 100, issues: [], suggestions: []}
+Fail-soft: any error > returns {score: 100, issues: [], suggestions: []}
 so a flaky judge / OpenRouter outage never blocks deck delivery.
 """
 from __future__ import annotations
@@ -73,7 +73,7 @@ def _safe_pass() -> Dict[str, Any]:
 
 
 def _read_image_b64(path: str) -> Optional[Dict[str, str]]:
-    """Read an image file → {b64, mime} dict for training_vision_call.
+    """Read an image file > {b64, mime} dict for training_vision_call.
     Returns None if file missing/unreadable."""
     if not path or not os.path.exists(path):
         return None
@@ -96,7 +96,7 @@ def _read_image_b64(path: str) -> Optional[Dict[str, str]]:
 
 
 def _parse_judge_response(raw: Optional[str]) -> Dict[str, Any]:
-    """Parse LLM response → judge dict. Fail-soft to pass-sentinel."""
+    """Parse LLM response > judge dict. Fail-soft to pass-sentinel."""
     if not raw:
         return _safe_pass()
     text = raw.strip()
@@ -146,7 +146,7 @@ def judge_slide(
 
     Returns:
         {"score": int 0-100, "issues": [str], "suggestions": [str]}
-        On any error → {"score": 100, "issues": [], "suggestions": []}
+        On any error > {"score": 100, "issues": [], "suggestions": []}
         so a flaky judge never blocks deck delivery.
 
     NOTE: Uses task="deep_analysis" so the judge model is DEEP_MODEL

@@ -13,7 +13,7 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.util import Inches, Pt
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING: # pragma: no cover
     from pptx.slide import Slide
 
     from dash.pptx_renderer.themes import Theme
@@ -26,24 +26,24 @@ SLIDE_H = 5.625
 
 # ---- Palette tokens (mirror build.js C dict) -----------------------------------
 PALETTE = {
-    "ink":         "0B1220",
-    "navy":        "0F172A",
-    "slate":       "1E293B",
-    "steel":       "334155",
-    "gray":        "64748B",
-    "muted":       "94A3B8",
-    "mutedLight":  "CBD5E1",
-    "divider":     "E2E8F0",
-    "paper":       "F8FAFC",
-    "white":       "FFFFFF",
-    "teal":        "14B8A6",
-    "tealDark":    "0D9488",
-    "amber":       "F59E0B",
-    "rose":        "F43F5E",
-    "emerald":     "10B981",
-    "cyan":        "06B6D4",
-    "violet":      "8B5CF6",
-    "sky":         "0EA5E9",
+    "ink": "0B1220",
+    "navy": "0F172A",
+    "slate": "1E293B",
+    "steel": "334155",
+    "gray": "64748B",
+    "muted": "94A3B8",
+    "mutedLight": "CBD5E1",
+    "divider": "E2E8F0",
+    "paper": "F8FAFC",
+    "white": "FFFFFF",
+    "teal": "14B8A6",
+    "tealDark": "0D9488",
+    "amber": "F59E0B",
+    "rose": "F43F5E",
+    "emerald": "10B981",
+    "cyan": "06B6D4",
+    "violet": "8B5CF6",
+    "sky": "0EA5E9",
 }
 
 
@@ -86,7 +86,7 @@ def _theme_font(theme, attr: str, fallback: str) -> str:
 def _hex_luminance(hex_str: str) -> float:
     """Return perceived luminance 0..1 for a hex color.
 
-    Empty/invalid → 1.0 (assume light, so callers fall back to ink text).
+    Empty/invalid > 1.0 (assume light, so callers fall back to ink text).
     """
     if not hex_str:
         return 1.0
@@ -179,9 +179,9 @@ def apply_theme_background(slide: "Slide", theme) -> None:
 # ---------------------------------------------------------------------------
 
 _ALIGN_MAP = {
-    "left":   PP_ALIGN.LEFT,
+    "left": PP_ALIGN.LEFT,
     "center": PP_ALIGN.CENTER,
-    "right":  PP_ALIGN.RIGHT,
+    "right": PP_ALIGN.RIGHT,
 }
 
 
@@ -221,7 +221,7 @@ def add_text_box(
     Coordinates in inches.
     auto_shrink: enable PowerPoint's "shrink text on overflow" autofit.
     """
-    from pptx.enum.text import MSO_AUTO_SIZE  # local import
+    from pptx.enum.text import MSO_AUTO_SIZE # local import
     tb = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
     tf = tb.text_frame
     tf.margin_left = tf.margin_right = Inches(0)

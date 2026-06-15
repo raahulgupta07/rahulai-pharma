@@ -35,8 +35,8 @@ class TestSaaSSeriesA:
     DOC_IRR = 0.6636
     DOC_MOIC = 15.25
     DOC_LTV_CAC = 5.0
-    TERMINAL_CF = 14.0  # normalized Yr5 FCF (strips $100M exit)
-    INVESTED = 8.0       # Yr0 ask only
+    TERMINAL_CF = 14.0 # normalized Yr5 FCF (strips $100M exit)
+    INVESTED = 8.0 # Yr0 ask only
 
     def test_dcf_irr_moic(self):
         # IRR — exact match to doc (within ±0.005)
@@ -52,7 +52,7 @@ class TestSaaSSeriesA:
         )
         assert rr["total_invested"] == pytest.approx(self.INVESTED, rel=0.01)
 
-        # DCF with terminal_cashflow=14 → doc NPV 38.67, TV 84.94
+        # DCF with terminal_cashflow=14 > doc NPV 38.67, TV 84.94
         d = dcf(self.CASHFLOWS, self.WACC, self.G,
                 terminal_cashflow=self.TERMINAL_CF)
         assert d["ok"] is True
@@ -74,7 +74,7 @@ class TestSaaSSeriesA:
         )
         # Effective with margin: 60000 * 0.78 / 12000 = 3.9
         assert r["effective_ltv_cac"] == pytest.approx(3.9, rel=0.01)
-        assert r["flag"] == "healthy"  # effective 3.9 >= 3.0
+        assert r["flag"] == "healthy" # effective 3.9 >= 3.0
 
 
 def test_saas_series_a_dcf_irr_moic():
@@ -183,7 +183,7 @@ class TestJVFuelDistribution:
         # Gaps = self caps where partner is weaker
         assert "retail_demand" in r["gaps"]
         assert "brand" in r["gaps"]
-        # fleet_ops: self=0.2, partner=0.9 → not a gap
+        # fleet_ops: self=0.2, partner=0.9 > not a gap
         assert "fleet_ops" not in r["gaps"]
 
     def test_partner_fit_list_legacy(self):

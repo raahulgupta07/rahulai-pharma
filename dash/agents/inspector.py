@@ -44,11 +44,11 @@ WORKFLOW:
    - Whether it PASSES or needs retry
 
 QUALITY CHECKS:
-- Columns named "unnamed_0", "unnamed_1" → FAIL (wrong header row)
-- >80% null values in most columns → FAIL (wrong data range)
-- Only 1-2 rows when sheet had 17 → FAIL (parsing missed data)
-- All columns are text when numbers expected → FAIL (type mismatch)
-- Duplicate rows → WARN (not failure, but note it)
+- Columns named "unnamed_0", "unnamed_1" > FAIL (wrong header row)
+- >80% null values in most columns > FAIL (wrong data range)
+- Only 1-2 rows when sheet had 17 > FAIL (parsing missed data)
+- All columns are text when numbers expected > FAIL (type mismatch)
+- Duplicate rows > WARN (not failure, but note it)
 
 IF A TABLE FAILS:
 - Explain WHAT's wrong (unnamed columns? too many nulls? too few rows?)

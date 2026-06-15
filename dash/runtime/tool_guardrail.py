@@ -5,18 +5,18 @@ Pattern lifted from NousResearch/hermes-agent agent/tool_guardrails.py.
 Per-turn state machine: tracks (a) exact-args failure repeats, (b) per-tool
 failure count, (c) idempotent-tool no-progress (same result hash).
 Returns block decision + synthetic message back to LLM telling it to change
-strategy. Fail-soft: any internal error → allow (never break tool dispatch).
+strategy. Fail-soft: any internal error > allow (never break tool dispatch).
 
 Wiring:
   - Reset state at chat-turn start: `reset_for_session(session_id)`
-  - Check before tool exec: `check(tool_name, args)` → ToolGuardrailDecision
+  - Check before tool exec: `check(tool_name, args)` > ToolGuardrailDecision
   - Record outcome after exec: `record(tool_name, args, success, result_hash)`
 
 Env:
-  TOOL_GUARDRAIL_DISABLED=1                 → bypass entirely (fail-open)
-  TOOL_GUARDRAIL_EXACT_BLOCK_AFTER=3        → block after N identical-args fails
-  TOOL_GUARDRAIL_TOOL_HALT_AFTER=8          → halt tool after N total fails
-  TOOL_GUARDRAIL_IDEMPOTENT_NO_PROGRESS=3   → warn after N same-result successes
+  TOOL_GUARDRAIL_DISABLED=1 > bypass entirely (fail-open)
+  TOOL_GUARDRAIL_EXACT_BLOCK_AFTER=3 > block after N identical-args fails
+  TOOL_GUARDRAIL_TOOL_HALT_AFTER=8 > halt tool after N total fails
+  TOOL_GUARDRAIL_IDEMPOTENT_NO_PROGRESS=3 > warn after N same-result successes
 """
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ TOOL_HALT_AFTER = _env_int("TOOL_GUARDRAIL_TOOL_HALT_AFTER", 8)
 IDEMPOTENT_NO_PROGRESS = _env_int("TOOL_GUARDRAIL_IDEMPOTENT_NO_PROGRESS", 3)
 DISABLED = os.getenv("TOOL_GUARDRAIL_DISABLED", "0") == "1"
 
-# Tools that are read-only / idempotent (same args → same result is suspicious).
+# Tools that are read-only / idempotent (same args > same result is suspicious).
 IDEMPOTENT_TOOLS: set[str] = {
     "introspect_schema",
     "discover_tables",
@@ -58,10 +58,10 @@ IDEMPOTENT_TOOLS: set[str] = {
 
 @dataclass
 class _State:
-    exact_failures: dict[str, int] = field(default_factory=dict)   # call_hash → count
-    tool_failures: dict[str, int] = field(default_factory=dict)    # tool_name → count
-    last_result_hash: dict[str, str] = field(default_factory=dict) # tool_name → hash
-    same_result_count: dict[str, int] = field(default_factory=dict)# tool_name → count
+    exact_failures: dict[str, int] = field(default_factory=dict) # call_hash > count
+    tool_failures: dict[str, int] = field(default_factory=dict) # tool_name > count
+    last_result_hash: dict[str, str] = field(default_factory=dict) # tool_name > hash
+    same_result_count: dict[str, int] = field(default_factory=dict)# tool_name > count
 
 # Per-session state. Keyed by session_id (or "global" fallback).
 # Bounded: oldest evicted at 256 entries.
@@ -120,7 +120,7 @@ def _result_hash(result: Any) -> str:
 @dataclass
 class ToolGuardrailDecision:
     action: Literal["allow", "block", "halt", "warn"]
-    synthetic_result: str | None = None  # JSON string returned to LLM in place of exec
+    synthetic_result: str | None = None # JSON string returned to LLM in place of exec
     reason: str | None = None
 
 
@@ -269,7 +269,7 @@ class guard:
                 success=(exc_type is None and not self.blocked),
                 session_id=self.session_id,
             )
-        return False  # never swallow exceptions
+        return False # never swallow exceptions
 
     def success(self, result: Any = None) -> ToolGuardrailDecision:
         self._recorded = True

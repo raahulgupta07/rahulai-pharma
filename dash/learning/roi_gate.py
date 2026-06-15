@@ -17,9 +17,9 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 # Tunable knobs (intentionally simple — no admin setting yet)
-VALUE_PER_UNIT_USD = 0.50  # 1.0 info-gain unit "worth" this much
-DEFAULT_COST_USD = 0.05    # baseline cost we assume per research call
-MIN_INFO_GAIN = 0.10       # below this, always skip
+VALUE_PER_UNIT_USD = 0.50 # 1.0 info-gain unit "worth" this much
+DEFAULT_COST_USD = 0.05 # baseline cost we assume per research call
+MIN_INFO_GAIN = 0.10 # below this, always skip
 
 
 @dataclass
@@ -35,14 +35,14 @@ def _expected_cost(qobj) -> float:
     meta = getattr(qobj, "metadata", None) or {}
     if isinstance(meta.get("estimated_cost_usd"), (int, float)):
         return float(meta["estimated_cost_usd"])
-    # Longer questions tend to need more sources → linearly scale up
+    # Longer questions tend to need more sources > linearly scale up
     qlen = len(getattr(qobj, "question", "") or "")
     return DEFAULT_COST_USD * (1.0 + qlen / 500.0)
 
 
 def _expected_gain(qobj) -> float:
-    """Heuristic info-gain estimate. 'gap' reasons → high; 'cycle_followup' → med;
-    'restate' / 'duplicate' → low."""
+    """Heuristic info-gain estimate. 'gap' reasons > high; 'cycle_followup' > med;
+    'restate' / 'duplicate' > low."""
     reason = (getattr(qobj, "reason", "") or "").lower()
     if reason in ("gap", "novel", "frontier"):
         return 0.8

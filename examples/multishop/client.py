@@ -5,8 +5,8 @@ No per-shop code. Drop your `.env` (the admin "Copy .env" download — all 53
 outlet keys) next to this file and run. Each shop is one CITYPHARMA_KEY_* entry;
 this client streams the answer AND the live agent-thinking trace.
 
-    python client.py "is paracetamol in stock at my branch?"      # ask every shop
-    python client.py "..." 20003-CCJ8                              # ask one shop
+    python client.py "is paracetamol in stock at my branch?" # ask every shop
+    python client.py "..." 20003-CCJ8 # ask one shop
 
 Warm pharmacist formatting (Medicine·Salt·Stock·Price + Tip) is produced
 server-side, so it lands automatically. The live thinking trace needs the raw
@@ -51,7 +51,7 @@ def ask_shop(base, key, question, on_token, on_think) -> str:
     resp = requests.post(
         f"{base}/chat/completions",
         headers={"Authorization": f"Bearer {key}",
-                 "X-Agent-Steps": "1"},          # opt-in: live agent thinking
+                 "X-Agent-Steps": "1"}, # opt-in: live agent thinking
         json={"model": MODEL, "stream": True,
               "messages": [{"role": "user", "content": question}]},
         stream=True,
@@ -64,10 +64,10 @@ def ask_shop(base, key, question, on_token, on_think) -> str:
         if data == "[DONE]":
             break
         delta = json.loads(data)["choices"][0].get("delta", {})
-        step = delta.get("x_agent_step")           # live thinking trace
+        step = delta.get("x_agent_step") # live thinking trace
         if step:
             on_think(step.get("label", ""), step.get("icon", ""))
-        chunk = delta.get("content")               # answer tokens
+        chunk = delta.get("content") # answer tokens
         if chunk:
             answer += chunk
             on_token(chunk)
@@ -86,6 +86,6 @@ if __name__ == "__main__":
         ask_shop(
             base, key, question,
             on_token=lambda t: (sys.stdout.write(t), sys.stdout.flush()),
-            on_think=lambda label, icon: print(f"  ⟳ {icon} {label}", file=sys.stderr),
+            on_think=lambda label, icon: print(f" > {icon} {label}", file=sys.stderr),
         )
         print()

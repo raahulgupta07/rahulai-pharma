@@ -1,4 +1,4 @@
-"""Voice channel: Twilio webhook → STT → agent → TTS reply via TwiML.
+"""Voice channel: Twilio webhook > STT > agent > TTS reply via TwiML.
 
 Inbound call hits /api/channels/voice/twilio/inbound with Twilio params.
 TwiML response gathers speech, posts transcript to /process, generates
@@ -19,7 +19,7 @@ def _get_engine():
         return get_sql_engine()
     except Exception:
         try:
-            from db import get_sql_engine  # type: ignore
+            from db import get_sql_engine # type: ignore
             return get_sql_engine()
         except Exception:
             return None

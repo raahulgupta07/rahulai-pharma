@@ -7,7 +7,7 @@ Strips:
 - Placeholder tokens: [X], [Y], [X]%, $X, $XM, $[Y]M, [ERP System Name], etc.
 - Fake external citations: McKinsey/Gartner/Forrester/BCG/Bain inside parentheses
   when no real source_query_id exists in the slide data
-- Corrects leading-digit drop (",614" → "1,614") when neighbor slide has correct value
+- Corrects leading-digit drop (",614" > "1,614") when neighbor slide has correct value
 - Marks correlation-near-zero claims as "no relationship"
 
 Caller passes slide list + executed query results. Returns mutated copy.
@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 
 # Placeholder patterns: [X], [Y], [X]%, $X, $XM, $[Y]M, $[X]B, [BRACKET_TEXT_LIKE_THIS], etc.
 _PLACEHOLDER_PATTERNS = [
-    re.compile(r"\$\s*\[[A-Z_ ]+\]\s*M?B?K?", re.IGNORECASE),     # $[Y]M, $[X]
-    re.compile(r"\$\s*[XYZN]\s*M?B?K?\b", re.IGNORECASE),         # $X, $XM, $YN
-    re.compile(r"\[[A-Z][A-Z_ ]{0,40}\]\s*%?\s*M?B?K?", re.IGNORECASE),  # [X]%, [ERP System Name]
+    re.compile(r"\$\s*\[[A-Z_ ]+\]\s*M?B?K?", re.IGNORECASE), # $[Y]M, $[X]
+    re.compile(r"\$\s*[XYZN]\s*M?B?K?\b", re.IGNORECASE), # $X, $XM, $YN
+    re.compile(r"\[[A-Z][A-Z_ ]{0,40}\]\s*%?\s*M?B?K?", re.IGNORECASE), # [X]%, [ERP System Name]
     re.compile(r"\b\d+\s*\[X\]?%", re.IGNORECASE),
 ]
 
@@ -83,7 +83,7 @@ def _drop_dead_bullets(bullets: List[str]) -> List[str]:
             continue
         cleaned = _strip_fake_cites(_strip_placeholders(b))
         if len(cleaned) < 10:
-            continue  # too gutted to keep
+            continue # too gutted to keep
         out.append(cleaned)
     return out
 

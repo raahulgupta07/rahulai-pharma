@@ -7,9 +7,9 @@ with ~2 years of data (Jan 2024 — Dec 2025). Generates realistic patterns:
 growth curves, seasonal churn, usage-correlated retention.
 
 Usage:
-    python scripts/generate_data.py              # Generate and load
-    python scripts/generate_data.py --seed 42    # Reproducible
-    python scripts/generate_data.py --drop       # Drop and recreate tables
+    python scripts/generate_data.py # Generate and load
+    python scripts/generate_data.py --seed 42 # Reproducible
+    python scripts/generate_data.py --drop # Drop and recreate tables
 """
 
 import argparse
@@ -40,10 +40,10 @@ PLANS: dict[str, PlanInfo] = {
 
 INDUSTRIES = ["technology", "healthcare", "finance", "retail", "education"]
 COMPANY_SIZES = ["startup", "smb", "mid_market", "enterprise"]
-COUNTRIES = ["US", "US", "US", "UK", "UK", "DE", "CA", "AU", "FR", "IN"]  # weighted US
+COUNTRIES = ["US", "US", "US", "UK", "UK", "DE", "CA", "AU", "FR", "IN"] # weighted US
 SOURCES = ["organic", "referral", "paid", "partner"]
 TICKET_CATEGORIES = ["billing", "technical", "feature_request", "onboarding"]
-TICKET_PRIORITIES = ["low", "medium", "medium", "high", "critical"]  # weighted medium
+TICKET_PRIORITIES = ["low", "medium", "medium", "high", "critical"] # weighted medium
 CANCELLATION_REASONS = [
     "too_expensive",
     "switched_competitor",
@@ -133,7 +133,7 @@ def _churn_probability(plan: str, usage_ratio: float) -> float:
     """Monthly churn probability — lower for enterprise, higher for low usage."""
     base = {"starter": 0.08, "professional": 0.05, "business": 0.03, "enterprise": 0.015}
     p = base[plan]
-    # Low usage multiplier (usage_ratio < 0.3 → 2x churn)
+    # Low usage multiplier (usage_ratio < 0.3 > 2x churn)
     if usage_ratio < 0.3:
         p *= 2.0
     elif usage_ratio < 0.5:
@@ -184,7 +184,7 @@ def generate(seed: int = 42) -> dict[str, pd.DataFrame]:
         35,
         32,
         28,
-        40,  # 2024
+        40, # 2024
         38,
         42,
         45,
@@ -196,11 +196,11 @@ def generate(seed: int = 42) -> dict[str, pd.DataFrame]:
         55,
         50,
         48,
-        60,  # 2025
+        60, # 2025
     ]
 
     # Track active subscriptions for churn simulation
-    active_subs: dict[int, dict] = {}  # cust_id → sub info
+    active_subs: dict[int, dict] = {} # cust_id > sub info
 
     for month_offset, new_count in enumerate(monthly_new):
         year = 2024 + month_offset // 12
@@ -305,7 +305,7 @@ def generate(seed: int = 42) -> dict[str, pd.DataFrame]:
             generate_invoice = billing == "monthly" or (billing == "annual" and month == info["signup"].month)
             if generate_invoice:
                 invoice_id += 1
-                amount = info["mrr"] if billing == "monthly" else info["mrr"] * 12 * 0.9  # 10% annual discount
+                amount = info["mrr"] if billing == "monthly" else info["mrr"] * 12 * 0.9 # 10% annual discount
                 issued = _random_date_in_month(rng, year, month)
                 roll = rng.random()
                 if roll < 0.03:
@@ -339,7 +339,7 @@ def generate(seed: int = 42) -> dict[str, pd.DataFrame]:
             if rng.random() < ticket_prob[info["plan"]]:
                 ticket_id += 1
                 created = _random_date_in_month(rng, year, month)
-                resolved = rng.random() > 0.15  # 85% resolution rate
+                resolved = rng.random() > 0.15 # 85% resolution rate
                 resolve_days = rng.randint(0, 7) if resolved else None
                 # Resolved tickets: 70% closed, 30% resolved (closed = confirmed by customer)
                 if resolved:
@@ -422,7 +422,7 @@ def generate(seed: int = 42) -> dict[str, pd.DataFrame]:
                 for s in subscriptions:
                     if s["id"] == info["sub_id"]:
                         s["ended_at"] = datetime.combine(change_date, datetime.min.time())
-                        s["status"] = change_type + "d"  # 'upgraded' or 'downgraded'
+                        s["status"] = change_type + "d" # 'upgraded' or 'downgraded'
                         break
 
                 # Create new subscription
@@ -511,7 +511,7 @@ def load_data(seed: int = 42, drop: bool = False) -> None:
     mode = "replace" if drop else "fail"
     total = 0
     for name, df in tables.items():
-        print(f"  {name}: {len(df):,} rows", end=" ", flush=True)
+        print(f" {name}: {len(df):,} rows", end=" ", flush=True)
         try:
             df.to_sql(name, engine, if_exists=mode, index=False)
         except ValueError:

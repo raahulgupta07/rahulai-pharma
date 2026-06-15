@@ -1,4 +1,4 @@
-"""Human-friendly shop labels — site_code → "Shop N".
+"""Human-friendly shop labels — site_code > "Shop N".
 
 Counter staff and consumers don't know `20063-CCBRBKMY`; they think in "Shop 1,
 Shop 2". This maps every live outlet code to a stable display number by sorting
@@ -46,7 +46,7 @@ def _conn():
 
 
 def _build_map() -> dict:
-    """Sort distinct live site_codes → {site_code: 'Shop N'}. Fail-soft to {}."""
+    """Sort distinct live site_codes > {site_code: 'Shop N'}. Fail-soft to {}."""
     try:
         c, cur = _conn()
         try:
@@ -66,7 +66,7 @@ def _map() -> dict:
     now = time.time()
     if (now - _CACHE["at"]) > _TTL or not _CACHE["map"]:
         m = _build_map()
-        if m:                      # only refresh the cache on a non-empty build
+        if m: # only refresh the cache on a non-empty build
             _CACHE["map"] = m
             _CACHE["at"] = now
     return _CACHE["map"]

@@ -582,7 +582,7 @@ def get_brain_context(for_agent: str = "analyst", project_slug: str = "", user_i
     - Otherwise: return all entries.
 
     Bilingual: language='my' returns the Burmese twin where one exists (twins link
-    by source_id), else the EN original; any other value (or None) → EN-only.
+    by source_id), else the EN original; any other value (or None) > EN-only.
     Guarded so a NULL/absent lang col never excludes a row.
     """
     _lang = (language or "en")
@@ -645,7 +645,7 @@ def get_brain_context(for_agent: str = "analyst", project_slug: str = "", user_i
 
             # Review gate: only ACTIVE rows reach chat. 'pending' (daemon-distilled
             # insights / distilled facts awaiting admin approval) + 'rejected' are
-            # excluded. NULL = legacy row before mig 189 → treat as active. The lang
+            # excluded. NULL = legacy row before mig 189 > treat as active. The lang
             # branch above always added a WHERE, so AND is always safe here.
             q += " AND (status IS NULL OR status = 'active')"
 
@@ -711,14 +711,14 @@ def get_brain_context(for_agent: str = "analyst", project_slug: str = "", user_i
     if "glossary" in grouped:
         parts.append("\nGLOSSARY:")
         for e in grouped["glossary"]:
-            parts.append(f"  {_scope_tag(e)} {e['name']} = {e['definition']}")
+            parts.append(f" {_scope_tag(e)} {e['name']} = {e['definition']}")
 
     # Formulas
     if "formula" in grouped:
         parts.append("\nFORMULAS:")
         for e in grouped["formula"]:
             formula = e["metadata"].get("formula", e["definition"])
-            parts.append(f"  {_scope_tag(e)} {e['name']} = {formula}")
+            parts.append(f" {_scope_tag(e)} {e['name']} = {formula}")
 
     # Aliases
     if "alias" in grouped:
@@ -726,9 +726,9 @@ def get_brain_context(for_agent: str = "analyst", project_slug: str = "", user_i
         for e in grouped["alias"]:
             aliases = e["metadata"].get("aliases", [])
             if aliases:
-                parts.append(f'  {_scope_tag(e)} "{e["name"]}" = {", ".join(aliases)}')
+                parts.append(f' {_scope_tag(e)} "{e["name"]}" = {", ".join(aliases)}')
             else:
-                parts.append(f'  {_scope_tag(e)} "{e["name"]}" = {e["definition"]}')
+                parts.append(f' {_scope_tag(e)} "{e["name"]}" = {e["definition"]}')
 
     # Thresholds
     if "threshold" in grouped:
@@ -738,7 +738,7 @@ def get_brain_context(for_agent: str = "analyst", project_slug: str = "", user_i
             target = meta.get("target", "")
             alert_below = meta.get("alert_below")
             alert_above = meta.get("alert_above")
-            line = f"  {_scope_tag(e)} {e['name']} target: {target}"
+            line = f" {_scope_tag(e)} {e['name']} target: {target}"
             if alert_below:
                 line += f", alert if < {alert_below}"
             if alert_above:
@@ -749,13 +749,13 @@ def get_brain_context(for_agent: str = "analyst", project_slug: str = "", user_i
     if "pattern" in grouped:
         parts.append("\nRULES:")
         for e in grouped["pattern"]:
-            parts.append(f"  {_scope_tag(e)} - {e['definition']}")
+            parts.append(f" {_scope_tag(e)} - {e['definition']}")
 
     # Calendar
     if "calendar" in grouped:
         parts.append("\nCALENDAR:")
         for e in grouped["calendar"]:
-            parts.append(f"  {_scope_tag(e)} {e['name']}: {e['definition']}")
+            parts.append(f" {_scope_tag(e)} {e['name']}: {e['definition']}")
 
     # Industry benchmarks (web-synced via dash.learning.benchmark_sync).
     # Capped at 5 rows for context budget.
@@ -767,7 +767,7 @@ def get_brain_context(for_agent: str = "analyst", project_slug: str = "", user_i
             pct = meta.get("percentile") or ""
             src = meta.get("source") or ""
             tag = _scope_tag(e)
-            line = f"  {tag} {e['name']} = {e['definition']}"
+            line = f" {tag} {e['name']} = {e['definition']}"
             extras = []
             if ind:
                 extras.append(f"industry={ind}")
@@ -776,7 +776,7 @@ def get_brain_context(for_agent: str = "analyst", project_slug: str = "", user_i
             if src:
                 extras.append(f"source={src}")
             if extras:
-                line += "  (" + ", ".join(extras) + ")"
+                line += " (" + ", ".join(extras) + ")"
             parts.append(line)
 
     # Insights — daemon-distilled, admin-APPROVED observations from query history
@@ -786,7 +786,7 @@ def get_brain_context(for_agent: str = "analyst", project_slug: str = "", user_i
     if "insight" in grouped:
         parts.append("\nDATA INSIGHTS (observed patterns — verify before acting):")
         for e in grouped["insight"][:8]:
-            parts.append(f"  {_scope_tag(e)} {e['name']}: {e['definition']}")
+            parts.append(f" {_scope_tag(e)} {e['name']}: {e['definition']}")
 
     # Org
     if "org" in grouped:
@@ -795,10 +795,10 @@ def get_brain_context(for_agent: str = "analyst", project_slug: str = "", user_i
             meta = e["metadata"]
             children = meta.get("children", [])
             if children:
-                parts.append(f"  {_scope_tag(e)} {e['name']} -> {' + '.join(children)}")
+                parts.append(f" {_scope_tag(e)} {e['name']} -> {' + '.join(children)}")
             else:
                 parent = meta.get("parent", "")
-                parts.append(f"  {_scope_tag(e)} {e['name']} (part of {parent})" if parent else f"  {_scope_tag(e)} {e['name']}")
+                parts.append(f" {_scope_tag(e)} {e['name']} (part of {parent})" if parent else f" {_scope_tag(e)} {e['name']}")
 
     context = "\n".join(parts)
 

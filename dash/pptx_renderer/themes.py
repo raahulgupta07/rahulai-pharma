@@ -229,15 +229,15 @@ def _build_clr_scheme(theme: Theme) -> etree._Element:
     """Build a fresh <a:clrScheme> element from the theme palette.
 
     Color slot mapping:
-      lt1 → white  (light bg slot, always white)
-      dk1 → ink    (main text on light bg)
-      lt2 → bg_alt
-      dk2 → ink_soft
-      accent1 → accent
-      accent2 → teal or coral or palette[0]
-      accent3..accent6 → palette[1..4]
-      hlink → accent_soft
-      folHlink → ink_soft
+      lt1 > white (light bg slot, always white)
+      dk1 > ink (main text on light bg)
+      lt2 > bg_alt
+      dk2 > ink_soft
+      accent1 > accent
+      accent2 > teal or coral or palette[0]
+      accent3..accent6 > palette[1..4]
+      hlink > accent_soft
+      folHlink > ink_soft
     """
     clr = etree.Element(f"{{{NS_A}}}clrScheme", nsmap=_NSMAP)
     clr.set("name", theme.label)

@@ -1,13 +1,13 @@
 """Self-distill loop (#5) — turn usage into durable, reviewable memory.
 
-Reactive → proactive: instead of only learning when a user says "remember", the
-system periodically reads what ALREADY happened — the 👎 corrections staff left
+Reactive > proactive: instead of only learning when a user says "remember", the
+system periodically reads what ALREADY happened — the corrections staff left
 on wrong answers — and distils each into a SHORT durable fact worth remembering
 ("article codes must be matched as text across tables", "the busy branch is
 20063"). Those facts land as `status='pending'` memories (Intern Rule) and never
 reach chat until an admin approves them.
 
-Complementary to the feedback→golden loop (which promotes a corrected Q→SQL pair
+Complementary to the feedback>golden loop (which promotes a corrected Q>SQL pair
 to a golden example): this captures the GENERAL fact/preference behind a
 correction as a memory HINT, not the SQL.
 
@@ -50,7 +50,7 @@ def _conn():
 
 
 def _candidates(cur, slug: str) -> list[dict]:
-    """Recent 👎 corrections not yet distilled (created_by marker absent)."""
+    """Recent corrections not yet distilled (created_by marker absent)."""
     cur.execute(
         """SELECT f.id, f.question, f.answer, f.correction
            FROM public.dash_feedback f
@@ -68,7 +68,7 @@ def _candidates(cur, slug: str) -> list[dict]:
 
 
 def _extract(cand: dict) -> str | None:
-    """LLM → one durable fact, or None. Fail-soft (no key / over budget → None)."""
+    """LLM > one durable fact, or None. Fail-soft (no key / over budget > None)."""
     try:
         from dash.settings import training_llm_call
         prompt = _PROMPT.format(q=cand["q"][:400], a=cand["a"][:400], c=cand["c"][:400])

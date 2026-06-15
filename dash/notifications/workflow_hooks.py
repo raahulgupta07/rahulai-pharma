@@ -5,14 +5,14 @@
 # If those modules don't import these hooks yet, see TODO.md "[wf-notify]".
 #
 # Notes on app.auth.notify_user signature:
-#   notify_user(user_id: int, title: str, message: str = "", ntype: str = "info")
-#   The shipped `dash_notifications` schema only has (user_id, type, title, message)
-#   — no `link` column. We inline the deep link into the message body so the UI
-#   can render it as plain text or detect/format on parse.
+# notify_user(user_id: int, title: str, message: str = "", ntype: str = "info")
+# The shipped `dash_notifications` schema only has (user_id, type, title, message)
+# — no `link` column. We inline the deep link into the message body so the UI
+# can render it as plain text or detect/format on parse.
 """Feed-notification helpers for workflow lifecycle events.
 
 All three functions are fail-soft: they log on failure and never raise. Wire them
-at the queued→running claim, post-build commit, and run-level except branch in
+at the queued>running claim, post-build commit, and run-level except branch in
 `dash/cron/workflow_runner.py` and the cron-triggered run path in
 `dash/cron/workflow_scheduler.py`.
 """
@@ -37,7 +37,7 @@ def notify_workflow_started(
 ) -> None:
     """Notify owner that a workflow run was claimed and is now running."""
     try:
-        from app.auth import notify_user  # local import — fail-soft if unavailable
+        from app.auth import notify_user # local import — fail-soft if unavailable
         link = f"/ui/agent-os/workflows/runs/{run_id}"
         notify_user(
             int(owner_user_id),

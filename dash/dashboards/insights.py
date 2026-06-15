@@ -81,7 +81,7 @@ def detect_trend_break(df: pd.DataFrame, time_col: str, value_col: str) -> list[
         return []
     return [{
         "type": "trend_break", "severity": "high" if abs(delta) > 1 else "medium",
-        "finding": f"{value_col} slope changed {delta*100:+.0f}% mid-series ({s1:.2f}→{s2:.2f})",
+        "finding": f"{value_col} slope changed {delta*100:+.0f}% mid-series ({s1:.2f}>{s2:.2f})",
         "evidence": {"slope_before": float(s1), "slope_after": float(s2), "pivot_idx": half},
         "suggested_chart": {"type": "line", "x": time_col, "y": value_col},
     }]

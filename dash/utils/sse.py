@@ -76,7 +76,7 @@ def _audit_write(
                     "ps": project_slug,
                 },
             )
-    except Exception:  # noqa: BLE001 — audit must never raise
+    except Exception: # noqa: BLE001 — audit must never raise
         # Don't even log at warning — this fires per-event and would flood logs
         # if the audit table is missing. Migration 144 creates it.
         pass
@@ -101,7 +101,7 @@ def _audit_emit_async(
             error,
             project_slug,
         )
-    except Exception:  # noqa: BLE001 — pool full/shutdown: drop the audit
+    except Exception: # noqa: BLE001 — pool full/shutdown: drop the audit
         pass
 
 
@@ -122,7 +122,7 @@ def emit_event_sync(
         project_slug: optional project slug for audit attribution.
 
     Returns:
-        Formatted SSE string. On TypeError → sentinel `<name>_error` event with
+        Formatted SSE string. On TypeError > sentinel `<name>_error` event with
         empty data, logged at WARNING. Stream NEVER dies.
     """
     try:
@@ -137,7 +137,7 @@ def emit_event_sync(
         )
         _audit_emit_async(session_id, name, None, f"TypeError: {exc}", project_slug)
         return _format_error_event(name)
-    except Exception as exc:  # noqa: BLE001 — even non-TypeError must not kill the stream
+    except Exception as exc: # noqa: BLE001 — even non-TypeError must not kill the stream
         logger.warning(
             "SSE emit %s failed (%s): %s — emitting %s_error sentinel",
             name, type(exc).__name__, exc, name,

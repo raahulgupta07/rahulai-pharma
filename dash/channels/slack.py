@@ -21,7 +21,7 @@ def _get_engine():
         return get_sql_engine()
     except Exception:
         try:
-            from db import get_sql_engine  # type: ignore
+            from db import get_sql_engine # type: ignore
             return get_sql_engine()
         except Exception:
             return None
@@ -108,7 +108,7 @@ def handle_event(payload: Dict[str, Any]) -> Dict[str, Any]:
     log_message(thread["id"], "inbound", text, author=user_id, external_msg_id=event.get("ts"))
 
     result = dispatch_to_agent(project_slug, text, session_id=thread["dash_session_id"])
-    reply_text = result.get("text") if result.get("ok") else f"⚠️ {result.get('error')}"
+    reply_text = result.get("text") if result.get("ok") else f" {result.get('error')}"
     log_message(
         thread["id"], "outbound", reply_text,
         agent_response_excerpt=reply_text[:500],
@@ -141,7 +141,7 @@ def handle_slash_command(payload: Dict[str, Any]) -> Dict[str, Any]:
         result = dispatch_to_agent(project_slug, text)
         return {
             "response_type": "in_channel",
-            "text": result.get("text", "⚠️ no response") if result.get("ok") else f"⚠️ {result.get('error')}",
+            "text": result.get("text", " no response") if result.get("ok") else f" {result.get('error')}",
         }
     return {"response_type": "ephemeral", "text": f"Unknown command: {command}"}
 

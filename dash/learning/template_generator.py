@@ -7,7 +7,7 @@ project's actual schema profile + detected vertical.
 Public API
 ----------
 - generate_template(project_slug, profile, vertical) -> dict
-- apply_generated_template(project_slug, generated)  -> dict
+- apply_generated_template(project_slug, generated) -> dict
 
 Caching
 -------
@@ -18,9 +18,9 @@ LLM call only fires once per (slug, vertical, profile-fingerprint).
 Apply
 -----
 `apply_generated_template` writes results into:
-  - feature_config            (tabs/tools/agents/scope)
-  - dash_company_brain        (KPIs + glossary defs)
-  - dash_business_rules_db    (business rules)
+  - feature_config (tabs/tools/agents/scope)
+  - dash_company_brain (KPIs + glossary defs)
+  - dash_business_rules_db (business rules)
   - dash_autonomous_workflows (workflow scaffolds)
 
 Uses snapshot+revert pattern from `auto_apply.py`. Each step is wrapped
@@ -48,7 +48,7 @@ def _engine():
     # the Engineer agent's LLM-generated SQL, not trusted internal pipeline
     # writes). With the guarded engine, _store_cache's `UPDATE public.dash_projects`
     # and the brain/rules/workflow INSERTs into public.* were silently blocked,
-    # so the generated template was NEVER cached → the ~60s DEEP_MODEL generation
+    # so the generated template was NEVER cached > the ~60s DEEP_MODEL generation
     # re-ran on every retrain. This engine matches what feature_config writes use.
     from dash.tools.skill_refinery import _get_engine
     return _get_engine()
@@ -261,7 +261,7 @@ def _store_cache(project_slug: str, fp: str, vertical: str, payload: dict) -> No
 
 
 def generate_template(project_slug: str, profile: dict, vertical: str) -> dict:
-    """Generate a tailored agent-template via DEEP_MODEL → LITE_MODEL fallback.
+    """Generate a tailored agent-template via DEEP_MODEL > LITE_MODEL fallback.
 
     Args:
         project_slug: tenant id.
@@ -529,7 +529,7 @@ def apply_generated_template(slug: str, generated: dict) -> dict:
 
     failed = sum(1 for s in steps if not s.get("ok"))
     total = len(steps)
-    ok = failed * 2 <= total  # majority succeeded
+    ok = failed * 2 <= total # majority succeeded
 
     if not ok:
         logger.warning("apply_generated_template: %d/%d failed, reverting slug=%s", failed, total, slug)

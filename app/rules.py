@@ -42,8 +42,8 @@ def list_rules(slug: str, request: Request):
     """List all rules for a project.
 
     Unions two sources so the UI matches the Cockpit Brain `rule` count:
-      1. JSON files in knowledge/{slug}/rules/  (user-created via this endpoint)
-      2. public.dash_rules_db rows              (training pipeline + NL→SQL +
+      1. JSON files in knowledge/{slug}/rules/ (user-created via this endpoint)
+      2. public.dash_rules_db rows (training pipeline + NL>SQL +
          consolidator + provider XMLA + suggest_rules promotions write here)
     Dedupe by rule id; JSON-file rule wins on conflict (it's the editable copy).
     """
@@ -65,7 +65,7 @@ def list_rules(slug: str, request: Request):
         except Exception:
             pass
 
-    # 2) DB rules (training-pipeline / consolidator / NL→SQL / XMLA / etc.)
+    # 2) DB rules (training-pipeline / consolidator / NL>SQL / XMLA / etc.)
     try:
         from sqlalchemy import text
         from db.session import get_sql_engine
@@ -73,10 +73,10 @@ def list_rules(slug: str, request: Request):
         with engine.connect() as conn:
             rows = conn.execute(text(
                 "SELECT en.rule_id, en.name, en.type, en.category, en.definition, en.source, en.created_at, "
-                "       my.definition AS definition_my "
+                " my.definition AS definition_my "
                 "FROM public.dash_rules_db en "
                 "LEFT JOIN public.dash_rules_db my ON my.rule_id = en.rule_id || '_my' "
-                "  AND my.project_slug = en.project_slug AND my.lang = 'my' "
+                " AND my.project_slug = en.project_slug AND my.lang = 'my' "
                 "WHERE en.project_slug = :s AND (en.lang IS NULL OR en.lang = 'en') "
                 "ORDER BY en.created_at DESC"
             ), {"s": slug}).fetchall()

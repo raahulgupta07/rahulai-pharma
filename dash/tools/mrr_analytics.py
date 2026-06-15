@@ -135,7 +135,7 @@ def detect_subscription_schema(slug: str) -> dict[str, Any]:
           "table": str | None,
           "columns_map": {customer_id, mrr, plan, started_at, canceled_at, status, billing_cycle},
           "confidence": float,
-          "suggestions": [str, ...],   # only when found=False
+          "suggestions": [str, ...], # only when found=False
         }
     """
     try:
@@ -406,11 +406,11 @@ def compute_mrr_breakdown(
 
     Then classifies each customer:
 
-        new           : was 0, now > 0 AND first-ever subscription started in period
-        reactivation  : was 0, now > 0 AND had a prior subscription before period
-        churn         : was > 0, now 0
-        expansion     : was > 0, now > prev (delta > 0)
-        contraction   : was > 0, now < prev (delta < 0)
+        new : was 0, now > 0 AND first-ever subscription started in period
+        reactivation : was 0, now > 0 AND had a prior subscription before period
+        churn : was > 0, now 0
+        expansion : was > 0, now > prev (delta > 0)
+        contraction : was > 0, now < prev (delta < 0)
     """
     try:
         import pandas as pd
@@ -448,7 +448,7 @@ def compute_mrr_breakdown(
             active = df[ok_start & ok_cancel]
             return active.groupby("customer_id")["mrr"].sum()
 
-        prev = _mrr_at(ps_ts)   # MRR on the morning of period_start
+        prev = _mrr_at(ps_ts) # MRR on the morning of period_start
         curr = _mrr_at(pe_next) # MRR right after period_end
 
         all_customers = prev.index.union(curr.index)
@@ -484,7 +484,7 @@ def compute_mrr_breakdown(
                     expansion_mrr += delta
                 elif delta < 0:
                     contraction_mrr += abs(delta)
-            # p<=0 and c<=0 → ignore
+            # p<=0 and c<=0 > ignore
 
         net_new = (new_mrr + expansion_mrr + reactivation_mrr
                    - contraction_mrr - churn_mrr)
@@ -523,7 +523,7 @@ def compute_retention(
     """Gross + net retention.
 
     gross = (start_mrr - churn - contraction) / start_mrr
-    net   = (start_mrr - churn - contraction + expansion) / start_mrr
+    net = (start_mrr - churn - contraction + expansion) / start_mrr
     """
     try:
         b = compute_mrr_breakdown(slug, period_start, period_end)
@@ -580,7 +580,7 @@ def cohort_survival(
             return {"ok": True, "cohorts": [], "survival_matrix": [],
                     "max_periods": max_periods, "window": cohort_window}
 
-        # Each customer: first signup → cohort label
+        # Each customer: first signup > cohort label
         first_start = df.groupby("customer_id")["started_at"].min().reset_index()
         first_start = first_start.dropna(subset=["started_at"])
 
@@ -590,7 +590,7 @@ def cohort_survival(
         elif cohort_window == "quarter":
             first_start["cohort"] = first_start["started_at"].dt.to_period("Q").astype(str)
             offset_unit = pd.DateOffset(months=3)
-        else:  # week
+        else: # week
             first_start["cohort"] = first_start["started_at"].dt.to_period("W").astype(str)
             offset_unit = pd.DateOffset(weeks=1)
 

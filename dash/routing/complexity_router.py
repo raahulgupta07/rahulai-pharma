@@ -5,9 +5,9 @@ to a model string. Mirrors the cache + fail-open style of
 ``dash/scope_classifier.py``.
 
     decision = classify_complexity(project_slug, message)
-    decision["tier"]   # "LOOKUP" | "ANALYSIS" | "AGENTIC"
-    decision["model"]  # LITE_MODEL | CHAT_MODEL | DEEP_MODEL
-    decision["score"]  # 0..1
+    decision["tier"] # "LOOKUP" | "ANALYSIS" | "AGENTIC"
+    decision["model"] # LITE_MODEL | CHAT_MODEL | DEEP_MODEL
+    decision["score"] # 0..1
     decision["signals"]# list[str] of deterministic cues that fired
     decision["reason"] # short human-readable explanation
     decision["cached"] # True on a cache hit
@@ -33,14 +33,14 @@ logger = logging.getLogger(__name__)
 # ── Cache (mirrors scope_classifier) ─────────────────────────────────────────
 CACHE_TTL_S = 300.0
 CACHE_MAX = 2000
-_CACHE: dict[str, tuple[dict, float]] = {}  # key -> (decision, ts)
+_CACHE: dict[str, tuple[dict, float]] = {} # key -> (decision, ts)
 
 # ── Tier boundaries on the deterministic 0..1 score ──────────────────────────
 # TRIVIAL is detected by cue (greeting/ack), not by score — handled first.
-# score < LOOKUP_MAX        → LOOKUP
-# LOOKUP_MAX..ANALYSIS_MAX  → ANALYSIS
-# ANALYSIS_MAX..AGENTIC_MAX → AGENTIC
-# >= AGENTIC_MAX            → REASONING (heaviest multi-step)
+# score < LOOKUP_MAX > LOOKUP
+# LOOKUP_MAX..ANALYSIS_MAX > ANALYSIS
+# ANALYSIS_MAX..AGENTIC_MAX > AGENTIC
+# >= AGENTIC_MAX > REASONING (heaviest multi-step)
 LOOKUP_MAX = 0.34
 ANALYSIS_MAX = 0.67
 AGENTIC_MAX = 0.88
@@ -49,7 +49,7 @@ AMBIGUOUS_BAND = 0.08
 
 _TIERS = ("TRIVIAL", "LOOKUP", "ANALYSIS", "AGENTIC", "REASONING", "ULTRA")
 
-# ── TRIVIAL detection (greeting / ack / smalltalk → short-circuit the team) ──
+# ── TRIVIAL detection (greeting / ack / smalltalk > short-circuit the team) ──
 _TRIVIAL_TOKENS = {
     "hi", "hii", "hello", "hey", "yo", "hiya", "sup", "thanks", "thank",
     "thx", "ty", "ok", "okay", "k", "kk", "cool", "nice", "great", "awesome",
@@ -64,7 +64,7 @@ _TRIVIAL_PHRASES = (
     "thank you", "got it", "sounds good", "good morning", "good afternoon",
     "good evening", "how are you",
 )
-# Any of these means there's a real data ask → NOT trivial.
+# Any of these means there's a real data ask > NOT trivial.
 _DATA_HINT_RE = re.compile(
     r"\b(how many|count|list|show|what is|sum|total|average|avg|trend|compare|"
     r"why|forecast|predict|table|data|sales|revenue|customer|order|report)\b",
@@ -89,7 +89,7 @@ def _is_trivial(norm: str) -> bool:
     words = norm.replace("?", "").replace("!", "").replace(".", "").split()
     if not words or len(words) > 4:
         return False
-    # Short message made entirely of greeting/ack tokens → trivial.
+    # Short message made entirely of greeting/ack tokens > trivial.
     return all(w.strip(",") in _TRIVIAL_TOKENS for w in words)
 
 # ── Deterministic cue tables ─────────────────────────────────────────────────
@@ -161,16 +161,16 @@ def _tier_for_score(score: float) -> str:
 
 def _model_for_tier(tier: str) -> str:
     # CityPharma counter tool: collapsed to TWO models (FAST / REASON).
-    #   TRIVIAL / LOOKUP   → FAST   = lite_model  (quick stock / drug lookup)
-    #   everything heavier → REASON = chat_model  (think step-by-step + analytics)
+    # TRIVIAL / LOOKUP > FAST = lite_model (quick stock / drug lookup)
+    # everything heavier > REASON = chat_model (think step-by-step + analytics)
     # The 5-tier BI split (ANALYSIS/AGENTIC/REASONING/ULTRA on separate models)
     # had no counter use; mid/deep/reasoning/ultra settings stay editable under
-    # "Advanced" but no longer drive chat. Live-resolve via DB → env → default.
+    # "Advanced" but no longer drive chat. Live-resolve via DB > env > default.
     from dash.settings import get_lite_model, get_chat_model
 
     if tier in ("TRIVIAL", "LOOKUP"):
-        return get_lite_model()   # FAST
-    return get_chat_model()        # REASON (ANALYSIS/AGENTIC/REASONING/ULTRA)
+        return get_lite_model() # FAST
+    return get_chat_model() # REASON (ANALYSIS/AGENTIC/REASONING/ULTRA)
 
 
 def _score_deterministic(norm: str) -> tuple[float, list[str], bool]:
@@ -182,7 +182,7 @@ def _score_deterministic(norm: str) -> tuple[float, list[str], bool]:
     even if the LLM tiebreak wants to escalate.
     """
     signals: list[str] = []
-    score = 0.30  # neutral starting point (low ANALYSIS / high LOOKUP edge)
+    score = 0.30 # neutral starting point (low ANALYSIS / high LOOKUP edge)
 
     lookup_hits = [c for c in _LOOKUP_CUES if c in norm]
     analysis_hits = [c for c in _ANALYSIS_CUES if c in norm]
@@ -204,12 +204,12 @@ def _score_deterministic(norm: str) -> tuple[float, list[str], bool]:
     # AGENTIC cues pull strongly up.
     score += 0.30 * len(agentic_hits)
 
-    # "by <dim>" grouping → analysis flavor.
+    # "by <dim>" grouping > analysis flavor.
     if _BY_DIM_RE.search(norm):
         signals.append("by_dim")
         score += 0.10
 
-    # "across N datasets" → multi-source agentic.
+    # "across N datasets" > multi-source agentic.
     across_n = bool(_ACROSS_N_RE.search(norm))
     if across_n:
         signals.append("across_n")
@@ -223,7 +223,7 @@ def _score_deterministic(norm: str) -> tuple[float, list[str], bool]:
     if conj_count >= 2:
         score += 0.10 * conj_count
 
-    # Very long message → likely multi-part / agentic.
+    # Very long message > likely multi-part / agentic.
     words = len(norm.split())
     if words >= 60:
         signals.append("very_long")
@@ -313,7 +313,7 @@ def _llm_tiebreak(message: str) -> dict | None:
     """Single cheap LITE_MODEL call. Returns parsed dict or None (fail-open)."""
     try:
         from dash.settings import training_llm_call
-    except Exception as e:  # pragma: no cover
+    except Exception as e: # pragma: no cover
         logger.warning("complexity_router: training_llm_call import failed: %s", e)
         return None
     try:
@@ -346,7 +346,7 @@ def classify_complexity(
 ) -> dict:
     """Classify message complexity. Always returns a dict; never raises."""
     try:
-        from dash.settings import CHAT_MODEL  # local import; cheap
+        from dash.settings import CHAT_MODEL # local import; cheap
 
         if not message or not message.strip():
             return {
@@ -367,7 +367,7 @@ def classify_complexity(
 
         norm = _norm(message)
 
-        # TRIVIAL: greeting/ack/smalltalk → short-circuit the team entirely.
+        # TRIVIAL: greeting/ack/smalltalk > short-circuit the team entirely.
         if _is_trivial(norm):
             decision = {
                 "tier": "TRIVIAL",
@@ -384,9 +384,9 @@ def classify_complexity(
 
         score, signals, agentic_signal = _score_deterministic(norm)
         tier = _tier_for_score(score)
-        reason = f"deterministic: score={score:.2f} → {tier}"
+        reason = f"deterministic: score={score:.2f} > {tier}"
 
-        # Ambiguous band → ask LITE once. Keep deterministic on any failure.
+        # Ambiguous band > ask LITE once. Keep deterministic on any failure.
         if _near_boundary(score):
             signals.append("ambiguous_band")
             llm = _llm_tiebreak(message)

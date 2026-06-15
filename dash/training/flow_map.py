@@ -2,9 +2,9 @@
 Training flow map — static layer/step registry + live state derivation.
 
 Exports:
-  LAYERS  — static list of 10 layer dicts (idx, title, color, gate, steps)
-  STORES  — ordered data-store chip list [{key, label}]
-  derive_flow(slug, db_url) -> dict  — live training state
+  LAYERS — static list of 10 layer dicts (idx, title, color, gate, steps)
+  STORES — ordered data-store chip list [{key, label}]
+  derive_flow(slug, db_url) -> dict — live training state
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def _iso_utc(v) -> Optional[str]:
     """Serialize a DB timestamp value as ISO-8601 UTC ending in 'Z'.
 
     The DB stores NAIVE UTC (db TIMEZONE=Etc/UTC). The frontend parses bare
-    'YYYY-MM-DD HH:MM:SS' strings as LOCAL time → phantom elapsed when the
+    'YYYY-MM-DD HH:MM:SS' strings as LOCAL time > phantom elapsed when the
     browser is offset from UTC. So we ALWAYS emit an explicit 'Z'/offset.
 
     Handles None / datetime / str. Never throws.
@@ -36,7 +36,7 @@ def _iso_utc(v) -> Optional[str]:
         s = s.strip()
         if not s:
             return None
-        # naive "YYYY-MM-DD HH:MM:SS[.ffffff]" → ISO 'T'
+        # naive "YYYY-MM-DD HH:MM:SS[.ffffff]" > ISO 'T'
         s = s.replace(" ", "T", 1)
         if s.endswith("Z"):
             return s
@@ -46,7 +46,7 @@ def _iso_utc(v) -> Optional[str]:
         t_idx = s.find("T")
         time_part = s[t_idx + 1:] if t_idx >= 0 else s
         if "+" in time_part or "-" in time_part:
-            return s  # explicit offset present — leave as-is
+            return s # explicit offset present — leave as-is
         return s + "Z"
     except Exception:
         try:
@@ -61,67 +61,67 @@ def _iso_utc(v) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 _PALETTE = [
-    "amber",   # LAYER 0
-    "cyan",    # LAYER 1
-    "coral",   # LAYER 2
-    "amber",   # LAYER 3
-    "cyan",    # LAYER 4
-    "coral",   # LAYER 5
-    "amber",   # LAYER 6
-    "cyan",    # LAYER 7
-    "coral",   # LAYER 8
-    "coral",   # LAYER 9
+    "amber", # LAYER 0
+    "cyan", # LAYER 1
+    "coral", # LAYER 2
+    "amber", # LAYER 3
+    "cyan", # LAYER 4
+    "coral", # LAYER 5
+    "amber", # LAYER 6
+    "cyan", # LAYER 7
+    "coral", # LAYER 8
+    "coral", # LAYER 9
 ]
 
 _RAW_PHASES = [
-    ("LAYER 0 · STAGING  (dash/ingest/ — review before data hits a table)", [
+    ("LAYER 0 · STAGING (dash/ingest/ — review before data hits a table)", [
         ("POST /upload/stage", "", "receive file(s), multi-file batch via batch_id", "knowledge/<proj>/staging/", None),
-        ("sheet split", "", "xlsx → one staged entry per sheet", "staging/", None),
+        ("sheet split", "", "xlsx > one staged entry per sheet", "staging/", None),
         ("content_hash", "", "sha of bytes — dedup key", "manifest.json", None),
-        ("quality scan", "", "empty/unreadable → quarantine", "manifest(status)", None),
+        ("quality scan", "", "empty/unreadable > quarantine", "manifest(status)", None),
         ("write_manifest", "", "status=staged, files[], hashes", "manifest.json", None),
     ]),
-    ("LAYER 1 · DRY-RUN  (preview, no DB write)", [
+    ("LAYER 1 · DRY-RUN (preview, no DB write)", [
         ("infer_contract", "", "column types + load-key detect", "dash_dataset_contracts", None),
         ("check_against_contract", "", "schema-drift vs prior contract", "(plan)", None),
         ("detect_load_key", "", "PK / composite key for upserts", "(plan)", None),
     ]),
-    ("LAYER 2 · PROMOTE → INGEST  (staged → Postgres)", [
-        ("drift gate", "", "schema drift → quarantine, else proceed", "manifest", None),
+    ("LAYER 2 · PROMOTE > INGEST (staged > Postgres)", [
+        ("drift gate", "", "schema drift > quarantine, else proceed", "manifest", None),
         ("file_hash_seen", "", "skip already-loaded files (dedup)", "(check)", None),
         ("delete_where_period/batch", "", "clean reload of same period", "citypharma.<table>", None),
-        ("_is_id_colname → TEXT", "", "ID/code cols kept as text (Excel-safe)", "citypharma.<table>", None),
+        ("_is_id_colname > TEXT", "", "ID/code cols kept as text (Excel-safe)", "citypharma.<table>", None),
         ("copy_csv / stream_xlsx", "", "streaming COPY (big files, no OOM)", "citypharma.<table>", None),
         ("stamp_lineage", "", "_source_file/_period/_batch_id/_hash", "citypharma.<table>", None),
     ]),
-    ("LAYER 3 · PER-TABLE TRAINING LOOP  (×N source tables; derived excluded)", [
+    ("LAYER 3 · PER-TABLE TRAINING LOOP (×N source tables; derived excluded)", [
         ("drift detect", "SQL", "fingerprint — skip unchanged table", "dash_table_metadata", None),
         ("profile_v2", "SQL", "types · roles(id/dim/measure) · pg_stats", "dash_table_metadata.profile_v2", None),
         ("dimension_catalog", "SQL", "top-20 distinct values per dim col", "dash_table_metadata.dimensions", None),
         ("deep_analysis", "DEEP", "narrative analysis of the table", "knowledge/<proj>/", None),
-        ("qa_generation", "FLASH", "Q→SQL training pairs", "dash_training_qa", None),
+        ("qa_generation", "FLASH", "Q>SQL training pairs", "dash_training_qa", None),
         ("persona", "FLASH", "agent persona for the data", "knowledge persona", None),
         ("synthesis", "FLASH", "table synthesis summary", "knowledge synthesis", None),
         ("workflows", "FLASH", "common multi-step workflows", "knowledge workflows", None),
-        ("knowledge index", "embed", "chunk + embed → vector store", "PgVector", None),
+        ("knowledge index", "embed", "chunk + embed > vector store", "PgVector", None),
         ("brain fill", "", "company-brain facts/rules", "dash_company_brain", None),
         ("domain_knowledge", "DEEP", "domain rules + glossary", "dash_memories/rules_db", None),
         ("persona enrich", "FLASH", "enrich persona (lenient JSON)", "knowledge persona", None),
     ]),
-    ("LAYER 4 · RELATIONSHIPS  (cross-table)", [
+    ("LAYER 4 · RELATIONSHIPS (cross-table)", [
         ("_discover_relationships", "FLASH", "LLM proposes FK/join candidates", "(in-mem)", None),
         ("verify (SQL containment)", "SQL", "directional overlap %, timeout 30s", "dash_relationships", None),
-        ("_seed_cross_table_qa", "FLASH", "JOIN Q→SQL pairs from verified links", "dash_training_qa", None),
+        ("_seed_cross_table_qa", "FLASH", "JOIN Q>SQL pairs from verified links", "dash_training_qa", None),
     ]),
-    ("LAYER 5 · ◆ SEMANTIC LAYER  (Engineer agent designs matviews)", [
+    ("LAYER 5 · ◆ SEMANTIC LAYER (Engineer agent designs matviews)", [
         ("Engineer.inspect_schema", "DEEP", "READ-ONLY: cols + roles", "(agent ctx)", "ENGINEER"),
         ("Engineer.get_relationships", "DEEP", "READ-ONLY: verified join keys", "(agent ctx)", "ENGINEER"),
         ("Engineer.sample_rows", "DEEP", "READ-ONLY: 5 rows (real formats)", "(agent ctx)", "ENGINEER"),
         ("Engineer.dry_run_sql", "DEEP", "EXPLAIN candidate SELECT, iterate", "(agent ctx)", "ENGINEER"),
-        ("→ SemanticLayerPlan (struct)", "", "═ TRUST BOUNDARY: model stops here ═", "(struct)", "ENGINEER"),
+        ("> SemanticLayerPlan (struct)", "", "═ TRUST BOUNDARY: model stops here ═", "(struct)", "ENGINEER"),
         ("validate_matview_spec", "", "whitelist: no DDL/;/comments/x-schema", "(gate)", "ENGINEER"),
         ("EXPLAIN dry-run (server)", "SQL", "reject on error/timeout", "(gate)", "ENGINEER"),
-        ("build_ddl + CREATE (1 txn)", "SQL", "DROP→CREATE MATVIEW→unique idx", "citypharma.<matview>", "ENGINEER"),
+        ("build_ddl + CREATE (1 txn)", "SQL", "DROP>CREATE MATVIEW>unique idx", "citypharma.<matview>", "ENGINEER"),
         ("register", "", "semantic_layer=true, refresh_sql", "dash_table_metadata", "ENGINEER"),
     ]),
     ("LAYER 6 · GRAPH + BACKFILL", [
@@ -130,27 +130,27 @@ _RAW_PHASES = [
         ("vector_backfill", "embed", "embed any rows missing vectors", "PgVector", None),
         ("codex_code_enrich", "", "pipeline_logic enrichment", "dash_table_metadata.pipeline_logic", None),
     ]),
-    ("LAYER 7 · TAIL  (4 concurrent)", [
+    ("LAYER 7 · TAIL (4 concurrent)", [
         ("scope", "", "derive feature/answer scope", "feature_config.scope", None),
         ("goals", "", "learning_goals.md", "knowledge goals", None),
         ("ml", "", "NO-OP — AutoML removed (purges row)", "—", None),
-        ("evals (gen + run)", "FLASH", "golden set → run → score", "dash_evals / dash_eval_runs", None),
+        ("evals (gen + run)", "FLASH", "golden set > run > score", "dash_evals / dash_eval_runs", None),
         ("auto_configure", "", "vertical detect + pack apply", "dash_auto_apply_history", None),
     ]),
-    ("LAYER 8 · POST-HOOKS  (sequential — order matters)", [
-        ("bilingual twins", "FLASH", "53 Burmese Q→SQL twins", "dash_training_qa", None),
-        ("catalog vectors", "embed", "embed catalog → hybrid search", "PgVector", None),
+    ("LAYER 8 · POST-HOOKS (sequential — order matters)", [
+        ("bilingual twins", "FLASH", "53 Burmese Q>SQL twins", "dash_training_qa", None),
+        ("catalog vectors", "embed", "embed catalog > hybrid search", "PgVector", None),
         ("◆ articles_enriched view", "SQL", "ALWAYS: COALESCE(source,approved)+is_enriched", "citypharma.articles_enriched", None),
         ("◆ detect_gaps", "SQL", "count blank fields per col", "(report)", "ENRICH"),
         ("◆ retrieve_examples", "SQL", "ground on labeled rows (few-shot)", "(ctx)", "ENRICH"),
-        ("◆ run_enrichment", "FLASH", "suggest missing → pending only", "citypharma.catalog_enrichment", "ENRICH"),
+        ("◆ run_enrichment", "FLASH", "suggest missing > pending only", "citypharma.catalog_enrichment", "ENRICH"),
         ("◆ auto_apply_low_risk", "", "category/indication ≥0.9; clinical NEVER", "catalog_enrichment.status", "ENRICH"),
         ("◆ rebuild enriched view", "SQL", "reflect new approvals", "articles_enriched", "ENRICH"),
         ("shop_flat build", "SQL", "reads enriched · _norm join · orphans linked=false", "citypharma.shop_flat", None),
         ("◆ matview refresh", "SQL", "REFRESH MATERIALIZED VIEW CONCURRENTLY", "citypharma.<matview>", "ENGINEER"),
     ]),
     ("LAYER 9 · DONE", [
-        ("status finalizing→done", "", "flip only after all post-hooks", "dash_training_runs", None),
+        ("status finalizing>done", "", "flip only after all post-hooks", "dash_training_runs", None),
         ("watchdog clear", "", "_reap_stale_runs stops tracking", "dash_training_runs", None),
         ("UI panels live", "", "Semantic Layer + Catalog Gaps + flow", "—", None),
     ]),
@@ -189,17 +189,17 @@ LAYERS: list[dict] = _build_layers()
 # ---------------------------------------------------------------------------
 
 STORES: list[dict] = [
-    {"key": "STAGE",  "label": "staging files"},
-    {"key": "PG",     "label": "citypharma tables"},
-    {"key": "META",   "label": "dash_table_metadata"},
-    {"key": "QA",     "label": "dash_training_qa"},
-    {"key": "VEC",    "label": "PgVector"},
-    {"key": "BRAIN",  "label": "dash_company_brain"},
-    {"key": "REL",    "label": "dash_relationships"},
-    {"key": "MV",     "label": "matviews"},
-    {"key": "AGE",    "label": "graph"},
-    {"key": "ENR",    "label": "catalog_enrichment"},
-    {"key": "EVAL",   "label": "dash_eval_runs"},
+    {"key": "STAGE", "label": "staging files"},
+    {"key": "PG", "label": "citypharma tables"},
+    {"key": "META", "label": "dash_table_metadata"},
+    {"key": "QA", "label": "dash_training_qa"},
+    {"key": "VEC", "label": "PgVector"},
+    {"key": "BRAIN", "label": "dash_company_brain"},
+    {"key": "REL", "label": "dash_relationships"},
+    {"key": "MV", "label": "matviews"},
+    {"key": "AGE", "label": "graph"},
+    {"key": "ENR", "label": "catalog_enrichment"},
+    {"key": "EVAL", "label": "dash_eval_runs"},
 ]
 
 # ---------------------------------------------------------------------------
@@ -215,87 +215,87 @@ _OBFUSCATE = os.getenv("FLOW_OBFUSCATE", "1") not in ("0", "false", "False", "")
 # real step label -> (display label, display detail, display writes_to)
 _MASK_STEPS: dict[str, tuple] = {
     # L0 intake
-    "POST /upload/stage":        ("receive_files",  "accept upload(s), batch group",     "(intake)"),
-    "sheet split":               ("split_sheets",   "workbook → one entry per sheet",    "(intake)"),
-    "content_hash":              ("fingerprint",    "content hash — dedup key",          "(intake)"),
-    "quality scan":              ("quality_scan",   "empty/unreadable → quarantine",     "(intake)"),
-    "write_manifest":            ("record_intake",  "status · files · hashes",           "(intake)"),
+    "POST /upload/stage": ("receive_files", "accept upload(s), batch group", "(intake)"),
+    "sheet split": ("split_sheets", "workbook > one entry per sheet", "(intake)"),
+    "content_hash": ("fingerprint", "content hash — dedup key", "(intake)"),
+    "quality scan": ("quality_scan", "empty/unreadable > quarantine", "(intake)"),
+    "write_manifest": ("record_intake", "status · files · hashes", "(intake)"),
     # L1 preflight
-    "infer_contract":            ("infer_schema",   "column types + load key",           "(plan)"),
-    "check_against_contract":    ("check_drift",    "schema drift vs prior",             "(plan)"),
-    "detect_load_key":           ("detect_key",     "primary / composite key",           "(plan)"),
+    "infer_contract": ("infer_schema", "column types + load key", "(plan)"),
+    "check_against_contract": ("check_drift", "schema drift vs prior", "(plan)"),
+    "detect_load_key": ("detect_key", "primary / composite key", "(plan)"),
     # L2 load
-    "drift gate":                ("drift_gate",     "drift → quarantine else proceed",   "(intake)"),
-    "file_hash_seen":            ("dedup_files",    "skip already-loaded files",         "(plan)"),
-    "delete_where_period/batch": ("clean_reload",   "clean reload of same period",       "(primary store)"),
-    "_is_id_colname → TEXT":     ("preserve_codes", "ID/code cols kept as text",         "(primary store)"),
-    "copy_csv / stream_xlsx":    ("stream_load",    "streaming load (no OOM)",           "(primary store)"),
-    "stamp_lineage":             ("stamp_lineage",  "source · period · batch · hash",    "(primary store)"),
+    "drift gate": ("drift_gate", "drift > quarantine else proceed", "(intake)"),
+    "file_hash_seen": ("dedup_files", "skip already-loaded files", "(plan)"),
+    "delete_where_period/batch": ("clean_reload", "clean reload of same period", "(primary store)"),
+    "_is_id_colname > TEXT": ("preserve_codes", "ID/code cols kept as text", "(primary store)"),
+    "copy_csv / stream_xlsx": ("stream_load", "streaming load (no OOM)", "(primary store)"),
+    "stamp_lineage": ("stamp_lineage", "source · period · batch · hash", "(primary store)"),
     # L3 per-table learning
-    "drift detect":              ("drift_detect",   "fingerprint — skip unchanged",      "(metadata)"),
-    "profile_v2":                ("profile",        "types · roles · stats",             "(metadata)"),
-    "dimension_catalog":         ("dimension_catalog", "top distinct values per dim",    "(metadata)"),
-    "deep_analysis":             ("analyze",        "narrative table analysis",          "(knowledge)"),
-    "qa_generation":             ("gen_pairs",      "question→answer training pairs",    "Training Q&A"),
-    "persona":                   ("persona",        "agent persona for data",            "(knowledge)"),
-    "synthesis":                 ("synthesize",     "table summary",                     "(knowledge)"),
-    "workflows":                 ("workflows",      "common multi-step flows",           "(knowledge)"),
-    "knowledge index":           ("index",          "chunk + embed → vectors",           "Vector index"),
-    "brain fill":                ("facts_fill",     "company facts / rules",             "(company brain)"),
-    "domain_knowledge":          ("domain_rules",   "domain rules + glossary",           "(knowledge)"),
-    "persona enrich":            ("persona_enrich", "enrich persona",                    "(knowledge)"),
+    "drift detect": ("drift_detect", "fingerprint — skip unchanged", "(metadata)"),
+    "profile_v2": ("profile", "types · roles · stats", "(metadata)"),
+    "dimension_catalog": ("dimension_catalog", "top distinct values per dim", "(metadata)"),
+    "deep_analysis": ("analyze", "narrative table analysis", "(knowledge)"),
+    "qa_generation": ("gen_pairs", "question>answer training pairs", "Training Q&A"),
+    "persona": ("persona", "agent persona for data", "(knowledge)"),
+    "synthesis": ("synthesize", "table summary", "(knowledge)"),
+    "workflows": ("workflows", "common multi-step flows", "(knowledge)"),
+    "knowledge index": ("index", "chunk + embed > vectors", "Vector index"),
+    "brain fill": ("facts_fill", "company facts / rules", "(company brain)"),
+    "domain_knowledge": ("domain_rules", "domain rules + glossary", "(knowledge)"),
+    "persona enrich": ("persona_enrich", "enrich persona", "(knowledge)"),
     # L4 linking
-    "_discover_relationships":   ("propose_links",  "propose join candidates",           "(links)"),
-    "verify (SQL containment)":  ("verify_links",   "overlap % · timeout 30s",           "(links)"),
-    "_seed_cross_table_qa":      ("gen_join_pairs", "join question→answer pairs",        "Training Q&A"),
+    "_discover_relationships": ("propose_links", "propose join candidates", "(links)"),
+    "verify (SQL containment)": ("verify_links", "overlap % · timeout 30s", "(links)"),
+    "_seed_cross_table_qa": ("gen_join_pairs", "join question>answer pairs", "Training Q&A"),
     # L5 model design
-    "Engineer.inspect_schema":   ("probe_structure",   "read-only: cols + roles",        "(internal)"),
-    "Engineer.get_relationships":("probe_links",       "read-only: join keys",           "(internal)"),
-    "Engineer.sample_rows":      ("probe_samples",     "read-only: sample rows",         "(internal)"),
-    "Engineer.dry_run_sql":      ("validate_candidate","dry check candidate, iterate",   "(internal)"),
-    "→ SemanticLayerPlan (struct)": ("→ plan (sealed)","trust boundary: model stops here","(sealed)"),
-    "validate_matview_spec":     ("validate_spec",  "whitelist gate",                    "(gate)"),
-    "EXPLAIN dry-run (server)":  ("server_check",   "reject on error / timeout",         "(gate)"),
-    "build_ddl + CREATE (1 txn)":("materialize",    "build managed view (1 txn)",        "(managed view)"),
-    "register":                  ("register",       "mark managed · refresh rule",       "(metadata)"),
+    "Engineer.inspect_schema": ("probe_structure", "read-only: cols + roles", "(internal)"),
+    "Engineer.get_relationships":("probe_links", "read-only: join keys", "(internal)"),
+    "Engineer.sample_rows": ("probe_samples", "read-only: sample rows", "(internal)"),
+    "Engineer.dry_run_sql": ("validate_candidate","dry check candidate, iterate", "(internal)"),
+    "> SemanticLayerPlan (struct)": ("> plan (sealed)","trust boundary: model stops here","(sealed)"),
+    "validate_matview_spec": ("validate_spec", "whitelist gate", "(gate)"),
+    "EXPLAIN dry-run (server)": ("server_check", "reject on error / timeout", "(gate)"),
+    "build_ddl + CREATE (1 txn)":("materialize", "build managed view (1 txn)", "(managed view)"),
+    "register": ("register", "mark managed · refresh rule", "(metadata)"),
     # L6 network + backfill
-    "knowledge_graph":           ("build_network",  "entities + edges",                  "Graph store"),
-    "subagent_synthesis":        ("cross_synth",    "cross-source synthesis",            "(knowledge)"),
-    "vector_backfill":           ("vector_backfill","embed rows missing vectors",        "Vector index"),
-    "codex_code_enrich":         ("logic_enrich",   "pipeline-logic enrichment",         "(metadata)"),
+    "knowledge_graph": ("build_network", "entities + edges", "Graph store"),
+    "subagent_synthesis": ("cross_synth", "cross-source synthesis", "(knowledge)"),
+    "vector_backfill": ("vector_backfill","embed rows missing vectors", "Vector index"),
+    "codex_code_enrich": ("logic_enrich", "pipeline-logic enrichment", "(metadata)"),
     # L7 finishing
-    "scope":                     ("scope",          "derive feature / answer scope",     "(config)"),
-    "goals":                     ("goals",          "learning goals",                    "(knowledge)"),
-    "ml":                        ("ml",             "no-op (disabled)",                  "—"),
-    "evals (gen + run)":         ("evals",          "golden set → run → score",          "(eval store)"),
-    "auto_configure":            ("auto_configure", "vertical detect + pack apply",      "(history)"),
+    "scope": ("scope", "derive feature / answer scope", "(config)"),
+    "goals": ("goals", "learning goals", "(knowledge)"),
+    "ml": ("ml", "no-op (disabled)", "—"),
+    "evals (gen + run)": ("evals", "golden set > run > score", "(eval store)"),
+    "auto_configure": ("auto_configure", "vertical detect + pack apply", "(history)"),
     # L8 post-processing
-    "bilingual twins":           ("bilingual_pairs","bilingual question→answer twins",   "Training Q&A"),
-    "catalog vectors":           ("catalog_vectors","embed catalog → hybrid search",     "Vector index"),
-    "◆ articles_enriched view":  ("◆ enriched_view","always: merged + flag",             "(managed view)"),
-    "◆ detect_gaps":             ("◆ detect_gaps",  "count blank fields per col",        "(report)"),
-    "◆ retrieve_examples":       ("◆ retrieve_examples","ground on labeled rows",        "(internal)"),
-    "◆ run_enrichment":          ("◆ suggest_fills","suggest missing → pending",         "(enrichment)"),
-    "◆ auto_apply_low_risk":     ("◆ auto_apply",   "apply low-risk; clinical never",    "(enrichment)"),
-    "◆ rebuild enriched view":   ("◆ rebuild_view", "reflect new approvals",             "(managed view)"),
-    "shop_flat build":           ("denorm_build",   "flatten + join; orphans flagged",   "(primary store)"),
-    "◆ matview refresh":         ("◆ refresh_views","refresh managed views",             "(managed view)"),
+    "bilingual twins": ("bilingual_pairs","bilingual question>answer twins", "Training Q&A"),
+    "catalog vectors": ("catalog_vectors","embed catalog > hybrid search", "Vector index"),
+    "◆ articles_enriched view": ("◆ enriched_view","always: merged + flag", "(managed view)"),
+    "◆ detect_gaps": ("◆ detect_gaps", "count blank fields per col", "(report)"),
+    "◆ retrieve_examples": ("◆ retrieve_examples","ground on labeled rows", "(internal)"),
+    "◆ run_enrichment": ("◆ suggest_fills","suggest missing > pending", "(enrichment)"),
+    "◆ auto_apply_low_risk": ("◆ auto_apply", "apply low-risk; clinical never", "(enrichment)"),
+    "◆ rebuild enriched view": ("◆ rebuild_view", "reflect new approvals", "(managed view)"),
+    "shop_flat build": ("denorm_build", "flatten + join; orphans flagged", "(primary store)"),
+    "◆ matview refresh": ("◆ refresh_views","refresh managed views", "(managed view)"),
     # L9 done
-    "status finalizing→done":    ("finalize",       "flip after all hooks",              "(run state)"),
-    "watchdog clear":            ("watchdog_clear", "stop tracking",                     "(run state)"),
-    "UI panels live":            ("panels_live",    "dashboards live",                   "—"),
+    "status finalizing>done": ("finalize", "flip after all hooks", "(run state)"),
+    "watchdog clear": ("watchdog_clear", "stop tracking", "(run state)"),
+    "UI panels live": ("panels_live", "dashboards live", "—"),
 }
 
 _MASK_TITLES: dict[int, str] = {
-    0: "STAGE 0 · INTAKE  (review before load)",
-    1: "STAGE 1 · PREFLIGHT  (preview, no write)",
-    2: "STAGE 2 · LOAD  (staged → store)",
-    3: "STAGE 3 · PER-TABLE LEARNING  (×N tables)",
-    4: "STAGE 4 · LINKING  (cross-table)",
-    5: "STAGE 5 · MODEL DESIGN  (internal optimizer)",
+    0: "STAGE 0 · INTAKE (review before load)",
+    1: "STAGE 1 · PREFLIGHT (preview, no write)",
+    2: "STAGE 2 · LOAD (staged > store)",
+    3: "STAGE 3 · PER-TABLE LEARNING (×N tables)",
+    4: "STAGE 4 · LINKING (cross-table)",
+    5: "STAGE 5 · MODEL DESIGN (internal optimizer)",
     6: "STAGE 6 · NETWORK + BACKFILL",
-    7: "STAGE 7 · FINISHING  (concurrent)",
-    8: "STAGE 8 · POST-PROCESSING  (sequential)",
+    7: "STAGE 7 · FINISHING (concurrent)",
+    8: "STAGE 8 · POST-PROCESSING (sequential)",
     9: "STAGE 9 · DONE",
 }
 
@@ -439,7 +439,7 @@ def derive_flow(slug: str, db_url: str) -> dict:
 
     # ---- flags -----------------------------------------------------------------
     engineer_flag = os.environ.get("ENGINEER_SEMANTIC_LAYER", "0") in ("1", "true", "True")
-    enrich_flag   = os.environ.get("CATALOG_ENRICH", "0") in ("1", "true", "True")
+    enrich_flag = os.environ.get("CATALOG_ENRICH", "0") in ("1", "true", "True")
 
     # ---- latest training run ---------------------------------------------------
     run: Optional[dict] = None
@@ -492,14 +492,14 @@ def derive_flow(slug: str, db_url: str) -> dict:
 
     # ---- counts ----------------------------------------------------------------
     tables_count = 0
-    rows_count   = 0
-    qa_count     = 0
-    rels_count   = 0
+    rows_count = 0
+    qa_count = 0
+    rels_count = 0
     matviews_count = 0
-    gaps_count   = 0
+    gaps_count = 0
     eval_score: Optional[float] = None
-    eval_count   = 0
-    graph_nodes  = 0
+    eval_count = 0
+    graph_nodes = 0
 
     try:
         with eng.connect() as conn:
@@ -627,7 +627,7 @@ def derive_flow(slug: str, db_url: str) -> dict:
         # A live run is always at least staging.
         if current_layer < 0 and r_status in ("running", "queued", "finalizing"):
             current_layer = 0
-        # finalizing → we've reached the DONE layer's lead-in.
+        # finalizing > we've reached the DONE layer's lead-in.
         if r_status == "finalizing" and current_layer < 9:
             current_layer = 9
 
@@ -638,7 +638,7 @@ def derive_flow(slug: str, db_url: str) -> dict:
         if run is None:
             return "idle"
 
-        # Terminal: a finished run → every (non-gated) layer is done.
+        # Terminal: a finished run > every (non-gated) layer is done.
         if r_status == "done":
             if idx == 5:
                 return "done" if engineer_flag else "skipped"
@@ -662,7 +662,7 @@ def derive_flow(slug: str, db_url: str) -> dict:
                 return "running"
             return "idle"
 
-        # Unknown/non-terminal status → idle (never invents progress).
+        # Unknown/non-terminal status > idle (never invents progress).
         return "idle"
 
     # ---- per-step live state from logs + dash_training_steps -------------------
@@ -683,7 +683,7 @@ def derive_flow(slug: str, db_url: str) -> dict:
         except Exception as exc:
             logger.debug("flow_map: step_rows failed: %s", exc)
 
-    _ICONS = "✓✔✗✘⚠◉·•●○└├─│┌┐ \t"
+    _ICONS = "OKOKxx◉·•●○└├─│┌┐ \t"
     _MS_RE = _re.compile(r"([\d.]+)\s*s\b")
     _MSMS_RE = _re.compile(r"(\d+)\s*ms\b")
     _COST_RE = _re.compile(r"\$([\d.]+)")
@@ -707,11 +707,11 @@ def derive_flow(slug: str, db_url: str) -> dict:
 
     def _parse(msg: str, label: str) -> dict:
         ml = msg.lower()
-        if "✗" in msg or "✘" in msg or "fail" in ml or "error" in ml:
+        if "x" in msg or "x" in msg or "fail" in ml or "error" in ml:
             state = "error"
-        elif "⚠" in msg or "quarantin" in ml or "skip" in ml:
+        elif "" in msg or "quarantin" in ml or "skip" in ml:
             state = "warn"
-        elif "✓" in msg or "✔" in msg or "done" in ml:
+        elif "OK" in msg or "OK" in msg or "done" in ml:
             state = "done"
         else:
             state = "running"
@@ -770,7 +770,7 @@ def derive_flow(slug: str, db_url: str) -> dict:
                 out["ms"] = int(srow["elapsed_ms"])
             if srow.get("error"):
                 out["state"] = "error"; out["value"] = str(srow["error"])[:80]
-        # 2) freetext log match → real value (+ ms/cost), refine state
+        # 2) freetext log match > real value (+ ms/cost), refine state
         msg = _match_log(label)
         if msg:
             p = _parse(msg, label)
@@ -781,7 +781,7 @@ def derive_flow(slug: str, db_url: str) -> dict:
                 out["cost"] = p["cost"]
             if not srow:
                 out["state"] = p["state"]
-        # 3) no signal at all → fall back to the layer's coarse status
+        # 3) no signal at all > fall back to the layer's coarse status
         if not srow and not msg:
             if lstatus == "done":
                 out["state"] = "done"
@@ -792,7 +792,7 @@ def derive_flow(slug: str, db_url: str) -> dict:
             else:
                 out["state"] = "idle"
         # a finished layer has nothing actually running — a value-only log
-        # (no ✓) must not show as live. Downgrade running→done; keep error/warn.
+        # (no OK) must not show as live. Downgrade running>done; keep error/warn.
         if lstatus == "done" and out["state"] in ("running", "idle"):
             out["state"] = "done"
         return out
@@ -823,17 +823,17 @@ def derive_flow(slug: str, db_url: str) -> dict:
 
     # ---- assemble stores dict --------------------------------------------------
     stores_out = {
-        "STAGE": None,       # disk — not queryable simply
-        "PG":    tables_count,
-        "META":  None,       # not separately counted
-        "QA":    qa_count,
-        "VEC":   None,       # pgvector namespace count omitted (expensive)
+        "STAGE": None, # disk — not queryable simply
+        "PG": tables_count,
+        "META": None, # not separately counted
+        "QA": qa_count,
+        "VEC": None, # pgvector namespace count omitted (expensive)
         "BRAIN": None,
-        "REL":   rels_count,
-        "MV":    matviews_count,
-        "AGE":   graph_nodes,
-        "ENR":   None,
-        "EVAL":  eval_count,
+        "REL": rels_count,
+        "MV": matviews_count,
+        "AGE": graph_nodes,
+        "ENR": None,
+        "EVAL": eval_count,
     }
 
     _result = {
@@ -841,18 +841,18 @@ def derive_flow(slug: str, db_url: str) -> dict:
         "layers": layers_out,
         "stores": stores_out,
         "kpis": {
-            "tables":     tables_count,
-            "rows":       rows_count,
-            "qa":         qa_count,
-            "rels":       rels_count,
-            "matviews":   matviews_count,
-            "gaps":       gaps_count,
+            "tables": tables_count,
+            "rows": rows_count,
+            "qa": qa_count,
+            "rels": rels_count,
+            "matviews": matviews_count,
+            "gaps": gaps_count,
             "eval_score": eval_score,
             "eval_count": eval_count,
         },
         "flags": {
             "engineer": engineer_flag,
-            "enrich":   enrich_flag,
+            "enrich": enrich_flag,
         },
     }
     if _OBFUSCATE:

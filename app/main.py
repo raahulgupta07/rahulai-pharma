@@ -24,11 +24,11 @@ from pathlib import Path
 
 
 def _tier_label(complexity: str | None = None, reasoning: str | None = None) -> str:
-    """Map router complexity + explicit override → exec-view tier.
+    """Map router complexity + explicit override > exec-view tier.
 
     CityPharma (pharmacy counter) ships only 3 presentation tiers (2026-06-08):
-      quick     — instant lookup, 1 KPI + 1 line  (UI "FAST")
-      standard  — analytical card, KPI strip + breakdown  (UI "STANDARD" / AUTO default)
+      quick — instant lookup, 1 KPI + 1 line (UI "FAST")
+      standard — analytical card, KPI strip + breakdown (UI "STANDARD" / AUTO default)
     DEEP / ULTRA / REASONING (RCA / forecast / verification / visible-chain) were
     removed from the UI picker — no pharmacy-counter use. AUTO is now CAPPED at
     `standard`: a complex question still gets a smart MODEL (complexity_router) but
@@ -149,7 +149,7 @@ def _register_schedules() -> None:
 
 
 @asynccontextmanager
-async def lifespan(app):  # type: ignore[no-untyped-def]
+async def lifespan(app): # type: ignore[no-untyped-def]
     import os
     if not os.getenv("OPENROUTER_API_KEY"):
         import logging
@@ -174,7 +174,7 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
     # Single-runner election: pick exactly ONE worker/pod to run daemons via a
     # DB heartbeat leader (replaces the broken WORKER_RANK==0 gate — gunicorn
     # worker.age starts at 1 and drifts on respawn, so rank 0 was never present
-    # → ALL daemons silently never ran). Heartbeat election is PgBouncer-safe and
+    # > ALL daemons silently never ran). Heartbeat election is PgBouncer-safe and
     # auto-fails-over on a stale leader. Skipped entirely if explicitly off.
     _DAEMON_LEADER = False
     if not _DAEMONS_EXPLICIT_OFF:
@@ -230,7 +230,7 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
             if _age_h > 24:
                 import logging as _st_log
                 _st_log.getLogger(__name__).warning(
-                    f"⚠ Container {_age_h:.1f}h old (built {_bt}). "
+                    f" Container {_age_h:.1f}h old (built {_bt}). "
                     f"Recent source changes may not be deployed. "
                     f"Run `make rebuild` if you expected fresher code."
                 )
@@ -254,7 +254,7 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
     # WORKER_RANK gate: only worker 0 migrates. preload=False means every
     # gunicorn worker runs this lifespan; without the gate, N workers stampede
     # a fresh DB concurrently (the advisory lock alone is void through a
-    # transaction-mode pgbouncer) → partial/empty schema. The runner also now
+    # transaction-mode pgbouncer) > partial/empty schema. The runner also now
     # connects DIRECT (bypasses pgbouncer) so its advisory lock holds for the
     # multi-container case. Both guards together = no migration race.
     if getenv("WORKER_RANK", "0") == "0":
@@ -271,8 +271,8 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
             import logging as _mig_log
             _mig_log.getLogger(__name__).warning(f"migration runner skipped: {_mig_e}")
         # Single-tenant: ensure the locked project row + schema exist. Without it a
-        # fresh install (no demo seed) has no dash_projects row → every access check
-        # 404/403s before the super-admin branch → Workspace stuck "loading", Upload/
+        # fresh install (no demo seed) has no dash_projects row > every access check
+        # 404/403s before the super-admin branch > Workspace stuck "loading", Upload/
         # Force-Train hidden. Idempotent; worker-0 gated like migrations.
         try:
             from app.projects import ensure_locked_project as _ensure_locked
@@ -339,7 +339,7 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
                             log.info(f"purged {res.rowcount} brain version rows older than 365d")
                 except Exception as e:
                     log.warning(f"brain versions purge failed: {e}")
-                await _asyncio_bv.sleep(86400)  # 24h
+                await _asyncio_bv.sleep(86400) # 24h
         _asyncio_bv.create_task(_brain_versions_purge_loop())
     except Exception:
         pass
@@ -382,11 +382,11 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
                         try:
                             days = int(_ret_os.getenv(f"RETENTION_DAYS_{tbl.upper()}", str(default_days)))
                             if days <= 0:
-                                continue  # 0/negative = keep forever
+                                continue # 0/negative = keep forever
                             with eng.begin() as conn:
                                 if conn.execute(_ret_text("SELECT to_regclass(:q)"),
                                                 {"q": f"public.{tbl}"}).scalar() is None:
-                                    continue  # table absent in this install
+                                    continue # table absent in this install
                                 col = conn.execute(_ret_text(
                                     "SELECT column_name FROM information_schema.columns "
                                     "WHERE table_schema='public' AND table_name=:t "
@@ -394,7 +394,7 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
                                     "ORDER BY array_position(:c::text[], column_name) LIMIT 1"
                                 ), {"t": tbl, "c": _RET_TS_CANDS}).scalar()
                                 if not col:
-                                    continue  # no recognizable timestamp column
+                                    continue # no recognizable timestamp column
                                 # tbl + col are DB-validated identifiers; days is int.
                                 res = conn.execute(_ret_text(
                                     f"DELETE FROM public.{tbl} "
@@ -406,7 +406,7 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
                             log.warning(f"retention: {tbl} skipped: {_te}")
                 except Exception as e:
                     log.warning(f"retention loop failed: {e}")
-                await _asyncio_ret.sleep(86400)  # 24h
+                await _asyncio_ret.sleep(86400) # 24h
         _asyncio_ret.create_task(_retention_loop())
     except Exception:
         pass
@@ -444,7 +444,7 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
     # running a consumer on every uvicorn/gunicorn worker is safe (no duplicate
     # processing) and drains faster. The rank-0 gate is unreliable here anyway:
     # gunicorn's WORKER_RANK = worker.age starts at 1 (and drifts on respawn),
-    # so rank==0 is essentially never true → daemons gated on it never start.
+    # so rank==0 is essentially never true > daemons gated on it never start.
     # Honored opt-out: MINION_WORKER_DISABLED=1 (checked inside start_worker).
     try:
         from dash.minions.worker import start_worker as _start_minion_worker
@@ -498,7 +498,7 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
         _gd_log.getLogger(__name__).warning(f"golden_drift not started: {_e}")
 
     # Chemist clinical-eval daemon (24h). Runs the golden forward+inverse eval and
-    # refreshes Dashboard 🧪 "Clinical accuracy %". Disable: CHEMIST_EVAL_DISABLED=1.
+    # refreshes Dashboard "Clinical accuracy %". Disable: CHEMIST_EVAL_DISABLED=1.
     try:
         if not _should_run_daemons():
             raise RuntimeError("daemons disabled")
@@ -517,7 +517,7 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
     # INLINE and ONLY when this worker won leadership AT BOOT. That has a silent
     # failure mode after a redeploy: on `--force-recreate` the OLD container's
     # leader-lease is still warm (< LEASE_S), so every new worker LOSES the boot
-    # claim → these daemons never armed until the next *clean* restart (the exact
+    # claim > these daemons never armed until the next *clean* restart (the exact
     # "silently never ran" trap the WORKER_RANK gate also hit). workflow_runner
     # already dodges this by re-arming from the daemon-leader POST-CLAIM retry
     # path. We now do the same: one idempotent bootstrap, called at boot if we're
@@ -541,11 +541,11 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
         import logging as _ld_log
         _log_ld = _ld_log.getLogger(__name__)
         _specs = (
-            ("CACHE_CURATOR_ENABLED",  "dash.cron.cache_curator_daemon", "cache_curator_loop",  "cache_curator daemon"),
-            ("QUERY_CURATOR_ENABLED",  "dash.cron.query_curator_daemon", "query_curator_loop",  "query_curator daemon"),
-            ("INSIGHT_DAEMON_ENABLED", "dash.cron.insight_daemon",       "insight_daemon_loop", "insight daemon"),
-            ("DISTILLER_ENABLED",      "dash.cron.distiller_daemon",     "distiller_loop",      "distiller daemon"),
-            ("S3_SYNC_ENABLED",        "dash.cron.s3_sync_daemon",       "s3_sync_loop",        "s3 sync daemon"),
+            ("CACHE_CURATOR_ENABLED", "dash.cron.cache_curator_daemon", "cache_curator_loop", "cache_curator daemon"),
+            ("QUERY_CURATOR_ENABLED", "dash.cron.query_curator_daemon", "query_curator_loop", "query_curator daemon"),
+            ("INSIGHT_DAEMON_ENABLED", "dash.cron.insight_daemon", "insight_daemon_loop", "insight daemon"),
+            ("DISTILLER_ENABLED", "dash.cron.distiller_daemon", "distiller_loop", "distiller daemon"),
+            ("S3_SYNC_ENABLED", "dash.cron.s3_sync_daemon", "s3_sync_loop", "s3 sync daemon"),
             ("KEYWORD_TOPICS_ENABLED", "dash.cron.keyword_topics_daemon","keyword_topics_loop", "keyword topics daemon"),
         )
         _armed_any = False
@@ -558,7 +558,7 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
                 _aio_ld.get_running_loop().create_task(_loop_fn())
                 _armed_any = True
                 _log_ld.info("%s started (24h, via %s)", _name, via)
-            except Exception as _e:  # noqa: BLE001
+            except Exception as _e: # noqa: BLE001
                 _log_ld.warning("%s not started: %s", _name, _e)
         if _armed_any:
             globals()["_ASYNC_LEARNING_ARMED"] = True
@@ -578,7 +578,7 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
                     _arm_async_learning_daemons, "post-claim"
                 )
             )
-        except Exception as _rce:  # noqa: BLE001
+        except Exception as _rce: # noqa: BLE001
             import logging as _ld_log2
             _ld_log2.getLogger(__name__).warning(
                 "could not register learning-daemon post-claim callback: %s", _rce
@@ -735,7 +735,7 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
             f"scope_derive daemon not started: {_e}"
         )
     # Pruned-vertical daemons (venture/ops/supply) query portco/suppliers tables
-    # that don't exist single-tenant → boot-time list errors. Gate the whole
+    # that don't exist single-tenant > boot-time list errors. Gate the whole
     # cluster off via VERTICAL_DAEMONS_DISABLED=1.
     import os as _os_vd
     _VERTICAL_OFF = _os_vd.environ.get("VERTICAL_DAEMONS_DISABLED", "").lower() in ("1", "true", "yes")
@@ -1016,7 +1016,7 @@ agent_os = AgentOS(
     tracing=True,
     scheduler=True,
     scheduler_base_url=scheduler_base_url,
-    authorization=False,  # We use our own AuthMiddleware, not Agno JWT
+    authorization=False, # We use our own AuthMiddleware, not Agno JWT
     lifespan=lifespan,
     db=get_postgres_db(),
     teams=[dash],
@@ -1047,7 +1047,7 @@ try:
         _SLUG_RE = _re_sentry.compile(r"/api/projects/([a-z0-9_-]+)")
 
         class _SentryTagMiddleware(_BHM):
-            async def dispatch(self, request, call_next):  # type: ignore[no-untyped-def]
+            async def dispatch(self, request, call_next): # type: ignore[no-untyped-def]
                 try:
                     scope = _sentry_mw.Hub.current.scope
                     m = _SLUG_RE.search(request.url.path or "")
@@ -1091,7 +1091,7 @@ try:
     ).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
     # Ensure custom counter module imports (registers metrics with default registry).
     try:
-        from dash.utils import metrics as _dash_metrics  # noqa: F401
+        from dash.utils import metrics as _dash_metrics # noqa: F401
     except Exception as _me:
         logger.warning(f"dash.utils.metrics import failed: {_me}")
 except Exception as _pe:
@@ -1113,7 +1113,7 @@ from app.dashboards_api import router as dashboards_v2_router
 try:
     from app.dashboard_to_deck import router as dashboard_to_deck_router
 except Exception:
-    dashboard_to_deck_router = None  # Phase 3 — Dashboard → Deck (POST /api/dashboards/{id}/to-deck)
+    dashboard_to_deck_router = None # Phase 3 — Dashboard > Deck (POST /api/dashboards/{id}/to-deck)
 from app.accuracy_api import router as accuracy_router
 from app.okf_api import router as okf_router
 from app.research_api import router as research_router
@@ -1122,7 +1122,7 @@ from app.scope_audit_api import router as scope_audit_router
 try:
     from app.sql_validator_api import router as sql_validator_router
 except Exception:
-    sql_validator_router = None  # SQL validator telemetry (migration 164)
+    sql_validator_router = None # SQL validator telemetry (migration 164)
 # Obsidian-style steals (links/graph/journal/canvas/dataview/packs)
 try:
     from app.links_api import router as links_router
@@ -1332,23 +1332,23 @@ app.include_router(export_router)
 try:
     from app.slides_api import router as slides_router
     app.include_router(slides_router)
-except Exception as _e:  # noqa: BLE001
+except Exception as _e: # noqa: BLE001
     import logging as _lg
     _lg.getLogger(__name__).warning("slides_api router not registered: %s", _e)
 try:
     from app.deep_deck_api import router as deep_deck_router
     app.include_router(deep_deck_router)
-except Exception as _e:  # noqa: BLE001
+except Exception as _e: # noqa: BLE001
     import logging as _lg
     _lg.getLogger(__name__).warning("deep_deck_api router not registered: %s", _e)
-# Phase 7: deck distribution (schedule → render → email/Slack/PDF). Stub-safe
+# Phase 7: deck distribution (schedule > render > email/Slack/PDF). Stub-safe
 # when SMTP/Slack creds missing. Kill switch: DECK_DISTRIBUTION_DISABLED=1.
 import os as _os_dd
 if _os_dd.getenv("DECK_DISTRIBUTION_DISABLED", "").lower() not in ("1", "true", "yes"):
     try:
         from app.deck_distribution import combined_router as deck_distribution_router
         app.include_router(deck_distribution_router)
-    except Exception as _e:  # noqa: BLE001
+    except Exception as _e: # noqa: BLE001
         import logging as _lg
         _lg.getLogger(__name__).warning("deck_distribution router not registered: %s", _e)
 app.include_router(schedules_router)
@@ -1362,25 +1362,25 @@ except Exception as _e:
 try:
     from app.training_api import router as _training_router
     app.include_router(_training_router)
-except Exception as _e:  # noqa: BLE001
+except Exception as _e: # noqa: BLE001
     import logging as _lg
     _lg.getLogger(__name__).warning("training_api router not registered: %s", _e)
 try:
     from app.datasource_api import router as _datasource_router
     app.include_router(_datasource_router)
-except Exception as _e:  # noqa: BLE001
+except Exception as _e: # noqa: BLE001
     import logging as _lg
     _lg.getLogger(__name__).warning("datasource_api router not registered: %s", _e)
 try:
     from app.overview_api import router as _overview_router
     app.include_router(_overview_router)
-except Exception as _e:  # noqa: BLE001
+except Exception as _e: # noqa: BLE001
     import logging as _lg
     _lg.getLogger(__name__).warning("overview_api router not registered: %s", _e)
 try:
     from app.wiki_api import router as _wiki_router
     app.include_router(_wiki_router)
-except Exception as _e:  # noqa: BLE001
+except Exception as _e: # noqa: BLE001
     import logging as _lg
     _lg.getLogger(__name__).warning("wiki_api router not registered: %s", _e)
 app.include_router(engines_admin_router)
@@ -1465,7 +1465,7 @@ def _global_flags():
         "locked_slug": locked_slug() if is_single_agent() else None,
         "product_name": product_name(),
         # Canonical public origin for embed snippets/SDK/docs. Set PUBLIC_URL
-        # (or WEBUI_URL) to the AWS domain; blank → frontend falls back to
+        # (or WEBUI_URL) to the AWS domain; blank > frontend falls back to
         # window.location.origin.
         "public_base_url": (_os_flags.getenv("PUBLIC_URL") or _os_flags.getenv("WEBUI_URL") or "").rstrip("/"),
     }
@@ -1503,9 +1503,9 @@ except Exception as e:
 
 # Human-in-loop (HITL + Approvals) UNMOUNTED 2026-05-20 — over-engineered, no
 # agent produces requests (confirm_dangerous_op/approval tools dropped).
-# app.hitl_api (→ /api/hitl) kept on disk. app.hitl_requests_api DELETED
+# app.hitl_api (> /api/hitl) kept on disk. app.hitl_requests_api DELETED
 # (no producer). Extended-workflows router (workflows_extended_api) DELETED —
-# duplicated app.workflows_api (→ /api/workflows, mounted below).
+# duplicated app.workflows_api (> /api/workflows, mounted below).
 
 # Zero-LLM Entity Linker — KG extraction cost stats.
 try:
@@ -1515,7 +1515,7 @@ except Exception as e:
     logger.warning(f"entity_linker_api not loaded: {e}")
 
 # Dash-OS Phase 1C — @approval framework UNMOUNTED 2026-05-20 (human-in-loop,
-# no producer). Router kept on disk (app.approval_api → /api/approvals).
+# no producer). Router kept on disk (app.approval_api > /api/approvals).
 # NOTE: skill-draft approval queue (Phase 10, below) is separate and stays.
 
 # Dash-OS Phase 2A — Reporter file generation (PDF/PPTX/CSV/XLSX/DOCX/JSON/MD)
@@ -1740,7 +1740,7 @@ except Exception as _e:
     import logging as _logging
     _logging.warning(f"insight_api not loaded: {_e}")
 
-# S3 auto-sync API (Integrations → S3 Sync) — admin CRUD + manual sync trigger
+# S3 auto-sync API (Integrations > S3 Sync) — admin CRUD + manual sync trigger
 try:
     from app.s3_api import router as s3_router
     app.include_router(s3_router)
@@ -1849,7 +1849,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     SKIP_PATHS = {"/health", "/api/health", "/api/version", "/api/flags", "/", "/info", "/config", "/api/auth/login", "/api/auth/register", "/api/auth/methods", "/api/auth/ldap/login", "/api/sharepoint/callback", "/api/gdrive/callback", "/api/onedrive/callback", "/api/embed/session/create", "/api/embed/chat", "/api/embed/chat/stream", "/api/embed/feedback", "/api/embed/widget.js", "/api/embed/docs"}
     SKIP_PREFIXES = ("/ui", "/docs", "/openapi.json", "/redoc", "/api/branding", "/v1/ontology", "/brand", "/decks", "/api/health", "/health", "/api/embed/try", "/api/embed/config", "/api/embed/sdk", "/api/embed/deploy", "/api/embed/logo", "/api/s/", "/api/v1/docs", "/api/auth/oidc/")
 
-    async def dispatch(self, request, call_next):  # type: ignore[no-untyped-def]
+    async def dispatch(self, request, call_next): # type: ignore[no-untyped-def]
         path = request.url.path
 
         # Redirect root to UI
@@ -1890,7 +1890,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # ── RBAC surface 403 (backend lockout, not just nav-hide) ──
         # Block API access to a surface the user's role can't see. Super admin
-        # always passes (surfaces_for → all true); admin has workspace/chat by
+        # always passes (surfaces_for > all true); admin has workspace/chat by
         # default. Only browser-facing, workspace-only prefixes are gated, so a
         # plain `user` (dashboard+chat only) can't reach data-management APIs by
         # typing the URL. Fail-open on anything unmapped or on error.
@@ -1916,7 +1916,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         break
                 else:
                     # Project-scoped dashboard views live under
-                    # /api/projects/{slug}/… so the slug sits mid-path →
+                    # /api/projects/{slug}/… so the slug sits mid-path >
                     # startswith can't catch them. Match the dashboard-surface
                     # leaf segments explicitly. Other /api/projects/* paths stay
                     # open — over-gating that shared prefix would break core APIs.
@@ -1947,7 +1947,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         except Exception:
             pass
 
-        # Optional X-Scope-Id header → validate + thread into RLS ContextVar
+        # Optional X-Scope-Id header > validate + thread into RLS ContextVar
         scope_id = request.headers.get("X-Scope-Id") or request.headers.get("x-scope-id")
         request.state.scope_id = None
         if scope_id:
@@ -2027,7 +2027,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 try:
     from app.rate_limit import RateLimitMiddleware as _RateLimitMW
     app.add_middleware(_RateLimitMW)
-except Exception as _rl_e:  # noqa: BLE001
+except Exception as _rl_e: # noqa: BLE001
     import logging as _rl_log
     _rl_log.getLogger(__name__).warning(f"rate-limit middleware not loaded: {_rl_e}")
 
@@ -2241,7 +2241,7 @@ def _detect_routing_hint(message: str) -> str:
         return "both"
     if has_context and not has_data:
         return "context"
-    return "data"  # default: most questions need data
+    return "data" # default: most questions need data
 
 
 _CHITCHAT_RE = _re.compile(
@@ -2283,7 +2283,7 @@ def _apply_reasoning_mode(message: str, mode: str, analysis_type: str = "auto") 
     """Apply FAST/DEEP reasoning + analysis type. Called server-side."""
     parts = []
 
-    # Analysis type → TOOL CALL instruction (forces Analyst to use the right specialist tool)
+    # Analysis type > TOOL CALL instruction (forces Analyst to use the right specialist tool)
     if analysis_type and analysis_type != "auto":
         type_instructions = {
             "descriptive": "ANALYSIS TYPE: DESCRIPTIVE. Answer directly with key metrics and a clean data table. Use run_sql to query the data. Keep it concise. After getting the tool result, format the response with [KPI:...] tags for key metrics and [CONFIDENCE:...] tag.",
@@ -2331,18 +2331,18 @@ def _apply_reasoning_mode(message: str, mode: str, analysis_type: str = "auto") 
             "Do NOT write 'Related questions'/'Follow-up questions' in markdown — the [RELATED:] tags render as chips. "
             "Emit ONLY the tags below, in this order — nothing else structured: "
             "- [HEADLINE:2-6 word noun-phrase title] — the card title, FIRST line. "
-            "  Example: [HEADLINE:Top antibiotic categories] "
+            " Example: [HEADLINE:Top antibiotic categories] "
             "- [LEAD:one confident sentence that IS the answer] — MUST come right after HEADLINE, answer-first. "
-            "  Example: [LEAD:Amoxicillin leads the catalog with 412 active SKUs across 6 categories.] "
+            " Example: [LEAD:Amoxicillin leads the catalog with 412 active SKUs across 6 categories.] "
             "- [CONFIDENCE:HIGH|MEDIUM|LOW] — one level, based on data quality. "
             "- [SOURCE:catalog|articles|shop_flat|<table_name>] — the real table the numbers came from. "
             "- 2-4 [KPI:value|label|] tiles for the headline metrics. The third pipe field (change/delta) is OPTIONAL — "
             "include a delta ONLY when the SQL actually returned a prior-period number, otherwise leave it empty. "
-            "  Example: [KPI:412|Active SKUs|]  or  [KPI:412|Active SKUs|+18 vs last upload] "
+            " Example: [KPI:412|Active SKUs|] or [KPI:412|Active SKUs|+18 vs last upload] "
             "- 1-3 [WHY:short reasoning point] bullets briefly explaining the number. "
-            "  Example: [WHY:Counted distinct article_code with status=active] "
+            " Example: [WHY:Counted distinct article_code with status=active] "
             "- exactly ONE [SO_WHAT:action|owner|effort] — the next move. "
-            "  Example: [SO_WHAT:Review the 6 low-coverage categories|Category lead|1wk] "
+            " Example: [SO_WHAT:Review the 6 low-coverage categories|Category lead|1wk] "
             "- 2-3 [RELATED:question] tags for drill-down. "
             "Do NOT invent numbers — every figure must come from the SQL result."
         )
@@ -2356,18 +2356,18 @@ def _apply_reasoning_mode(message: str, mode: str, analysis_type: str = "auto") 
             "Do NOT write 'Related questions'/'Follow-up questions' in markdown — the [RELATED:] tags render as chips. "
             "Emit ONLY the tags below, in this order — nothing else structured: "
             "- [HEADLINE:2-6 word noun-phrase title] — the card title, FIRST line. "
-            "  Example: [HEADLINE:Category coverage gaps] "
+            " Example: [HEADLINE:Category coverage gaps] "
             "- [LEAD:one confident sentence that IS the answer] — MUST come right after HEADLINE, answer-first. "
-            "  Example: [LEAD:Six of 41 categories hold under 10 SKUs, all in chronic-care lines.] "
+            " Example: [LEAD:Six of 41 categories hold under 10 SKUs, all in chronic-care lines.] "
             "- [CONFIDENCE:HIGH|MEDIUM|LOW] — one level, based on data quality. "
             "- [SOURCE:catalog|articles|shop_flat|<table_name>] — the real table the numbers came from. "
             "- 2-4 [KPI:value|label|] tiles for the headline metrics. The third pipe field (change/delta) is OPTIONAL — "
             "include a delta ONLY when the SQL actually returned a prior-period number, otherwise leave it empty. "
-            "  Example: [KPI:6|Thin categories|]  or  [KPI:6|Thin categories|-2 vs last quarter] "
+            " Example: [KPI:6|Thin categories|] or [KPI:6|Thin categories|-2 vs last quarter] "
             "- 1-3 [WHY:short reasoning point] bullets explaining the number and how you got there. "
-            "  Example: [WHY:Grouped by category, flagged any with COUNT(DISTINCT article_code) < 10] "
+            " Example: [WHY:Grouped by category, flagged any with COUNT(DISTINCT article_code) < 10] "
             "- exactly ONE [SO_WHAT:action|owner|effort] — the next move. "
-            "  Example: [SO_WHAT:Restock the 6 thin categories|Category lead|2wk] "
+            " Example: [SO_WHAT:Restock the 6 thin categories|Category lead|2wk] "
             "- 2-3 [RELATED:question] tags for deeper drill. "
             "Do NOT invent numbers — every figure must trace to the SQL result; hallucinated numbers are caught and flagged."
         )
@@ -2398,13 +2398,13 @@ def _smart_route(message: str, projects: list[dict], session_id: str | None = No
     """Pick the best project for a question using keyword matching + LLM fallback.
 
     Routing signals (in priority order):
-    1. Explicit agent/project name mention → score 10/8
-    2. Table name match → score 5
-    3. Column name match → score 3 (e.g., "revenue" matches total_revenue column)
-    4. Persona/domain keyword match → score 2 (e.g., "factory" for manufacturing project)
-    5. Role keyword match → score 2
-    6. Session continuity → score 4 (if last message went to same project)
-    7. LLM fallback → picks from catalog with table+column context
+    1. Explicit agent/project name mention > score 10/8
+    2. Table name match > score 5
+    3. Column name match > score 3 (e.g., "revenue" matches total_revenue column)
+    4. Persona/domain keyword match > score 2 (e.g., "factory" for manufacturing project)
+    5. Role keyword match > score 2
+    6. Session continuity > score 4 (if last message went to same project)
+    7. LLM fallback > picks from catalog with table+column context
     """
     msg_lower = message.lower()
     # Tokenize message for word-level matching
@@ -2466,14 +2466,14 @@ def _smart_route(message: str, projects: list[dict], session_id: str | None = No
             if matched_col_words:
                 score += 3
                 reasons.append(f"column '{col}'")
-                break  # Don't over-count columns
+                break # Don't over-count columns
         # Match persona/domain keywords
         for kw in p.get("persona_keywords", []):
             if kw in msg_words:
                 score += 2
                 reasons.append(f"domain '{kw}'")
                 if score > 20:
-                    break  # Cap persona contribution
+                    break # Cap persona contribution
         # Match role keywords
         if p.get("agent_role"):
             role_words = [w for w in p["agent_role"].lower().split() if len(w) > 3]
@@ -2566,7 +2566,7 @@ Respond with ONLY valid JSON: {{"slug": "the_slug_or_none", "reason": "brief rea
 
 
 def _route_message(message: str, projects: list[dict], session_id: str | None = None) -> dict | None:
-    """2-tier routing: keyword pre-filter → Router Agent for ambiguous cases.
+    """2-tier routing: keyword pre-filter > Router Agent for ambiguous cases.
 
     Tier 1: Fast keyword scoring (same as _smart_route, < 10ms, $0)
     Tier 2: Router Agent with tools (LITE_MODEL, < 1.5s, ~$0.001)
@@ -2624,7 +2624,7 @@ def _route_message(message: str, projects: list[dict], session_id: str | None = 
         confidence = parsed.get("confidence", "medium")
 
         if not slugs:
-            return None  # General question
+            return None # General question
 
         # Find matching project
         primary_slug = slugs[0]
@@ -2839,7 +2839,7 @@ async def super_chat(request: Request):
     # request — covers fast-paths, team build (drops the writable Engineer +
     # strips raw SQL), and the streaming generator (tools read API_STORE_SCOPE at
     # run time). Each request is its own contextvar context, so no reset needed.
-    # Admins / unbound users get a non-enforced scope → behaviour unchanged.
+    # Admins / unbound users get a non-enforced scope > behaviour unchanged.
     try:
         from app.auth import resolve_api_scope as _ras
         from dash.api_scope import API_STORE_SCOPE as _ASS
@@ -2853,11 +2853,11 @@ async def super_chat(request: Request):
     message = form.get("message", "")
     stream = str(form.get("stream", "true")).lower() == "true"
     session_id = form.get("session_id")
-    mode = form.get("mode", "auto")           # "auto" or project slug
-    reasoning = form.get("reasoning", "auto")  # "auto" | "fast" | "deep"
-    analysis_type = form.get("analysis_type", "auto")  # "auto" | "descriptive" | "diagnostic" | etc.
+    mode = form.get("mode", "auto") # "auto" or project slug
+    reasoning = form.get("reasoning", "auto") # "auto" | "fast" | "deep"
+    analysis_type = form.get("analysis_type", "auto") # "auto" | "descriptive" | "diagnostic" | etc.
     # OKF opt-in: surface the imported okf knowledge lane for this request only
-    # (default off → identical to today). Per-request contextvar.
+    # (default off > identical to today). Per-request contextvar.
     try:
         from dash.tools.semantic_search import set_okf_lane
         set_okf_lane(str(form.get("use_okf", "")).lower() in ("1", "true", "yes", "on"))
@@ -2890,7 +2890,7 @@ async def super_chat(request: Request):
         pass
 
     # Apply reasoning mode — build as SYSTEM instruction, not user message.
-    # Chitchat/capability/greeting → plain pharmacist prose, NO dashboard tags/cards/charts.
+    # Chitchat/capability/greeting > plain pharmacist prose, NO dashboard tags/cards/charts.
     _chit = _is_chitchat(message)
     if _chit:
         reasoning_instructions = _chitchat_instructions()
@@ -2985,7 +2985,7 @@ async def super_chat(request: Request):
             if _qr_hits:
                 _qr_block = "\n## SIMILAR PROVEN QUERIES (reuse/adapt these — they are verified)\n"
                 for _qr_h in _qr_hits:
-                    _qr_block += f"- Q: {_qr_h.get('question','')}\n  SQL: {_qr_h.get('sql','')}\n"
+                    _qr_block += f"- Q: {_qr_h.get('question','')}\n SQL: {_qr_h.get('sql','')}\n"
                 reasoning_instructions = reasoning_instructions + _qr_block
     except Exception:
         pass
@@ -3047,7 +3047,7 @@ async def super_chat(request: Request):
             reasoning_instructions += f"\n[CONTEXT: User has these data agents: {agents_list}. Help them use the right agent.]"
             routing_info = {"routed_to": "Dash Agent", "slug": None, "reason": "general question"}
 
-    routed_slug = routing_info.get("slug")  # Which project was routed to (None for general)
+    routed_slug = routing_info.get("slug") # Which project was routed to (None for general)
 
     # Update session with routed project slug (for session continuity)
     if routed_slug and session_id:
@@ -3074,7 +3074,7 @@ async def super_chat(request: Request):
     def _run_super_bg(question: str, answer: str):
         """Run self-learning background tasks for the routed project."""
         if not routed_slug:
-            return  # No project to learn against
+            return # No project to learn against
         def _bg():
             try:
                 from dash.tools.suggest_rules import suggest_rules_from_conversation
@@ -3145,7 +3145,7 @@ async def super_chat(request: Request):
             pass
 
     # Continuous query learning (Mode-1 BYPASS) — super_chat path. Exact-enough
-    # hit on a PROVEN learned query → re-run its SQL live (fresh numbers) + render
+    # hit on a PROVEN learned query > re-run its SQL live (fresh numbers) + render
     # in code, ZERO LLM. Mirrors project_chat. Auto/fast only; fail-soft.
     if reasoning in ("auto", "", "fast"):
         try:
@@ -3194,7 +3194,7 @@ async def super_chat(request: Request):
             try:
                 response_iter = team.run(context_msg, stream=True, stream_events=True, session_id=session_id)
                 for event in response_iter:
-                    if time.time() - _stream_start > 300:  # 5 minute max
+                    if time.time() - _stream_start > 300: # 5 minute max
                         timeout_msg = _json.dumps({"content": "\n\nResponse timed out after 5 minutes."})
                         yield f"event: TeamRunContent\ndata: {timeout_msg}\n\n"
                         break
@@ -3497,7 +3497,7 @@ def api_version():
         with open("/app/docs/CHANGELOG.json", "r") as _f:
             doc = _json.load(_f)
         rels = doc.get("releases", []) if isinstance(doc, dict) else []
-        changelog = rels[:6]  # newest few; feed is newest-first
+        changelog = rels[:6] # newest few; feed is newest-first
     except Exception:
         changelog = []
 
@@ -3570,11 +3570,11 @@ def get_architecture():
 
     # AI Models from environment
     models = {
-        "chat":      getenv("CHAT_MODEL", "google/gemini-3-flash-preview"),
-        "deep":      getenv("DEEP_MODEL", "openai/gpt-5.4-mini"),
-        "lite":      getenv("LITE_MODEL", "google/gemini-3.1-flash-lite-preview"),
+        "chat": getenv("CHAT_MODEL", "google/gemini-3-flash-preview"),
+        "deep": getenv("DEEP_MODEL", "openai/gpt-5.4-mini"),
+        "lite": getenv("LITE_MODEL", "google/gemini-3.1-flash-lite-preview"),
         "embedding": getenv("EMBEDDING_MODEL", "google/gemini-embedding-2-preview"),
-        "provider":  "OpenRouter",
+        "provider": "OpenRouter",
     }
 
     # Live metrics from DB
@@ -3638,7 +3638,7 @@ def get_architecture():
     # ML
     ml = {
         "tools": [
-            {"name": "predict", "algorithm": "AutoARIMA → LLM fallback", "type": "Pre-trained / LLM", "cost": "$0 / $0.02"},
+            {"name": "predict", "algorithm": "AutoARIMA > LLM fallback", "type": "Pre-trained / LLM", "cost": "$0 / $0.02"},
             {"name": "feature_importance", "algorithm": "LightGBM + GridSearchCV + SHAP", "type": "On-demand", "cost": "$0"},
             {"name": "detect_anomalies_ml", "algorithm": "IsolationForest", "type": "Pre-trained", "cost": "$0"},
             {"name": "classify", "algorithm": "GradientBoosting + GridSearchCV", "type": "On-demand", "cost": "$0"},
@@ -3653,7 +3653,7 @@ def get_architecture():
     # Knowledge
     knowledge = {
         "layers": 13,
-        "search": "Unified: PgVector + Brain + KG + Facts → Cohere reranking",
+        "search": "Unified: PgVector + Brain + KG + Facts > Cohere reranking",
         "embedding_cascade": ["Gemini Embed 2", "OpenAI large", "OpenAI small", "Cohere v4"],
         "rerank_cascade": ["Cohere rerank-4-pro", "rerank-4-fast", "rerank-v3.5", "keyword fallback"],
     }

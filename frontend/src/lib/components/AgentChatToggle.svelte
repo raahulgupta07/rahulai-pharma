@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  interface Props {
  mode: 'team' | 'agent';
  disabled?: boolean;
@@ -31,7 +31,7 @@
     class="seg"
     class:active={mode === 'agent'}
     class:disabled
-    title={disabled ? 'Enable agent in Settings → My Agent' : undefined}
+    title={disabled ? 'Enable agent in Settings &gt; My Agent' : undefined}
     onclick={() => select('agent')}
   >
     <span aria-hidden="true"><Icon name="dna" size={14} /></span> My Agent

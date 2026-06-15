@@ -116,11 +116,11 @@ def map_sql_result_to_chart(rows: list[dict], query_meta: dict) -> dict | None:
     n_tmp = len(types["temporal"])
     total_cols = n_num + n_cat + n_tmp
 
-    # Too wide + too long → caller should fall back to table layout
+    # Too wide + too long > caller should fall back to table layout
     if total_cols >= 4 and n_rows > 7:
         return None
 
-    # --- branch A: 1 numeric + 1 temporal → line ---
+    # --- branch A: 1 numeric + 1 temporal > line ---
     if n_num == 1 and n_tmp == 1 and 3 <= n_rows <= 24:
         tcol = types["temporal"][0]
         ncol = types["numeric"][0]
@@ -134,7 +134,7 @@ def map_sql_result_to_chart(rows: list[dict], query_meta: dict) -> dict | None:
             },
         }
 
-    # --- branch B/C: 1 numeric + 1 categorical → bar or pie ---
+    # --- branch B/C: 1 numeric + 1 categorical > bar or pie ---
     if n_num == 1 and n_cat == 1 and 2 <= n_rows <= 12:
         ccol = types["categorical"][0]
         ncol = types["numeric"][0]
@@ -151,7 +151,7 @@ def map_sql_result_to_chart(rows: list[dict], query_meta: dict) -> dict | None:
             },
         }
 
-    # --- branch D: 2+ numeric + 1 categorical → multi-series bar ---
+    # --- branch D: 2+ numeric + 1 categorical > multi-series bar ---
     if n_num >= 2 and n_cat == 1 and n_rows <= 8:
         ccol = types["categorical"][0]
         labels = [_fmt_label(r.get(ccol)) for r in rows]

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount, onDestroy } from 'svelte';
  import { page } from '$app/stores';
  import { goto } from '$app/navigation';
@@ -329,7 +329,7 @@
 
 <div class="ana-page">
   <header class="topbar">
-    <button class="back-btn" onclick={() => goto(`${base}/project/${slug}`)} aria-label="Back">←</button>
+    <button class="back-btn" onclick={() => goto(`${base}/project/${slug}`)} aria-label="Back"><Icon name="arrow-left" size={16} /></button>
     <span class="brand"><Icon name="briefcase" size={14} /> IC ANALYSIS:</span>
     <span class="sym">{symbol}</span>
     <span class="status-dot" style="background:{statusDotColor()}" title={status}></span>
@@ -344,7 +344,7 @@
   {#if errMsg && status === 'unknown'}
     <div class="page-err">
       <Icon name="alert-triangle" size={14} /> {errMsg}
-      <button class="ghost-btn" onclick={() => goto(`${base}/project/${slug}`)}>← BACK TO PROJECT</button>
+      <button class="ghost-btn" onclick={() => goto(`${base}/project/${slug}`)}><Icon name="arrow-left" size={16} /> BACK TO PROJECT</button>
     </div>
   {/if}
 
@@ -382,7 +382,7 @@
             <span class="verdict-pill" style={verdictStyle(verdict.verdict)}>{verdict.verdict}</span>
             <span class="verdict-stars">{stars(verdict.conviction)}</span>
             <div class="spacer"></div>
-            <button class="primary-btn" onclick={viewMemo}>→ VIEW FULL MEMO</button>
+            <button class="primary-btn" onclick={viewMemo}><Icon name="arrow-right" size={16} /> VIEW FULL MEMO</button>
           </div>
           {#if verdict.rationale}
             <div class="verdict-rationale">{verdict.rationale}</div>

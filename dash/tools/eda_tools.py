@@ -13,7 +13,7 @@ Design rules (frozen contract; integrator depends on these signatures):
 - 30s per-query timeout via `SET LOCAL statement_timeout = 30000`.
 - Cached fast path (when available) for `inspect_dimension(top_n<=10)` reads
   the table profile cached in `public.dash_table_metadata.metadata.profile_v2`.
-- Kill switch: `EDA_TOOLS_DISABLED=1` → `create_eda_tools` returns [].
+- Kill switch: `EDA_TOOLS_DISABLED=1` > `create_eda_tools` returns [].
 - Use sqlalchemy `text()` with bind params; identifiers are pre-sanitised via
   `_safe_ident` before being f-stringed into the SQL.
 
@@ -553,7 +553,7 @@ def create_eda_tools(project_slug: str) -> list:
         return []
 
     try:
-        from agno.tools import tool  # type: ignore
+        from agno.tools import tool # type: ignore
     except Exception as e:
         logger.warning(f"[eda] agno @tool import failed, returning empty: {e}")
         return []

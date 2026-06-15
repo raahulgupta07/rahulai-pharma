@@ -7,9 +7,9 @@ Why this exists
 Benchmark (2026-05) showed the LLM re-derives metric SQL per chat and silently
 drops filters under some tiers:
 
-  * Q8 drop-off absolute  → 2,632 instead of 2,630  (dropped call_category='Retention Call')
-  * Q10 drop-off reasons  → inflated tables          (same dropped filter)
-  * Q3 contribution %      → wrong denominator         (per-month vs total completed-outcome)
+  * Q8 drop-off absolute > 2,632 instead of 2,630 (dropped call_category='Retention Call')
+  * Q10 drop-off reasons > inflated tables (same dropped filter)
+  * Q3 contribution % > wrong denominator (per-month vs total completed-outcome)
 
 These are not data errors — they are definition drift. The fix is to NEVER let
 the model invent the filter set for a known business metric. Each metric below
@@ -17,10 +17,10 @@ has ONE canonical SQL definition. The agent picks a metric by name; this tool
 runs the locked SQL against the project read-only engine and returns exact rows.
 
 Truth values verified against proj_demo_pg_crm (Jan–Jun 2025):
-  total_leads          = 1,544
-  new_users (all)      = 658     (Jan 310)   ← feedback's 644/299 was stale
-  drop_off_users       = 2,630
-  contribution         = Successful 7,526 (64.3%) / Unsuccessful 4,179 (35.7%)
+  total_leads = 1,544
+  new_users (all) = 658 (Jan 310) < feedback's 644/299 was stale
+  drop_off_users = 2,630
+  contribution = Successful 7,526 (64.3%) / Unsuccessful 4,179 (35.7%)
   Ensure top drop-off reason "No purchase - normal meals is enough" = 636
 
 Engine rule: reads go through get_project_readonly_engine (same resolution the
@@ -40,32 +40,32 @@ from sqlalchemy import inspect, text
 logger = logging.getLogger(__name__)
 
 # ── Column names in the CRM monthly tables (exact) ────────────────────────────
-C_STATUS   = "status"
-C_OUTCOME  = "call_outcome"
-C_CAT      = "call_category__affiliate_value_name"
-C_TYPE     = "related_brand_relationship__type"
-C_RSTATUS  = "related_brand_relationship__status"
-C_CHANNEL  = "related_channel_response__channel_type"
-C_BRAND    = "related_channel_response__brand"
-C_REASON   = "unsuccessful_reason__affiliate_value_name"
-C_CITY     = "city"
+C_STATUS = "status"
+C_OUTCOME = "call_outcome"
+C_CAT = "call_category__affiliate_value_name"
+C_TYPE = "related_brand_relationship__type"
+C_RSTATUS = "related_brand_relationship__status"
+C_CHANNEL = "related_channel_response__channel_type"
+C_BRAND = "related_channel_response__brand"
+C_REASON = "unsuccessful_reason__affiliate_value_name"
+C_CITY = "city"
 
-# ── Dimension → SQL expression (always TRIM categoricals) ─────────────────────
+# ── Dimension > SQL expression (always TRIM categoricals) ─────────────────────
 _DIMS = {
-    "month":   "month",                 # synthesized literal per source table
+    "month": "month", # synthesized literal per source table
     "channel": f"TRIM({C_CHANNEL})",
-    "brand":   f"TRIM({C_BRAND})",
-    "city":    f"TRIM({C_CITY})",
-    "reason":  f"TRIM({C_REASON})",
+    "brand": f"TRIM({C_BRAND})",
+    "city": f"TRIM({C_CITY})",
+    "reason": f"TRIM({C_REASON})",
 }
 
 # ── Metric registry ───────────────────────────────────────────────────────────
 # Each entry:
-#   kind   : "count" (single filtered count) | "rate" (num/denom)
-#   where  : SQL predicate for a count metric (or the numerator for a rate)
-#   denom  : SQL predicate for the denominator (rate only)
-#   default_group : default dimensions if caller passes none
-#   blurb  : human description used in the tool docstring
+# kind : "count" (single filtered count) | "rate" (num/denom)
+# where : SQL predicate for a count metric (or the numerator for a rate)
+# denom : SQL predicate for the denominator (rate only)
+# default_group : default dimensions if caller passes none
+# blurb : human description used in the tool docstring
 _REG: dict[str, dict] = {
     "total_leads": {
         "kind": "count",
@@ -176,11 +176,11 @@ def _union(schema: str, tables: list[tuple[str, str]], cols: list[str]) -> str:
     parts = []
     for t, label in tables:
         parts.append(f"SELECT '{label}' AS month, {sel_cols} FROM \"{schema}\".\"{t}\"")
-    return "  UNION ALL\n".join(parts)
+    return " UNION ALL\n".join(parts)
 
 
 def _coerce(o):
-    """JSON default — Decimal (from ROUND/AVG) → float."""
+    """JSON default — Decimal (from ROUND/AVG) > float."""
     import decimal
     if isinstance(o, decimal.Decimal):
         return float(o)
@@ -208,16 +208,16 @@ def _md_table(headers: list[str], rows: list[tuple]) -> str:
 def create_crm_metric_tool(project_slug: str | None = None):
     """Build the deterministic `crm_metric` tool bound to a project."""
 
-    _names = "\n".join(f"      • {k}: {v['blurb']}" for k, v in _REG.items())
+    _names = "\n".join(f" • {k}: {v['blurb']}" for k, v in _REG.items())
     _desc = (
         "AUTHORITATIVE CRM metric calculator. ALWAYS use this for any of the "
         "named business metrics below — do NOT write your own SQL for them, the "
         "filter definitions are locked here and verified against ground truth.\n"
         "Args:\n"
-        "  metric (str): one of the registered names.\n"
-        "  group_by (str): optional comma list of dimensions from "
+        " metric (str): one of the registered names.\n"
+        " group_by (str): optional comma list of dimensions from "
         "{month, channel, brand, city, reason}. Empty = metric default.\n"
-        "  brand (str): optional single-brand filter (e.g. 'Ensure').\n"
+        " brand (str): optional single-brand filter (e.g. 'Ensure').\n"
         "Registered metrics:\n" + _names
     )
 

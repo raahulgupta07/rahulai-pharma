@@ -23,7 +23,7 @@ def list_templates() -> list[dict]:
             "label": v["label"],
             "description": v["description"],
             "scope_keyword": v["scope_keyword"],
-            "icon": v.get("icon", "📦"),
+            "icon": v.get("icon", ""),
             "field_count": _count_fields(v["policy"]),
         }
         for k, v in ALL.items()

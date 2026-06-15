@@ -56,7 +56,7 @@ def list_candidate_skills(project: Optional[str] = None) -> List[Dict[str, Any]]
 
 
 def _parse_json_lenient(text: str) -> Optional[Dict[str, Any]]:
-    """Tolerant JSON parse: direct → strip fences → first {...} regex."""
+    """Tolerant JSON parse: direct > strip fences > first {...} regex."""
     if not text:
         return None
     s = text.strip()
@@ -140,12 +140,12 @@ def resolve(query: str, project: Optional[str] = None, top_k: int = 3) -> Dict[s
     reason = ""
     method = "llm"
     try:
-        from dash.llm import training_llm_call  # type: ignore
+        from dash.llm import training_llm_call # type: ignore
         raw = training_llm_call(prompt, task="extraction")
     except Exception:
         # Fall back to settings.training_llm_call (canonical in this repo)
         try:
-            from dash.settings import training_llm_call  # type: ignore
+            from dash.settings import training_llm_call # type: ignore
             raw = training_llm_call(prompt, task="routing")
         except Exception as e:
             logger.warning("resolver: training_llm_call import failed: %s", e)

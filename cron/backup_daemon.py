@@ -33,7 +33,7 @@ def _env(name: str, default: str = "") -> str:
 
 
 def _run_dump(dump_path: Path) -> bool:
-    """pg_dump → gzip → dump_path. Returns True on success."""
+    """pg_dump > gzip > dump_path. Returns True on success."""
     host = _env("DB_HOST", "dash-db")
     port = _env("DB_PORT", "5432")
     user = _env("DB_USER", "ai")
@@ -45,7 +45,7 @@ def _run_dump(dump_path: Path) -> bool:
         "-h", host, "-p", port, "-U", user,
         "-d", db, "--no-owner", "--no-privileges", "--format=plain",
     ]
-    print(f"[backup] pg_dump → {dump_path}", flush=True)
+    print(f"[backup] pg_dump > {dump_path}", flush=True)
     try:
         with gzip.open(dump_path, "wb") as gz:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
@@ -130,7 +130,7 @@ def run_once() -> int:
 
 
 def main() -> int:
-    """Entry. If $BACKUP_RUN_ONCE=1 → run once and exit. Otherwise loop daily."""
+    """Entry. If $BACKUP_RUN_ONCE=1 > run once and exit. Otherwise loop daily."""
     if os.environ.get("BACKUP_RUN_ONCE") in ("1", "true", "TRUE", "yes"):
         return run_once()
     # Simple daemon loop: sleep until next 03:00 UTC, run, repeat.

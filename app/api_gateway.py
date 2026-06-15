@@ -3,13 +3,13 @@
 Lets any standard OpenAI client talk to the locked CityPharma analyst:
 
     base_url = https://<host>/api/v1
-    api_key  = dash-key-XXXX           (Authorization: Bearer dash-key-XXXX)
+    api_key = dash-key-XXXX (Authorization: Bearer dash-key-XXXX)
 
 Endpoints:
-    GET  /api/v1/models             → list the single virtual model
-    POST /api/v1/chat/completions   → chat.completion (OpenAI shape).
-                                      stream=false → blocking JSON.
-                                      stream=true  → text/event-stream of
+    GET /api/v1/models > list the single virtual model
+    POST /api/v1/chat/completions > chat.completion (OpenAI shape).
+                                      stream=false > blocking JSON.
+                                      stream=true > text/event-stream of
                                       chat.completion.chunk frames + [DONE].
 
 Mechanics: reuses the EXISTING agent pipeline (`app.projects.project_chat`) by
@@ -73,7 +73,7 @@ try:
     _RATE_CAP = int(os.getenv("API_GW_RATE_PER_MIN", "60"))
 except (TypeError, ValueError):
     _RATE_CAP = 60
-_RATE_HITS: dict = {}   # fallback: key_id -> deque[float]
+_RATE_HITS: dict = {} # fallback: key_id -> deque[float]
 _redis_client = None
 _redis_down_logged = False
 
@@ -182,9 +182,9 @@ def _rate_exceeded(kid, username: str = "") -> bool:
     Feature #3 — PER-OUTLET RATE LIMIT:
     When APIGW_PER_KEY_RATE is on (default), the Redis key is scoped to the
     individual service-account so one outlet cannot starve others:
-        apigw:rl:key:<kid>:<bucket>   (per-key, APIGW_PER_KEY_RATE=1)
+        apigw:rl:key:<kid>:<bucket> (per-key, APIGW_PER_KEY_RATE=1)
     When off the original global key is used:
-        apigw:rl:<kid>:<bucket>       (historic, APIGW_PER_KEY_RATE=0)
+        apigw:rl:<kid>:<bucket> (historic, APIGW_PER_KEY_RATE=0)
 
     Falls back to an in-process per-worker sliding window when Redis is down.
     """
@@ -308,7 +308,7 @@ def _log_usage(user: dict, model: str, p_toks: int, c_toks: int,
                 " cost_usd, request_type, status, session_id, latency_ms, "
                 " cached_tokens, reasoning_tokens, input_preview) "
                 "VALUES (:kid, :svc, :sid, :sm, :model, :emodel, :p, :c, :t, :streamed, "
-                "        :cost, :rt, :st, :sess, :lat, :cached, :reason, :inprev)"
+                " :cost, :rt, :st, :sess, :lat, :cached, :reason, :inprev)"
             ), {
                 "kid": _user_key_id(user),
                 "svc": (user or {}).get("username"),
@@ -410,11 +410,11 @@ def _cache_key(user: dict, message: str, model: str) -> str:
     """Build a Redis cache key that is scoped to the calling service-account.
 
     Components:
-    - username       — the service-account / API-key identity
-    - scope_mode     — 'store' vs 'global' (different masking tiers)
-    - store_id       — the bound outlet (ensures per-store isolation)
-    - message        — normalised (strip, lower-case, collapse whitespace)
-    - model          — different model = different answer distribution
+    - username — the service-account / API-key identity
+    - scope_mode — 'store' vs 'global' (different masking tiers)
+    - store_id — the bound outlet (ensures per-store isolation)
+    - message — normalised (strip, lower-case, collapse whitespace)
+    - model — different model = different answer distribution
 
     A SHA-256 prefix keeps the key short; the 'apigw:cache:' namespace avoids
     collisions with the rate-limit counters.
@@ -640,7 +640,7 @@ def _sanitize_for_scope(text: str, user: dict) -> str:
                          "redacted": len(redact_spans)})
 
         if not redact_spans:
-            return text   # logged the signal; nothing tightly tied to redact
+            return text # logged the signal; nothing tightly tied to redact
 
         # Redact right-to-left so offsets stay valid. De-dupe overlaps.
         redact_spans = sorted(set(redact_spans), key=lambda s: s[0], reverse=True)
@@ -673,15 +673,15 @@ _API_STYLE_DIRECTIVE = (
     "(e.g. \"If they want tablets, PARACAP 10's is your deepest stock; the syrups "
     "move slower.\"). Keep it one sentence, genuinely useful, never salesy.\n"
     "FORMAT — show the data clean, ONCE:\n"
-    "• A list/breakdown of items with numbers → ONE compact markdown table "
+    "• A list/breakdown of items with numbers > ONE compact markdown table "
     "(header row, separator row, one row per item). Don't also restate those rows "
     "as bullets or sentences — the table IS the statement.\n"
-    "• A single value or 1–2 facts → just say it in a sentence, no table.\n"
+    "• A single value or 1–2 facts > just say it in a sentence, no table.\n"
     "• Friendly columns: Medicine · Salt · Stock · Price — not raw db names like "
     "article_code unless asked.\n"
     "NEVER print the same datum twice. Blank line before the table.\n"
     "OVERRIDE THE DASHBOARD FORMATS: even for stock / medicine-lookup / substitute "
-    "answers, do NOT emit the ✅/❌ one-line-per-medicine list, and do NOT emit any "
+    "answers, do NOT emit the / one-line-per-medicine list, and do NOT emit any "
     "[DRUG:]/[COMPOSITION:]/[STOCK:]/[EQUIV:]/[EVIDENCE:] monograph tags — those are "
     "dashboard-UI render codes and show up as raw junk in this chat app. Here, the "
     "warm sentence + clean markdown table above is the ONLY format.\n"
@@ -751,8 +751,8 @@ _DROP_HDR = {"article_code", "code", "article", "composition", "site_code",
 
 def _hkey(h: str) -> str:
     """Normalize a header cell to a lookup key: lower, drop a trailing (MMK)/
-    (unit) note, spaces/slashes → underscores. 'Weighted Cost Price (MMK)' →
-    'weighted_cost_price'; 'Brand Name' → 'brand_name'."""
+    (unit) note, spaces/slashes > underscores. 'Weighted Cost Price (MMK)' >
+    'weighted_cost_price'; 'Brand Name' > 'brand_name'."""
     k = (h or "").strip().lower()
     k = re.sub(r"\s*\([^)]*\)\s*$", "", k)
     k = re.sub(r"[ /\-]+", "_", k).strip("_")
@@ -770,7 +770,7 @@ def _num(s: str):
         return None
 
 
-# Static field-LABEL map (English → Burmese). Deterministic cleanup for Burmese
+# Static field-LABEL map (English > Burmese). Deterministic cleanup for Burmese
 # replies: the bilingual model writes its DATA + prose in Burmese, but the system
 # format/monograph blocks keep leaking English field labels. We swap ONLY these
 # fixed labels — never the data, brand names, numbers, or model prose. Ordered
@@ -808,7 +808,7 @@ _MY_COL_MAP = {
 
 
 def _localize_labels_my(text: str) -> str:
-    """Swap fixed English field-labels → Burmese in an already-Burmese reply.
+    """Swap fixed English field-labels > Burmese in an already-Burmese reply.
     Deterministic, label-only: leaves data, brand names, digits and model prose
     untouched. Case-insensitive on the label keys; longest match wins."""
     if not text:
@@ -833,7 +833,7 @@ def _humanize_api_answer(text: str, question: str = "") -> str:
     # Burmese (LANGUAGE rule in instructions.py + _API_STYLE_DIRECTIVE). Don't run
     # the warm ENGLISH reshape below (it would overwrite the native Burmese reply).
     # Instead apply the deterministic LABEL-ONLY localizer: swap the English field
-    # labels the format/monograph blocks keep leaking → Burmese, leaving the data,
+    # labels the format/monograph blocks keep leaking > Burmese, leaving the data,
     # brand names, digits and model prose untouched. NO content translation.
     if any('က' <= c <= '႟' for c in (question or "")):
         return _localize_labels_my(text)
@@ -862,7 +862,7 @@ def _humanize_api_answer(text: str, question: str = "") -> str:
         end += 1
 
     # 2b) Drop rows poisoned by a leaked tool/SQL error (store-locked keys can't
-    #     run_sql_query -> the join failure text bleeds into the final cell).
+    # run_sql_query -> the join failure text bleeds into the final cell).
     _ERR_CELL_RE = re.compile(
         r"cannot execute|can'?t execute|error|because:|not found|no data|"
         r"failed|unable to|exception|traceback", re.IGNORECASE)
@@ -885,7 +885,7 @@ def _humanize_api_answer(text: str, question: str = "") -> str:
 
     def _clean_cell(v):
         # Strip leading status glyphs the analyst stuffs into the name cell.
-        return re.sub(r"^[✅❌✔✖☑\s]+", "", v or "").strip()
+        return re.sub(r"^[OKx\s]+", "", v or "").strip()
 
     def _proj(cells):
         return [_clean_cell(cells[j]) if j < len(cells) else "" for j in keep]
@@ -954,7 +954,7 @@ def _humanize_api_answer(text: str, question: str = "") -> str:
                 f"branch or a substitute check.")
 
     # 5) One correct tip: deepest-stock line (computed, not model-guessed).
-    #    Only when something is actually in stock.
+    # Only when something is actually in stock.
     tip = ""
     if in_stock and med_idx is not None and stock_idx is not None and rows:
         best, bestq = None, -1.0
@@ -964,7 +964,7 @@ def _humanize_api_answer(text: str, question: str = "") -> str:
             if q > bestq:
                 bestq, best = q, pr[med_idx]
         if best and bestq > 0:
-            tip = (f"\n\n💊 Tip: {best} is your deepest stock "
+            tip = (f"\n\n Tip: {best} is your deepest stock "
                    f"({int(bestq):,} units) — reach for that first.")
 
     return (lead + "\n\n" + "\n".join(tbl)).strip() + tip
@@ -978,7 +978,7 @@ _NARRATION_RE = re.compile(r"\[NARRATION:\s*([^\]]*)\]", re.IGNORECASE)
 _HEADLINE_RE = re.compile(r"\[HEADLINE:\s*([^\]]*)\]", re.IGNORECASE)
 _KPI_RE = re.compile(r"\[KPI:\s*([^\]]*)\]", re.IGNORECASE)
 # Any remaining [UPPER_TOKEN ...] directive (RECOMMENDATION, FRESHNESS, RELATED,
-# MODE, ANALYSIS, CONFIDENCE, TIER, SO_WHAT, SOURCES, EXEC, …) → drop.
+# MODE, ANALYSIS, CONFIDENCE, TIER, SO_WHAT, SOURCES, EXEC, …) > drop.
 _ANY_TAG_RE = re.compile(r"\[[A-Z][A-Z0-9_]*(?::[^\]]*)?\]")
 
 
@@ -1003,8 +1003,8 @@ def _require_user(request: Request) -> dict:
 def _clean_answer(text: str) -> str:
     """Turn the directive-laced agent answer into clean text for an API client.
 
-    Keeps the data: [NARRATION: x] / [HEADLINE: x] → their inner text,
-    [KPI: value|label|delta] → a 'label: value' line. Drops every other
+    Keeps the data: [NARRATION: x] / [HEADLINE: x] > their inner text,
+    [KPI: value|label|delta] > a 'label: value' line. Drops every other
     presentation directive. Idempotent on plain text.
     """
     if not text:
@@ -1016,16 +1016,16 @@ def _clean_answer(text: str) -> str:
         parts = [p.strip() for p in m.group(1).split("|")]
         val = parts[0] if parts else ""
         label = parts[1] if len(parts) > 1 else ""
-        # Strip a trailing status emoji/dash the UI uses (🟢 / ━ 0%).
+        # Strip a trailing status emoji/dash the UI uses ( / ━ 0%).
         val = re.sub(r"\s*[━─]\s*[\d.]+%?\s*$", "", val).strip()
         if label and val:
             return f"{label}: {val}"
         return val or label
 
     out = _KPI_RE.sub(_kpi, out)
-    out = _ANY_TAG_RE.sub("", out)          # drop remaining directives
-    out = re.sub(r"[ \t]+\n", "\n", out)    # trailing spaces
-    out = re.sub(r"\n{3,}", "\n\n", out)    # collapse blank runs
+    out = _ANY_TAG_RE.sub("", out) # drop remaining directives
+    out = re.sub(r"[ \t]+\n", "\n", out) # trailing spaces
+    out = re.sub(r"\n{3,}", "\n\n", out) # collapse blank runs
     # De-dupe consecutive identical lines (KPI blocks often repeat the headline).
     seen_prev = None
     lines = []
@@ -1044,7 +1044,7 @@ def _last_user_message(messages: list) -> str:
             c = m.get("content")
             if isinstance(c, str):
                 return c
-            # OpenAI vision-style content parts → concat text parts
+            # OpenAI vision-style content parts > concat text parts
             if isinstance(c, list):
                 return " ".join(
                     p.get("text", "") for p in c
@@ -1079,7 +1079,7 @@ def _build_agent_message(messages: list, last: str) -> str:
     if not prior:
         return last
     lines = []
-    for m in prior[-6:]:                      # last ~6 turns is plenty of context
+    for m in prior[-6:]: # last ~6 turns is plenty of context
         who = "User" if m["role"] == "user" else "You"
         c = " ".join(m["content"].split())
         if len(c) > 600:
@@ -1097,8 +1097,8 @@ def _build_agent_message(messages: list, last: str) -> str:
 def _derive_session_id(body: dict, messages: list) -> str:
     """Stable session id so a multi-turn PHP convo threads server-side.
 
-    Priority: explicit body.session_id → OpenAI 'user' field → hash of prior
-    turns (so resending history reuses the session) → fresh uuid for a brand
+    Priority: explicit body.session_id > OpenAI 'user' field > hash of prior
+    turns (so resending history reuses the session) > fresh uuid for a brand
     new single-message call.
     """
     sid = (body.get("session_id") or body.get("user") or "").strip()
@@ -1118,7 +1118,7 @@ async def _stream_raw_content(orig_request: Request, user: dict, slug: str,
     """Shared core: invoke the real chat pipeline via an internal Request and
     yield RAW answer content pieces (TeamRunContent / RunContent deltas) as they
     arrive. Mirrors projects.py full_content. Used by BOTH the blocking path
-    (join → clean) and the streaming path (incremental clean → chunk).
+    (join > clean) and the streaming path (incremental clean > chunk).
 
     Yields `str` for answer content. If `emit_steps` is True, ALSO yields
     `{"_step": {"label","icon"}}` dicts for tool/reasoning activity (the live
@@ -1138,7 +1138,7 @@ async def _stream_raw_content(orig_request: Request, user: dict, slug: str,
         # Prepend the API-mode style directive so the agent emits a clean,
         # self-contained answer (no SOURCES/WHY/KPI-snapshot scaffolding).
         "message": _API_STYLE_DIRECTIVE + message,
-        "stream": "true",          # pipeline always streams; we drain it here
+        "stream": "true", # pipeline always streams; we drain it here
         "session_id": session_id,
         "reasoning": reasoning or "auto",
     }
@@ -1225,9 +1225,9 @@ async def _stream_raw_content(orig_request: Request, user: dict, slug: str,
                                 c = d.get("content")
                                 if isinstance(c, str) and c:
                                     if cur_event == "TeamRunContent":
-                                        _leader_buf.append(c)      # echo candidate
+                                        _leader_buf.append(c) # echo candidate
                                     else:
-                                        _member_emitted = True     # member = real answer
+                                        _member_emitted = True # member = real answer
                                         yield c
                             except Exception:
                                 pass
@@ -1241,7 +1241,7 @@ async def _stream_raw_content(orig_request: Request, user: dict, slug: str,
                             except Exception:
                                 pass
         # Flush the buffered leader answer ONLY when no member answer streamed
-        # (bare agent / team-of-one). Otherwise it's the duplicate echo → drop.
+        # (bare agent / team-of-one). Otherwise it's the duplicate echo > drop.
         if _leader_buf and not _member_emitted:
             yield "".join(_leader_buf)
         try:
@@ -1263,7 +1263,7 @@ async def _run_and_collect(orig_request: Request, user: dict, slug: str,
     async for piece in _stream_raw_content(
         orig_request, user, slug, message, session_id, reasoning, scope
     ):
-        if isinstance(piece, str):     # blocking path never requests steps, but guard
+        if isinstance(piece, str): # blocking path never requests steps, but guard
             parts.append(piece)
     return "".join(parts)
 
@@ -1278,8 +1278,8 @@ def _safe_raw_prefix(raw_buffer: str) -> str:
     if last_open == -1:
         return raw_buffer
     if "]" in raw_buffer[last_open:]:
-        return raw_buffer            # last bracket is already closed → all safe
-    return raw_buffer[:last_open]    # hold the dangling open tag
+        return raw_buffer # last bracket is already closed > all safe
+    return raw_buffer[:last_open] # hold the dangling open tag
 
 
 def _pending_meta_hold(safe: str) -> int:
@@ -1310,7 +1310,7 @@ def _incremental_clean(raw_buffer: str, already_emitted: str) -> str:
          uses, then return only the NEW SUFFIX vs what was already emitted.
 
     Tradeoff: `_clean_answer` runs once per delta on the whole safe prefix
-    (O(n) per delta → O(n²) over a full response — fine for chat-sized answers).
+    (O(n) per delta > O(n²) over a full response — fine for chat-sized answers).
     It is also not strictly append-only: a `[KPI: v|label|d]` collapses to
     `label: v` only once the tag closes, so the visible text up to an open tag
     is stable but a just-closed tag can rewrite the tail. We therefore only emit
@@ -1400,7 +1400,7 @@ async def _stream_completion(orig_request: Request, user: dict, slug: str,
                 orig_request, user, slug, message, session_id, reasoning, scope,
                 emit_steps=emit_steps,
             ):
-                if isinstance(piece, dict):       # activity step (Console strip)
+                if isinstance(piece, dict): # activity step (Console strip)
                     step = piece.get("_step")
                     if step:
                         yield _chunk_frame(chat_id, created, model,
@@ -1408,7 +1408,7 @@ async def _stream_completion(orig_request: Request, user: dict, slug: str,
                     continue
                 raw_buffer += piece
                 if _humanize:
-                    continue                      # hold — reshape at the end
+                    continue # hold — reshape at the end
                 new_text = _incremental_clean(raw_buffer, emitted)
                 if new_text:
                     emitted += new_text
@@ -1418,7 +1418,7 @@ async def _stream_completion(orig_request: Request, user: dict, slug: str,
             logger.exception("api_gateway: streaming drain failed")
             # Fall through to a clean close so the client still gets [DONE].
 
-        # Final answer text: clean → strip meta → (store keys) warm-humanize.
+        # Final answer text: clean > strip meta > (store keys) warm-humanize.
         final_clean = _strip_api_sections(_clean_answer(raw_buffer))
         if _humanize:
             try:
@@ -1472,7 +1472,7 @@ def list_models():
 @router.post("/chat/completions")
 async def chat_completions(request: Request):
     """OpenAI-compatible chat completion. Blocking (stream=false) or SSE
-    (stream=true → text/event-stream of chat.completion.chunk frames)."""
+    (stream=true > text/event-stream of chat.completion.chunk frames)."""
     user = _require_user(request)
     _t0 = time.time()
 
@@ -1504,7 +1504,7 @@ async def chat_completions(request: Request):
 
     session_id = _derive_session_id(body, messages)
     slug = _locked_slug()
-    # API default = concise (quick tier → 1 answer, no exec-card scaffolding).
+    # API default = concise (quick tier > 1 answer, no exec-card scaffolding).
     # Callers can still opt into depth by passing reasoning="deep"/"auto".
     reasoning = str(body.get("reasoning") or "fast")
     model = body.get("model") or MODEL_ID
@@ -1539,7 +1539,7 @@ async def chat_completions(request: Request):
     if body.get("stream"):
         # Internal Console opt-in: when X-Agent-Steps:1 (or body x_agent_steps),
         # interleave activity-step chunks. External OpenAI clients never send it
-        # → byte-identical answer-only stream (v1 contract preserved).
+        # > byte-identical answer-only stream (v1 contract preserved).
         emit_steps = (
             request.headers.get("x-agent-steps") == "1"
             or bool(body.get("x_agent_steps"))
@@ -1552,7 +1552,7 @@ async def chat_completions(request: Request):
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",   # disable nginx/proxy buffering
+                "X-Accel-Buffering": "no", # disable nginx/proxy buffering
                 "x-session-id": session_id,
             },
         )
@@ -1743,7 +1743,7 @@ _DOCS_HTML = """<!DOCTYPE html>
   <h2 id="auth">Authentication</h2>
   <p>Send your key as a Bearer token in every request:</p>
   <pre>Authorization: Bearer dash-key-XXXX</pre>
-  <p>Keys are issued by your CityPharma administrator via the Gateway UI (<code>/ui/gateway</code> → Service Keys).<br>
+  <p>Keys are issued by your CityPharma administrator via the Gateway UI (<code>/ui/gateway</code> > Service Keys).<br>
   Two scope modes:</p>
   <ul>
     <li><span class="pill store">store</span> — bound to one outlet (or a set). Sees full stock + cost for own store; availability-only for others.</li>
@@ -1809,17 +1809,17 @@ data: [DONE]</pre>
   <div class="tier">
     <strong>Tier 1 — Own store</strong>
     Row's <code>site_code</code> is in your bound store set.<br>
-    <span class="ok">✓</span> Full data: stock qty, cost, price, sales value.
+    <span class="ok">OK</span> Full data: stock qty, cost, price, sales value.
   </div>
   <div class="tier">
     <strong>Tier 2 — Other store</strong>
     Row's <code>site_code</code> is NOT in your bound store set.<br>
-    <span class="no">✗</span> Qty + cost stripped. Availability only ("in stock at site X").
+    <span class="no">x</span> Qty + cost stripped. Availability only ("in stock at site X").
   </div>
   <div class="tier">
     <strong>Tier 3 — Reference / global</strong>
     No <code>site_code</code> (drug catalog, substitutes, indications).<br>
-    <span class="ok">✓</span> Always visible, no masking.
+    <span class="ok">OK</span> Always visible, no masking.
   </div>
   <p>Raw SQL access is physically absent from store-scoped keys. Scoped pharma tools (<code>stock_check</code>, <code>find_substitutes</code>, <code>alternatives_for_indication</code>) are the only data path — they enforce the tier rules at query time.</p>
 
@@ -1853,7 +1853,7 @@ curl_setopt_array($ch, [
     "Content-Type: application/json",
   ],
   CURLOPT_POSTFIELDS =&gt; json_encode([
-    "model"    =&gt; "citypharma-analyst",
+    "model" =&gt; "citypharma-analyst",
     "messages" =&gt; [["role" =&gt; "user", "content" =&gt; "is amoxicillin in stock?"]],
   ]),
 ]);
@@ -1869,7 +1869,7 @@ $client = OpenAI::factory()
     -&gt;make();
 
 $res = $client-&gt;chat()-&gt;create([
-    "model"    =&gt; "citypharma-analyst",
+    "model" =&gt; "citypharma-analyst",
     "messages" =&gt; [["role" =&gt; "user", "content" =&gt; "substitutes for PANADOL?"]],
 ]);
 echo $res-&gt;choices[0]-&gt;message-&gt;content;</pre>
@@ -1916,9 +1916,9 @@ const turn2 = await client.chat.completions.create({
   model: "citypharma-analyst",
   user: sessionId,
   messages: [
-    { role: "user",      content: "is ibuprofen in stock?" },
+    { role: "user", content: "is ibuprofen in stock?" },
     { role: "assistant", content: turn1.choices[0].message.content },
-    { role: "user",      content: "what about paracetamol?" },
+    { role: "user", content: "what about paracetamol?" },
   ],
 });</pre>
 </div>

@@ -48,7 +48,7 @@ def _build_band_case(col_sql: str, bands: list[dict]):
     raw = band_expr(col_sql, bands)
     # band_expr ends with " END AS col" — drop the alias for ast embedding
     idx = raw.rfind(" END AS ")
-    case_sql = raw[: idx + 4] if idx != -1 else raw  # keep through " END"
+    case_sql = raw[: idx + 4] if idx != -1 else raw # keep through " END"
     return sqlglot.parse_one(case_sql, dialect="postgres")
 
 
@@ -105,7 +105,7 @@ class PolicyEngine:
             if not projs:
                 return sql, []
 
-            # SELECT * → wrap original in subquery, project policy fields explicitly.
+            # SELECT * > wrap original in subquery, project policy fields explicitly.
             if len(projs) == 1 and isinstance(projs[0], exp.Star):
                 return self._handle_star(sql, rules)
 
@@ -212,7 +212,7 @@ class PolicyEngine:
 
             if rule.mode == "hide":
                 downgraded.append(key)
-                continue  # drop projection
+                continue # drop projection
 
             if rule.mode == "mask":
                 lit = exp.Literal.string(rule.mask_with)

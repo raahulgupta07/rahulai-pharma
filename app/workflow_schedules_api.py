@@ -1,14 +1,14 @@
 """CRUD for dash.dash_workflow_schedules + run-now.
 
 Endpoints under /api/agent-os/workflows/schedules:
-  POST   /                       create schedule
-  GET    /?workflow_id=N         list schedules for a workflow
-  PATCH  /{schedule_id}          update cron/status (recomputes next_run_at)
-  DELETE /{schedule_id}          delete schedule
-  POST   /{schedule_id}/run-now  fire immediately (bypasses cron schedule)
+  POST / create schedule
+  GET /?workflow_id=N list schedules for a workflow
+  PATCH /{schedule_id} update cron/status (recomputes next_run_at)
+  DELETE /{schedule_id} delete schedule
+  POST /{schedule_id}/run-now fire immediately (bypasses cron schedule)
 
 Auth: reuses Request.state.user. Permission: workflow ownership check via
-JOIN dash.dash_autonomous_workflows → dash.dash_projects / dash_project_shares,
+JOIN dash.dash_autonomous_workflows > dash.dash_projects / dash_project_shares,
 mirroring agent_os_workflows._check_workflow_permission.
 """
 from __future__ import annotations

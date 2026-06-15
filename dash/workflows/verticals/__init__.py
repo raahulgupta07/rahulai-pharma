@@ -12,9 +12,9 @@ the highest-scoring pack (≥0.6), and installs each workflow whose required
 column placeholders can be alias-resolved against the real schema.
 
 Public API:
-  list_packs()            → list[dict]   all available packs
-  detect(project_slug)    → list[dict]   ranked matches w/ score
-  install(slug, pack)     → dict         install result + per-workflow status
+  list_packs() > list[dict] all available packs
+  detect(project_slug) > list[dict] ranked matches w/ score
+  install(slug, pack) > dict install result + per-workflow status
 """
 from __future__ import annotations
 
@@ -29,11 +29,11 @@ logger = logging.getLogger(__name__)
 # ── Pack registry ────────────────────────────────────────────────────────────
 # Import each pack module, gather PACK dict. Add new packs by creating
 # dash/workflows/verticals/<name>.py with a top-level PACK = {...} dict.
-from . import crm_calls  # noqa: E402
-from . import pharmacy_retail  # noqa: E402
-from . import finance_fpa  # noqa: E402
-from . import retail_ops  # noqa: E402
-from . import hr_workforce  # noqa: E402
+from . import crm_calls # noqa: E402
+from . import pharmacy_retail # noqa: E402
+from . import finance_fpa # noqa: E402
+from . import retail_ops # noqa: E402
+from . import hr_workforce # noqa: E402
 
 _ALL_PACKS = [
     crm_calls.PACK,
@@ -160,7 +160,7 @@ def _read_schema(project_slug: str) -> dict:
         with eng.connect() as cn:
             rows = cn.execute(text(
                 "SELECT table_name, column_name "
-                "  FROM information_schema.columns "
+                " FROM information_schema.columns "
                 " WHERE table_schema=:s "
                 " ORDER BY table_name, ordinal_position"
             ), {"s": project_slug}).fetchall()
@@ -304,10 +304,10 @@ def install(project_slug: str, pack_name: str, owner_user_id: Optional[int] = No
             try:
                 cn.execute(text(
                     "INSERT INTO dash.dash_autonomous_workflows "
-                    "  (project_slug, name, description, query_template, resolved_query, "
-                    "   action, status, vertical_pack, binding_resolved, owner_user_id) "
+                    " (project_slug, name, description, query_template, resolved_query, "
+                    " action, status, vertical_pack, binding_resolved, owner_user_id) "
                     "VALUES (:s, :n, :d, :q, :q, :a, 'pending', :p, "
-                    "        CAST(:b AS jsonb), :o) "
+                    " CAST(:b AS jsonb), :o) "
                     "ON CONFLICT DO NOTHING"
                 ), {
                     "s": project_slug, "n": wf["name"],
@@ -327,8 +327,8 @@ def install(project_slug: str, pack_name: str, owner_user_id: Optional[int] = No
         score = _score_pack(pack, schema)
         cn.execute(text(
             "INSERT INTO dash.dash_vertical_pack_history "
-            "  (project_slug, pack_name, score, workflows_installed, "
-            "   workflows_skipped, installed_by) "
+            " (project_slug, pack_name, score, workflows_installed, "
+            " workflows_skipped, installed_by) "
             "VALUES (:s, :p, :sc, :wi, :ws, :u)"
         ), {"s": project_slug, "p": pack_name, "sc": score,
             "wi": installed, "ws": skipped, "u": owner_user_id})
@@ -510,14 +510,14 @@ def install_mdl(project_slug: str, pack_name: str,
                         "name": name, "expression": vc["expression"],
                         "type": vc.get("type", "string"),
                     }
-                    if vc.get("bounds"):  # H12: pass bounds through
+                    if vc.get("bounds"): # H12: pass bounds through
                         entry["bounds"] = vc["bounds"]
                     resolved_vcs.append(entry)
                     continue
-                # Alias resolution → raw column name
+                # Alias resolution > raw column name
                 raw_col = _resolve_alias(vc.get("aliases", []), real_cols)
                 if not raw_col:
-                    continue  # virtual col unresolved → skip
+                    continue # virtual col unresolved > skip
                 entry = {
                     "name": name, "expression": raw_col,
                     "type": vc.get("type", "string"),
@@ -541,19 +541,19 @@ def install_mdl(project_slug: str, pack_name: str,
             try:
                 cn.execute(text(
                     "INSERT INTO public.dash_metric_definitions "
-                    "  (project_slug, name, description, kind, status, "
-                    "   model_name, raw_table_ref, virtual_columns, relationships) "
+                    " (project_slug, name, description, kind, status, "
+                    " model_name, raw_table_ref, virtual_columns, relationships) "
                     "VALUES (:s, :n, :d, 'count', 'verified', :mn, :rt, "
-                    "        CAST(:vc AS jsonb), CAST(:rel AS jsonb)) "
+                    " CAST(:vc AS jsonb), CAST(:rel AS jsonb)) "
                     "ON CONFLICT (project_slug, name) DO UPDATE SET "
-                    "  model_name = EXCLUDED.model_name, "
-                    "  raw_table_ref = EXCLUDED.raw_table_ref, "
-                    "  virtual_columns = EXCLUDED.virtual_columns, "
-                    "  relationships = EXCLUDED.relationships, "
-                    "  updated_at = now()"
+                    " model_name = EXCLUDED.model_name, "
+                    " raw_table_ref = EXCLUDED.raw_table_ref, "
+                    " virtual_columns = EXCLUDED.virtual_columns, "
+                    " relationships = EXCLUDED.relationships, "
+                    " updated_at = now()"
                 ), {
                     "s": project_slug,
-                    "n": f"mdl_{m['name']}",  # avoid clash w/ user-pinned KPIs
+                    "n": f"mdl_{m['name']}", # avoid clash w/ user-pinned KPIs
                     "d": f"MDL model for {m['name']} (pack: {pack_name})",
                     "mn": m["name"], "rt": raw_table,
                     "vc": _json.dumps(resolved_vcs),
@@ -579,11 +579,11 @@ def install_mdl(project_slug: str, pack_name: str,
             try:
                 cn.execute(text(
                     "INSERT INTO dash.dash_autonomous_workflows "
-                    "  (project_slug, name, description, query_template, "
-                    "   resolved_query, action, status, vertical_pack, "
-                    "   binding_resolved, owner_user_id) "
+                    " (project_slug, name, description, query_template, "
+                    " resolved_query, action, status, vertical_pack, "
+                    " binding_resolved, owner_user_id) "
                     "VALUES (:s, :n, :d, :q, :q, :a, 'pending', :p, "
-                    "        CAST(:b AS jsonb), :o) "
+                    " CAST(:b AS jsonb), :o) "
                     "ON CONFLICT DO NOTHING"
                 ), {
                     "s": project_slug, "n": wf["name"],
@@ -600,8 +600,8 @@ def install_mdl(project_slug: str, pack_name: str,
         # Audit
         cn.execute(text(
             "INSERT INTO dash.dash_vertical_pack_history "
-            "  (project_slug, pack_name, score, workflows_installed, "
-            "   workflows_skipped, installed_by) "
+            " (project_slug, pack_name, score, workflows_installed, "
+            " workflows_skipped, installed_by) "
             "VALUES (:s, :p, 1.0, :wi, :ws, :u)"
         ), {"s": project_slug, "p": pack_name,
             "wi": workflows_installed, "ws": len(skipped_workflows),

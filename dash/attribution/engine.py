@@ -103,7 +103,7 @@ def time_decay_attribution(
 def position_based_attribution(touchpoints: list[dict]) -> list[tuple[int, float]]:
     """Position-based U-shape: 40% first, 40% last, 20% split across middle.
 
-    Single touchpoint → 100%. Two touchpoints → 50/50.
+    Single touchpoint > 100%. Two touchpoints > 50/50.
     """
     n = len(touchpoints)
     if n == 0:
@@ -181,14 +181,14 @@ def markov_attribution(
             cur = idx_of[str(tp.get("channel") or "unknown")]
             counts[prev, cur] += 1
             prev = cur
-        counts[prev, CONVERT] += 1  # last touchpoint → CONVERT
+        counts[prev, CONVERT] += 1 # last touchpoint > CONVERT
 
     # Add a NULL absorbing path proportional to projects without conversion.
     # In our pipeline only converters are passed in, so NULL gets a nominal
     # weight to avoid degenerate matrices.
     counts[START, NULL] = max(1.0, total_journeys * 0.01)
 
-    # Row-normalize → transition matrix P.
+    # Row-normalize > transition matrix P.
     row_sums = counts.sum(axis=1, keepdims=True)
     row_sums[row_sums == 0] = 1.0
     P = counts / row_sums
@@ -391,7 +391,7 @@ def attribute_conversion(
             cn, slug, customer_id, converted_at, lookback_days
         )
         if not touchpoints:
-            # No touchpoints → no credits. Still clear stale rows for this model.
+            # No touchpoints > no credits. Still clear stale rows for this model.
             cn.execute(
                 _t(
                     "DELETE FROM dash_attribution_credits "
@@ -412,7 +412,7 @@ def attribute_conversion(
             credits = time_decay_attribution(touchpoints, converted_at=converted_at)
         elif model == "position":
             credits = position_based_attribution(touchpoints)
-        else:  # markov
+        else: # markov
             # Build journey corpus from recent conversions for this project.
             window_start = converted_at - timedelta(days=lookback_days)
             corpus_rows = cn.execute(

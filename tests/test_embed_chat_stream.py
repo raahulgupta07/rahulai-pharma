@@ -17,9 +17,9 @@ import pytest
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 try:
-    from fastapi.testclient import TestClient  # noqa: F401
+    from fastapi.testclient import TestClient # noqa: F401
     from fastapi import FastAPI
-except Exception:  # pragma: no cover
+except Exception: # pragma: no cover
     pytest.skip("fastapi/httpx not installed in test env", allow_module_level=True)
 
 
@@ -33,13 +33,13 @@ def _make_client(app):
     """
     try:
         return TestClient(app)
-    except TypeError as exc:  # httpx/starlette ABI drift
+    except TypeError as exc: # httpx/starlette ABI drift
         pytest.skip(f"TestClient incompatible w/ host httpx: {exc}")
 
 
 # --------------------------------------------------------------------------- #
 # Pre-inject stub submodules BEFORE app.embed_public lazy-imports them.
-# Some hosts don't have the agno version that exports TeamMode → dash.team
+# Some hosts don't have the agno version that exports TeamMode > dash.team
 # fails to import. Same for scope_classifier + skill_refinery (transitive
 # deps). Stub modules expose the names embed_public.chat/stream pulls.
 # --------------------------------------------------------------------------- #
@@ -51,7 +51,7 @@ def _ensure_stub(modname: str, **attrs):
         parent = ".".join(parts[:i])
         if parent not in _sys.modules:
             m = _types.ModuleType(parent)
-            m.__path__ = []  # mark as package
+            m.__path__ = [] # mark as package
             _sys.modules[parent] = m
     if modname in _sys.modules:
         mod = _sys.modules[modname]
@@ -85,7 +85,7 @@ _sys.modules["dash.scope_classifier"] = _sc_stub
 # so the import inside embed_public doesn't fail (the real module may have
 # heavier imports). We don't override if it's already there.
 try:
-    import dash.tools.skill_refinery  # noqa: F401
+    import dash.tools.skill_refinery # noqa: F401
 except Exception:
     _ensure_stub("dash.tools.skill_refinery", set_request_context=lambda **k: None)
 
@@ -110,7 +110,7 @@ class _FakeTeam:
     def __init__(self, tokens):
         self._tokens = tokens
 
-    def run(self, _msg, **_kwargs):  # mirrors team.run(stream=True, stream_events=True)
+    def run(self, _msg, **_kwargs): # mirrors team.run(stream=True, stream_events=True)
         for t in self._tokens:
             yield _FakeContentEvent(t)
 
@@ -133,16 +133,16 @@ def _make_app(monkeypatch, *, response_style="analyst", tokens=None,
 
     # Embed DB row + allowed_origins lookup come back from a fake engine.
     embed_row = [
-        "test_proj",                  # project_slug
-        30,                            # rate_limit_per_min
-        {},                            # feature_config
-        embed_enabled,                 # enabled
-        1,                             # id
-        None,                          # bound_scope_id
-        "public",                      # bound_intent
-        None,                          # bound_role
-        response_style,                # response_style
-        600,                           # max_reply_chars
+        "test_proj", # project_slug
+        30, # rate_limit_per_min
+        {}, # feature_config
+        embed_enabled, # enabled
+        1, # id
+        None, # bound_scope_id
+        "public", # bound_intent
+        None, # bound_role
+        response_style, # response_style
+        600, # max_reply_chars
     ]
 
     class _Result:
@@ -160,7 +160,7 @@ def _make_app(monkeypatch, *, response_style="analyst", tokens=None,
             self._call_n += 1
             if self._call_n == 1:
                 return _Result(embed_row)
-            # allowed_origins lookup → one-tuple containing empty list.
+            # allowed_origins lookup > one-tuple containing empty list.
             return _Result([[]])
 
         def __enter__(self):

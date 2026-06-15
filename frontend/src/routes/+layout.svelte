@@ -1,9 +1,9 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
-  import FloatingRobot from '$lib/FloatingRobot.svelte';
-  import VersionBadge from '$lib/VersionBadge.svelte';
-  import VersionCard from '$lib/VersionCard.svelte';
-  import { versionInfo, loadVersion } from '$lib/stores/version';
+ import Icon from '$lib/Icon.svelte';
+ import FloatingRobot from '$lib/FloatingRobot.svelte';
+ import VersionBadge from '$lib/VersionBadge.svelte';
+ import VersionCard from '$lib/VersionCard.svelte';
+ import { versionInfo, loadVersion } from '$lib/stores/version';
  import '../app.css';
  import { page } from '$app/state';
  import { onMount } from 'svelte';
@@ -210,14 +210,14 @@
  let bellHasDot = $derived(unreadCount > 0 || versionIsNew);
 
  function openFeed(tab: 'activity' | 'whatsnew' = 'activity') {
-   feedTab = tab;
-   showNotifications = true;
-   loadNotifications();
-   loadVersion();
+ feedTab = tab;
+ showNotifications = true;
+ loadNotifications();
+ loadVersion();
  }
  function markVersionSeen() {
-   const v = $versionInfo?.version;
-   if (v) { seenVersion = v; try { localStorage.setItem('cp_seen_version', v); } catch {} }
+ const v = $versionInfo?.version;
+ if (v) { seenVersion = v; try { localStorage.setItem('cp_seen_version', v); } catch {} }
  }
  // when the user opens the What's-new tab, clear the version part of the dot
  $effect(() => { if (showNotifications && feedTab === 'whatsnew') markVersionSeen(); });
@@ -622,7 +622,7 @@
  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
  }
 
- // Watch cliLogs.length for new entries → mark activity ONLY for training/pipeline events
+ // Watch cliLogs.length for new entries > mark activity ONLY for training/pipeline events
  // Skip silent logs (tab switch info, "accessing X module", etc) — those just append to log.
  const _ACTIVITY_RE = /\b(training|trained|pipeline|automl|streaming|complete|done|step)\b|||step\s+\d+\/\d+|\$\s*\d/i;
  const _SKIP_RE = /accessing\s+\w+\s+module|[│└├─]|\bPENDING\b|\brows?\b\s*·\s*\d+\s*cols?|tables?\s*·.*rows?\s*·.*docs|total\s+files|supported:\s|·\s*TRAINED\b/i;
@@ -674,9 +674,9 @@
  const m = t.match(/running \$(\d+\.\d+)\s*\((\d+)\s*calls?\)/);
  if (m) { cost = parseFloat(m[1]); calls = parseInt(m[2], 10); }
  }
- // last tokens "1234→567 tok"
+ // last tokens "1234>567 tok"
  if (tokIn === 0 && tokOut === 0) {
- const m = t.match(/(\d+)\s*→\s*(\d+)\s*tok/);
+ const m = t.match(/(\d+)\s*>\s*(\d+)\s*tok/);
  if (m) { tokIn = parseInt(m[1], 10); tokOut = parseInt(m[2], 10); }
  }
  // model: line like " llm · task · model_short · ..." — model_short is 3rd ·-segment
@@ -772,13 +772,13 @@
  }
 
  async function trainAll(skipPost = false) {
- // skipPost=true → another page (settings quality-card) already fired the
+ // skipPost=true > another page (settings quality-card) already fired the
  // retrain (possibly for a SELECTED subset of tables). We only arm the
  // terminal + stream the run, so we don't double-train or ignore the picks.
  const slug = getCurrentProjectSlug();
  if (!slug || cliTraining) return;
  cliTraining = true;
- cliHasActivity = true; // real training run → reveal terminal
+ cliHasActivity = true; // real training run > reveal terminal
  cliExpanded = true;
  const token = localStorage.getItem('dash_token');
  const headers = token ? { Authorization: `Bearer ${token}` } : {};
@@ -1030,7 +1030,7 @@
  if (!isLogin) window.location.href = '/ui/login';
  }
 
- // Redirect root → chat (single-agent) or home
+ // Redirect root > chat (single-agent) or home
  $effect(() => {
  if (!authenticated) return;
  const p = page.url.pathname;
@@ -1185,9 +1185,9 @@
       <span class="pw-feed-strip-live"><span class="pw-pulse-green"></span> live</span>
       <span class="pw-feed-strip-main"><b>{unreadCount}</b> unread</span>
       <span class="pw-feed-strip-sep">·</span>
-      <span class="pw-feed-strip-stat pw-fs-ok">{notifications.filter(n=>n.type==='success').length} ✓</span>
-      <span class="pw-feed-strip-stat pw-fs-warn">{notifications.filter(n=>n.type==='warn').length} ⚠</span>
-      <span class="pw-feed-strip-stat pw-fs-err">{notifications.filter(n=>n.type==='error').length} ✕</span>
+      <span class="pw-feed-strip-stat pw-fs-ok">{notifications.filter(n=>n.type==='success').length} <Icon name="check" size={16} /></span>
+      <span class="pw-feed-strip-stat pw-fs-warn">{notifications.filter(n=>n.type==='warn').length} <Icon name="alert-triangle" size={16} /></span>
+      <span class="pw-feed-strip-stat pw-fs-err">{notifications.filter(n=>n.type==='error').length} <Icon name="x" size={16} /></span>
       <span class="pw-feed-strip-tot">{notifications.length} total</span>
     </div>
 
@@ -1207,7 +1207,7 @@
         {#each feedFiltered() as n}
           <div class="pw-feed-card" style="--feed-accent: {ntypeColor(n.type)};">
             <div class="pw-feed-icon" style="color: {ntypeColor(n.type)}; background: color-mix(in srgb, {ntypeColor(n.type)} 14%, transparent);">
-              {n.type === 'success' ? '✓' : n.type === 'warn' ? '⚠' : n.type === 'error' ? '✕' : 'i'}
+              {n.type === 'success' ? 'OK' : n.type === 'warn' ? '' : n.type === 'error' ? 'x' : 'i'}
             </div>
             <div class="pw-feed-card-text">
               <div class="pw-feed-card-top">
@@ -1229,7 +1229,7 @@
     </div>
 
     <div class="pw-agents-footer">
-      <a href="/ui/notifications" onclick={() => showNotifications = false} class="pw-feed-link">View all events →</a>
+      <a href="/ui/notifications" onclick={() => showNotifications = false} class="pw-feed-link">View all events <Icon name="arrow-right" size={16} /></a>
     </div>
     {:else}
     <!-- What's new tab: build/version + data freshness + release notes -->
@@ -1297,7 +1297,7 @@
             <span class="pw-nav-label">Dashboard</span>
           </button>
           {/if}
-          <!-- Brain lives inside the Settings left-rail (BRAIN section); top-nav Brain removed to dedupe. Settings → data source. -->
+          <!-- Brain lives inside the Settings left-rail (BRAIN section); top-nav Brain removed to dedupe. Settings &gt; data source. -->
           {#if canWorkspace}
           <button onclick={() => { openMenu = null; window.location.href = agentBrainHref; }} class="pw-nav" class:pw-nav-active={isSettingsActive}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -1305,7 +1305,7 @@
           </button>
           {/if}
           <!-- Endpoints: ways to use the agent from other apps/sites (API + widget).
-               Connector CONFIG lives separately under Admin → Integrations. -->
+               Connector CONFIG lives separately under Admin &gt; Integrations. -->
           {#if canIntegration && (gatewayEnabled || embedEnabled)}
             <div class="pw-nav-group" class:pw-group-active={routeMatches('/gateway') || routeMatches('/embed')}>
               <button class="pw-nav"
@@ -1535,9 +1535,9 @@
             <span class="pw-user-id" class:pw-user-id-bare={!isAdmin}>
               <span class="pw-user-name">{username}</span>
               {#if isSuper}
-                <span class="pw-user-tier pw-user-tier-super">🔒 SUPER ADMIN</span>
+                <span class="pw-user-tier pw-user-tier-super"><Icon name="lock" size={16} /> SUPER ADMIN</span>
               {:else if isAdmin}
-                <span class="pw-user-tier pw-user-tier-admin">⚙ ADMIN</span>
+                <span class="pw-user-tier pw-user-tier-admin"><Icon name="settings" size={16} /> ADMIN</span>
               {/if}
             </span>
             <svg class="pw-chev" class:pw-chev-open={openMenu === 'user'} width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
@@ -1676,7 +1676,7 @@
             {/if}
           </div>
           <button class="sb-collapse" onclick={() => sidebarCollapsed = !sidebarCollapsed} title={sidebarCollapsed ? 'Expand' : 'Collapse'}>
-            {sidebarCollapsed ? '›' : '‹'}
+            <Icon name={sidebarCollapsed ? 'chevron-right' : 'chevron-left'} size={16} />
           </button>
         </aside>
       {/if}
@@ -1690,8 +1690,8 @@
 
     <!-- Bottom CONSOLE bar DISABLED — the floating RobotPanel is now the single CLI surface (no separate window). -->
     {#if false && showCli && cliVisible && cliHasActivity}
-      {@const _errCount = cliLogs.filter(l => /\b(error|err|fail|✗|✕)\b/i.test((l as any).text || '')).length}
-      {@const _warnCount = cliLogs.filter(l => /\b(warn|warning|⚠)\b/i.test((l as any).text || '')).length}
+      {@const _errCount = cliLogs.filter(l => /\b(error|err|fail|x|x)\b/i.test((l as any).text || '')).length}
+      {@const _warnCount = cliLogs.filter(l => /\b(warn|warning|)\b/i.test((l as any).text || '')).length}
       {@const _evtCount = cliLogs.length}
       {@const _visible = cliLogs.slice(-cliMaxLines)}
       <div class="cn-bar {cliExpanded ? 'cn-bar--open' : 'cn-bar--idle'}">
@@ -1711,16 +1711,16 @@
             </div>
             <div class="cn-ctrls" onclick={(e) => e.stopPropagation()}>
               <label class="cn-chk"><input type="checkbox" bind:checked={cliAutoscroll} /> autoscroll</label>
-              <button class="cn-btn" onclick={() => { cliPaused = !cliPaused; }}>{cliPaused ? '▶ resume' : '❚❚ pause'}</button>
+              <button class="cn-btn" onclick={() => { cliPaused = !cliPaused; }}>{cliPaused ? ' resume' : '|| pause'}</button>
               <button class="cn-btn" onclick={clearCli}>clear</button>
-              <button class="cn-btn" onclick={copyCli}>↓ csv</button>
+              <button class="cn-btn" onclick={copyCli}><Icon name="arrow-down" size={16} /> csv</button>
               <select class="cn-sel" bind:value={cliMaxLines}>
                 <option value={100}>100</option>
                 <option value={200}>200</option>
                 <option value={500}>500</option>
                 <option value={1000}>1000</option>
               </select>
-              <button class="cn-btn cn-btn--icon" onclick={hideCli} title="Close">✕</button>
+              <button class="cn-btn cn-btn--icon" onclick={hideCli} title="Close"><Icon name="x" size={16} /></button>
             </div>
           </div>
           <div class="cn-body-wrap">
@@ -1748,7 +1748,7 @@
               {/if}
             </div>
             {#if _userScrolledUp}
-              <button class="cn-jump" onclick={jumpToLatest}>↓ jump to latest</button>
+              <button class="cn-jump" onclick={jumpToLatest}><Icon name="arrow-down" size={16} /> jump to latest</button>
             {/if}
           </div>
         {:else}
@@ -1930,7 +1930,7 @@
  @keyframes pw-slide-in { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
  /* mobile: full-bleed sheet */
  @media (max-width: 640px) {
-   .pw-agents-drawer { top: 0; right: 0; bottom: 0; width: 100vw; max-width: 100vw; border-radius: var(--pw-radius-sm); border: none; }
+ .pw-agents-drawer { top: 0; right: 0; bottom: 0; width: 100vw; max-width: 100vw; border-radius: var(--pw-radius-sm); border: none; }
  }
  .pw-agents-close {
  position: absolute; top: 14px; right: 16px; z-index: 2;
@@ -3050,36 +3050,36 @@
 
  /* ───── Scout-style Console Bar (cn-*) ───── */
  .cn-bar {
-   position: fixed; left: 0; right: 0; bottom: 0;
-   z-index: 9000; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
-   pointer-events: none;
+ position: fixed; left: 0; right: 0; bottom: 0;
+ z-index: 9000; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+ pointer-events: none;
  }
  .cn-bar > * { pointer-events: auto; }
  .cn-bar--idle {
-   display: flex; justify-content: flex-end; padding: 0 16px 12px 0;
+ display: flex; justify-content: flex-end; padding: 0 16px 12px 0;
  }
  .cn-bar--open {
-   background: #1a1614; border-top: 1px solid #2a2522;
-   color: #e8e3d6;
-   display: flex; flex-direction: column;
-   max-height: 38vh; min-height: 140px;
+ background: #1a1614; border-top: 1px solid #2a2522;
+ color: #e8e3d6;
+ display: flex; flex-direction: column;
+ max-height: 38vh; min-height: 140px;
  }
  .cn-pill {
-   display: inline-flex; align-items: center; gap: 10px;
-   padding: 7px 14px; border-radius: var(--pw-radius-sm);
-   background: #1a1614; color: #e8e3d6;
-   border: 1px solid #2a2522;
-   font: 600 11px 'JetBrains Mono', monospace;
-   cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+ display: inline-flex; align-items: center; gap: 10px;
+ padding: 7px 14px; border-radius: var(--pw-radius-sm);
+ background: #1a1614; color: #e8e3d6;
+ border: 1px solid #2a2522;
+ font: 600 11px 'JetBrains Mono', monospace;
+ cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.18);
  }
  .cn-pill:hover { background: #221d1a; }
  .cn-pill-dot {
-   width: 7px; height: 7px; border-radius: 50%;
-   background: #6b6557; display: inline-block;
+ width: 7px; height: 7px; border-radius: 50%;
+ background: #6b6557; display: inline-block;
  }
  .cn-pill-dot--active {
-   background: var(--pw-accent, #c96342); box-shadow: 0 0 6px rgba(201,99,66,0.6);
-   animation: cnpulse 1.4s ease-in-out infinite;
+ background: var(--pw-accent, #c96342); box-shadow: 0 0 6px rgba(201,99,66,0.6);
+ animation: cnpulse 1.4s ease-in-out infinite;
  }
  @keyframes cnpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
  .cn-pill-label { color: var(--pw-accent, #c96342); font-weight: 700; }
@@ -3087,11 +3087,11 @@
  .cn-pill-evt b { color: #e8e3d6; }
 
  .cn-head {
-   display: flex; align-items: center; gap: 10px;
-   padding: 6px 14px; background: #1a1614;
-   border-bottom: 1px solid #2a2522;
-   font: 600 11px 'JetBrains Mono', monospace;
-   cursor: pointer; user-select: none;
+ display: flex; align-items: center; gap: 10px;
+ padding: 6px 14px; background: #1a1614;
+ border-bottom: 1px solid #2a2522;
+ font: 600 11px 'JetBrains Mono', monospace;
+ cursor: pointer; user-select: none;
  }
  .cn-head:hover { background: #221d1a; }
  .cn-head-left { display: flex; align-items: center; gap: 8px; flex: 1; }
@@ -3108,23 +3108,23 @@
  .cn-chk { display: inline-flex; align-items: center; gap: 4px; color: #b8b3a6; font: 500 10.5px monospace; cursor: pointer; }
  .cn-chk input { accent-color: var(--pw-accent, #c96342); }
  .cn-btn {
-   background: #2a2522; color: #e8e3d6; border: 1px solid #3a3530;
-   padding: 3px 9px; font: 600 10.5px 'JetBrains Mono', monospace;
-   cursor: pointer; border-radius: var(--pw-radius-sm);
+ background: #2a2522; color: #e8e3d6; border: 1px solid #3a3530;
+ padding: 3px 9px; font: 600 10.5px 'JetBrains Mono', monospace;
+ cursor: pointer; border-radius: var(--pw-radius-sm);
  }
  .cn-btn:hover { background: #3a3530; color: var(--pw-accent, #c96342); }
  .cn-btn--icon { padding: 3px 7px; }
  .cn-sel {
-   background: #2a2522; color: #e8e3d6; border: 1px solid #3a3530;
-   padding: 2px 6px; font: 600 10.5px 'JetBrains Mono', monospace;
-   border-radius: var(--pw-radius-sm); cursor: pointer;
+ background: #2a2522; color: #e8e3d6; border: 1px solid #3a3530;
+ padding: 2px 6px; font: 600 10.5px 'JetBrains Mono', monospace;
+ border-radius: var(--pw-radius-sm); cursor: pointer;
  }
 
  .cn-body-wrap { position: relative; flex: 1; min-height: 0; display: flex; }
  .cn-body {
-   flex: 1; overflow-y: auto; padding: 10px 14px;
-   background: #0f0d0c; color: #c8c2b4;
-   font: 12px 'JetBrains Mono', monospace; line-height: 1.5;
+ flex: 1; overflow-y: auto; padding: 10px 14px;
+ background: #0f0d0c; color: #c8c2b4;
+ font: 12px 'JetBrains Mono', monospace; line-height: 1.5;
  }
  .cn-placeholder { color: #5a554d; font-style: italic; }
  .cn-line { display: flex; gap: 8px; padding: 1px 0; }
@@ -3136,10 +3136,10 @@
  .cn-col-action { color: var(--pw-accent, #c96342); font-weight: 700; }
  .cn-col-cost { color: #6dc97a; }
  .cn-jump {
-   position: absolute; bottom: 10px; right: 14px;
-   background: var(--pw-accent, #c96342); color: #fff;
-   border: 0; padding: 4px 10px; font: 600 10.5px monospace;
-   cursor: pointer; border-radius: var(--pw-radius-sm);
+ position: absolute; bottom: 10px; right: 14px;
+ background: var(--pw-accent, #c96342); color: #fff;
+ border: 0; padding: 4px 10px; font: 600 10.5px monospace;
+ cursor: pointer; border-radius: var(--pw-radius-sm);
  }
  .cn-jump:hover { background: #b8553a; }
 

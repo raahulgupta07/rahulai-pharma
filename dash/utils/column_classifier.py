@@ -4,10 +4,10 @@ Column Classifier
 
 Sample-value-driven classification of text columns into one of:
 
-  - ``"lineage"``    — name matches the lineage-column registry
-  - ``"skip"``        — empty, high-cardinality (IDs / unique names), or SQL error
-  - ``"free_text"``   — long / multi-word values; multi-byte safe (Burmese / CJK)
-  - ``"dimension"``   — short, low-cardinality categorical values
+  - ``"lineage"`` — name matches the lineage-column registry
+  - ``"skip"`` — empty, high-cardinality (IDs / unique names), or SQL error
+  - ``"free_text"`` — long / multi-word values; multi-byte safe (Burmese / CJK)
+  - ``"dimension"`` — short, low-cardinality categorical values
 
 Uses a single SQL aggregate over ``WHERE col IS NOT NULL`` to compute total
 rows, distinct count, avg/max char length, and avg byte length. Multi-byte
@@ -41,13 +41,13 @@ def classify_text_column(conn, schema: str, table: str, col: str) -> Classificat
     Returns one of ``{"dimension", "free_text", "skip", "lineage"}``.
 
     Rules (in order):
-      1. Lineage column (name in ``LINEAGE_COLUMNS``) → ``"lineage"``
-      2. ``total == 0`` → ``"skip"``
-      3. ``avg_chars > 25`` OR ``max_chars > 60`` OR ``avg_bytes > 50`` → ``"free_text"``
+      1. Lineage column (name in ``LINEAGE_COLUMNS``) > ``"lineage"``
+      2. ``total == 0`` > ``"skip"``
+      3. ``avg_chars > 25`` OR ``max_chars > 60`` OR ``avg_bytes > 50`` > ``"free_text"``
          (multi-byte safe — Burmese / CJK sentences)
-      4. ``distinct_n > 50`` OR ``(distinct_n / total) > 0.5`` → ``"skip"``
+      4. ``distinct_n > 50`` OR ``(distinct_n / total) > 0.5`` > ``"skip"``
          (high-cardinality, IDs / unique names)
-      5. Otherwise → ``"dimension"``
+      5. Otherwise > ``"dimension"``
 
     Fail-soft: any SQL error returns ``"skip"`` so the caller can safely
     continue iterating columns without try/except clutter at every call site.
@@ -102,7 +102,7 @@ def is_constant_column(conn, schema: str, table: str, col: str) -> bool:
     templates that would produce a meaningless 1-row trend (e.g. CityPharma
     ``created_at`` populated with a single ingestion timestamp).
 
-    Fail-soft on SQL error → returns False so the caller emits the template
+    Fail-soft on SQL error > returns False so the caller emits the template
     rather than silently swallowing legitimate columns.
     """
     try:

@@ -125,7 +125,7 @@ def _shadow(project_slug: str, question: str, matched_id, sim, would_serve, sche
 
 def try_param_swap_serve(project_slug: str, question: str) -> dict | None:
     """Mode-1.5: serve a proven pattern with the store literal swapped. None on
-    miss. Honors QUERY_PARAM_SWAP_ENABLED (off → shadow-log only, returns None)."""
+    miss. Honors QUERY_PARAM_SWAP_ENABLED (off > shadow-log only, returns None)."""
     q = (question or "").strip()
     if not project_slug or len(q) < 6:
         return None
@@ -143,7 +143,7 @@ def try_param_swap_serve(project_slug: str, question: str) -> dict | None:
             return asyncio.run(_nn(project_slug, q, 5, ("proven",)))
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
             rows = _ex.submit(_run).result(timeout=8)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("param_swap nn failed: %s", exc)
         return None
     if not rows:
@@ -158,7 +158,7 @@ def try_param_swap_serve(project_slug: str, question: str) -> dict | None:
             continue
         cand_alias, cand_site = cand_det
         if cand_site == inc_site:
-            continue  # same store → Mode-1 already handles it
+            continue # same store > Mode-1 already handles it
         # both questions must be the SAME shape once the store is masked out
         ratio = SequenceMatcher(None, masked_inc, _mask(cand_q, cand_alias)).ratio()
         if ratio < _MIN_SHAPE:
@@ -209,7 +209,7 @@ def try_param_swap_serve(project_slug: str, question: str) -> dict | None:
                 "matched_q": cand_q, "shape": round(ratio, 3),
                 "swapped": {"from": cand_site, "to": inc_site},
             }
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc: # noqa: BLE001
             logger.debug("param_swap exec failed: %s", exc)
             continue
     return None

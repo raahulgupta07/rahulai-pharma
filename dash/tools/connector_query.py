@@ -41,7 +41,7 @@ def _current_viewer() -> dict | None:
     """Return enriched user dict or None if no context (treat as super-admin)."""
     try:
         from dash.tools.skill_refinery import (
-            _viewer_user_id_var,  # type: ignore
+            _viewer_user_id_var, # type: ignore
         )
 
         uid = _viewer_user_id_var.get(None)
@@ -49,7 +49,7 @@ def _current_viewer() -> dict | None:
         uid = None
         # Try alternate names
         try:
-            import dash.tools.skill_refinery as sr  # type: ignore
+            import dash.tools.skill_refinery as sr # type: ignore
 
             for name in ("viewer_user_id", "_viewer_user_id", "VIEWER_USER_ID"):
                 v = getattr(sr, name, None)
@@ -119,7 +119,7 @@ def query_connector(connection_name: str, sql: str) -> dict:
     conn = _row_to_dict(row)
     conn_id = conn.get("id")
 
-    # 2) Resolve viewer (None → background daemon → super-admin allow)
+    # 2) Resolve viewer (None > background daemon > super-admin allow)
     viewer = _current_viewer()
     if viewer is None:
         viewer = {"id": None, "is_super_admin": True, "aad_groups": []}

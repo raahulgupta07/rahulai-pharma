@@ -36,7 +36,7 @@ _UPDATABLE_FIELDS = {
     "rate_limit_per_min",
     "feature_config",
     "enabled",
-    # Visibility policy binding (Phase: embed→policy wiring)
+    # Visibility policy binding (Phase: embed>policy wiring)
     "bound_scope_id",
     "bound_intent",
     "bound_role",
@@ -171,7 +171,7 @@ def create_embed(
         ).fetchone()
 
     out = _row_to_dict(row, include_hash=False)
-    out["secret_key"] = secret_key  # plaintext, shown ONCE
+    out["secret_key"] = secret_key # plaintext, shown ONCE
     return out
 
 
@@ -251,12 +251,12 @@ def auto_provision_store_embeds(project_slug: str) -> int:
             create_embed(
                 project_slug=project_slug,
                 name=f"store-{code}",
-                allowed_origins=[],          # any origin, like the existing 53
+                allowed_origins=[], # any origin, like the existing 53
                 auth_mode=_default_auth,
                 rate_limit_per_min=120,
                 created_by=created_by,
                 bound_scope_id=code,
-                bound_intent="public",       # masked (consumer drop-in)
+                bound_intent="public", # masked (consumer drop-in)
                 bound_role="staff",
             )
             made += 1
@@ -394,9 +394,9 @@ def rotate_secret(embed_id: str) -> str:
         res = conn.execute(
             text(
                 "UPDATE public.dash_agent_embeds SET "
-                "  secret_key_hash = :h, "
-                "  secret_key_encrypted = :enc, "
-                "  secret_key = NULL "
+                " secret_key_hash = :h, "
+                " secret_key_encrypted = :enc, "
+                " secret_key = NULL "
                 "WHERE embed_id = :e"
             ),
             {"h": secret_hash, "enc": secret_enc, "e": embed_id},

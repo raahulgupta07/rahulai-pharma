@@ -16,11 +16,11 @@ NOT supported:
   Window functions
 
 Storage layout:
-  knowledge/{slug}/source_<id>/profile/{table}.json   col stats
-  knowledge/{slug}/source_<id>/sample/{table}.parquet  full data
-  knowledge/{slug}/extracted_tables/{doc}/{table}.parquet  doc-extracted
+  knowledge/{slug}/source_<id>/profile/{table}.json col stats
+  knowledge/{slug}/source_<id>/sample/{table}.parquet full data
+  knowledge/{slug}/extracted_tables/{doc}/{table}.parquet doc-extracted
 
-Tries Parquet first, falls back to CSV → JSON.
+Tries Parquet first, falls back to CSV > JSON.
 """
 from __future__ import annotations
 import json
@@ -41,7 +41,7 @@ def execute_file_sql(provider, sql: str, *, max_rows: int = 10000) -> object:
     """
     try:
         import pandas as pd
-    except ImportError as e:  # pragma: no cover
+    except ImportError as e: # pragma: no cover
         raise RuntimeError(f"pandas required: {e}")
 
     parsed = _parse_simple_sql(sql)
@@ -109,11 +109,11 @@ def _load_table(project_slug: str, table_name: str,
                  provider_id: str = "") -> object:
     """Find table data file on disk + load to DataFrame.
 
-    Tries: Parquet → CSV → JSON dict-of-lists.
+    Tries: Parquet > CSV > JSON dict-of-lists.
     """
     try:
         import pandas as pd
-    except ImportError:  # pragma: no cover
+    except ImportError: # pragma: no cover
         return None
 
     base = KNOWLEDGE_DIR / project_slug
@@ -152,7 +152,7 @@ def _load_table(project_slug: str, table_name: str,
                 if isinstance(data, list):
                     return pd.DataFrame(data)
                 if isinstance(data, dict):
-                    # Try as dict-of-lists (col → values)
+                    # Try as dict-of-lists (col > values)
                     return pd.DataFrame(data)
             return None
         except Exception as e:
@@ -290,7 +290,7 @@ def _parse_simple_sql_regex(sql: str) -> dict:
 
 
 def _sql_where_to_pandas_query(where_sql: str) -> str:
-    """Convert SQL WHERE → pandas .query() syntax (basic)."""
+    """Convert SQL WHERE > pandas .query() syntax (basic)."""
     s = where_sql
     s = re.sub(r"\bAND\b", "&", s, flags=re.IGNORECASE)
     s = re.sub(r"\bOR\b", "|", s, flags=re.IGNORECASE)

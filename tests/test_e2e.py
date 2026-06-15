@@ -1,7 +1,7 @@
 """End-to-end test harness for the edge-case fixture zoo.
 
 Single parametrized test that walks every CSV in tests/fixtures/edge_cases/
-through the full upload → retrain → poll → verify pipeline.
+through the full upload > retrain > poll > verify pipeline.
 
 Skipped automatically when the container isn't reachable (handled by
 conftest.py's container probe).
@@ -35,7 +35,7 @@ EDGE_CASES = sorted(glob.glob(os.path.join(_FIXTURES_DIR, "*.csv")))
 )
 @pytest.mark.e2e
 def test_full_pipeline(fixture, http_client, api_base, temp_project_slug):
-    """Run a single fixture through the entire upload → train → verify path.
+    """Run a single fixture through the entire upload > train > verify path.
 
     Acceptance contract per fixture:
       1. Upload must return 200 (or 400 for fixtures that are intentionally
@@ -61,7 +61,7 @@ def test_full_pipeline(fixture, http_client, api_base, temp_project_slug):
             assert r.status_code in (400, 422), (
                 f"empty fixture {fname} should reject with 400/422, got {r.status_code}"
             )
-            return  # expected reject path — success
+            return # expected reject path — success
         assert r.status_code == 200, (
             f"upload failed for {fname}: {r.status_code} {r.text[:300]}"
         )

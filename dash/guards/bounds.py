@@ -18,7 +18,7 @@ Usage:
     from dash.guards import check_bounds
     report = check_bounds(slug, table="sales", columns_returned=["extended_value"],
                           rows=[{"extended_value": -50.0}, ...])
-    # → {ok, anomalies: [{col, value, rule, row_idx}], total_rows, total_anomalies}
+    # > {ok, anomalies: [{col, value, rule, row_idx}], total_rows, total_anomalies}
 
 Caller (chat path, post-exec) logs to trace panel + optionally to
 dash_data_quality_alerts. Never blocks the chat response. Fail-soft.
@@ -31,7 +31,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_MAX_ANOMALIES = 50  # cap report size
+_MAX_ANOMALIES = 50 # cap report size
 
 
 def _load_vcol_bounds(slug: str, table: str) -> dict[str, dict]:
@@ -66,7 +66,7 @@ def _violates(value: Any, bounds: dict) -> str | None:
     try:
         v = float(value)
     except (TypeError, ValueError):
-        return None  # non-numeric, can't bound-check
+        return None # non-numeric, can't bound-check
     lo = bounds.get("min")
     hi = bounds.get("max")
     if lo is not None and v < lo:

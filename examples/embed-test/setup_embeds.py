@@ -10,17 +10,17 @@ reused, not duplicated. Run INSIDE cp-api (has DB creds): it has psycopg + env.
   docker exec -e N_STORES=20 -e RESPONSE_STYLE=analyst cp-api python /tmp/setup_embeds.py
   docker cp cp-api:/tmp/embed_fixtures.json examples/embed-test/embed_fixtures.json
 
-RESPONSE_STYLE=analyst → unmasked numbers (verify real stock). 'consumer' → masked
+RESPONSE_STYLE=analyst > unmasked numbers (verify real stock). 'consumer' > masked
 ([banded]) like the production widget. ALLOWED_ORIGIN must match what the test sends.
 """
 import os, json, secrets, psycopg
 
 SLUG = os.getenv("LOCKED_PROJECT_SLUG", "citypharma")
 N = int(os.getenv("N_STORES", "20"))
-STYLE = os.getenv("RESPONSE_STYLE", "analyst")        # analyst | consumer
-INTENT = os.getenv("BOUND_INTENT", "private")         # private=unmasked numbers (test) | public/network=masked
+STYLE = os.getenv("RESPONSE_STYLE", "analyst") # analyst | consumer
+INTENT = os.getenv("BOUND_INTENT", "private") # private=unmasked numbers (test) | public/network=masked
 ORIGIN = os.getenv("ALLOWED_ORIGIN", "http://localhost:3000")
-SCHEMA = os.getenv("STORE_SCHEMA", SLUG)              # data tables live in the slug schema
+SCHEMA = os.getenv("STORE_SCHEMA", SLUG) # data tables live in the slug schema
 STOCK_TABLE = os.getenv("STOCK_TABLE", "balance_stock_07052026")
 
 
@@ -38,7 +38,7 @@ def main():
         stores = [r[0] for r in cur.fetchall()]
         print(f"{len(stores)} stores")
 
-        # existing test embeds → reuse
+        # existing test embeds > reuse
         cur.execute("SELECT name, embed_id, public_key, bound_scope_id "
                     "FROM public.dash_agent_embeds WHERE name LIKE 'embedtest-%'")
         existing = {r[0]: (r[1], r[2], r[3]) for r in cur.fetchall()}

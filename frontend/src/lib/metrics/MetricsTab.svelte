@@ -1,809 +1,810 @@
 <script lang="ts">
-  let { slug, onCount, onOpenRules }: { slug: string; onCount?: (n: number) => void; onOpenRules?: () => void } = $props();
-
-  // ─── Auth helper ────────────────────────────────────────────────
-  function _h(): Record<string, string> {
-    const t = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
-    return t ? { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
-  }
-  function _hNoJson(): Record<string, string> {
-    const t = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
-    return t ? { Authorization: `Bearer ${t}` } : {};
-  }
-  function apiBase() { return `/api/projects/${slug}`; }
-
-  // ─── Sub-view state machine ──────────────────────────────────────
-  // views: dashboard | editor | nl-draft | review-queue | templates | import | drift | permissions | history | aliases | schema-explorer | tier-compare
-  let view = $state<string>('dashboard');
-  let drawerView = $state<'schema' | 'history' | 'aliases' | null>(null);
-  let drawerMetricName = $state<string>('');
-
-  // ─── Dashboard state ─────────────────────────────────────────────
-  let metrics = $state<any[]>([]);
-  let rules = $state<any[]>([]);            // dash_rules_db — NL definitions (unified view)
-  let typeFilter = $state<'all' | 'metrics' | 'rules'>('all');
-  let dispMode = $state<'table' | 'cards' | 'ai'>('table');   // view: dense table (default) | cards | AI sub-tab
-  let showMore = $state(false);   // overflow menu for secondary actions
-  let crmEligible = $state(false); // schema looks like a CRM → show "Seed CRM metrics"
-  let crmSeeding = $state(false);
-  let metricsLoading = $state(false);
-  let metricsSearch = $state('');
-  let driftData = $state<any[]>([]);
-  let reviewQueue = $state<any[]>([]);
-  let templates = $state<any[]>([]);
-  let permissions = $state<any>(null);
-  let columns = $state<any[]>([]);    // from /metrics/columns
-  let columnsTable = $state('');
-
-  // Distinct tables present in the project schema (for the SOURCE TABLES picker).
-  let tableList = $derived.by(() => {
-    const seen = new Set<string>();
-    for (const c of (Array.isArray(columns) ? columns : [])) {
-      if (c?.table) seen.add(c.table);
-    }
-    return Array.from(seen).sort();
-  });
-
-  // Columns scoped to the chosen source tables (falls back to all when none chosen).
-  // Each entry carries its table so dropdown labels can disambiguate same-named columns.
-  let scopedColumns = $derived.by(() => {
-    const cols = Array.isArray(columns) ? columns : [];
-    const picked = Array.isArray(editSpec?.source_tables) ? editSpec.source_tables : [];
-    const inScope = picked.length ? cols.filter((c: any) => picked.includes(c.table)) : cols;
-    // Dedupe by column name (first table wins) so the group/measure dropdowns stay clean,
-    // but keep a `tables` list so the label can show where a name lives.
-    const byName = new Map<string, any>();
-    for (const c of inScope) {
-      const k = c.column;
-      if (!byName.has(k)) byName.set(k, { column: c.column, dtype: c.dtype, samples: c.samples, tables: [c.table] });
-      else byName.get(k).tables.push(c.table);
-    }
-    return Array.from(byName.values());
-  });
-
-  // Numeric-ish columns only (for the measure-column picker on sum/avg metrics).
-  let numericColumns = $derived.by(() =>
-    scopedColumns.filter((c: any) => /INT|NUMERIC|DECIMAL|REAL|DOUBLE|FLOAT|MONEY|SERIAL/i.test(String(c.dtype || '')))
-  );
-
-  function colLabel(c: any): string {
-    const t = Array.isArray(c.tables) && c.tables.length > 1 ? ` · ${c.tables.length} tbls` : (Array.isArray(c.tables) ? ` · ${c.tables[0]}` : '');
-    return `${c.column} (${c.dtype})${t}`;
-  }
-
-  // ─── AI Recommendations ──────────────────────────────────────────
-  let recNew = $state<any[]>([]);        // suggested new metrics (LLM, training-derived)
-  let chatSug = $state<any[]>([]);       // dash_suggested_rules — derived from chat
-  let recLoading = $state(false);
-  let recDismissed = $state<Set<string>>(new Set());
-  let sugSource = $state<'all' | 'human' | 'training' | 'chat'>('all');  // suggestion-source tab
-
-  // Rules worth promoting → metric: not already a metric name, definition reads computable.
-  let recPromote = $derived.by(() => {
-    const metricNames = new Set((Array.isArray(metrics) ? metrics : []).map((m: any) => (m.name || '').toLowerCase()));
-    const computable = /\b(count|rate|ratio|sum|avg|average|per|percent|%|=|\/|total|share)\b/i;
-    return (Array.isArray(rules) ? rules : []).filter((r: any) => {
-      const nm = (r.name || '').toLowerCase();
-      if (metricNames.has(nm) || recDismissed.has('rule:' + nm)) return false;
-      return computable.test(r.definition || '') || r.type === 'kpi' || r.type === 'calculation';
-    }).slice(0, 8);
-  });
-
-  // Metrics needing attention: drift detected (pin ≠ live).
-  let recAttention = $derived.by(() =>
-    (Array.isArray(driftData) ? driftData : []).filter((d: any) => d && d.ok === false)
-  );
-
-  // Unified suggestion list, each tagged with a source:
-  //   human    = user-authored rules worth promoting
-  //   training = schema-derived new metrics + drift fixes + auto-suggested rules
-  //   chat     = dash_suggested_rules (extracted from chat)
-  let allSug = $derived.by(() => {
-    const out: any[] = [];
-    for (const s of recNew) {
-      if (!recDismissed.has('new:' + (s.name || ''))) out.push({ stype: 'new', source: 'training', data: s });
-    }
-    for (const r of recPromote) {
-      out.push({ stype: 'promote', source: r.source === 'user' ? 'human' : 'training', data: r });
-    }
-    for (const d of recAttention) {
-      out.push({ stype: 'drift', source: 'training', data: d });
-    }
-    for (const c of chatSug) {
-      if (!recDismissed.has('chat:' + c.id)) out.push({ stype: 'chat', source: 'chat', data: c });
-    }
-    return out;
-  });
-  let sugByTab = $derived.by(() =>
-    sugSource === 'all' ? allSug : allSug.filter((s: any) => s.source === sugSource)
-  );
-  let sugCounts = $derived.by(() => ({
-    all: allSug.length,
-    human: allSug.filter((s: any) => s.source === 'human').length,
-    training: allSug.filter((s: any) => s.source === 'training').length,
-    chat: allSug.filter((s: any) => s.source === 'chat').length,
-  }));
-
-  // Unified rows: metrics (locked/executable) + rules (NL hints). Each tagged
-  // with _rowtype so the table renders the right cells + actions.
-  let unifiedRows = $derived.by(() => {
-    const s = metricsSearch.toLowerCase();
-    const matches = (txt: string) => !s || (txt || '').toLowerCase().includes(s);
-    const out: any[] = [];
-    if (typeFilter !== 'rules' && Array.isArray(metrics)) {
-      for (const m of metrics) {
-        if (matches(m.name) || matches(m.kind) || matches((m.group_dims || '').toString())) {
-          out.push({ ...m, _rowtype: 'metric' });
-        }
-      }
-    }
-    if (typeFilter !== 'metrics' && Array.isArray(rules)) {
-      for (const r of rules) {
-        if (matches(r.name) || matches(r.type) || matches(r.definition)) {
-          out.push({ ...r, _rowtype: 'rule' });
-        }
-      }
-    }
-    return out;
-  });
-  // metrics-only filtered list, kept for the empty-state check
-  let filteredMetrics = $derived(Array.isArray(metrics) ? metrics : []);
-
-  // ─── Editor state ────────────────────────────────────────────────
-  let editSpec = $state<any>(emptySpec());
-  let editSaving = $state(false);
-  let editError = $state('');
-  let testResult = $state<any>(null);
-  let testLoading = $state(false);
-  let tierResult = $state<any>(null);
-  let tierLoading = $state(false);
-  let tierQuestion = $state('');
-  let showTierCompare = $state(false);
-  let editIsNew = $state(true);
-
-  function emptySpec() {
-    return {
-      name: '',
-      synonyms: [] as string[],
-      description: '',
-      kind: 'count' as string,
-      source_glob: '',
-      source_tables: [] as string[],
-      measure_col: '',
-      filters: [] as any[],
-      denom_filters: [] as any[],
-      group_dims: [] as string[],
-      default_group: [] as string[],
-      trim_values: false,
-      verified_answer: '',
-      status: 'draft' as string,
-    };
-  }
-
-  // ─── NL Draft state ──────────────────────────────────────────────
-  let nlText = $state('');
-  let nlLoading = $state(false);
-  let nlResult = $state<any>(null);
-
-  // Editor mode: 'describe' = conversational KPI builder; 'manual' = dropdown builder.
-  let editMode = $state<'describe' | 'manual'>('describe');
-
-  // ─── Conversational KPI builder state ─────────────────────────────
-  let chatMsgs = $state<any[]>([]);              // {role:'user'|'ai', text}
-  let chatInput = $state('');
-  let chatBusy = $state(false);
-  let candidates = $state<any[]>([]);            // {id, spec, checked, status, value, error}
-  let buildPhase = $state<'chat' | 'building' | 'done'>('chat');
-  let savingAll = $state(false);
-  let createdCount = $state(0);
-  let _candId = 0;
-
-  // Plain-English description of what a spec does — no SQL, no jargon.
-  function explainSpec(s: any): string {
-    const tbls = Array.isArray(s.source_tables) && s.source_tables.length
-      ? `${s.source_tables.length} table${s.source_tables.length > 1 ? 's' : ''}` : 'all tables';
-    const fstr = (f: any) => `${f.col} ${f.op} ${f.value ?? ''}`.trim();
-    const filters = Array.isArray(s.filters) ? s.filters.filter((f: any) => f.col) : [];
-    const grp = Array.isArray(s.group_dims) && s.group_dims.length ? `, broken down by ${s.group_dims.join(', ')}` : '';
-    let core = '';
-    if (s.kind === 'count') {
-      core = filters.length ? `counts records where ${filters.map(fstr).join(' and ')}` : 'counts every record';
-    } else if (s.kind === 'sum') {
-      core = `adds up ${s.measure_col || '?'}`;
-    } else if (s.kind === 'avg') {
-      core = `averages ${s.measure_col || '?'}`;
-    } else if (s.kind === 'rate' || s.kind === 'ratio') {
-      core = filters.length ? `share of records where ${filters.map(fstr).join(' and ')}` : 'a ratio';
-    } else {
-      core = s.kind;
-    }
-    return `${core} · ${tbls}${grp}`;
-  }
-
-  // Distinct real columns a spec touches (for "columns used").
-  function columnsOfSpec(s: any): string[] {
-    const out: string[] = [];
-    for (const f of [...(s.filters || []), ...(s.denom_filters || [])]) if (f.col && !out.includes(f.col)) out.push(f.col);
-    for (const g of (s.group_dims || [])) if (g && !out.includes(g)) out.push(g);
-    if (s.measure_col && !out.includes(s.measure_col)) out.push(s.measure_col);
-    return out;
-  }
-
-  function resetBuilder() {
-    chatMsgs = []; chatInput = ''; candidates = []; buildPhase = 'chat'; savingAll = false; chatBusy = false; createdCount = 0;
-  }
-
-  function _normSpec(s: any) {
-    const spec = { ...emptySpec(), ...s };
-    for (const k of ['synonyms', 'filters', 'denom_filters', 'group_dims', 'source_tables']) {
-      if (!Array.isArray((spec as any)[k])) (spec as any)[k] = [];
-    }
-    return spec;
-  }
-
-  function addCandidate(spec: any): boolean {
-    const name = (spec?.name || '').trim();
-    if (!name) return false;
-    if (candidates.some((c: any) => (c.spec.name || '').toLowerCase() === name.toLowerCase())) return false;
-    candidates = [...candidates, { id: ++_candId, spec: _normSpec(spec), checked: true, status: 'idle', value: null, error: '' }];
-    return true;
-  }
-
-  function toggleCand(id: number) {
-    candidates = candidates.map((c: any) => c.id === id ? { ...c, checked: !c.checked } : c);
-  }
-
-  // One chat turn: try single-metric derive first; if it pins a metric, add it.
-  // Otherwise treat it as an exploration → recommend-new → add all proposals.
-  async function chatSend() {
-    const text = chatInput.trim();
-    if (!text || chatBusy) return;
-    chatMsgs = [...chatMsgs, { role: 'user', text }];
-    chatInput = ''; chatBusy = true;
-    try {
-      await deriveDraft(text);                    // POST /metrics/derive
-      if (nlResult?.spec?.name) {
-        const added = addCandidate(nlResult.spec);
-        chatMsgs = [...chatMsgs, { role: 'ai', text: added ? `Added ${nlResult.spec.name} (${nlResult.spec.kind}). Refine more or generate.` : `${nlResult.spec.name} is already in the list.` }];
-      } else {
-        await loadRecNew();
-        const colNames = [...new Set((Array.isArray(columns) ? columns : []).map((c: any) => c.column))].slice(0, 12);
-        let n = 0;
-        for (const rec of recNew) { if (addCandidate(rec)) n++; }
-        const colLine = colNames.length ? `Found columns: ${colNames.join(' · ')}. ` : '';
-        chatMsgs = [...chatMsgs, { role: 'ai', text: n
-          ? `${colLine}Proposing ${n} KPI(s) below — uncheck any you don't want, then Generate.`
-          : `${colLine}No new KPIs to propose (they may already exist). Try describing a specific measure.` }];
-      }
-    } catch (e: any) {
-      chatMsgs = [...chatMsgs, { role: 'ai', text: `Sorry — ${e?.message || 'something went wrong'}.` }];
-    }
-    chatBusy = false;
-  }
-
-  // Test each checked candidate in turn, live-updating its status.
-  async function genSelected() {
-    buildPhase = 'building'; editError = '';
-    candidates = candidates.map((c: any) => c.checked ? { ...c, status: 'idle', value: null, error: '' } : c);
-    for (const c of candidates.filter((x: any) => x.checked)) {
-      candidates = candidates.map((x: any) => x.id === c.id ? { ...x, status: 'testing' } : x);
-      try {
-        const r = await fetch(`${apiBase()}/metrics/test`, { method: 'POST', headers: _h(), body: JSON.stringify({ spec: c.spec }) });
-        const d = await r.json().catch(() => ({ ok: false, error: 'test failed' }));
-        candidates = candidates.map((x: any) => x.id === c.id
-          ? { ...x, status: (r.ok && d.ok !== false) ? 'done' : 'fail', value: d.total ?? d.rate_pct ?? null, error: d.error || (r.ok ? '' : 'test failed') }
-          : x);
-      } catch (e: any) {
-        candidates = candidates.map((x: any) => x.id === c.id ? { ...x, status: 'fail', error: e?.message || 'error' } : x);
-      }
-    }
-  }
-
-  // Save every checked candidate that passed its test.
-  async function saveAll() {
-    savingAll = true; editError = '';
-    let ok = 0;
-    for (const c of candidates.filter((x: any) => x.checked && x.status === 'done')) {
-      try {
-        const r = await fetch(`${apiBase()}/metrics`, { method: 'POST', headers: _h(), body: JSON.stringify(c.spec) });
-        if (r.ok) ok++;
-      } catch {}
-    }
-    savingAll = false;
-    if (ok) { createdCount = ok; await loadMetrics(); buildPhase = 'done'; }
-    else editError = 'Nothing saved — generate KPIs first.';
-  }
-
-  // ─── Import state ────────────────────────────────────────────────
-  let importText = $state('');
-  let importLoading = $state(false);
-  let importResult = $state<any>(null);
-
-  // ─── Schema explorer ─────────────────────────────────────────────
-  let schemaColumns = $state<any[]>([]);
-  let schemaLoading = $state(false);
-  let schemaTableFilter = $state('');
-
-  // ─── History ─────────────────────────────────────────────────────
-  let historyData = $state<any[]>([]);
-  let historyLoading = $state(false);
-
-  // ─── Aliases inline editing ──────────────────────────────────────
-  let aliasesText = $state('');
-  let aliasesSaving = $state(false);
-
-  // ──────────────────────────────────────────────────────────────────
-  // LOAD FUNCTIONS
-  // ──────────────────────────────────────────────────────────────────
-
-  async function loadMetrics(status?: string) {
-    metricsLoading = true;
-    try {
-      const url = status ? `${apiBase()}/metrics?status=${status}` : `${apiBase()}/metrics`;
-      const r = await fetch(url, { headers: _hNoJson() });
-      if (r.ok) {
-        const d = await r.json();
-        metrics = Array.isArray(d) ? d : [];
-        try { onCount?.(metrics.length + (Array.isArray(rules) ? rules.length : 0)); } catch {}
-      }
-    } catch {}
-    metricsLoading = false;
-  }
-
-  async function loadRules() {
-    try {
-      const r = await fetch(`${apiBase()}/rules`, { headers: _hNoJson() });
-      if (r.ok) {
-        const d = await r.json();
-        rules = Array.isArray(d?.rules) ? d.rules : [];
-        try { onCount?.((Array.isArray(metrics) ? metrics.length : 0) + rules.length); } catch {}
-      }
-    } catch {}
-  }
-
-  // Promote an NL rule into a structured, locked metric: open the editor
-  // prefilled. User adds filters, tests, saves → it becomes executable.
-  function promoteRule(rule: any) {
-    const slugName = String(rule.name || 'metric').trim().toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60) || 'metric';
-    editSpec = {
-      ...emptySpec(),
-      name: slugName,
-      description: rule.definition || '',
-      synonyms: rule.name && rule.name !== slugName ? [rule.name] : [],
-      kind: (rule.type === 'kpi' || rule.type === 'calculation') ? 'rate' : 'count',
-      status: 'draft',
-    };
-    editIsNew = true; testResult = null; editError = '';
-    editMode = 'manual';
-    view = 'editor'; loadColumns();
-  }
-
-  async function loadRecNew() {
-    recLoading = true;
-    try {
-      const r = await fetch(`${apiBase()}/metrics/recommend-new`, { headers: _hNoJson() });
-      if (r.ok) {
-        const d = await r.json();
-        recNew = Array.isArray(d?.suggestions) ? d.suggestions : [];
-      }
-    } catch {}
-    recLoading = false;
-  }
-
-  async function loadChatSug() {
-    try {
-      const r = await fetch(`${apiBase()}/suggested-rules`, { headers: _hNoJson() });
-      if (r.ok) {
-        const d = await r.json();
-        chatSug = Array.isArray(d?.suggestions) ? d.suggestions : [];
-      }
-    } catch {}
-  }
-
-  async function acceptChatSug(c: any) {
-    try {
-      await fetch(`${apiBase()}/suggested-rules/${c.id}/approve`, { method: 'POST', headers: _h() });
-    } catch {}
-    await loadChatSug(); await loadRules();
-  }
-  async function rejectChatSug(c: any) {
-    try {
-      await fetch(`${apiBase()}/suggested-rules/${c.id}/reject`, { method: 'POST', headers: _h() });
-    } catch {}
-    recDismissed = new Set([...recDismissed, 'chat:' + c.id]);
-    await loadChatSug();
-  }
-
-  // Open editor prefilled from an AI suggestion (a draft metric spec).
-  function createFromSuggestion(s: any) {
-    editSpec = {
-      ...emptySpec(),
-      name: s.name || '',
-      kind: s.kind || 'count',
-      description: s.description || '',
-      filters: Array.isArray(s.filters) ? s.filters : [],
-      group_dims: Array.isArray(s.group_dims) ? s.group_dims : [],
-      measure_col: s.measure_col || '',
-      status: 'draft',
-    };
-    editIsNew = true; testResult = null; editError = '';
-    editMode = 'manual';
-    view = 'editor'; loadColumns();
-  }
-
-  async function loadDrift() {
-    try {
-      const r = await fetch(`${apiBase()}/metrics/drift`, { headers: _hNoJson() });
-      if (r.ok) {
-        const d = await r.json();
-        driftData = Array.isArray(d) ? d : [];
-      }
-    } catch {}
-  }
-
-  async function loadReviewQueue() {
-    try {
-      const r = await fetch(`${apiBase()}/metrics/review-queue`, { headers: _hNoJson() });
-      if (r.ok) {
-        const d = await r.json();
-        reviewQueue = Array.isArray(d) ? d : [];
-      }
-    } catch {}
-  }
-
-  async function loadTemplates() {
-    try {
-      const r = await fetch(`${apiBase()}/metrics/templates`, { headers: _hNoJson() });
-      if (r.ok) {
-        const d = await r.json();
-        templates = Array.isArray(d) ? d : [];
-      }
-    } catch {}
-  }
-
-  async function loadPermissions() {
-    try {
-      const r = await fetch(`${apiBase()}/metrics/permissions`, { headers: _hNoJson() });
-      if (r.ok) permissions = await r.json();
-    } catch {}
-  }
-
-  async function loadColumns(table?: string) {
-    try {
-      const url = table ? `${apiBase()}/metrics/columns?table=${encodeURIComponent(table)}` : `${apiBase()}/metrics/columns`;
-      const r = await fetch(url, { headers: _hNoJson() });
-      if (r.ok) {
-        const d = await r.json();
-        columns = Array.isArray(d) ? d : [];
-      }
-    } catch {}
-  }
-
-  async function loadMetricForEdit(name: string) {
-    try {
-      const r = await fetch(`${apiBase()}/metrics/${encodeURIComponent(name)}`, { headers: _hNoJson() });
-      if (r.ok) {
-        const d = await r.json();
-        editSpec = { ...emptySpec(), ...d };
-        if (!Array.isArray(editSpec.synonyms)) editSpec.synonyms = [];
-        if (!Array.isArray(editSpec.filters)) editSpec.filters = [];
-        if (!Array.isArray(editSpec.denom_filters)) editSpec.denom_filters = [];
-        if (!Array.isArray(editSpec.group_dims)) editSpec.group_dims = [];
-        if (!Array.isArray(editSpec.source_tables)) editSpec.source_tables = [];
-        editIsNew = false;
-        editMode = 'manual';
-        view = 'editor';
-        await loadColumns();
-      }
-    } catch {}
-  }
-
-  async function saveMetric() {
-    editSaving = true; editError = '';
-    try {
-      const r = await fetch(`${apiBase()}/metrics`, {
-        method: 'POST',
-        headers: _h(),
-        body: JSON.stringify(editSpec),
-      });
-      if (r.ok) {
-        await loadMetrics();
-        view = 'dashboard';
-      } else {
-        const e = await r.json().catch(() => ({ detail: 'Save failed' }));
-        editError = e.detail || 'Save failed';
-      }
-    } catch (e: any) { editError = e?.message || 'Save failed'; }
-    editSaving = false;
-  }
-
-  async function deprecateMetric(name: string) {
-    try {
-      await fetch(`${apiBase()}/metrics/${encodeURIComponent(name)}`, { method: 'DELETE', headers: _hNoJson() });
-      await loadMetrics();
-      view = 'dashboard';
-    } catch {}
-  }
-
-  async function testMetric() {
-    testLoading = true; testResult = null;
-    try {
-      const r = await fetch(`${apiBase()}/metrics/test`, {
-        method: 'POST', headers: _h(),
-        body: JSON.stringify({ spec: editSpec }),
-      });
-      if (r.ok) testResult = await r.json();
-      else testResult = { ok: false, error: 'Test failed' };
-    } catch (e: any) { testResult = { ok: false, error: e?.message }; }
-    testLoading = false;
-  }
-
-  async function runTierCompare() {
-    tierLoading = true; tierResult = null;
-    try {
-      const r = await fetch(`${apiBase()}/metrics/tier-compare`, {
-        method: 'POST', headers: _h(),
-        body: JSON.stringify({ spec: editSpec, question: tierQuestion || editSpec.description || editSpec.name }),
-      });
-      if (r.ok) tierResult = await r.json();
-      else tierResult = { error: 'Tier compare failed' };
-    } catch (e: any) { tierResult = { error: e?.message }; }
-    tierLoading = false;
-  }
-
-  async function deriveDraft(text?: string) {
-    nlLoading = true; nlResult = null;
-    try {
-      const r = await fetch(`${apiBase()}/metrics/derive`, {
-        method: 'POST', headers: _h(),
-        body: JSON.stringify({ text: text ?? nlText }),
-      });
-      if (r.ok) nlResult = await r.json();
-      else nlResult = { error: 'Derive failed' };
-    } catch (e: any) { nlResult = { error: e?.message }; }
-    nlLoading = false;
-  }
-
-  function fillSpecFromDraft() {
-    if (!nlResult?.spec) return;
-    editSpec = { ...emptySpec(), ...nlResult.spec };
-    if (!Array.isArray(editSpec.filters)) editSpec.filters = [];
-    if (!Array.isArray(editSpec.denom_filters)) editSpec.denom_filters = [];
-    if (!Array.isArray(editSpec.synonyms)) editSpec.synonyms = [];
-    if (!Array.isArray(editSpec.group_dims)) editSpec.group_dims = [];
-    if (!Array.isArray(editSpec.source_tables)) editSpec.source_tables = [];
-    editIsNew = true;
-  }
-
-  function acceptNlDraft() {
-    fillSpecFromDraft();
-    view = 'editor';
-    editMode = 'manual';
-    loadColumns();
-  }
-
-  // Describe-it: plain English → LLM drafts the spec → fill editSpec → auto Test live.
-  // The user never types a column name; they see the proposed spec + its live number, then Save or Tweak.
-  async function generateFromDescribe() {
-    if (!nlText.trim()) return;
-    await deriveDraft();              // sets nlResult {spec, confidence, error?}
-    if (nlResult?.spec?.name) {       // only fill on a real single-metric draft
-      fillSpecFromDraft();            // fills editSpec, stays in describe mode
-      await testMetric();            // auto-run so the user sees the number before saving
-    } else {
-      // Exploratory ask ("which KPIs can we build?") → offer schema-derived proposals.
-      await loadRecNew();
-    }
-  }
-
-  // Apply a recommend-new proposal into the editor spec, then auto-test.
-  async function applyRec(rec: any) {
-    editSpec = { ...emptySpec(), ...rec };
-    if (!Array.isArray(editSpec.filters)) editSpec.filters = [];
-    if (!Array.isArray(editSpec.denom_filters)) editSpec.denom_filters = [];
-    if (!Array.isArray(editSpec.synonyms)) editSpec.synonyms = [];
-    if (!Array.isArray(editSpec.group_dims)) editSpec.group_dims = [];
-    if (!Array.isArray(editSpec.source_tables)) editSpec.source_tables = [];
-    editIsNew = true;
-    // Surface it in the draft card by faking an nlResult spec.
-    nlResult = { spec: { ...rec }, confidence: 'medium' };
-    await testMetric();
-  }
-
-  async function doImport() {
-    importLoading = true; importResult = null;
-    try {
-      const rows = JSON.parse(importText);
-      const r = await fetch(`${apiBase()}/metrics/import`, {
-        method: 'POST', headers: _h(),
-        body: JSON.stringify({ rows: Array.isArray(rows) ? rows : [rows] }),
-      });
-      if (r.ok) { importResult = await r.json(); await loadMetrics(); }
-      else importResult = { error: 'Import failed' };
-    } catch (e: any) { importResult = { error: e?.message || 'Invalid JSON' }; }
-    importLoading = false;
-  }
-
-  async function loadHistory(name: string) {
-    historyLoading = true; historyData = [];
-    try {
-      const r = await fetch(`${apiBase()}/metrics/${encodeURIComponent(name)}/history`, { headers: _hNoJson() });
-      if (r.ok) {
-        const d = await r.json();
-        historyData = Array.isArray(d) ? d : [];
-      }
-    } catch {}
-    historyLoading = false;
-  }
-
-  async function rollback(name: string, version: number) {
-    try {
-      await fetch(`${apiBase()}/metrics/${encodeURIComponent(name)}/rollback/${version}`, { method: 'POST', headers: _hNoJson() });
-      await loadHistory(name);
-    } catch {}
-  }
-
-  async function approveMetric(name: string) {
-    try {
-      await fetch(`${apiBase()}/metrics/${encodeURIComponent(name)}/approve`, { method: 'POST', headers: _hNoJson() });
-      await loadMetrics();
-      await loadReviewQueue();
-    } catch {}
-  }
-
-  // Render pinned truth (verified_answer is a JSON object like {total:1544} or
-  // {successful_pct:64.3, unsuccessful_pct:35.7}) as a readable string.
-  function formatPin(v: any): string {
-    if (v == null || v === '') return '—';
-    if (typeof v === 'number' || typeof v === 'string') return String(v);
-    if (typeof v === 'object') {
-      const keys = Object.keys(v);
-      if (!keys.length) return '—';
-      return keys.map(k => `${k.replace(/_/g, ' ')}: ${v[k]}`).join(' · ');
-    }
-    return String(v);
-  }
-
-  async function saveAliases(name: string) {
-    aliasesSaving = true;
-    try {
-      const syns = aliasesText.split(',').map(s => s.trim()).filter(Boolean);
-      await fetch(`${apiBase()}/metrics/${encodeURIComponent(name)}/aliases`, {
-        method: 'PATCH', headers: _h(),
-        body: JSON.stringify({ synonyms: syns }),
-      });
-      await loadMetrics();
-    } catch {}
-    aliasesSaving = false;
-  }
-
-  async function loadSchemaExplorer() {
-    schemaLoading = true;
-    try {
-      const r = await fetch(`${apiBase()}/metrics/columns`, { headers: _hNoJson() });
-      if (r.ok) {
-        const d = await r.json();
-        schemaColumns = Array.isArray(d) ? d : [];
-      }
-    } catch {}
-    schemaLoading = false;
-  }
-
-  // ─── Filter helpers ───────────────────────────────────────────────
-  const OPS = ['=', '!=', 'IN', '>', '>=', '<', '<=', 'BETWEEN', 'LIKE', 'IS NULL', 'IS NOT NULL'];
-
-  function addFilter(target: 'filters' | 'denom_filters') {
-    editSpec[target] = [...(Array.isArray(editSpec[target]) ? editSpec[target] : []), { col: '', op: '=', value: '', trim: false }];
-  }
-  function removeFilter(target: 'filters' | 'denom_filters', i: number) {
-    const arr = Array.isArray(editSpec[target]) ? [...editSpec[target]] : [];
-    arr.splice(i, 1);
-    editSpec[target] = arr;
-  }
-  function updateFilter(target: 'filters' | 'denom_filters', i: number, field: string, val: any) {
-    const arr = Array.isArray(editSpec[target]) ? editSpec[target].map((x: any, idx: number) => idx === i ? { ...x, [field]: val } : x) : [];
-    editSpec[target] = arr;
-  }
-
-  function colSamples(colName: string): string[] {
-    const col = columns.find((c: any) => c.column === colName);
-    return Array.isArray(col?.samples) ? col.samples : [];
-  }
-
-  function useAsFilter(colName: string) {
-    addFilter('filters');
-    const arr = Array.isArray(editSpec.filters) ? editSpec.filters : [];
-    if (arr.length > 0) {
-      updateFilter('filters', arr.length - 1, 'col', colName);
-    }
-    view = 'editor';
-  }
-
-  function useAsGroup(colName: string) {
-    if (!Array.isArray(editSpec.group_dims)) editSpec.group_dims = [];
-    if (!editSpec.group_dims.includes(colName)) editSpec.group_dims = [...editSpec.group_dims, colName];
-    view = 'editor';
-  }
-
-  const NUMERIC_RE = /INT|NUMERIC|DECIMAL|REAL|DOUBLE|FLOAT|MONEY|SERIAL/i;
-  function isNumericCol(dtype: any): boolean { return NUMERIC_RE.test(String(dtype || '')); }
-
-  // Mark a numeric column as the sum/avg measure. Flips KIND to sum if it's still
-  // a count, so the user doesn't have to know to switch the dropdown first.
-  function useAsMeasure(colName: string) {
-    if (editSpec.kind !== 'sum' && editSpec.kind !== 'avg') editSpec.kind = 'sum';
-    editSpec.measure_col = colName;
-    view = 'editor';
-  }
-
-  // ─── Init ─────────────────────────────────────────────────────────
-  $effect(() => {
-    if (slug) {
-      loadMetrics();
-      loadRules();
-      loadDrift();
-      loadReviewQueue();
-      loadRecNew();
-      loadChatSug();
-      loadCrmEligible();
-    }
-  });
-
-  async function loadCrmEligible() {
-    try {
-      const r = await fetch(`${apiBase()}/metrics/crm-eligible`, { headers: _hNoJson() });
-      if (r.ok) { const d = await r.json(); crmEligible = !!d?.eligible; }
-    } catch { /* fail-soft */ }
-  }
-
-  let crmCandidates = $state<any[]>([]);
-  let crmSelected = $state<Record<string, boolean>>({});
-  let crmCols = $state<any>({});
-  let crmTables = $state<string[]>([]);
-
-  async function openCrmPick() {
-    showMore = false;
-    view = 'crm-pick';
-    crmCandidates = [];
-    try {
-      const r = await fetch(`${apiBase()}/metrics/crm-preview`, { headers: _hNoJson() });
-      const d = await r.json().catch(() => ({}));
-      crmCandidates = Array.isArray(d?.candidates) ? d.candidates : [];
-      crmCols = d?.columns || {};
-      crmTables = Array.isArray(d?.tables) ? d.tables : [];
-      // Default-check everything not already existing.
-      const sel: Record<string, boolean> = {};
-      for (const c of crmCandidates) sel[c.name] = !c.already_exists;
-      crmSelected = sel;
-    } catch { crmCandidates = []; }
-  }
-
-  async function seedSelectedCrm() {
-    if (crmSeeding) return;
-    const names = crmCandidates.filter((c) => crmSelected[c.name]).map((c) => c.name);
-    if (names.length === 0) { alert('Select at least one metric.'); return; }
-    crmSeeding = true;
-    try {
-      const r = await fetch(`${apiBase()}/metrics/seed-crm`, { method: 'POST', headers: _h(), body: JSON.stringify({ names }) });
-      const d = await r.json().catch(() => ({}));
-      const n = Array.isArray(d?.seeded) ? d.seeded.length : 0;
-      alert(n ? `Seeded ${n} CRM metric(s) (status: suggested — review & confirm).` : `No CRM metrics seeded${d?.skipped_reason ? ' (' + d.skipped_reason + ')' : ''}.`);
-      await loadMetrics();
-      view = 'dashboard';
-    } catch (e) {
-      alert('Seed CRM failed: ' + e);
-    } finally {
-      crmSeeding = false;
-    }
-  }
-
-  // ─── Badges ───────────────────────────────────────────────────────
-  function statusBadge(status: string) {
-    if (status === 'verified') return '#22c55e';
-    if (status === 'deprecated') return '#6b7280';
-    return '#f59e0b';
-  }
+  import Icon from '$lib/Icon.svelte';
+ let { slug, onCount, onOpenRules }: { slug: string; onCount?: (n: number) => void; onOpenRules?: () => void } = $props();
+
+ // ─── Auth helper ────────────────────────────────────────────────
+ function _h(): Record<string, string> {
+ const t = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
+ return t ? { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+ }
+ function _hNoJson(): Record<string, string> {
+ const t = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
+ return t ? { Authorization: `Bearer ${t}` } : {};
+ }
+ function apiBase() { return `/api/projects/${slug}`; }
+
+ // ─── Sub-view state machine ──────────────────────────────────────
+ // views: dashboard | editor | nl-draft | review-queue | templates | import | drift | permissions | history | aliases | schema-explorer | tier-compare
+ let view = $state<string>('dashboard');
+ let drawerView = $state<'schema' | 'history' | 'aliases' | null>(null);
+ let drawerMetricName = $state<string>('');
+
+ // ─── Dashboard state ─────────────────────────────────────────────
+ let metrics = $state<any[]>([]);
+ let rules = $state<any[]>([]); // dash_rules_db — NL definitions (unified view)
+ let typeFilter = $state<'all' | 'metrics' | 'rules'>('all');
+ let dispMode = $state<'table' | 'cards' | 'ai'>('table'); // view: dense table (default) | cards | AI sub-tab
+ let showMore = $state(false); // overflow menu for secondary actions
+ let crmEligible = $state(false); // schema looks like a CRM > show "Seed CRM metrics"
+ let crmSeeding = $state(false);
+ let metricsLoading = $state(false);
+ let metricsSearch = $state('');
+ let driftData = $state<any[]>([]);
+ let reviewQueue = $state<any[]>([]);
+ let templates = $state<any[]>([]);
+ let permissions = $state<any>(null);
+ let columns = $state<any[]>([]); // from /metrics/columns
+ let columnsTable = $state('');
+
+ // Distinct tables present in the project schema (for the SOURCE TABLES picker).
+ let tableList = $derived.by(() => {
+ const seen = new Set<string>();
+ for (const c of (Array.isArray(columns) ? columns : [])) {
+ if (c?.table) seen.add(c.table);
+ }
+ return Array.from(seen).sort();
+ });
+
+ // Columns scoped to the chosen source tables (falls back to all when none chosen).
+ // Each entry carries its table so dropdown labels can disambiguate same-named columns.
+ let scopedColumns = $derived.by(() => {
+ const cols = Array.isArray(columns) ? columns : [];
+ const picked = Array.isArray(editSpec?.source_tables) ? editSpec.source_tables : [];
+ const inScope = picked.length ? cols.filter((c: any) => picked.includes(c.table)) : cols;
+ // Dedupe by column name (first table wins) so the group/measure dropdowns stay clean,
+ // but keep a `tables` list so the label can show where a name lives.
+ const byName = new Map<string, any>();
+ for (const c of inScope) {
+ const k = c.column;
+ if (!byName.has(k)) byName.set(k, { column: c.column, dtype: c.dtype, samples: c.samples, tables: [c.table] });
+ else byName.get(k).tables.push(c.table);
+ }
+ return Array.from(byName.values());
+ });
+
+ // Numeric-ish columns only (for the measure-column picker on sum/avg metrics).
+ let numericColumns = $derived.by(() =>
+ scopedColumns.filter((c: any) => /INT|NUMERIC|DECIMAL|REAL|DOUBLE|FLOAT|MONEY|SERIAL/i.test(String(c.dtype || '')))
+ );
+
+ function colLabel(c: any): string {
+ const t = Array.isArray(c.tables) && c.tables.length > 1 ? ` · ${c.tables.length} tbls` : (Array.isArray(c.tables) ? ` · ${c.tables[0]}` : '');
+ return `${c.column} (${c.dtype})${t}`;
+ }
+
+ // ─── AI Recommendations ──────────────────────────────────────────
+ let recNew = $state<any[]>([]); // suggested new metrics (LLM, training-derived)
+ let chatSug = $state<any[]>([]); // dash_suggested_rules — derived from chat
+ let recLoading = $state(false);
+ let recDismissed = $state<Set<string>>(new Set());
+ let sugSource = $state<'all' | 'human' | 'training' | 'chat'>('all'); // suggestion-source tab
+
+ // Rules worth promoting > metric: not already a metric name, definition reads computable.
+ let recPromote = $derived.by(() => {
+ const metricNames = new Set((Array.isArray(metrics) ? metrics : []).map((m: any) => (m.name || '').toLowerCase()));
+ const computable = /\b(count|rate|ratio|sum|avg|average|per|percent|%|=|\/|total|share)\b/i;
+ return (Array.isArray(rules) ? rules : []).filter((r: any) => {
+ const nm = (r.name || '').toLowerCase();
+ if (metricNames.has(nm) || recDismissed.has('rule:' + nm)) return false;
+ return computable.test(r.definition || '') || r.type === 'kpi' || r.type === 'calculation';
+ }).slice(0, 8);
+ });
+
+ // Metrics needing attention: drift detected (pin ≠ live).
+ let recAttention = $derived.by(() =>
+ (Array.isArray(driftData) ? driftData : []).filter((d: any) => d && d.ok === false)
+ );
+
+ // Unified suggestion list, each tagged with a source:
+ // human = user-authored rules worth promoting
+ // training = schema-derived new metrics + drift fixes + auto-suggested rules
+ // chat = dash_suggested_rules (extracted from chat)
+ let allSug = $derived.by(() => {
+ const out: any[] = [];
+ for (const s of recNew) {
+ if (!recDismissed.has('new:' + (s.name || ''))) out.push({ stype: 'new', source: 'training', data: s });
+ }
+ for (const r of recPromote) {
+ out.push({ stype: 'promote', source: r.source === 'user' ? 'human' : 'training', data: r });
+ }
+ for (const d of recAttention) {
+ out.push({ stype: 'drift', source: 'training', data: d });
+ }
+ for (const c of chatSug) {
+ if (!recDismissed.has('chat:' + c.id)) out.push({ stype: 'chat', source: 'chat', data: c });
+ }
+ return out;
+ });
+ let sugByTab = $derived.by(() =>
+ sugSource === 'all' ? allSug : allSug.filter((s: any) => s.source === sugSource)
+ );
+ let sugCounts = $derived.by(() => ({
+ all: allSug.length,
+ human: allSug.filter((s: any) => s.source === 'human').length,
+ training: allSug.filter((s: any) => s.source === 'training').length,
+ chat: allSug.filter((s: any) => s.source === 'chat').length,
+ }));
+
+ // Unified rows: metrics (locked/executable) + rules (NL hints). Each tagged
+ // with _rowtype so the table renders the right cells + actions.
+ let unifiedRows = $derived.by(() => {
+ const s = metricsSearch.toLowerCase();
+ const matches = (txt: string) => !s || (txt || '').toLowerCase().includes(s);
+ const out: any[] = [];
+ if (typeFilter !== 'rules' && Array.isArray(metrics)) {
+ for (const m of metrics) {
+ if (matches(m.name) || matches(m.kind) || matches((m.group_dims || '').toString())) {
+ out.push({ ...m, _rowtype: 'metric' });
+ }
+ }
+ }
+ if (typeFilter !== 'metrics' && Array.isArray(rules)) {
+ for (const r of rules) {
+ if (matches(r.name) || matches(r.type) || matches(r.definition)) {
+ out.push({ ...r, _rowtype: 'rule' });
+ }
+ }
+ }
+ return out;
+ });
+ // metrics-only filtered list, kept for the empty-state check
+ let filteredMetrics = $derived(Array.isArray(metrics) ? metrics : []);
+
+ // ─── Editor state ────────────────────────────────────────────────
+ let editSpec = $state<any>(emptySpec());
+ let editSaving = $state(false);
+ let editError = $state('');
+ let testResult = $state<any>(null);
+ let testLoading = $state(false);
+ let tierResult = $state<any>(null);
+ let tierLoading = $state(false);
+ let tierQuestion = $state('');
+ let showTierCompare = $state(false);
+ let editIsNew = $state(true);
+
+ function emptySpec() {
+ return {
+ name: '',
+ synonyms: [] as string[],
+ description: '',
+ kind: 'count' as string,
+ source_glob: '',
+ source_tables: [] as string[],
+ measure_col: '',
+ filters: [] as any[],
+ denom_filters: [] as any[],
+ group_dims: [] as string[],
+ default_group: [] as string[],
+ trim_values: false,
+ verified_answer: '',
+ status: 'draft' as string,
+ };
+ }
+
+ // ─── NL Draft state ──────────────────────────────────────────────
+ let nlText = $state('');
+ let nlLoading = $state(false);
+ let nlResult = $state<any>(null);
+
+ // Editor mode: 'describe' = conversational KPI builder; 'manual' = dropdown builder.
+ let editMode = $state<'describe' | 'manual'>('describe');
+
+ // ─── Conversational KPI builder state ─────────────────────────────
+ let chatMsgs = $state<any[]>([]); // {role:'user'|'ai', text}
+ let chatInput = $state('');
+ let chatBusy = $state(false);
+ let candidates = $state<any[]>([]); // {id, spec, checked, status, value, error}
+ let buildPhase = $state<'chat' | 'building' | 'done'>('chat');
+ let savingAll = $state(false);
+ let createdCount = $state(0);
+ let _candId = 0;
+
+ // Plain-English description of what a spec does — no SQL, no jargon.
+ function explainSpec(s: any): string {
+ const tbls = Array.isArray(s.source_tables) && s.source_tables.length
+ ? `${s.source_tables.length} table${s.source_tables.length > 1 ? 's' : ''}` : 'all tables';
+ const fstr = (f: any) => `${f.col} ${f.op} ${f.value ?? ''}`.trim();
+ const filters = Array.isArray(s.filters) ? s.filters.filter((f: any) => f.col) : [];
+ const grp = Array.isArray(s.group_dims) && s.group_dims.length ? `, broken down by ${s.group_dims.join(', ')}` : '';
+ let core = '';
+ if (s.kind === 'count') {
+ core = filters.length ? `counts records where ${filters.map(fstr).join(' and ')}` : 'counts every record';
+ } else if (s.kind === 'sum') {
+ core = `adds up ${s.measure_col || '?'}`;
+ } else if (s.kind === 'avg') {
+ core = `averages ${s.measure_col || '?'}`;
+ } else if (s.kind === 'rate' || s.kind === 'ratio') {
+ core = filters.length ? `share of records where ${filters.map(fstr).join(' and ')}` : 'a ratio';
+ } else {
+ core = s.kind;
+ }
+ return `${core} · ${tbls}${grp}`;
+ }
+
+ // Distinct real columns a spec touches (for "columns used").
+ function columnsOfSpec(s: any): string[] {
+ const out: string[] = [];
+ for (const f of [...(s.filters || []), ...(s.denom_filters || [])]) if (f.col && !out.includes(f.col)) out.push(f.col);
+ for (const g of (s.group_dims || [])) if (g && !out.includes(g)) out.push(g);
+ if (s.measure_col && !out.includes(s.measure_col)) out.push(s.measure_col);
+ return out;
+ }
+
+ function resetBuilder() {
+ chatMsgs = []; chatInput = ''; candidates = []; buildPhase = 'chat'; savingAll = false; chatBusy = false; createdCount = 0;
+ }
+
+ function _normSpec(s: any) {
+ const spec = { ...emptySpec(), ...s };
+ for (const k of ['synonyms', 'filters', 'denom_filters', 'group_dims', 'source_tables']) {
+ if (!Array.isArray((spec as any)[k])) (spec as any)[k] = [];
+ }
+ return spec;
+ }
+
+ function addCandidate(spec: any): boolean {
+ const name = (spec?.name || '').trim();
+ if (!name) return false;
+ if (candidates.some((c: any) => (c.spec.name || '').toLowerCase() === name.toLowerCase())) return false;
+ candidates = [...candidates, { id: ++_candId, spec: _normSpec(spec), checked: true, status: 'idle', value: null, error: '' }];
+ return true;
+ }
+
+ function toggleCand(id: number) {
+ candidates = candidates.map((c: any) => c.id === id ? { ...c, checked: !c.checked } : c);
+ }
+
+ // One chat turn: try single-metric derive first; if it pins a metric, add it.
+ // Otherwise treat it as an exploration > recommend-new > add all proposals.
+ async function chatSend() {
+ const text = chatInput.trim();
+ if (!text || chatBusy) return;
+ chatMsgs = [...chatMsgs, { role: 'user', text }];
+ chatInput = ''; chatBusy = true;
+ try {
+ await deriveDraft(text); // POST /metrics/derive
+ if (nlResult?.spec?.name) {
+ const added = addCandidate(nlResult.spec);
+ chatMsgs = [...chatMsgs, { role: 'ai', text: added ? `Added ${nlResult.spec.name} (${nlResult.spec.kind}). Refine more or generate.` : `${nlResult.spec.name} is already in the list.` }];
+ } else {
+ await loadRecNew();
+ const colNames = [...new Set((Array.isArray(columns) ? columns : []).map((c: any) => c.column))].slice(0, 12);
+ let n = 0;
+ for (const rec of recNew) { if (addCandidate(rec)) n++; }
+ const colLine = colNames.length ? `Found columns: ${colNames.join(' · ')}. ` : '';
+ chatMsgs = [...chatMsgs, { role: 'ai', text: n
+ ? `${colLine}Proposing ${n} KPI(s) below — uncheck any you don't want, then Generate.`
+ : `${colLine}No new KPIs to propose (they may already exist). Try describing a specific measure.` }];
+ }
+ } catch (e: any) {
+ chatMsgs = [...chatMsgs, { role: 'ai', text: `Sorry — ${e?.message || 'something went wrong'}.` }];
+ }
+ chatBusy = false;
+ }
+
+ // Test each checked candidate in turn, live-updating its status.
+ async function genSelected() {
+ buildPhase = 'building'; editError = '';
+ candidates = candidates.map((c: any) => c.checked ? { ...c, status: 'idle', value: null, error: '' } : c);
+ for (const c of candidates.filter((x: any) => x.checked)) {
+ candidates = candidates.map((x: any) => x.id === c.id ? { ...x, status: 'testing' } : x);
+ try {
+ const r = await fetch(`${apiBase()}/metrics/test`, { method: 'POST', headers: _h(), body: JSON.stringify({ spec: c.spec }) });
+ const d = await r.json().catch(() => ({ ok: false, error: 'test failed' }));
+ candidates = candidates.map((x: any) => x.id === c.id
+ ? { ...x, status: (r.ok && d.ok !== false) ? 'done' : 'fail', value: d.total ?? d.rate_pct ?? null, error: d.error || (r.ok ? '' : 'test failed') }
+ : x);
+ } catch (e: any) {
+ candidates = candidates.map((x: any) => x.id === c.id ? { ...x, status: 'fail', error: e?.message || 'error' } : x);
+ }
+ }
+ }
+
+ // Save every checked candidate that passed its test.
+ async function saveAll() {
+ savingAll = true; editError = '';
+ let ok = 0;
+ for (const c of candidates.filter((x: any) => x.checked && x.status === 'done')) {
+ try {
+ const r = await fetch(`${apiBase()}/metrics`, { method: 'POST', headers: _h(), body: JSON.stringify(c.spec) });
+ if (r.ok) ok++;
+ } catch {}
+ }
+ savingAll = false;
+ if (ok) { createdCount = ok; await loadMetrics(); buildPhase = 'done'; }
+ else editError = 'Nothing saved — generate KPIs first.';
+ }
+
+ // ─── Import state ────────────────────────────────────────────────
+ let importText = $state('');
+ let importLoading = $state(false);
+ let importResult = $state<any>(null);
+
+ // ─── Schema explorer ─────────────────────────────────────────────
+ let schemaColumns = $state<any[]>([]);
+ let schemaLoading = $state(false);
+ let schemaTableFilter = $state('');
+
+ // ─── History ─────────────────────────────────────────────────────
+ let historyData = $state<any[]>([]);
+ let historyLoading = $state(false);
+
+ // ─── Aliases inline editing ──────────────────────────────────────
+ let aliasesText = $state('');
+ let aliasesSaving = $state(false);
+
+ // ──────────────────────────────────────────────────────────────────
+ // LOAD FUNCTIONS
+ // ──────────────────────────────────────────────────────────────────
+
+ async function loadMetrics(status?: string) {
+ metricsLoading = true;
+ try {
+ const url = status ? `${apiBase()}/metrics?status=${status}` : `${apiBase()}/metrics`;
+ const r = await fetch(url, { headers: _hNoJson() });
+ if (r.ok) {
+ const d = await r.json();
+ metrics = Array.isArray(d) ? d : [];
+ try { onCount?.(metrics.length + (Array.isArray(rules) ? rules.length : 0)); } catch {}
+ }
+ } catch {}
+ metricsLoading = false;
+ }
+
+ async function loadRules() {
+ try {
+ const r = await fetch(`${apiBase()}/rules`, { headers: _hNoJson() });
+ if (r.ok) {
+ const d = await r.json();
+ rules = Array.isArray(d?.rules) ? d.rules : [];
+ try { onCount?.((Array.isArray(metrics) ? metrics.length : 0) + rules.length); } catch {}
+ }
+ } catch {}
+ }
+
+ // Promote an NL rule into a structured, locked metric: open the editor
+ // prefilled. User adds filters, tests, saves > it becomes executable.
+ function promoteRule(rule: any) {
+ const slugName = String(rule.name || 'metric').trim().toLowerCase()
+ .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60) || 'metric';
+ editSpec = {
+ ...emptySpec(),
+ name: slugName,
+ description: rule.definition || '',
+ synonyms: rule.name && rule.name !== slugName ? [rule.name] : [],
+ kind: (rule.type === 'kpi' || rule.type === 'calculation') ? 'rate' : 'count',
+ status: 'draft',
+ };
+ editIsNew = true; testResult = null; editError = '';
+ editMode = 'manual';
+ view = 'editor'; loadColumns();
+ }
+
+ async function loadRecNew() {
+ recLoading = true;
+ try {
+ const r = await fetch(`${apiBase()}/metrics/recommend-new`, { headers: _hNoJson() });
+ if (r.ok) {
+ const d = await r.json();
+ recNew = Array.isArray(d?.suggestions) ? d.suggestions : [];
+ }
+ } catch {}
+ recLoading = false;
+ }
+
+ async function loadChatSug() {
+ try {
+ const r = await fetch(`${apiBase()}/suggested-rules`, { headers: _hNoJson() });
+ if (r.ok) {
+ const d = await r.json();
+ chatSug = Array.isArray(d?.suggestions) ? d.suggestions : [];
+ }
+ } catch {}
+ }
+
+ async function acceptChatSug(c: any) {
+ try {
+ await fetch(`${apiBase()}/suggested-rules/${c.id}/approve`, { method: 'POST', headers: _h() });
+ } catch {}
+ await loadChatSug(); await loadRules();
+ }
+ async function rejectChatSug(c: any) {
+ try {
+ await fetch(`${apiBase()}/suggested-rules/${c.id}/reject`, { method: 'POST', headers: _h() });
+ } catch {}
+ recDismissed = new Set([...recDismissed, 'chat:' + c.id]);
+ await loadChatSug();
+ }
+
+ // Open editor prefilled from an AI suggestion (a draft metric spec).
+ function createFromSuggestion(s: any) {
+ editSpec = {
+ ...emptySpec(),
+ name: s.name || '',
+ kind: s.kind || 'count',
+ description: s.description || '',
+ filters: Array.isArray(s.filters) ? s.filters : [],
+ group_dims: Array.isArray(s.group_dims) ? s.group_dims : [],
+ measure_col: s.measure_col || '',
+ status: 'draft',
+ };
+ editIsNew = true; testResult = null; editError = '';
+ editMode = 'manual';
+ view = 'editor'; loadColumns();
+ }
+
+ async function loadDrift() {
+ try {
+ const r = await fetch(`${apiBase()}/metrics/drift`, { headers: _hNoJson() });
+ if (r.ok) {
+ const d = await r.json();
+ driftData = Array.isArray(d) ? d : [];
+ }
+ } catch {}
+ }
+
+ async function loadReviewQueue() {
+ try {
+ const r = await fetch(`${apiBase()}/metrics/review-queue`, { headers: _hNoJson() });
+ if (r.ok) {
+ const d = await r.json();
+ reviewQueue = Array.isArray(d) ? d : [];
+ }
+ } catch {}
+ }
+
+ async function loadTemplates() {
+ try {
+ const r = await fetch(`${apiBase()}/metrics/templates`, { headers: _hNoJson() });
+ if (r.ok) {
+ const d = await r.json();
+ templates = Array.isArray(d) ? d : [];
+ }
+ } catch {}
+ }
+
+ async function loadPermissions() {
+ try {
+ const r = await fetch(`${apiBase()}/metrics/permissions`, { headers: _hNoJson() });
+ if (r.ok) permissions = await r.json();
+ } catch {}
+ }
+
+ async function loadColumns(table?: string) {
+ try {
+ const url = table ? `${apiBase()}/metrics/columns?table=${encodeURIComponent(table)}` : `${apiBase()}/metrics/columns`;
+ const r = await fetch(url, { headers: _hNoJson() });
+ if (r.ok) {
+ const d = await r.json();
+ columns = Array.isArray(d) ? d : [];
+ }
+ } catch {}
+ }
+
+ async function loadMetricForEdit(name: string) {
+ try {
+ const r = await fetch(`${apiBase()}/metrics/${encodeURIComponent(name)}`, { headers: _hNoJson() });
+ if (r.ok) {
+ const d = await r.json();
+ editSpec = { ...emptySpec(), ...d };
+ if (!Array.isArray(editSpec.synonyms)) editSpec.synonyms = [];
+ if (!Array.isArray(editSpec.filters)) editSpec.filters = [];
+ if (!Array.isArray(editSpec.denom_filters)) editSpec.denom_filters = [];
+ if (!Array.isArray(editSpec.group_dims)) editSpec.group_dims = [];
+ if (!Array.isArray(editSpec.source_tables)) editSpec.source_tables = [];
+ editIsNew = false;
+ editMode = 'manual';
+ view = 'editor';
+ await loadColumns();
+ }
+ } catch {}
+ }
+
+ async function saveMetric() {
+ editSaving = true; editError = '';
+ try {
+ const r = await fetch(`${apiBase()}/metrics`, {
+ method: 'POST',
+ headers: _h(),
+ body: JSON.stringify(editSpec),
+ });
+ if (r.ok) {
+ await loadMetrics();
+ view = 'dashboard';
+ } else {
+ const e = await r.json().catch(() => ({ detail: 'Save failed' }));
+ editError = e.detail || 'Save failed';
+ }
+ } catch (e: any) { editError = e?.message || 'Save failed'; }
+ editSaving = false;
+ }
+
+ async function deprecateMetric(name: string) {
+ try {
+ await fetch(`${apiBase()}/metrics/${encodeURIComponent(name)}`, { method: 'DELETE', headers: _hNoJson() });
+ await loadMetrics();
+ view = 'dashboard';
+ } catch {}
+ }
+
+ async function testMetric() {
+ testLoading = true; testResult = null;
+ try {
+ const r = await fetch(`${apiBase()}/metrics/test`, {
+ method: 'POST', headers: _h(),
+ body: JSON.stringify({ spec: editSpec }),
+ });
+ if (r.ok) testResult = await r.json();
+ else testResult = { ok: false, error: 'Test failed' };
+ } catch (e: any) { testResult = { ok: false, error: e?.message }; }
+ testLoading = false;
+ }
+
+ async function runTierCompare() {
+ tierLoading = true; tierResult = null;
+ try {
+ const r = await fetch(`${apiBase()}/metrics/tier-compare`, {
+ method: 'POST', headers: _h(),
+ body: JSON.stringify({ spec: editSpec, question: tierQuestion || editSpec.description || editSpec.name }),
+ });
+ if (r.ok) tierResult = await r.json();
+ else tierResult = { error: 'Tier compare failed' };
+ } catch (e: any) { tierResult = { error: e?.message }; }
+ tierLoading = false;
+ }
+
+ async function deriveDraft(text?: string) {
+ nlLoading = true; nlResult = null;
+ try {
+ const r = await fetch(`${apiBase()}/metrics/derive`, {
+ method: 'POST', headers: _h(),
+ body: JSON.stringify({ text: text ?? nlText }),
+ });
+ if (r.ok) nlResult = await r.json();
+ else nlResult = { error: 'Derive failed' };
+ } catch (e: any) { nlResult = { error: e?.message }; }
+ nlLoading = false;
+ }
+
+ function fillSpecFromDraft() {
+ if (!nlResult?.spec) return;
+ editSpec = { ...emptySpec(), ...nlResult.spec };
+ if (!Array.isArray(editSpec.filters)) editSpec.filters = [];
+ if (!Array.isArray(editSpec.denom_filters)) editSpec.denom_filters = [];
+ if (!Array.isArray(editSpec.synonyms)) editSpec.synonyms = [];
+ if (!Array.isArray(editSpec.group_dims)) editSpec.group_dims = [];
+ if (!Array.isArray(editSpec.source_tables)) editSpec.source_tables = [];
+ editIsNew = true;
+ }
+
+ function acceptNlDraft() {
+ fillSpecFromDraft();
+ view = 'editor';
+ editMode = 'manual';
+ loadColumns();
+ }
+
+ // Describe-it: plain English > LLM drafts the spec > fill editSpec > auto Test live.
+ // The user never types a column name; they see the proposed spec + its live number, then Save or Tweak.
+ async function generateFromDescribe() {
+ if (!nlText.trim()) return;
+ await deriveDraft(); // sets nlResult {spec, confidence, error?}
+ if (nlResult?.spec?.name) { // only fill on a real single-metric draft
+ fillSpecFromDraft(); // fills editSpec, stays in describe mode
+ await testMetric(); // auto-run so the user sees the number before saving
+ } else {
+ // Exploratory ask ("which KPIs can we build?") > offer schema-derived proposals.
+ await loadRecNew();
+ }
+ }
+
+ // Apply a recommend-new proposal into the editor spec, then auto-test.
+ async function applyRec(rec: any) {
+ editSpec = { ...emptySpec(), ...rec };
+ if (!Array.isArray(editSpec.filters)) editSpec.filters = [];
+ if (!Array.isArray(editSpec.denom_filters)) editSpec.denom_filters = [];
+ if (!Array.isArray(editSpec.synonyms)) editSpec.synonyms = [];
+ if (!Array.isArray(editSpec.group_dims)) editSpec.group_dims = [];
+ if (!Array.isArray(editSpec.source_tables)) editSpec.source_tables = [];
+ editIsNew = true;
+ // Surface it in the draft card by faking an nlResult spec.
+ nlResult = { spec: { ...rec }, confidence: 'medium' };
+ await testMetric();
+ }
+
+ async function doImport() {
+ importLoading = true; importResult = null;
+ try {
+ const rows = JSON.parse(importText);
+ const r = await fetch(`${apiBase()}/metrics/import`, {
+ method: 'POST', headers: _h(),
+ body: JSON.stringify({ rows: Array.isArray(rows) ? rows : [rows] }),
+ });
+ if (r.ok) { importResult = await r.json(); await loadMetrics(); }
+ else importResult = { error: 'Import failed' };
+ } catch (e: any) { importResult = { error: e?.message || 'Invalid JSON' }; }
+ importLoading = false;
+ }
+
+ async function loadHistory(name: string) {
+ historyLoading = true; historyData = [];
+ try {
+ const r = await fetch(`${apiBase()}/metrics/${encodeURIComponent(name)}/history`, { headers: _hNoJson() });
+ if (r.ok) {
+ const d = await r.json();
+ historyData = Array.isArray(d) ? d : [];
+ }
+ } catch {}
+ historyLoading = false;
+ }
+
+ async function rollback(name: string, version: number) {
+ try {
+ await fetch(`${apiBase()}/metrics/${encodeURIComponent(name)}/rollback/${version}`, { method: 'POST', headers: _hNoJson() });
+ await loadHistory(name);
+ } catch {}
+ }
+
+ async function approveMetric(name: string) {
+ try {
+ await fetch(`${apiBase()}/metrics/${encodeURIComponent(name)}/approve`, { method: 'POST', headers: _hNoJson() });
+ await loadMetrics();
+ await loadReviewQueue();
+ } catch {}
+ }
+
+ // Render pinned truth (verified_answer is a JSON object like {total:1544} or
+ // {successful_pct:64.3, unsuccessful_pct:35.7}) as a readable string.
+ function formatPin(v: any): string {
+ if (v == null || v === '') return '—';
+ if (typeof v === 'number' || typeof v === 'string') return String(v);
+ if (typeof v === 'object') {
+ const keys = Object.keys(v);
+ if (!keys.length) return '—';
+ return keys.map(k => `${k.replace(/_/g, ' ')}: ${v[k]}`).join(' · ');
+ }
+ return String(v);
+ }
+
+ async function saveAliases(name: string) {
+ aliasesSaving = true;
+ try {
+ const syns = aliasesText.split(',').map(s => s.trim()).filter(Boolean);
+ await fetch(`${apiBase()}/metrics/${encodeURIComponent(name)}/aliases`, {
+ method: 'PATCH', headers: _h(),
+ body: JSON.stringify({ synonyms: syns }),
+ });
+ await loadMetrics();
+ } catch {}
+ aliasesSaving = false;
+ }
+
+ async function loadSchemaExplorer() {
+ schemaLoading = true;
+ try {
+ const r = await fetch(`${apiBase()}/metrics/columns`, { headers: _hNoJson() });
+ if (r.ok) {
+ const d = await r.json();
+ schemaColumns = Array.isArray(d) ? d : [];
+ }
+ } catch {}
+ schemaLoading = false;
+ }
+
+ // ─── Filter helpers ───────────────────────────────────────────────
+ const OPS = ['=', '!=', 'IN', '>', '>=', '<', '<=', 'BETWEEN', 'LIKE', 'IS NULL', 'IS NOT NULL'];
+
+ function addFilter(target: 'filters' | 'denom_filters') {
+ editSpec[target] = [...(Array.isArray(editSpec[target]) ? editSpec[target] : []), { col: '', op: '=', value: '', trim: false }];
+ }
+ function removeFilter(target: 'filters' | 'denom_filters', i: number) {
+ const arr = Array.isArray(editSpec[target]) ? [...editSpec[target]] : [];
+ arr.splice(i, 1);
+ editSpec[target] = arr;
+ }
+ function updateFilter(target: 'filters' | 'denom_filters', i: number, field: string, val: any) {
+ const arr = Array.isArray(editSpec[target]) ? editSpec[target].map((x: any, idx: number) => idx === i ? { ...x, [field]: val } : x) : [];
+ editSpec[target] = arr;
+ }
+
+ function colSamples(colName: string): string[] {
+ const col = columns.find((c: any) => c.column === colName);
+ return Array.isArray(col?.samples) ? col.samples : [];
+ }
+
+ function useAsFilter(colName: string) {
+ addFilter('filters');
+ const arr = Array.isArray(editSpec.filters) ? editSpec.filters : [];
+ if (arr.length > 0) {
+ updateFilter('filters', arr.length - 1, 'col', colName);
+ }
+ view = 'editor';
+ }
+
+ function useAsGroup(colName: string) {
+ if (!Array.isArray(editSpec.group_dims)) editSpec.group_dims = [];
+ if (!editSpec.group_dims.includes(colName)) editSpec.group_dims = [...editSpec.group_dims, colName];
+ view = 'editor';
+ }
+
+ const NUMERIC_RE = /INT|NUMERIC|DECIMAL|REAL|DOUBLE|FLOAT|MONEY|SERIAL/i;
+ function isNumericCol(dtype: any): boolean { return NUMERIC_RE.test(String(dtype || '')); }
+
+ // Mark a numeric column as the sum/avg measure. Flips KIND to sum if it's still
+ // a count, so the user doesn't have to know to switch the dropdown first.
+ function useAsMeasure(colName: string) {
+ if (editSpec.kind !== 'sum' && editSpec.kind !== 'avg') editSpec.kind = 'sum';
+ editSpec.measure_col = colName;
+ view = 'editor';
+ }
+
+ // ─── Init ─────────────────────────────────────────────────────────
+ $effect(() => {
+ if (slug) {
+ loadMetrics();
+ loadRules();
+ loadDrift();
+ loadReviewQueue();
+ loadRecNew();
+ loadChatSug();
+ loadCrmEligible();
+ }
+ });
+
+ async function loadCrmEligible() {
+ try {
+ const r = await fetch(`${apiBase()}/metrics/crm-eligible`, { headers: _hNoJson() });
+ if (r.ok) { const d = await r.json(); crmEligible = !!d?.eligible; }
+ } catch { /* fail-soft */ }
+ }
+
+ let crmCandidates = $state<any[]>([]);
+ let crmSelected = $state<Record<string, boolean>>({});
+ let crmCols = $state<any>({});
+ let crmTables = $state<string[]>([]);
+
+ async function openCrmPick() {
+ showMore = false;
+ view = 'crm-pick';
+ crmCandidates = [];
+ try {
+ const r = await fetch(`${apiBase()}/metrics/crm-preview`, { headers: _hNoJson() });
+ const d = await r.json().catch(() => ({}));
+ crmCandidates = Array.isArray(d?.candidates) ? d.candidates : [];
+ crmCols = d?.columns || {};
+ crmTables = Array.isArray(d?.tables) ? d.tables : [];
+ // Default-check everything not already existing.
+ const sel: Record<string, boolean> = {};
+ for (const c of crmCandidates) sel[c.name] = !c.already_exists;
+ crmSelected = sel;
+ } catch { crmCandidates = []; }
+ }
+
+ async function seedSelectedCrm() {
+ if (crmSeeding) return;
+ const names = crmCandidates.filter((c) => crmSelected[c.name]).map((c) => c.name);
+ if (names.length === 0) { alert('Select at least one metric.'); return; }
+ crmSeeding = true;
+ try {
+ const r = await fetch(`${apiBase()}/metrics/seed-crm`, { method: 'POST', headers: _h(), body: JSON.stringify({ names }) });
+ const d = await r.json().catch(() => ({}));
+ const n = Array.isArray(d?.seeded) ? d.seeded.length : 0;
+ alert(n ? `Seeded ${n} CRM metric(s) (status: suggested — review & confirm).` : `No CRM metrics seeded${d?.skipped_reason ? ' (' + d.skipped_reason + ')' : ''}.`);
+ await loadMetrics();
+ view = 'dashboard';
+ } catch (e) {
+ alert('Seed CRM failed: ' + e);
+ } finally {
+ crmSeeding = false;
+ }
+ }
+
+ // ─── Badges ───────────────────────────────────────────────────────
+ function statusBadge(status: string) {
+ if (status === 'verified') return '#22c55e';
+ if (status === 'deprecated') return '#6b7280';
+ return '#f59e0b';
+ }
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════ -->
@@ -834,13 +835,13 @@
         <div class="met-tb-left">
           <div class="met-typefilter">
             <button class="met-chip" class:on={typeFilter === 'all'} onclick={() => typeFilter = 'all'}>All</button>
-            <button class="met-chip" class:on={typeFilter === 'metrics'} onclick={() => typeFilter = 'metrics'}>✅ Metrics</button>
-            <button class="met-chip" class:on={typeFilter === 'rules'} onclick={() => typeFilter = 'rules'}>📝 Rules</button>
+            <button class="met-chip" class:on={typeFilter === 'metrics'} onclick={() => typeFilter = 'metrics'}><Icon name="check-circle" size={16} /> Metrics</button>
+            <button class="met-chip" class:on={typeFilter === 'rules'} onclick={() => typeFilter = 'rules'}><Icon name="edit" size={16} /> Rules</button>
           </div>
           <div class="met-viewtoggle">
             <button class="met-vbtn" class:on={dispMode === 'table'} onclick={() => dispMode = 'table'}>▤ Table</button>
             <button class="met-vbtn" class:on={dispMode === 'cards'} onclick={() => dispMode = 'cards'}>▦ Cards</button>
-            <button class="met-vbtn" class:on={dispMode === 'ai'} onclick={() => dispMode = 'ai'}>🧁 AI ({sugCounts.all})</button>
+            <button class="met-vbtn" class:on={dispMode === 'ai'} onclick={() => dispMode = 'ai'}>AI ({sugCounts.all})</button>
           </div>
         </div>
         <div class="met-actions">
@@ -878,16 +879,16 @@
         <!-- Header panel -->
         <div class="met-sug-panel">
           <div class="met-sug-bar">
-            <span class="met-sug-title">🧁 AI Suggestions <span class="met-sug-count">{sugCounts.all}</span></span>
-            <button class="met-link" onclick={() => { loadRecNew(); loadDrift(); loadChatSug(); }}>↻ refresh</button>
+            <span class="met-sug-title">AI Suggestions <span class="met-sug-count">{sugCounts.all}</span></span>
+            <button class="met-link" onclick={() => { loadRecNew(); loadDrift(); loadChatSug(); }}><Icon name="refresh" size={16} /> refresh</button>
           </div>
           <div class="met-sug-sub">Dash analyzed your schema, rules, drift, and chats. Accept or reject below.</div>
           <!-- source tabs (segmented) -->
           <div class="met-srctabs">
             <button class="met-srctab" class:on={sugSource === 'all'} onclick={() => sugSource = 'all'}>All <span class="met-srcnum">{sugCounts.all}</span></button>
-            <button class="met-srctab" class:on={sugSource === 'human'} onclick={() => sugSource = 'human'}>🧑 Human <span class="met-srcnum">{sugCounts.human}</span></button>
-            <button class="met-srctab" class:on={sugSource === 'training'} onclick={() => sugSource = 'training'}>🎓 Training AI <span class="met-srcnum">{sugCounts.training}</span></button>
-            <button class="met-srctab" class:on={sugSource === 'chat'} onclick={() => sugSource = 'chat'}>💬 From Chat <span class="met-srcnum">{sugCounts.chat}</span></button>
+            <button class="met-srctab" class:on={sugSource === 'human'} onclick={() => sugSource = 'human'}><Icon name="user" size={16} /> Human <span class="met-srcnum">{sugCounts.human}</span></button>
+            <button class="met-srctab" class:on={sugSource === 'training'} onclick={() => sugSource = 'training'}><Icon name="graduation" size={16} /> Training AI <span class="met-srcnum">{sugCounts.training}</span></button>
+            <button class="met-srctab" class:on={sugSource === 'chat'} onclick={() => sugSource = 'chat'}><Icon name="message-square" size={16} /> From Chat <span class="met-srcnum">{sugCounts.chat}</span></button>
           </div>
         </div>
 
@@ -902,46 +903,46 @@
           <div class="met-card met-sug-card">
             {#if sg.stype === 'new'}
               <div class="met-card-head"><div class="met-card-title">
-                <span class="met-type met-type-new">✨ NEW METRIC</span>
+                <span class="met-type met-type-new"><Icon name="sparkles" size={16} /> NEW METRIC</span>
                 <span class="met-card-name">{d.name}</span>
               </div></div>
               <div class="met-card-def">{d.description || ''}</div>
-              <div class="met-card-meta">{d.kind}{d.reason ? ' · why: ' + d.reason : ''} · source: 🎓 training</div>
+              <div class="met-card-meta">{d.kind}{d.reason ? ' · why: ' + d.reason : ''} · source: <Icon name="graduation" size={16} /> training</div>
               <div class="met-card-actions">
-                <button class="met-btn met-small" onclick={() => createFromSuggestion(d)}>✓ Accept</button>
-                <button class="met-link-danger" onclick={() => { recDismissed = new Set([...recDismissed, 'new:' + (d.name || '')]); }}>✕ Reject</button>
+                <button class="met-btn met-small" onclick={() => createFromSuggestion(d)}><Icon name="check" size={16} /> Accept</button>
+                <button class="met-link-danger" onclick={() => { recDismissed = new Set([...recDismissed, 'new:' + (d.name || '')]); }}><Icon name="x" size={16} /> Reject</button>
               </div>
             {:else if sg.stype === 'promote'}
               <div class="met-card-head"><div class="met-card-title">
-                <span class="met-type met-type-rule">📝 PROMOTE RULE</span>
-                <span class="met-card-name">{d.name} → metric</span>
+                <span class="met-type met-type-rule"><Icon name="edit" size={16} /> PROMOTE RULE</span>
+                <span class="met-card-name">{d.name} <Icon name="arrow-right" size={16} /> metric</span>
               </div></div>
               <div class="met-card-def">{d.definition || ''}</div>
-              <div class="met-card-meta">source: {sg.source === 'human' ? '🧑 human-authored rule' : '🎓 auto-suggested rule'}</div>
+              <div class="met-card-meta">source: {sg.source === 'human' ? ' human-authored rule' : ' auto-suggested rule'}</div>
               <div class="met-card-actions">
-                <button class="met-btn met-small" onclick={() => promoteRule(d)}>✓ Promote</button>
-                <button class="met-link-danger" onclick={() => { recDismissed = new Set([...recDismissed, 'rule:' + (d.name || '').toLowerCase()]); }}>✕ Reject</button>
+                <button class="met-btn met-small" onclick={() => promoteRule(d)}><Icon name="check" size={16} /> Promote</button>
+                <button class="met-link-danger" onclick={() => { recDismissed = new Set([...recDismissed, 'rule:' + (d.name || '').toLowerCase()]); }}><Icon name="x" size={16} /> Reject</button>
               </div>
             {:else if sg.stype === 'drift'}
               <div class="met-card-head"><div class="met-card-title">
-                <span class="met-type met-type-drift">⚠ DRIFT</span>
+                <span class="met-type met-type-drift"><Icon name="alert-triangle" size={16} /> DRIFT</span>
                 <span class="met-card-name">{d.name}</span>
               </div></div>
               <div class="met-card-def">Pinned {d.pinned} ≠ live {d.live}. Re-test and re-lock the definition.</div>
-              <div class="met-card-meta">source: 🎓 drift monitor</div>
+              <div class="met-card-meta">source: <Icon name="graduation" size={16} /> drift monitor</div>
               <div class="met-card-actions">
                 <button class="met-btn met-small" onclick={() => loadMetricForEdit(d.name)}>Re-test</button>
               </div>
             {:else}
               <div class="met-card-head"><div class="met-card-title">
-                <span class="met-type met-type-chat">💬 FROM CHAT</span>
+                <span class="met-type met-type-chat"><Icon name="message-square" size={16} /> FROM CHAT</span>
                 <span class="met-card-name">{d.name}</span>
               </div></div>
               <div class="met-card-def">{d.definition || ''}</div>
-              <div class="met-card-meta">{(d.type || 'rule').replace('_',' ')}{d.created_at ? ' · ' + String(d.created_at).slice(0,10) : ''} · source: 💬 chat</div>
+              <div class="met-card-meta">{(d.type || 'rule').replace('_',' ')}{d.created_at ? ' · ' + String(d.created_at).slice(0,10) : ''} · source: <Icon name="message-square" size={16} /> chat</div>
               <div class="met-card-actions">
-                <button class="met-btn met-small" onclick={() => acceptChatSug(d)}>✓ Accept</button>
-                <button class="met-link-danger" onclick={() => rejectChatSug(d)}>✕ Reject</button>
+                <button class="met-btn met-small" onclick={() => acceptChatSug(d)}><Icon name="check" size={16} /> Accept</button>
+                <button class="met-link-danger" onclick={() => rejectChatSug(d)}><Icon name="x" size={16} /> Reject</button>
               </div>
             {/if}
           </div>
@@ -974,21 +975,21 @@
                 {@const driftRow = driftData.find((d: any) => d.name === m.name)}
                 <tr class="met-clickrow" onclick={() => loadMetricForEdit(m.name)} title="Click row to edit">
                   <td class="met-name">{m.name}</td>
-                  <td><span class="met-type met-type-metric">✅ METRIC</span></td>
+                  <td><span class="met-type met-type-metric"><Icon name="check-circle" size={16} /> METRIC</span></td>
                   <td>{m.kind || '—'}</td>
                   <td class="met-td-def">{m.description || (Array.isArray(m.group_dims) ? m.group_dims.join(', ') : (m.group_dims || '—'))}</td>
                   <td class="met-pin">{formatPin(m.verified_answer)}</td>
-                  <td>{#if driftRow}<span style="color:{driftRow.ok ? '#16a34a' : '#b45309'}">{driftRow.ok ? '✓' : '⚠'}</span>{:else}—{/if}</td>
+                  <td>{#if driftRow}<span style="color:{driftRow.ok ? '#16a34a' : '#b45309'}">{driftRow.ok ? 'OK' : ''}</span>{:else}—{/if}</td>
                   <td class="met-row-actions" onclick={(e) => e.stopPropagation()}>
                     <button class="met-link" onclick={() => loadMetricForEdit(m.name)}>Edit</button>
                     <button class="met-link" onclick={() => { drawerView = 'history'; drawerMetricName = m.name; loadHistory(m.name); }}>Hist</button>
-                    <button class="met-link-danger" onclick={() => deprecateMetric(m.name)} title="Deprecate">🗑</button>
+                    <button class="met-link-danger" onclick={() => deprecateMetric(m.name)} title="Deprecate"><Icon name="trash" size={16} /></button>
                   </td>
                 </tr>
               {:else}
-                <tr class="met-clickrow met-rule-row" onclick={() => promoteRule(m)} title="Click row to promote → metric editor">
+                <tr class="met-clickrow met-rule-row" onclick={() => promoteRule(m)} title="Click row to promote &gt; metric editor">
                   <td class="met-name">{m.name}</td>
-                  <td><span class="met-type met-type-rule">📝 RULE</span></td>
+                  <td><span class="met-type met-type-rule"><Icon name="edit" size={16} /> RULE</span></td>
                   <td>{(m.type || 'rule').replace('_', ' ')}</td>
                   <td class="met-td-def">{m.definition || '—'}</td>
                   <td>—</td>
@@ -1015,15 +1016,15 @@
               <div class="met-card-head">
                 <div class="met-card-title">
                   <span class="met-card-name">{m.name}</span>
-                  <span class="met-type met-type-metric">✅ METRIC · {m.kind || '—'} · {m.status || 'draft'}</span>
+                  <span class="met-type met-type-metric"><Icon name="check-circle" size={16} /> METRIC · {m.kind || '—'} · {m.status || 'draft'}</span>
                 </div>
-                <button class="met-card-del" title="Deprecate" onclick={() => deprecateMetric(m.name)} aria-label="Deprecate">🗑</button>
+                <button class="met-card-del" title="Deprecate" onclick={() => deprecateMetric(m.name)} aria-label="Deprecate"><Icon name="trash" size={16} /></button>
               </div>
               <div class="met-card-def">{m.description || (Array.isArray(m.group_dims) ? m.group_dims.join(', ') : (m.group_dims || '—'))}</div>
               <div class="met-card-meta">
                 pinned: {formatPin(m.verified_answer)}
                 {#if Array.isArray(m.group_dims) && m.group_dims.length}· group: {m.group_dims.join(', ')}{/if}
-                · drift: {#if driftRow}{driftRow.ok ? '✓ matches' : `⚠ pinned ${driftRow.pinned} vs live ${driftRow.live}`}{:else}—{/if}
+                · drift: {#if driftRow}{driftRow.ok ? 'OK matches' : ` pinned ${driftRow.pinned} vs live ${driftRow.live}`}{:else}—{/if}
               </div>
               <div class="met-card-actions">
                 <button class="met-link" onclick={() => loadMetricForEdit(m.name)}>Edit</button>
@@ -1036,7 +1037,7 @@
               <div class="met-card-head">
                 <div class="met-card-title">
                   <span class="met-card-name">{m.name}</span>
-                  <span class="met-type met-type-rule">📝 RULE · {(m.type || 'rule').replace('_', ' ')}</span>
+                  <span class="met-type met-type-rule"><Icon name="edit" size={16} /> RULE · {(m.type || 'rule').replace('_', ' ')}</span>
                 </div>
               </div>
               <div class="met-card-def">{m.definition || '—'}</div>
@@ -1044,7 +1045,7 @@
                 <div class="met-card-meta">{m.source === 'user' ? 'USER-DEFINED' : 'AUTO-SUGGESTED'}{m.created_at ? ' · ' + String(m.created_at).slice(0,10) : ''}</div>
               {/if}
               <div class="met-card-actions">
-                <button class="met-link" onclick={() => promoteRule(m)} title="Open metric editor prefilled — add filters, test, lock">Promote → Metric</button>
+                <button class="met-link" onclick={() => promoteRule(m)} title="Open metric editor prefilled — add filters, test, lock">Promote <Icon name="arrow-right" size={16} /> Metric</button>
                 {#if onOpenRules}<button class="met-link" onclick={() => onOpenRules?.()}>Edit in Rules</button>{/if}
               </div>
             </div>
@@ -1062,7 +1063,7 @@
         <span class="cli-dim">{editSpec.name || '<new>'}</span>
       </div>
       <div class="met-actions">
-        <button class="met-btn-ghost" onclick={() => { view = 'dashboard'; testResult = null; }}>← Back</button>
+        <button class="met-btn-ghost" onclick={() => { view = 'dashboard'; testResult = null; }}><Icon name="arrow-left" size={16} /> Back</button>
         <button class="met-btn-ghost" onclick={() => { drawerView = 'schema'; loadSchemaExplorer(); }}>Schema explorer</button>
         {#if !editIsNew}
           <button class="met-btn-ghost" onclick={() => { drawerView = 'history'; drawerMetricName = editSpec.name; loadHistory(editSpec.name); }}>History</button>
@@ -1075,13 +1076,13 @@
       <div class="met-form">
         <!-- Mode toggle: describe-it (LLM) vs manual builder -->
         <div class="met-modetoggle">
-          <button class="met-modebtn" class:on={editMode === 'describe'} onclick={() => { editMode = 'describe'; }}>✨ Describe it</button>
-          <button class="met-modebtn" class:on={editMode === 'manual'} onclick={() => { editMode = 'manual'; }}>⚙ Build manually</button>
+          <button class="met-modebtn" class:on={editMode === 'describe'} onclick={() => { editMode = 'describe'; }}><Icon name="sparkles" size={16} /> Describe it</button>
+          <button class="met-modebtn" class:on={editMode === 'manual'} onclick={() => { editMode = 'manual'; }}><Icon name="settings" size={16} /> Build manually</button>
         </div>
 
         {#if editMode === 'describe'}
-          <!-- Conversational KPI builder: chat → AI recommends KPIs from real schema →
-               refine in natural language → batch-generate with live progress → save all. -->
+          <!-- Conversational KPI builder: chat -&gt; AI recommends KPIs from real schema -&gt;
+               refine in natural language -&gt; batch-generate with live progress -&gt; save all. -->
           <div class="met-describe">
             {#if buildPhase === 'chat'}
               <div class="met-chatlog">
@@ -1110,7 +1111,7 @@
                       </label>
                     {/each}
                     <button class="met-btn" onclick={genSelected} disabled={!candidates.some((c: any) => c.checked)}>
-                      ⚡ Generate selected ({candidates.filter((c: any) => c.checked).length})
+                      <Icon name="zap" size={16} /> Generate selected ({candidates.filter((c: any) => c.checked).length})
                     </button>
                   </div>
                 {/if}
@@ -1120,8 +1121,8 @@
                 <input class="met-chatinput" bind:value={chatInput}
                   placeholder="which KPIs can we build? — or refine…"
                   onkeydown={(e) => { if (e.key === 'Enter') chatSend(); }} />
-                <button class="met-btn" onclick={chatSend} disabled={chatBusy || !chatInput.trim()}>➤</button>
-                <button class="met-btn-ghost met-small" onclick={() => { editMode = 'manual'; loadColumns(); }}>✎ Manual</button>
+                <button class="met-btn" onclick={chatSend} disabled={chatBusy || !chatInput.trim()}><Icon name="chevron-right" size={16} /></button>
+                <button class="met-btn-ghost met-small" onclick={() => { editMode = 'manual'; loadColumns(); }}>(edit) Manual</button>
               </div>
             {:else if buildPhase === 'building'}
               <!-- Building phase: test each selected KPI in turn, plain-English explanation per KPI. -->
@@ -1131,7 +1132,7 @@
                   <div class="met-buildcard">
                     <div class="met-buildtop">
                       <span class="met-buildmark met-bm-{c.status}">
-                        {c.status === 'done' ? '✓' : c.status === 'fail' ? '✗' : c.status === 'testing' ? '⟳' : '○'}
+                        {c.status === 'done' ? 'OK' : c.status === 'fail' ? 'x' : c.status === 'testing' ? '&gt;' : '○'}
                       </span>
                       <span class="met-recname">{c.spec.name}</span>
                       <span class="met-buildval met-bm-{c.status}">
@@ -1149,19 +1150,19 @@
               <div class="met-describe-actions">
                 <button class="met-btn" onclick={saveAll}
                   disabled={savingAll || !candidates.some((c: any) => c.checked && c.status === 'done')}>
-                  {savingAll ? 'Saving…' : `✓ Save ${candidates.filter((c: any) => c.checked && c.status === 'done').length} KPI(s)`}
+                  {savingAll ? 'Saving…' : `OK Save ${candidates.filter((c: any) => c.checked && c.status === 'done').length} KPI(s)`}
                 </button>
-                <button class="met-btn-ghost" onclick={() => { buildPhase = 'chat'; }}>← back to refine</button>
+                <button class="met-btn-ghost" onclick={() => { buildPhase = 'chat'; }}><Icon name="arrow-left" size={16} /> back to refine</button>
               </div>
             {:else}
               <!-- Done: plain "Created" confirmation. -->
               <div class="met-createdbox">
-                <div class="met-createdhd">✓ Created {createdCount} KPI{createdCount === 1 ? '' : 's'} — live in Definitions</div>
+                <div class="met-createdhd"><Icon name="check" size={16} /> Created {createdCount} KPI{createdCount === 1 ? '' : 's'} — live in Definitions</div>
                 <div class="met-buildlist">
                   {#each candidates.filter((c: any) => c.checked && c.status === 'done') as c (c.id)}
                     <div class="met-buildcard">
                       <div class="met-buildtop">
-                        <span class="met-buildmark met-bm-done">✓</span>
+                        <span class="met-buildmark met-bm-done"><Icon name="check" size={16} /></span>
                         <span class="met-recname">{c.spec.name}</span>
                         <span class="met-buildval met-bm-done">= {c.value ?? 'ok'}</span>
                       </div>
@@ -1170,7 +1171,7 @@
                   {/each}
                 </div>
                 <div class="met-describe-actions">
-                  <button class="met-btn" onclick={() => { resetBuilder(); view = 'dashboard'; }}>View in Definitions →</button>
+                  <button class="met-btn" onclick={() => { resetBuilder(); view = 'dashboard'; }}>View in Definitions <Icon name="arrow-right" size={16} /></button>
                   <button class="met-btn-ghost" onclick={() => { resetBuilder(); }}>+ Build more KPIs</button>
                 </div>
               </div>
@@ -1239,21 +1240,21 @@
           {/if}
         </div>
 
-        <!-- Columns reference: every column in the checked tables, one-click → filter or group -->
+        <!-- Columns reference: every column in the checked tables, one-click -&gt; filter or group -->
         {#if scopedColumns.length}
           <div class="met-field">
-            <label>Columns in selected tables <span class="met-hint">— #️⃣ number columns can be summed/averaged · click to use</span></label>
+            <label>Columns in selected tables <span class="met-hint">— #⃣ number columns can be summed/averaged · click to use</span></label>
             <div class="met-colref">
               {#each scopedColumns as c}
                 {@const num = isNumericCol(c.dtype)}
                 <div class="met-colchip">
                   <span class="met-colname">{c.column}</span>
-                  <span class="met-coltype" class:met-coltype-num={num}>{num ? '#️⃣ ' : ''}{c.dtype}</span>
+                  <span class="met-coltype" class:met-coltype-num={num}>{num ? '#⃣ ' : ''}{c.dtype}</span>
                   {#if num}
                     <button class="met-colact met-colact-sum" title="Use as the sum/avg measure (sets KIND to sum)"
                       onclick={() => useAsMeasure(c.column)}
                       class:on={editSpec.measure_col === c.column}>
-                      {editSpec.measure_col === c.column ? '✓ measure' : 'sum/avg'}
+                      {editSpec.measure_col === c.column ? 'OK measure' : 'sum/avg'}
                     </button>
                   {/if}
                   <button class="met-colact" title="Add as filter" onclick={() => useAsFilter(c.column)}>filter</button>
@@ -1308,7 +1309,7 @@
                 {/if}
               {/if}
               <label class="met-chk"><input type="checkbox" checked={f.trim} onchange={(e) => updateFilter('filters', i, 'trim', (e.currentTarget as HTMLInputElement).checked)} /> trim</label>
-              <button class="met-link-danger" onclick={() => removeFilter('filters', i)}>✕</button>
+              <button class="met-link-danger" onclick={() => removeFilter('filters', i)}><Icon name="x" size={16} /></button>
             </div>
           {/each}
         {/if}
@@ -1343,7 +1344,7 @@
                     <input type="text" value={f.value} oninput={(e) => updateFilter('denom_filters', i, 'value', (e.currentTarget as HTMLInputElement).value)} placeholder="value" />
                   {/if}
                 {/if}
-                <button class="met-link-danger" onclick={() => removeFilter('denom_filters', i)}>✕</button>
+                <button class="met-link-danger" onclick={() => removeFilter('denom_filters', i)}><Icon name="x" size={16} /></button>
               </div>
             {/each}
           {/if}
@@ -1356,7 +1357,7 @@
           {#if Array.isArray(editSpec.group_dims)}
             {#each editSpec.group_dims as dim}
               <span class="met-chip">{dim}
-                <button onclick={() => { editSpec.group_dims = editSpec.group_dims.filter((d: string) => d !== dim); }}>✕</button>
+                <button onclick={() => { editSpec.group_dims = editSpec.group_dims.filter((d: string) => d !== dim); }}><Icon name="x" size={16} /></button>
               </span>
             {/each}
           {/if}
@@ -1388,7 +1389,7 @@
         {/if}
         <div class="met-form-footer">
           <button class="met-btn" onclick={saveMetric} disabled={editSaving}>{editSaving ? 'Saving…' : 'Save metric'}</button>
-          <button class="met-btn-ghost" onclick={testMetric} disabled={testLoading}>{testLoading ? 'Testing…' : '▶ Test live'}</button>
+          <button class="met-btn-ghost" onclick={testMetric} disabled={testLoading}>{testLoading ? 'Testing…' : ' Test live'}</button>
           <button class="met-btn-ghost" onclick={() => { showTierCompare = !showTierCompare; }}>Why lock?</button>
           {#if !editIsNew}
             <button class="met-link-danger" onclick={() => deprecateMetric(editSpec.name)}>Deprecate</button>
@@ -1415,7 +1416,7 @@
                           <tr>
                             <td>{t.tier}</td>
                             <td>{t.answer ?? '—'}</td>
-                            <td>{t.answer == tierResult.locked_total ? '✓' : '✗'}</td>
+                            <td>{t.answer == tierResult.locked_total ? 'OK' : 'x'}</td>
                             <td class="met-dim">{t.error || ''}</td>
                           </tr>
                         {/each}
@@ -1438,10 +1439,10 @@
         {:else if testResult}
           <div class="met-test-result">
             <div class="met-test-status" style="color:{testResult.ok ? '#22c55e' : '#ef4444'}">
-              {testResult.ok ? '✓ Pass' : '✗ Fail'}
+              {testResult.ok ? 'OK Pass' : 'x Fail'}
               {#if testResult.total != null} — total: <strong>{testResult.total}</strong>{/if}
               {#if editSpec.verified_answer && testResult.total != null}
-                {testResult.total == editSpec.verified_answer ? ' ✓ matches pin' : ' ⚠ differs from pin'}
+                {testResult.total == editSpec.verified_answer ? ' OK matches pin' : '  differs from pin'}
               {/if}
             </div>
             {#if testResult.sql}
@@ -1455,7 +1456,7 @@
             {/if}
           </div>
         {:else}
-          <div class="met-dim">Run ▶ Test live to see results</div>
+          <div class="met-dim">Run <Icon name="play" size={16} /> Test live to see results</div>
         {/if}
       </div>
     </div>
@@ -1468,7 +1469,7 @@
         <span class="cli-cmd">dash metrics derive</span>
         <span class="cli-dim">--from-natural-language</span>
       </div>
-      <button class="met-btn-ghost" onclick={() => view = 'dashboard'}>← Back</button>
+      <button class="met-btn-ghost" onclick={() => view = 'dashboard'}><Icon name="arrow-left" size={16} /> Back</button>
     </div>
     <div class="met-section">
       <label>Describe the metric in plain language</label>
@@ -1482,7 +1483,7 @@
             <div class="met-section-hd">LLM draft — confidence: {nlResult.confidence ?? '?'}</div>
             <pre class="met-sql">{JSON.stringify(nlResult.spec, null, 2)}</pre>
             <div class="met-form-footer">
-              <button class="met-btn" onclick={acceptNlDraft}>Accept → editor</button>
+              <button class="met-btn" onclick={acceptNlDraft}>Accept <Icon name="arrow-right" size={16} /> editor</button>
               <button class="met-btn-ghost" onclick={() => { nlResult = null; }}>Discard</button>
             </div>
           </div>
@@ -1498,7 +1499,7 @@
         <span class="cli-cmd">dash metrics review-queue</span>
         <span class="cli-ok" style="margin-left:auto;">{Array.isArray(reviewQueue) ? reviewQueue.length : 0} pending</span>
       </div>
-      <button class="met-btn-ghost" onclick={() => view = 'dashboard'}>← Back</button>
+      <button class="met-btn-ghost" onclick={() => view = 'dashboard'}><Icon name="arrow-left" size={16} /> Back</button>
     </div>
     {#if !Array.isArray(reviewQueue) || reviewQueue.length === 0}
       <div class="met-empty">No drafts in review queue.</div>
@@ -1531,7 +1532,7 @@
         <span class="cli-prompt">$</span>
         <span class="cli-cmd">dash metrics templates</span>
       </div>
-      <button class="met-btn-ghost" onclick={() => view = 'dashboard'}>← Back</button>
+      <button class="met-btn-ghost" onclick={() => view = 'dashboard'}><Icon name="arrow-left" size={16} /> Back</button>
     </div>
     {#if !Array.isArray(templates) || templates.length === 0}
       <div class="met-empty">No templates available.</div>
@@ -1550,7 +1551,7 @@
               editIsNew = true;
               view = 'editor';
               loadColumns();
-            }}>Clone → editor</button>
+            }}>Clone <Icon name="arrow-right" size={16} /> editor</button>
           </div>
         {/each}
       </div>
@@ -1563,7 +1564,7 @@
         <span class="cli-prompt">$</span>
         <span class="cli-cmd">dash metrics add-crm</span>
       </div>
-      <button class="met-btn-ghost" onclick={() => view = 'dashboard'}>← Back</button>
+      <button class="met-btn-ghost" onclick={() => view = 'dashboard'}><Icon name="arrow-left" size={16} /> Back</button>
     </div>
     <div class="met-dim" style="margin:4px 0 10px;">
       Universal CRM metrics resolved to this project's columns. Saved as <b>suggested</b> (review &amp; confirm before relying on them).
@@ -1605,7 +1606,7 @@
         <span class="cli-prompt">$</span>
         <span class="cli-cmd">dash metrics import</span>
       </div>
-      <button class="met-btn-ghost" onclick={() => view = 'dashboard'}>← Back</button>
+      <button class="met-btn-ghost" onclick={() => view = 'dashboard'}><Icon name="arrow-left" size={16} /> Back</button>
     </div>
     <div class="met-section">
       <label>Paste JSON array of metric specs</label>
@@ -1635,8 +1636,8 @@
         <span class="cli-cmd">dash metrics drift</span>
       </div>
       <div class="met-actions">
-        <button class="met-btn-ghost" onclick={() => view = 'dashboard'}>← Back</button>
-        <button class="met-btn-ghost" onclick={loadDrift}>↻ Refresh</button>
+        <button class="met-btn-ghost" onclick={() => view = 'dashboard'}><Icon name="arrow-left" size={16} /> Back</button>
+        <button class="met-btn-ghost" onclick={loadDrift}><Icon name="refresh" size={16} /> Refresh</button>
       </div>
     </div>
     {#if !Array.isArray(driftData) || driftData.length === 0}
@@ -1651,7 +1652,7 @@
                 <td>{d.name}</td>
                 <td>{d.pinned ?? '—'}</td>
                 <td>{d.live ?? '—'}</td>
-                <td><span style="color:{d.ok ? '#22c55e' : '#f59e0b'}">{d.ok ? '✓ OK' : '⚠ Drift'}</span></td>
+                <td><span style="color:{d.ok ? '#22c55e' : '#f59e0b'}">{d.ok ? 'OK OK' : ' Drift'}</span></td>
                 <td>
                   <button class="met-link" onclick={() => loadMetricForEdit(d.name)}>Re-test</button>
                 </td>
@@ -1669,13 +1670,13 @@
         <span class="cli-prompt">$</span>
         <span class="cli-cmd">dash metrics permissions</span>
       </div>
-      <button class="met-btn-ghost" onclick={() => view = 'dashboard'}>← Back</button>
+      <button class="met-btn-ghost" onclick={() => view = 'dashboard'}><Icon name="arrow-left" size={16} /> Back</button>
     </div>
     {#if !permissions}
       <div class="met-empty">Loading permissions…</div>
     {:else}
       <div class="met-section">
-        <div class="met-section-hd">Role → Capability Matrix (read-only)</div>
+        <div class="met-section-hd">Role <Icon name="arrow-right" size={16} /> Capability Matrix (read-only)</div>
         <div class="met-table-wrap">
           <table class="met-table">
             <thead>
@@ -1691,7 +1692,7 @@
                 <tr>
                   <td><strong>{role}</strong></td>
                   {#each Object.values(caps as any) as v}
-                    <td style="color:{v ? '#22c55e' : '#6b7280'}">{v ? '✓' : '✗'}</td>
+                    <td style="color:{v ? '#22c55e' : '#6b7280'}">{v ? 'OK' : 'x'}</td>
                   {/each}
                 </tr>
               {/each}
@@ -1712,7 +1713,7 @@
     <div class="met-drawer">
       <div class="met-drawer-hd">
         <span>Schema Explorer</span>
-        <button class="met-link" onclick={() => drawerView = null}>✕</button>
+        <button class="met-link" onclick={() => drawerView = null}><Icon name="x" size={16} /></button>
       </div>
       <input type="text" class="met-search" placeholder="Filter columns…" bind:value={schemaTableFilter} />
       {#if schemaLoading}
@@ -1750,7 +1751,7 @@
     <div class="met-drawer">
       <div class="met-drawer-hd">
         <span>History — {drawerMetricName}</span>
-        <button class="met-link" onclick={() => drawerView = null}>✕</button>
+        <button class="met-link" onclick={() => drawerView = null}><Icon name="x" size={16} /></button>
       </div>
       {#if historyLoading}
         <div class="met-skel"></div>
@@ -1776,7 +1777,7 @@
     <div class="met-drawer">
       <div class="met-drawer-hd">
         <span>Aliases — {drawerMetricName}</span>
-        <button class="met-link" onclick={() => drawerView = null}>✕</button>
+        <button class="met-link" onclick={() => drawerView = null}><Icon name="x" size={16} /></button>
       </div>
       <div class="met-field">
         <label>Synonyms (comma-separated)</label>

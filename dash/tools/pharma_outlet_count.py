@@ -5,7 +5,7 @@ carry X". This answers with the COUNT of distinct outlets holding the medicine i
 stock plus the shop list (display labels "Shop 1, 2, …"). Reads the denormalized
 `citypharma.shop_flat` (no runtime join).
 
-Count + presence are NON-SENSITIVE (no quantity, no cost) → safe for store-locked
+Count + presence are NON-SENSITIVE (no quantity, no cost) > safe for store-locked
 keys too: a store key still learns how widely a drug is stocked across the chain,
 never another branch's exact qty. Disable with PHARMA_GRAPH_DISABLED=1.
 """

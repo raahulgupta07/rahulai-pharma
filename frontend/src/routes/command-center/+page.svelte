@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount, onDestroy } from 'svelte';
  import { brand } from '$lib/stores/branding';
  import { confirmDelete } from '$lib/confirmDelete';
@@ -22,38 +22,38 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  let activeTab = $state('cockpit');
  // Unified Integrations hub: 'hub' = card grid, else a connector id shown in a popup modal.
  let intgView = $state('hub');
- const _intgTitles = { s3: '🟥 S3 Sync', sharepoint: '🟦 SharePoint', gdrive: '🟢 Google Drive', onedrive: '🔵 OneDrive', database: '🟣 Database', postgresql: 'PostgreSQL', mysql: 'MySQL' };
- let intgTitle = $derived(intgView === 's3' ? (s3Form?.id ? '🟥 Edit S3 bucket' : '🟥 New S3 bucket') : (_intgTitles[intgView] || 'Integration'));
+ const _intgTitles = { s3: ' S3 Sync', sharepoint: ' SharePoint', gdrive: ' Google Drive', onedrive: ' OneDrive', database: ' Database', postgresql: 'PostgreSQL', mysql: 'MySQL' };
+ let intgTitle = $derived(intgView === 's3' ? (s3Form?.id ? ' Edit S3 bucket' : ' New S3 bucket') : (_intgTitles[intgView] || 'Integration'));
  // Perplexity-style connectors page: filter pills + search.
  let intgFilter = $state('discover');
  let intgSearch = $state('');
  // connector catalog (id matches brandLogo + intgCard routing)
  const _connCatalog = [
-   { id: 's3',         title: 'S3 Sync',      desc: 'Auto-pull files from an S3 bucket, replace tables, and retrain.', group: 'Data sources', dev: 'AWS' },
-   { id: 'postgresql', title: 'PostgreSQL',   desc: 'Connect PostgreSQL tables directly into the agent.',            group: 'Data sources', dev: 'PostgreSQL' },
-   { id: 'mysql',      title: 'MySQL',        desc: 'Connect MySQL tables directly into the agent.',                 group: 'Data sources', dev: 'Oracle' },
-   { id: 'sharepoint', title: 'SharePoint',   desc: 'Search and import Microsoft 365 SharePoint documents.',         group: 'Microsoft & Google', dev: 'Microsoft' },
-   { id: 'gdrive',     title: 'Google Drive', desc: 'Access Drive files and folders via OAuth.',                     group: 'Microsoft & Google', dev: 'Google' },
-   { id: 'onedrive',   title: 'OneDrive',     desc: 'Personal or business OneDrive files via OAuth.',                group: 'Microsoft & Google', dev: 'Microsoft' },
+ { id: 's3', title: 'S3 Sync', desc: 'Auto-pull files from an S3 bucket, replace tables, and retrain.', group: 'Data sources', dev: 'AWS' },
+ { id: 'postgresql', title: 'PostgreSQL', desc: 'Connect PostgreSQL tables directly into the agent.', group: 'Data sources', dev: 'PostgreSQL' },
+ { id: 'mysql', title: 'MySQL', desc: 'Connect MySQL tables directly into the agent.', group: 'Data sources', dev: 'Oracle' },
+ { id: 'sharepoint', title: 'SharePoint', desc: 'Search and import Microsoft 365 SharePoint documents.', group: 'Microsoft & Google', dev: 'Microsoft' },
+ { id: 'gdrive', title: 'Google Drive', desc: 'Access Drive files and folders via OAuth.', group: 'Microsoft & Google', dev: 'Google' },
+ { id: 'onedrive', title: 'OneDrive', desc: 'Personal or business OneDrive files via OAuth.', group: 'Microsoft & Google', dev: 'Microsoft' },
  ];
  // live connected-count per connector id
  function _connCount(id: string): number {
-   if (id === 's3') return s3List.length;
-   if (id === 'postgresql') return dbAllSources.filter((d: any) => (d.type || d.db_type) === 'postgresql').length;
-   if (id === 'mysql') return dbAllSources.filter((d: any) => (d.type || d.db_type) === 'mysql').length;
-   if (id === 'sharepoint') return spAdminConfig.configured ? 1 : 0;
-   if (id === 'gdrive') return gdAdminConfig.configured ? 1 : 0;
-   if (id === 'onedrive') return odAdminConfig.configured ? 1 : 0;
-   return 0;
+ if (id === 's3') return s3List.length;
+ if (id === 'postgresql') return dbAllSources.filter((d: any) => (d.type || d.db_type) === 'postgresql').length;
+ if (id === 'mysql') return dbAllSources.filter((d: any) => (d.type || d.db_type) === 'mysql').length;
+ if (id === 'sharepoint') return spAdminConfig.configured ? 1 : 0;
+ if (id === 'gdrive') return gdAdminConfig.configured ? 1 : 0;
+ if (id === 'onedrive') return odAdminConfig.configured ? 1 : 0;
+ return 0;
  }
  function intgOpen(id: string) { if (id === 's3') s3New(); else if (id === 'postgresql' || id === 'mysql') dbOpen(id); else intgView = id; }
  // catalog filtered by pill + search box
  let _connFiltered = $derived(_connCatalog.filter((c) => {
-   const q = intgSearch.trim().toLowerCase();
-   if (q && !(c.title.toLowerCase().includes(q) || c.desc.toLowerCase().includes(q))) return false;
-   if (intgFilter === 'connected') return _connCount(c.id) > 0;
-   if (intgFilter === 'available') return _connCount(c.id) === 0;
-   return true;
+ const q = intgSearch.trim().toLowerCase();
+ if (q && !(c.title.toLowerCase().includes(q) || c.desc.toLowerCase().includes(q))) return false;
+ if (intgFilter === 'connected') return _connCount(c.id) > 0;
+ if (intgFilter === 'available') return _connCount(c.id) === 0;
+ return true;
  }));
  let _connGroups = $derived(Array.from(new Set(_connFiltered.map((c) => c.group))));
 
@@ -70,15 +70,15 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  function s3AddRule() { s3Form.file_map = [...s3Form.file_map, { pattern: '', table: '', action: 'replace' }]; }
  function s3DelRule(i: number) { s3Form.file_map = s3Form.file_map.filter((_: any, k: number) => k !== i); }
  async function s3Save() {
-   s3Busy = true;
-   try {
-     const b = { name: s3Form.name, bucket: s3Form.bucket, prefix: s3Form.prefix, region: s3Form.region, endpoint_url: s3Form.endpoint_url || null, access_key: s3Form.access_key || null, secret_key: s3Form.secret_key || null, file_map: s3Form.file_map.filter((r: any) => r.pattern && r.table), schedule_seconds: Number(s3Form.schedule_seconds) || 300, retrain_after: !!s3Form.retrain_after, enabled: !!s3Form.enabled };
-     const url = s3Form.id ? '/api/s3/sources/' + s3Form.id : '/api/s3/sources';
-     const r = await fetch(url, { method: s3Form.id ? 'PUT' : 'POST', headers: _ihj(), body: JSON.stringify(b) });
-     if (r.ok) { s3Form = null; intgView = 'hub'; await loadS3(); } else { s3Test = 'Save failed: ' + (await r.text()); }
-   } finally { s3Busy = false; }
+ s3Busy = true;
+ try {
+ const b = { name: s3Form.name, bucket: s3Form.bucket, prefix: s3Form.prefix, region: s3Form.region, endpoint_url: s3Form.endpoint_url || null, access_key: s3Form.access_key || null, secret_key: s3Form.secret_key || null, file_map: s3Form.file_map.filter((r: any) => r.pattern && r.table), schedule_seconds: Number(s3Form.schedule_seconds) || 300, retrain_after: !!s3Form.retrain_after, enabled: !!s3Form.enabled };
+ const url = s3Form.id ? '/api/s3/sources/' + s3Form.id : '/api/s3/sources';
+ const r = await fetch(url, { method: s3Form.id ? 'PUT' : 'POST', headers: _ihj(), body: JSON.stringify(b) });
+ if (r.ok) { s3Form = null; intgView = 'hub'; await loadS3(); } else { s3Test = 'Save failed: ' + (await r.text()); }
+ } finally { s3Busy = false; }
  }
- async function s3TestConn() { s3Busy = true; s3Test = 'TESTING…'; try { if (!s3Form.id) { s3Test = 'Save first, then Test.'; return; } const r = await fetch('/api/s3/sources/' + s3Form.id + '/test', { method: 'POST', headers: _ih() }); const d = await r.json(); s3Test = d.ok ? `✓ ${d.objects} object(s), ${d.matched} match your patterns` : '✗ ' + d.error; } finally { s3Busy = false; } }
+ async function s3TestConn() { s3Busy = true; s3Test = 'TESTING…'; try { if (!s3Form.id) { s3Test = 'Save first, then Test.'; return; } const r = await fetch('/api/s3/sources/' + s3Form.id + '/test', { method: 'POST', headers: _ih() }); const d = await r.json(); s3Test = d.ok ? `OK ${d.objects} object(s), ${d.matched} match your patterns` : 'x ' + d.error; } finally { s3Busy = false; } }
  async function s3Sync(id: number, force = false) { await fetch('/api/s3/sources/' + id + '/sync?force=' + (force ? 1 : 0), { method: 'POST', headers: _ih() }); setTimeout(loadS3, 1500); }
  async function s3Delete(id: number) { if (!confirm('Delete this S3 connection? (Loaded data stays.)')) return; await fetch('/api/s3/sources/' + id, { method: 'DELETE', headers: _ih() }); await loadS3(); }
  function s3Sched(s: number) { if (s % 86400 === 0) return s / 86400 + 'd'; if (s % 3600 === 0) return s / 3600 + 'h'; if (s % 60 === 0) return s / 60 + 'm'; return s + 's'; }
@@ -169,30 +169,30 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
 
  // Sub-tabs for the 3 expandable parents in the LEFT RAIL Governance group
  const govSubs = [
-   {id:'gov-overview',label:'Overview',icon:'compass'},{id:'gov-policies',label:'Policies',icon:'shield'},
-   {id:'gov-approvals',label:'Approvals',icon:'check-circle'},{id:'gov-zones',label:'Data zones',icon:'globe'},
-   {id:'gov-pii',label:'PII rules',icon:'ban'},{id:'gov-retention',label:'Retention',icon:'inbox'},
-   {id:'gov-hooks',label:'Audit hooks',icon:'plug'},{id:'gov-compliance',label:'Compliance map',icon:'clipboard'},
+ {id:'gov-overview',label:'Overview',icon:'compass'},{id:'gov-policies',label:'Policies',icon:'shield'},
+ {id:'gov-approvals',label:'Approvals',icon:'check-circle'},{id:'gov-zones',label:'Data zones',icon:'globe'},
+ {id:'gov-pii',label:'PII rules',icon:'ban'},{id:'gov-retention',label:'Retention',icon:'inbox'},
+ {id:'gov-hooks',label:'Audit hooks',icon:'plug'},{id:'gov-compliance',label:'Compliance map',icon:'clipboard'},
  ];
  const aosSubs = [
-   {id:'aos-overview',label:'Overview',icon:'compass'},{id:'aos-registry',label:'Registry',icon:'list'},
-   {id:'aos-capabilities',label:'Capabilities',icon:'sparkles'},{id:'aos-quotas',label:'Quotas',icon:'bar-chart-2'},
-   {id:'aos-models',label:'Models',icon:'cpu'},{id:'aos-tools',label:'Tools',icon:'tool'},
-   {id:'aos-memory',label:'Memory',icon:'database'},{id:'aos-workflows',label:'Workflows',icon:'puzzle'},
-   {id:'aos-kill',label:'Kill switch',icon:'alert-triangle'},{id:'aos-cost',label:'Cost guard',icon:'dollar-sign'},
+ {id:'aos-overview',label:'Overview',icon:'compass'},{id:'aos-registry',label:'Registry',icon:'list'},
+ {id:'aos-capabilities',label:'Capabilities',icon:'sparkles'},{id:'aos-quotas',label:'Quotas',icon:'bar-chart-2'},
+ {id:'aos-models',label:'Models',icon:'cpu'},{id:'aos-tools',label:'Tools',icon:'tool'},
+ {id:'aos-memory',label:'Memory',icon:'database'},{id:'aos-workflows',label:'Workflows',icon:'puzzle'},
+ {id:'aos-kill',label:'Kill switch',icon:'alert-triangle'},{id:'aos-cost',label:'Cost guard',icon:'dollar-sign'},
  ];
  const telSubs = [
-   {id:'tel-overview',label:'Overview',icon:'compass'},{id:'tel-live',label:'Live',icon:'zap'},
-   {id:'tel-cost',label:'Cost',icon:'dollar-sign'},{id:'tel-errors',label:'Errors',icon:'alert-triangle'},
-   {id:'tel-latency',label:'Latency / SLO',icon:'loader'},{id:'tel-tools',label:'Tool usage',icon:'bar-chart'},
-   {id:'tel-connectors',label:'Connector health',icon:'plug'},{id:'tel-tokens',label:'Token flow',icon:'circle-filled'},
-   {id:'tel-alerts',label:'Alerts',icon:'bell'},
+ {id:'tel-overview',label:'Overview',icon:'compass'},{id:'tel-live',label:'Live',icon:'zap'},
+ {id:'tel-cost',label:'Cost',icon:'dollar-sign'},{id:'tel-errors',label:'Errors',icon:'alert-triangle'},
+ {id:'tel-latency',label:'Latency / SLO',icon:'loader'},{id:'tel-tools',label:'Tool usage',icon:'bar-chart'},
+ {id:'tel-connectors',label:'Connector health',icon:'plug'},{id:'tel-tokens',label:'Token flow',icon:'circle-filled'},
+ {id:'tel-alerts',label:'Alerts',icon:'bell'},
  ];
  // Per-group expanded state. ALL top-level rail groups + sub-parents default CLOSED.
  // Auto-expand only the group/sub-parent containing the current activeTab.
  const _railDefaults: Record<string, boolean> = {
-   Overview: false, People: false, Data: false, System: false, 'Trust & Governance': true,
-   gov: false, aos: false, tel: false,
+ Overview: false, People: false, Data: false, System: false, 'Trust & Governance': true,
+ gov: false, aos: false, tel: false,
  };
  // Rail is always fully expanded — kept as no-op stub for any residual reads
  let railOpen = $state<Record<string, boolean>>({ ..._railDefaults });
@@ -587,67 +587,67 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  seedRbac();
  }
 
- /* ─── RBAC role→surface matrix (super-admin) ─── */
+ /* ─── RBAC role>surface matrix (super-admin) ─── */
  const RBAC_DEFAULTS: Record<string, Record<string, boolean>> = {
-   admin: { dashboard: true, chat: true, workspace: true,  integration: true,  admin_console: false, users_access: true,  usage_cost: true },
-   user:  { dashboard: true, chat: true, workspace: false, integration: false, admin_console: false, users_access: false, usage_cost: false },
+ admin: { dashboard: true, chat: true, workspace: true, integration: true, admin_console: false, users_access: true, usage_cost: true },
+ user: { dashboard: true, chat: true, workspace: false, integration: false, admin_console: false, users_access: false, usage_cost: false },
  };
  const RBAC_SURFACES = [
-   { key: 'dashboard',     label: 'Dashboard',      sub: 'KPI canvases + project overview' },
-   { key: 'chat',          label: 'Chat',           sub: 'Ask-the-data assistant' },
-   { key: 'workspace',     label: 'Workspace',      sub: 'Project settings, brain, agents, data source' },
-   { key: 'integration',   label: 'Integration',    sub: 'API Gateway + Embed widgets' },
-   { key: 'admin_console', label: 'Admin Console',  sub: 'Command Center — governance, traces, settings' },
-   { key: 'users_access',  label: 'Users & Access', sub: 'Accounts + roles — create, reset' },
-   { key: 'usage_cost',    label: 'Usage & Cost',   sub: 'Tokens, cost, requests, billing' },
+ { key: 'dashboard', label: 'Dashboard', sub: 'KPI canvases + project overview' },
+ { key: 'chat', label: 'Chat', sub: 'Ask-the-data assistant' },
+ { key: 'workspace', label: 'Workspace', sub: 'Project settings, brain, agents, data source' },
+ { key: 'integration', label: 'Integration', sub: 'API Gateway + Embed widgets' },
+ { key: 'admin_console', label: 'Admin Console', sub: 'Command Center — governance, traces, settings' },
+ { key: 'users_access', label: 'Users & Access', sub: 'Accounts + roles — create, reset' },
+ { key: 'usage_cost', label: 'Usage & Cost', sub: 'Tokens, cost, requests, billing' },
  ];
  let rbacMatrix = $state<Record<string, Record<string, boolean>>>({ admin: { ...RBAC_DEFAULTS.admin }, user: { ...RBAC_DEFAULTS.user } });
  let rbacDirty = $state(false);
  let rbacSaving = $state(false);
 
  function seedRbac() {
-   const s = allSettings.find((x) => x.key === 'rbac_surface_access');
-   let v: any = s ? s.effective_value : null;
-   if (typeof v === 'string') { try { v = JSON.parse(v); } catch { v = null; } }
-   const base = (v && typeof v === 'object') ? v : RBAC_DEFAULTS;
-   const build = (role: string) => {
-     const out: Record<string, boolean> = {};
-     for (const s of RBAC_SURFACES) out[s.key] = base?.[role]?.[s.key] ?? RBAC_DEFAULTS[role][s.key];
-     return out;
-   };
-   rbacMatrix = { admin: build('admin'), user: build('user') };
-   rbacDirty = false;
+ const s = allSettings.find((x) => x.key === 'rbac_surface_access');
+ let v: any = s ? s.effective_value : null;
+ if (typeof v === 'string') { try { v = JSON.parse(v); } catch { v = null; } }
+ const base = (v && typeof v === 'object') ? v : RBAC_DEFAULTS;
+ const build = (role: string) => {
+ const out: Record<string, boolean> = {};
+ for (const s of RBAC_SURFACES) out[s.key] = base?.[role]?.[s.key] ?? RBAC_DEFAULTS[role][s.key];
+ return out;
+ };
+ rbacMatrix = { admin: build('admin'), user: build('user') };
+ rbacDirty = false;
  }
  function rbacToggle(role: string, surface: string) {
-   rbacMatrix[role][surface] = !rbacMatrix[role][surface];
-   rbacMatrix = { ...rbacMatrix };
-   rbacDirty = true;
+ rbacMatrix[role][surface] = !rbacMatrix[role][surface];
+ rbacMatrix = { ...rbacMatrix };
+ rbacDirty = true;
  }
  async function rbacSave() {
-   rbacSaving = true;
-   try {
-     await fetch('/api/admin/settings', {
-       method: 'POST',
-       headers: { ..._h(), 'Content-Type': 'application/json' },
-       body: JSON.stringify({ settings: [{ key: 'rbac_surface_access', value: rbacMatrix, scope: 'global' }] }),
-     });
-     await loadAdminSettings();
-   } finally {
-     rbacSaving = false;
-   }
+ rbacSaving = true;
+ try {
+ await fetch('/api/admin/settings', {
+ method: 'POST',
+ headers: { ..._h(), 'Content-Type': 'application/json' },
+ body: JSON.stringify({ settings: [{ key: 'rbac_surface_access', value: rbacMatrix, scope: 'global' }] }),
+ });
+ await loadAdminSettings();
+ } finally {
+ rbacSaving = false;
+ }
  }
  async function rbacReset() {
-   rbacSaving = true;
-   try {
-     await fetch('/api/admin/settings/reset', {
-       method: 'POST',
-       headers: { ..._h(), 'Content-Type': 'application/json' },
-       body: JSON.stringify({ key: 'rbac_surface_access', scope: 'global' }),
-     });
-     await loadAdminSettings();
-   } finally {
-     rbacSaving = false;
-   }
+ rbacSaving = true;
+ try {
+ await fetch('/api/admin/settings/reset', {
+ method: 'POST',
+ headers: { ..._h(), 'Content-Type': 'application/json' },
+ body: JSON.stringify({ key: 'rbac_surface_access', scope: 'global' }),
+ });
+ await loadAdminSettings();
+ } finally {
+ rbacSaving = false;
+ }
  }
 
  async function saveSection(sectionKeys: string[]) {
@@ -677,36 +677,36 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  let integPending = $state<Record<string, boolean>>({});
  let integSaving = $state(false);
  function settingOn(key: string): boolean {
-   const s = allSettings.find((x) => x.key === key);
-   const v = s ? s.effective_value : true;
-   return !(v === false || v === 'false' || v === 0 || v === '0');
+ const s = allSettings.find((x) => x.key === key);
+ const v = s ? s.effective_value : true;
+ return !(v === false || v === 'false' || v === 0 || v === '0');
  }
  function integView(key: string): boolean {
-   return key in integPending ? integPending[key] : settingOn(key);
+ return key in integPending ? integPending[key] : settingOn(key);
  }
  function toggleIntegration(key: string) {
-   integPending = { ...integPending, [key]: !integView(key) };
+ integPending = { ...integPending, [key]: !integView(key) };
  }
  let integDirty = $derived(
-   Object.keys(integPending).some((k) => integPending[k] !== settingOn(k))
+ Object.keys(integPending).some((k) => integPending[k] !== settingOn(k))
  );
  async function saveIntegrations() {
-   const items = Object.keys(integPending)
-     .filter((k) => integPending[k] !== settingOn(k))
-     .map((k) => ({ key: k, value: integPending[k], scope: 'global' }));
-   if (items.length === 0) return;
-   integSaving = true;
-   try {
-     await fetch('/api/admin/settings', {
-       method: 'POST',
-       headers: { ..._h(), 'Content-Type': 'application/json' },
-       body: JSON.stringify({ settings: items }),
-     });
-     // Reload so the shared top-nav re-fetches /api/flags and shows/hides items.
-     window.location.reload();
-   } finally {
-     integSaving = false;
-   }
+ const items = Object.keys(integPending)
+ .filter((k) => integPending[k] !== settingOn(k))
+ .map((k) => ({ key: k, value: integPending[k], scope: 'global' }));
+ if (items.length === 0) return;
+ integSaving = true;
+ try {
+ await fetch('/api/admin/settings', {
+ method: 'POST',
+ headers: { ..._h(), 'Content-Type': 'application/json' },
+ body: JSON.stringify({ settings: items }),
+ });
+ // Reload so the shared top-nav re-fetches /api/flags and shows/hides items.
+ window.location.reload();
+ } finally {
+ integSaving = false;
+ }
  }
 
  async function resetSetting(key: string) {
@@ -820,7 +820,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  { name: 'Caddy', x: 400, y: 90, symbolSize: 35, symbol: 'diamond', category: 5,
  tooltip: { formatter: () => tt('CADDY — REVERSE PROXY', ['Auto-SSL/TLS certificates', 'HSTS, X-Frame-Options, XSS', `Rate limit: ${rl}`, 'Body max: 250MB', 'Timeout: 300s']) } },
  { name: `FastAPI`, x: 400, y: 160, symbolSize: 50, symbol: 'roundRect', category: 0,
- tooltip: { formatter: () => tt(`FASTAPI — ${w} WORKERS`, ['Auth middleware + token cache', 'SSE streaming + rate limiter', `Model: ${md.chat}`, 'NullPool → PgBouncer']) } },
+ tooltip: { formatter: () => tt(`FASTAPI — ${w} WORKERS`, ['Auth middleware + token cache', 'SSE streaming + rate limiter', `Model: ${md.chat}`, 'NullPool > PgBouncer']) } },
  { name: 'PgBouncer', x: 620, y: 110, symbolSize: 28, category: 0,
  tooltip: { formatter: () => tt('PGBOUNCER', ['Transaction pooling mode', 'Max 200 DB connections', 'NullPool (no double-pool)', 'SCRAM-SHA-256 auth']) } },
  { name: 'PostgreSQL', x: 770, y: 110, symbolSize: 50, symbol: 'roundRect', category: 3,
@@ -828,7 +828,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
 
  // ─── ROUTING ───
  { name: 'Router', x: 230, y: 240, symbolSize: 35, symbol: 'diamond', category: 5,
- tooltip: { formatter: () => tt('SMART ROUTER — 2 TIER', ['Tier 1: Keyword scoring (7 signals, $0, <1ms)', 'Tier 2: Router Agent + Brain ($0.001, <1.5s)', '', '"revenue by month" → Analyst', '"create view" → Engineer', '"what does report say" → Researcher']) } },
+ tooltip: { formatter: () => tt('SMART ROUTER — 2 TIER', ['Tier 1: Keyword scoring (7 signals, $0, <1ms)', 'Tier 2: Router Agent + Brain ($0.001, <1.5s)', '', '"revenue by month" > Analyst', '"create view" > Engineer', '"what does report say" > Researcher']) } },
 
  // ─── AGENT LAYER ───
  { name: 'Leader', x: 400, y: 310, symbolSize: 45, symbol: 'roundRect', category: 1,
@@ -840,7 +840,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  { name: 'Engineer', x: 670, y: 400, symbolSize: 36, symbol: 'roundRect', category: 1,
  tooltip: { formatter: () => tt('ENGINEER', ['Create views + dashboards', 'Schema management', 'Auto-VIEW at 3+ query uses', `Model: ${md.chat}`]) } },
  { name: 'Specialists', x: 180, y: 490, symbolSize: 28, category: 1,
- tooltip: { formatter: () => tt('10 SPECIALIST AGENTS', (arch.agents?.specialists || []).map((s: string) => `› ${s}`)) } },
+ tooltip: { formatter: () => tt('10 SPECIALIST AGENTS', (arch.agents?.specialists || []).map((s: string) => `> ${s}`)) } },
 
  // ─── KNOWLEDGE LAYER ───
  { name: '13 Layers', x: 80, y: 310, symbolSize: 42, symbol: 'roundRect', category: 4,
@@ -866,15 +866,15 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  { name: 'Training', x: 770, y: 210, symbolSize: 35, symbol: 'roundRect', category: 3,
  tooltip: { formatter: () => tt('TRAINING PIPELINE — 14 STEPS', ['1. Drift check', '2. Deep analysis (Codex)', '3. Q&A generation', '4. Persona creation', '5. Workflows', '6. Relationships', '7. Knowledge index', '8. Brain fill (7 sub-steps)', '9. Domain knowledge (6 sub-steps)', '10-14. Seed, enrich, facts, KG, ML']) } },
  { name: 'Connectors', x: 620, y: 20, symbolSize: 28, category: 3,
- tooltip: { formatter: () => tt('DATA CONNECTORS', (arch.pipeline?.connectors || []).map((c: string) => `› ${c}`).concat(['', 'Live query on remote DBs', 'SSE streaming sync', 'Change detection'])) } },
+ tooltip: { formatter: () => tt('DATA CONNECTORS', (arch.pipeline?.connectors || []).map((c: string) => `> ${c}`).concat(['', 'Live query on remote DBs', 'SSE streaming sync', 'Change detection'])) } },
 
  // ─── EXPORT ───
  { name: 'Export', x: 530, y: 590, symbolSize: 30, symbol: 'roundRect', category: 7,
- tooltip: { formatter: () => tt('EXPORT', (arch.pipeline?.export || []).map((e: string) => `› ${e}`).concat(['', 'Conversation-to-report', '8 PPTX design themes', 'Excel: 4 sheets + charts'])) } },
+ tooltip: { formatter: () => tt('EXPORT', (arch.pipeline?.export || []).map((e: string) => `> ${e}`).concat(['', 'Conversation-to-report', '8 PPTX design themes', 'Excel: 4 sheets + charts'])) } },
 
  // ─── OUTPUT ───
  { name: 'SSE Stream', x: 400, y: 640, symbolSize: 32, symbol: 'roundRect', category: 0,
- tooltip: { formatter: () => tt('SSE STREAM → BROWSER', ['ToolCallStarted → Completed', 'Content streaming (5-min timeout)', 'ML cards with badges', 'KPI cards, charts, tables', 'SOURCES tab, inline charts']) } },
+ tooltip: { formatter: () => tt('SSE STREAM > BROWSER', ['ToolCallStarted > Completed', 'Content streaming (5-min timeout)', 'ML cards with badges', 'KPI cards, charts, tables', 'SOURCES tab, inline charts']) } },
 
  // ─── AI MODELS (right side) ───
  { name: `Chat Model`, x: 140, y: 160, symbolSize: 25, category: 0,
@@ -1085,30 +1085,30 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
 
  /* ─── cockpit (folded-in Super Dashboard landing) ─── */
  let cockpit = $state<any>({});
- // per-section live status for the merged Overview page (●/◐/✗ + latency)
+ // per-section live status for the merged Overview page (●/◐/x + latency)
  let secLive = $state<Record<string, { ok: boolean; ms: number }>>({});
  async function loadCockpit() {
-   loadAdminSettings();   // for the Integrations on/off toggles
-   const _t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
-   const j = async (u: string) => { try { const r = await fetch(u, { headers: _h() }); return r.ok ? await r.json() : null; } catch { return null; } };
-   const [arch, hl, dm, g] = await Promise.all([
-     j('/api/architecture'), j('/api/health'), j('/api/health/daemons'), j('/api/auth/apigw-usage'),
-   ]);
-   cockpit = { metrics: arch?.metrics || {}, models: arch?.models || {}, health: hl || {}, daemons: dm || {}, gw: g || {} };
-   const _ms = () => Math.max(1, Math.round(((typeof performance !== 'undefined') ? performance.now() : 0) - _t0));
-   secLive = { ...secLive, health: { ok: (hl?.status === 'ok'), ms: _ms() } };
-   // fold in the former Platform-stats + Observability tabs as sections
-   try { const s0 = (typeof performance !== 'undefined') ? performance.now() : 0; await loadStats(); secLive = { ...secLive, stats: { ok: !!stats, ms: Math.max(1, Math.round(((typeof performance !== 'undefined') ? performance.now() : 0) - s0)) } }; }
-   catch { secLive = { ...secLive, stats: { ok: false, ms: 0 } }; }
-   try { const o0 = (typeof performance !== 'undefined') ? performance.now() : 0; await loadTraces(); secLive = { ...secLive, obs: { ok: !traceLoadError, ms: Math.max(1, Math.round(((typeof performance !== 'undefined') ? performance.now() : 0) - o0)) } }; }
-   catch { secLive = { ...secLive, obs: { ok: false, ms: 0 } }; }
+ loadAdminSettings(); // for the Integrations on/off toggles
+ const _t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
+ const j = async (u: string) => { try { const r = await fetch(u, { headers: _h() }); return r.ok ? await r.json() : null; } catch { return null; } };
+ const [arch, hl, dm, g] = await Promise.all([
+ j('/api/architecture'), j('/api/health'), j('/api/health/daemons'), j('/api/auth/apigw-usage'),
+ ]);
+ cockpit = { metrics: arch?.metrics || {}, models: arch?.models || {}, health: hl || {}, daemons: dm || {}, gw: g || {} };
+ const _ms = () => Math.max(1, Math.round(((typeof performance !== 'undefined') ? performance.now() : 0) - _t0));
+ secLive = { ...secLive, health: { ok: (hl?.status === 'ok'), ms: _ms() } };
+ // fold in the former Platform-stats + Observability tabs as sections
+ try { const s0 = (typeof performance !== 'undefined') ? performance.now() : 0; await loadStats(); secLive = { ...secLive, stats: { ok: !!stats, ms: Math.max(1, Math.round(((typeof performance !== 'undefined') ? performance.now() : 0) - s0)) } }; }
+ catch { secLive = { ...secLive, stats: { ok: false, ms: 0 } }; }
+ try { const o0 = (typeof performance !== 'undefined') ? performance.now() : 0; await loadTraces(); secLive = { ...secLive, obs: { ok: !traceLoadError, ms: Math.max(1, Math.round(((typeof performance !== 'undefined') ? performance.now() : 0) - o0)) } }; }
+ catch { secLive = { ...secLive, obs: { ok: false, ms: 0 } }; }
  }
  // live-status badge snippet helper
  function secBadge(k: string): { dot: string; txt: string } {
-   const s = secLive[k];
-   if (!s) return { dot: 'cc-sb-load', txt: '…' };
-   if (s.ok) return { dot: 'cc-sb-ok', txt: `live · ${s.ms}ms` };
-   return { dot: 'cc-sb-down', txt: 'unavailable' };
+ const s = secLive[k];
+ if (!s) return { dot: 'cc-sb-load', txt: '…' };
+ if (s.ok) return { dot: 'cc-sb-ok', txt: `live · ${s.ms}ms` };
+ return { dot: 'cc-sb-down', txt: 'unavailable' };
  }
 
  /* ═══════════════════════════════════════════════════════════ */
@@ -1275,7 +1275,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  return `$${n.toFixed(n < 1 ? 4 : 2)}`;
  }
  function traceStatusGlyph(s: string): string {
- return s === 'done' ? '✓' : s === 'error' ? '✗' : s === 'running' ? '◐' : s === 'skipped' ? '⊘' : '·';
+ return s === 'done' ? 'OK' : s === 'error' ? 'x' : s === 'running' ? '◐' : s === 'skipped' ? '⊘' : '·';
  }
  function traceStatusColor(s: string): string {
  return s === 'done' ? 'var(--pw-accent)' : s === 'error' ? '#c0392b' : s === 'running' ? '#a06000' : 'var(--pw-muted)';
@@ -1289,17 +1289,17 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  let _tabInited = $state(false);
 
  const LEGACY_TAB_REDIRECT: Record<string,string> = {
-   'governance': 'gov-overview',
-   'agent-os-admin': 'aos-overview',
-   'telemetry-admin': 'tel-overview',
-   // Overview merge: Cockpit/Stats/Health/Observability folded into one page.
-   'stats': 'cockpit',
-   'health': 'cockpit',
-   'observability': 'cockpit',
+ 'governance': 'gov-overview',
+ 'agent-os-admin': 'aos-overview',
+ 'telemetry-admin': 'tel-overview',
+ // Overview merge: Cockpit/Stats/Health/Observability folded into one page.
+ 'stats': 'cockpit',
+ 'health': 'cockpit',
+ 'observability': 'cockpit',
  };
 
  function _isSubTab(id: string): boolean {
-   return id.startsWith('gov-') || id.startsWith('aos-') || id.startsWith('tel-');
+ return id.startsWith('gov-') || id.startsWith('aos-') || id.startsWith('tel-');
  }
 
  function _initialTab(): string {
@@ -2196,7 +2196,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
         {@const _clean = driftStatus.drift_after_allowlist === 0}
         <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 14px;">
           <span style="padding: 6px 16px; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.06em; background: {_clean ? '#d1fae5' : '#fee2e2'}; color: {_clean ? '#065f46' : '#991b1b'}; border-radius: var(--pw-radius-sm);">
-            {_clean ? '✓ CLEAN' : '✗ DRIFT'}
+            {_clean ? 'OK CLEAN' : 'x DRIFT'}
           </span>
           {#if driftStatus.last_run_at}
             <span style="font-size: 11px; color: var(--pw-muted);">Last run: {_driftRelTime(driftStatus.last_run_at)}</span>
@@ -2327,7 +2327,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
           <div class="conn-desc">{c.desc}</div>
         </div>
         {#if _connCount(c.id) > 0}
-          <span class="conn-check" title="{_connCount(c.id)} connected">✓</span>
+          <span class="conn-check" title="{_connCount(c.id)} connected"><Icon name="check" size={16} /></span>
         {:else}
           <span class="conn-plus" title="Add">＋</span>
         {/if}
@@ -2344,7 +2344,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
         <div class="conn-h2">Connect services so the agent can access and act on your data</div>
       </div>
       <div class="conn-search">
-        <span>🔍</span><input placeholder="Search all connectors" bind:value={intgSearch} />
+        <span><Icon name="search" size={16} /></span><input placeholder="Search all connectors" bind:value={intgSearch} />
       </div>
     </div>
     <div class="conn-pills">
@@ -2380,9 +2380,9 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
               <td>{s.enabled ? 'every ' + s3Sched(s.schedule_seconds) : 'manual'}</td>
               <td><span class="cdot {s3Dot(s.last_status)}"></span>{s.last_status || 'never'}</td>
               <td class="ca">
-                <button class="cico" title="Sync now" onclick={() => s3Sync(s.id)}>⟳</button>
-                <button class="cico" title="Edit" onclick={() => s3Edit(s)}>✎</button>
-                <button class="cico danger" title="Delete" onclick={() => s3Delete(s.id)}>✕</button>
+                <button class="cico" title="Sync now" onclick={() => s3Sync(s.id)}>-&gt;</button>
+                <button class="cico" title="Edit" onclick={() => s3Edit(s)}>(edit)</button>
+                <button class="cico danger" title="Delete" onclick={() => s3Delete(s.id)}><Icon name="x" size={16} /></button>
               </td>
             </tr>
           {/each}
@@ -2393,17 +2393,17 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
               <td class="mono">{d.host || '-'} · {d.tables ?? d.table_count ?? '?'} tbl</td>
               <td>—</td>
               <td><span class="cdot on"></span>{d.status || 'connected'}</td>
-              <td class="ca"><button class="cico" title="Manage" onclick={() => dbOpen((d.type || d.db_type) === 'mysql' ? 'mysql' : 'postgresql')}>✎</button></td>
+              <td class="ca"><button class="cico" title="Manage" onclick={() => dbOpen((d.type || d.db_type) === 'mysql' ? 'mysql' : 'postgresql')}>(edit)</button></td>
             </tr>
           {/each}
           {#if spAdminConfig.configured}
-            <tr><td>{@render typeBadge('SharePoint', 'sharepoint')}</td><td class="b">SharePoint</td><td class="mono">Microsoft 365 · {spAllSources.length} site(s)</td><td>—</td><td><span class="cdot on"></span>configured</td><td class="ca"><button class="cico" title="Edit" onclick={() => { intgView = 'sharepoint'; }}>✎</button></td></tr>
+            <tr><td>{@render typeBadge('SharePoint', 'sharepoint')}</td><td class="b">SharePoint</td><td class="mono">Microsoft 365 · {spAllSources.length} site(s)</td><td>—</td><td><span class="cdot on"></span>configured</td><td class="ca"><button class="cico" title="Edit" onclick={() => { intgView = 'sharepoint'; }}>(edit)</button></td></tr>
           {/if}
           {#if gdAdminConfig.configured}
-            <tr><td>{@render typeBadge('Drive', 'gdrive')}</td><td class="b">Google Drive</td><td class="mono">OAuth client configured</td><td>—</td><td><span class="cdot on"></span>configured</td><td class="ca"><button class="cico" title="Edit" onclick={() => { intgView = 'gdrive'; }}>✎</button></td></tr>
+            <tr><td>{@render typeBadge('Drive', 'gdrive')}</td><td class="b">Google Drive</td><td class="mono">OAuth client configured</td><td>—</td><td><span class="cdot on"></span>configured</td><td class="ca"><button class="cico" title="Edit" onclick={() => { intgView = 'gdrive'; }}>(edit)</button></td></tr>
           {/if}
           {#if odAdminConfig.configured}
-            <tr><td>{@render typeBadge('OneDrive', 'onedrive')}</td><td class="b">OneDrive</td><td class="mono">OAuth client configured</td><td>—</td><td><span class="cdot on"></span>configured</td><td class="ca"><button class="cico" title="Edit" onclick={() => { intgView = 'onedrive'; }}>✎</button></td></tr>
+            <tr><td>{@render typeBadge('OneDrive', 'onedrive')}</td><td class="b">OneDrive</td><td class="mono">OAuth client configured</td><td>—</td><td><span class="cdot on"></span>configured</td><td class="ca"><button class="cico" title="Edit" onclick={() => { intgView = 'onedrive'; }}>(edit)</button></td></tr>
           {/if}
         </tbody>
       </table>
@@ -2415,7 +2415,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
       <div class="intg-modal" role="dialog" aria-modal="true" onclick={(e) => e.stopPropagation()}>
         <div class="intg-modal-h">
           <span>{intgTitle}</span>
-          <button class="intg-x" onclick={() => { intgView = 'hub'; }} aria-label="Close">✕</button>
+          <button class="intg-x" onclick={() => { intgView = 'hub'; }} aria-label="Close"><Icon name="x" size={16} /></button>
         </div>
         <div class="intg-modal-body">
     {#if intgView === 's3'}
@@ -2435,14 +2435,14 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
           <div><label class="ffl">ACCESS KEY {#if s3Form.id}<span class="ffopt">(blank = keep)</span>{/if}</label><input class="ffin" autocomplete="off" bind:value={s3Form.access_key} /></div>
           <div><label class="ffl">SECRET KEY {#if s3Form.id}<span class="ffopt">(blank = keep)</span>{/if}</label><input class="ffin" type="password" autocomplete="off" bind:value={s3Form.secret_key} /></div>
         </div>
-        <div class="ffhd">FILE → TABLE RULES <button class="ibtn ghost xs" onclick={s3AddRule}>＋ rule</button></div>
-        <div class="ffrule rhd"><span>FILE PATTERN</span><span>→ TABLE</span><span>MODE</span><span></span></div>
+        <div class="ffhd">FILE <Icon name="arrow-right" size={16} /> TABLE RULES <button class="ibtn ghost xs" onclick={s3AddRule}>＋ rule</button></div>
+        <div class="ffrule rhd"><span>FILE PATTERN</span><span><Icon name="arrow-right" size={16} /> TABLE</span><span>MODE</span><span></span></div>
         {#each s3Form.file_map as r, i}
           <div class="ffrule">
             <input class="ffin" bind:value={r.pattern} placeholder="articles_*.csv" />
             <input class="ffin" bind:value={r.table} placeholder="articles_list" />
             <select class="ffin" bind:value={r.action}><option value="replace">replace</option><option value="append">append</option><option value="upsert">upsert</option></select>
-            <button class="cico danger" onclick={() => s3DelRule(i)}>✕</button>
+            <button class="cico danger" onclick={() => s3DelRule(i)}><Icon name="x" size={16} /></button>
           </div>
         {/each}
         <div style="font-size:10px;color:var(--pw-muted);margin-top:4px;">"replace" = drop the old table and load the new file (full refresh).</div>
@@ -2814,7 +2814,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
     </div>
     <div style="display: flex; gap: 6px;">
       <button class="send-btn" style="font-size: 10px; padding: 6px 14px;" onclick={openNewTenantModal}>+ NEW TENANT</button>
-      <button class="send-btn" style="font-size: 10px; padding: 6px 14px;" onclick={loadBranding}>↻ REFRESH</button>
+      <button class="send-btn" style="font-size: 10px; padding: 6px 14px;" onclick={loadBranding}><Icon name="refresh" size={16} /> REFRESH</button>
     </div>
   </div>
 
@@ -2879,7 +2879,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
     <div style="font-size: 11px; color: var(--pw-muted); line-height: 1.5;">
       Click <b>+ NEW TENANT</b> above to create one via the API (optionally cloned from an existing tenant), or drop a folder at
       <code>{brandingRoot || 'branding'}/&lt;name&gt;/</code> containing
-      <code>logo.svg</code>, <code>theme.css</code>, <code>company.json</code>, <code>favicon.ico</code>, then click <b>↻ REFRESH</b>.
+      <code>logo.svg</code>, <code>theme.css</code>, <code>company.json</code>, <code>favicon.ico</code>, then click <b><Icon name="refresh" size={16} /> REFRESH</b>.
     </div>
   </div>
 
@@ -3142,7 +3142,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
     </div>
   </div>
 
-  <!-- ── ACCESS CONTROL: role → surface matrix (super-admin) ── -->
+  <!-- ── ACCESS CONTROL: role -&gt; surface matrix (super-admin) ── -->
   <div class="ink-border" style="margin-top:8px; padding:14px;">
     <div style="display:flex; align-items:baseline; justify-content:space-between; gap:8px; flex-wrap:wrap;">
       <strong style="font-size:13px;">ACCESS CONTROL</strong>
@@ -3171,7 +3171,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
                 <div style="font-size:10px; opacity:0.6;">{srf.sub}</div>
               </td>
               <td style="padding:8px 18px; text-align:center;">
-                <span title="super admin always has full access" style="opacity:0.45;">✓ locked</span>
+                <span title="super admin always has full access" style="opacity:0.45;"><Icon name="check" size={16} /> locked</span>
               </td>
               <td style="padding:8px 18px; text-align:center;">
                 <input type="checkbox" checked={rbacMatrix.admin[srf.key]}
@@ -3355,7 +3355,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
             <span style="font-weight: 600; min-width: 200px;">{c?.name || '—'}</span>
             <span style="color: var(--pw-muted); font-size: 11px;">last: {traceTime(c?.last_run)}</span>
             {#if c?.stale}
-              <span style="background: rgba(192,57,43,0.12); color: #c0392b; font-size: 10px; font-weight: 700; padding: 2px 8px; text-transform: uppercase; letter-spacing: 0.04em;">⚠ never fired / stale</span>
+              <span style="background: rgba(192,57,43,0.12); color: #c0392b; font-size: 10px; font-weight: 700; padding: 2px 8px; text-transform: uppercase; letter-spacing: 0.04em;"><Icon name="alert-triangle" size={16} /> never fired / stale</span>
             {:else}
               <span class="cc-status"><span class="cc-dot cc-dot-on"></span>{c?.status || 'ok'}</span>
             {/if}
@@ -3505,7 +3505,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
     <div class="ccc-toggles">
       <div class="ccc-toggle-row">
         <div class="ccc-toggle-lbl">
-          <span class="ccc-toggle-name">🔑 API Gateway</span>
+          <span class="ccc-toggle-name"><Icon name="key" size={16} /> API Gateway</span>
           <span class="ccc-toggle-sub">OpenAI-compatible REST /api/v1 — {integView('gateway_enabled') ? 'live' : 'disabled (routes 403, hidden from nav)'}</span>
         </div>
         <button class="ccc-switch" class:on={integView('gateway_enabled')}
@@ -3574,7 +3574,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
           {/each}
         </div>
       {/if}
-      <div class="ccc-jump" style="margin-top:8px;"><button onclick={() => switchTab('traces')}>open full Traces →</button></div>
+      <div class="ccc-jump" style="margin-top:8px;"><button onclick={() => switchTab('traces')}>open full Traces <Icon name="arrow-right" size={16} /></button></div>
     {:else}
       <div class="ccc-muted">{traceLoadError ? 'traces unavailable' : 'no traces yet'}</div>
     {/if}
@@ -3584,10 +3584,10 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
   <section class="ccc-panel">
     <div class="ccc-h">⑤ JUMP TO</div>
     <div class="ccc-jump">
-      <button onclick={() => switchTab('brain')}>🧠 Brain</button>
-      <button onclick={() => switchTab('llm')}>🤖 Models</button>
-      <button onclick={() => switchTab('integrations')}>🔌 Integrations</button>
-      <button onclick={() => switchTab('auth')}>🔒 Authentication</button>
+      <button onclick={() => switchTab('brain')}><Icon name="brain" size={16} /> Brain</button>
+      <button onclick={() => switchTab('llm')}><Icon name="bot" size={16} /> Models</button>
+      <button onclick={() => switchTab('integrations')}><Icon name="plug" size={16} /> Integrations</button>
+      <button onclick={() => switchTab('auth')}><Icon name="lock" size={16} /> Authentication</button>
     </div>
   </section>
 
@@ -3821,21 +3821,21 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  padding: 0 8px 120px;
  }
  :global(.cc-rail .rail-group-label) {
-   font-size: 11px;
-   text-transform: uppercase;
-   letter-spacing: 0.06em;
-   color: var(--pw-muted);
-   padding: 12px 14px 6px;
-   font-weight: 600;
+ font-size: 11px;
+ text-transform: uppercase;
+ letter-spacing: 0.06em;
+ color: var(--pw-muted);
+ padding: 12px 14px 6px;
+ font-weight: 600;
  }
  :global(.cc-rail .rail-subgroup-label) {
-   font-size: 10px;
-   text-transform: uppercase;
-   letter-spacing: 0.05em;
-   color: var(--pw-muted);
-   padding: 10px 14px 4px;
-   font-weight: 600;
-   opacity: 0.85;
+ font-size: 10px;
+ text-transform: uppercase;
+ letter-spacing: 0.05em;
+ color: var(--pw-muted);
+ padding: 10px 14px 4px;
+ font-weight: 600;
+ opacity: 0.85;
  }
  :global(.cc-rail::-webkit-scrollbar) { width: 6px; }
  :global(.cc-rail::-webkit-scrollbar-thumb) { background: var(--pw-border); border-radius: 3px; }
@@ -3911,39 +3911,39 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
 
  /* Expandable parents + indented children (Governance group) */
  :global(.cc-rail .rail-parent) {
-   display: flex; align-items: center; justify-content: space-between;
-   width: 100%; text-align: left;
-   background: transparent; border: none;
-   padding: 8px 12px; border-radius: var(--pw-radius-sm);
-   font-size: 12px; color: var(--pw-ink);
-   font-family: inherit; cursor: pointer;
-   border-left: 2px solid transparent;
-   font-weight: 500;
+ display: flex; align-items: center; justify-content: space-between;
+ width: 100%; text-align: left;
+ background: transparent; border: none;
+ padding: 8px 12px; border-radius: var(--pw-radius-sm);
+ font-size: 12px; color: var(--pw-ink);
+ font-family: inherit; cursor: pointer;
+ border-left: 2px solid transparent;
+ font-weight: 500;
  }
  :global(.cc-rail .rail-parent:hover) { background: rgba(201,99,66,0.04); }
  :global(.cc-rail .rail-parent.active-parent) { color: var(--pw-accent); font-weight: 600; }
  :global(.cc-rail .rail-parent .caret) { font-size: 9px; color: var(--pw-muted); margin-left: 8px; }
  :global(.cc-rail .rail-child) {
-   display: block; width: 100%; text-align: left;
-   background: transparent; border: none;
-   padding: 6px 12px 6px 28px;
-   border-radius: var(--pw-radius-sm);
-   font-size: 12px; color: var(--pw-ink-soft);
-   font-family: inherit; cursor: pointer;
-   border-left: 2px solid transparent;
-   line-height: 1.3;
+ display: block; width: 100%; text-align: left;
+ background: transparent; border: none;
+ padding: 6px 12px 6px 28px;
+ border-radius: var(--pw-radius-sm);
+ font-size: 12px; color: var(--pw-ink-soft);
+ font-family: inherit; cursor: pointer;
+ border-left: 2px solid transparent;
+ line-height: 1.3;
  }
  :global(.cc-rail .rail-child:hover) { background: rgba(201,99,66,0.04); color: var(--pw-ink); }
  :global(.cc-rail .rail-child.active) {
-   background: rgba(201,99,66,0.08);
-   color: var(--pw-accent);
-   font-weight: 600;
+ background: rgba(201,99,66,0.08);
+ color: var(--pw-accent);
+ font-weight: 600;
  }
  :global(.cc-rail .rail-sep) {
-   border: 0;
-   border-top: 1px solid var(--border, #e5e7eb);
-   margin: 8px 12px;
-   opacity: 0.6;
+ border: 0;
+ border-top: 1px solid var(--border, #e5e7eb);
+ margin: 8px 12px;
+ opacity: 0.6;
  }
 
  :global(.cc-main) {

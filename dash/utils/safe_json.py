@@ -62,7 +62,7 @@ def _default(obj: Any) -> Any:
         except Exception:
             pass
 
-    # numpy arrays / pandas Series → list (best-effort).
+    # numpy arrays / pandas Series > list (best-effort).
     if hasattr(obj, "tolist") and callable(obj.tolist):
         try:
             return obj.tolist()

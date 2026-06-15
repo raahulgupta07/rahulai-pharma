@@ -6,7 +6,7 @@ stale facts for re-verification. See dash.learning.insight_curator.
 
 DEFAULT OFF — opt in with INSIGHT_DAEMON_ENABLED=1. Hard off:
 INSIGHT_DAEMON_DISABLED=1. Leader-gated at the lifespan call site. Cadence 24h,
-staggered. Single-tenant → locked slug. Pure SQL, no LLM, no writes to chat.
+staggered. Single-tenant > locked slug. Pure SQL, no LLM, no writes to chat.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_INTERVAL_S = 86400  # 24h
+_DEFAULT_INTERVAL_S = 86400 # 24h
 
 
 def _slugs() -> list[str]:
@@ -37,7 +37,7 @@ async def insight_daemon_loop(interval_seconds: int = _DEFAULT_INTERVAL_S):
         logger.info("insight_daemon_loop disabled via INSIGHT_DAEMON_DISABLED=1")
         return
     logger.info(f"insight_daemon_loop started (interval {interval_seconds}s)")
-    await asyncio.sleep(180)  # stagger startup (after curator's 150s)
+    await asyncio.sleep(180) # stagger startup (after curator's 150s)
     from dash.learning.insight_curator import run_insight_curator
     while True:
         try:
@@ -51,9 +51,9 @@ async def insight_daemon_loop(interval_seconds: int = _DEFAULT_INTERVAL_S):
                     # cycle duration. (Matches the golden_drift_loop pattern.)
                     res = await asyncio.to_thread(run_insight_curator, slug, False)
                     written += res.get("written", 0)
-                except Exception as e:  # noqa: BLE001
+                except Exception as e: # noqa: BLE001
                     logger.exception(f"insight_curator crashed for {slug}: {e}")
             logger.info(f"insight_cycle done in {int(time.time()-t0)}s: written={written}")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e: # noqa: BLE001
             logger.exception(f"insight cycle error: {e}")
         await asyncio.sleep(interval_seconds)

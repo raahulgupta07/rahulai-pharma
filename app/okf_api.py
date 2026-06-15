@@ -46,7 +46,7 @@ def _slugify(s: str) -> str:
 
 
 def _build_bundle(slug: str) -> dict[str, str]:
-    """Walk existing knowledge → {path: content}. READ-ONLY (SELECT only)."""
+    """Walk existing knowledge > {path: content}. READ-ONLY (SELECT only)."""
     files: dict[str, str] = {}
     eng = _engine()
     # AUTOCOMMIT so a single failing read (e.g. COUNT on a half-built derived
@@ -284,7 +284,7 @@ async def okf_import(slug: str, request: Request, file: UploadFile):
             for j in re.findall(r"joins_with \[([^\]]+)\]", body):
                 triples.append((title, "joins_with", j.strip()))
 
-    # dedup before insert so a re-export→re-import cycle can't grow the lane
+    # dedup before insert so a re-export>re-import cycle can't grow the lane
     facts = list(dict.fromkeys(facts))
     queries = list(dict.fromkeys(queries))
     triples = list(dict.fromkeys(triples))
@@ -292,9 +292,9 @@ async def okf_import(slug: str, request: Request, file: UploadFile):
     eng = _write_engine()
     with eng.begin() as c:
         # idempotent: clear prior PENDING okf lane only. Promote keeps source='okf'
-        # and just flips status→active, so an unscoped delete here would destroy
+        # and just flips status>active, so an unscoped delete here would destroy
         # already-promoted (live) facts/queries on a re-import. Scope to pending to
-        # match the triples path (promote retags those source_type→okf_active, so the
+        # match the triples path (promote retags those source_type>okf_active, so the
         # 'okf' delete below already skips promoted triples).
         c.execute(text("DELETE FROM public.dash_company_brain WHERE project_slug=:s AND source='okf' AND status='pending'"), {"s": slug})
         c.execute(text("DELETE FROM public.dash_query_patterns WHERE project_slug=:s AND source='okf' AND status='pending'"), {"s": slug})
@@ -357,7 +357,7 @@ def okf_pending(slug: str, request: Request):
         queries = [{"id": r[0], "question": r[1], "sql": r[2]} for r in c.execute(text(
             "SELECT id, question, sql FROM public.dash_query_patterns "
             "WHERE project_slug=:s AND source='okf' AND status='pending' ORDER BY id"), {"s": slug}).fetchall()]
-        triples = [{"id": r[0], "text": f"{r[1]} → {r[2]} → {r[3]}"} for r in c.execute(text(
+        triples = [{"id": r[0], "text": f"{r[1]} > {r[2]} > {r[3]}"} for r in c.execute(text(
             "SELECT id, subject, predicate, object FROM public.dash_knowledge_triples "
             "WHERE project_slug=:s AND source_type='okf' ORDER BY id"), {"s": slug}).fetchall()]
     return {"facts": facts, "queries": queries, "triples": triples,
@@ -366,7 +366,7 @@ def okf_pending(slug: str, request: Request):
 
 @router.post("/{slug}/okf-promote")
 async def okf_promote(slug: str, request: Request):
-    """Promote the pending okf lane → ACTIVE so the live agent uses it (no flag
+    """Promote the pending okf lane > ACTIVE so the live agent uses it (no flag
     needed afterward). The review gate: nothing reaches default chat until here.
     Editor."""
     user = getattr(getattr(request, "state", None), "user", None)
@@ -381,7 +381,7 @@ async def okf_promote(slug: str, request: Request):
                            "WHERE project_slug=:s AND source='okf' AND status='pending'"), {"s": slug}).rowcount
         q = c.execute(text("UPDATE public.dash_query_patterns SET status='active' "
                            "WHERE project_slug=:s AND source='okf' AND status='pending'"), {"s": slug}).rowcount
-        # triples have no status → flip the tag so the default gate stops hiding them
+        # triples have no status > flip the tag so the default gate stops hiding them
         t = c.execute(text("UPDATE public.dash_knowledge_triples SET source_type='okf_active' "
                            "WHERE project_slug=:s AND source_type='okf'"), {"s": slug}).rowcount
     return {"status": "ok", "promoted": {"facts": f, "queries": q, "triples": t},

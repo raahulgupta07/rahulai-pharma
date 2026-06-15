@@ -34,7 +34,7 @@ def collect_signals(slug: str) -> dict:
 
     try:
         eng = _engine()
-    except Exception as e:  # pragma: no cover — DB unreachable
+    except Exception as e: # pragma: no cover — DB unreachable
         log.debug("heartbeat: engine unavailable for %s: %s", slug, e)
         return out
 
@@ -89,9 +89,9 @@ def collect_signals(slug: str) -> dict:
             if present:
                 row = conn.execute(text(
                     'SELECT '
-                    '  count(*) FILTER (WHERE linked AND stock_qty IS NOT NULL) AS both, '
-                    '  count(*) FILTER (WHERE linked AND stock_qty IS NULL) AS catalog_only, '
-                    '  count(*) FILTER (WHERE NOT linked) AS stock_only '
+                    ' count(*) FILTER (WHERE linked AND stock_qty IS NOT NULL) AS both, '
+                    ' count(*) FILTER (WHERE linked AND stock_qty IS NULL) AS catalog_only, '
+                    ' count(*) FILTER (WHERE NOT linked) AS stock_only '
                     'FROM "%s".shop_flat' % schema
                 )).fetchone()
                 if row is not None:
@@ -116,14 +116,14 @@ def collect_signals(slug: str) -> dict:
 
     # --- pipeline incomplete --------------------------------------------------
     # Base tables that have a dash_table_metadata row but ZERO dash_training_qa
-    # rows (profiled but never Q&A-generated → pipeline not complete).
+    # rows (profiled but never Q&A-generated > pipeline not complete).
     try:
         with eng.connect() as conn:
             rows = conn.execute(text(
                 "SELECT m.table_name FROM public.dash_table_metadata m "
                 "WHERE m.project_slug = :s AND NOT EXISTS ("
-                "  SELECT 1 FROM public.dash_training_qa q "
-                "  WHERE q.project_slug = :s AND q.table_name = m.table_name) "
+                " SELECT 1 FROM public.dash_training_qa q "
+                " WHERE q.project_slug = :s AND q.table_name = m.table_name) "
                 "ORDER BY m.table_name"
             ), {"s": slug}).fetchall()
         out["pipeline_incomplete"] = [r[0] for r in rows]

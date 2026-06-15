@@ -3,7 +3,7 @@
 DEFAULT OFF — opt in with S3_SYNC_ENABLED=1. Hard off: S3_SYNC_DISABLED=1.
 Leader-gated (spawned by the single daemon leader in app/main.py lifespan).
 
-Each tick: find enabled sources whose schedule interval elapsed → run_s3_sync.
+Each tick: find enabled sources whose schedule interval elapsed > run_s3_sync.
 Per-object ETag change-detection means an unchanged bucket is a cheap no-op.
 """
 from __future__ import annotations

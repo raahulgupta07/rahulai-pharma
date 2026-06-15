@@ -2,7 +2,7 @@ TEMPLATE = {
     "label": "Generic",
     "description": "Minimal default — band on counts, hide on customer/cost",
     "scope_keyword": "unit",
-    "icon": "📦",
+    "icon": "",
     "policy": {
         "version": 1,
         "private": {"fields": {}},

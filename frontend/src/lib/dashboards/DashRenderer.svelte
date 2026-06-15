@@ -1,5 +1,5 @@
 <script>
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import Cell from './cells/Cell.svelte';
  let { spec, data = {}, editChangedIds = [], newPanelIds = new Set() } = $props();
  const cells = $derived(spec?.cells ?? []);
@@ -90,7 +90,7 @@
       {#if expandedId === cell.id}
         <div class="drill-row" style="grid-column: 1 / -1;">
           <div class="drill-header">
-            <span>↳ Drilled from "{cell.title}"{drilling && !drillData[cell.id] ? ' — loading...' : ''}</span>
+            <span><Icon name="chevron-right" size={16} /> Drilled from "{cell.title}"{drilling && !drillData[cell.id] ? ' — loading...' : ''}</span>
             <button class="drill-close" onclick={() => expandedId = null} aria-label="Close"><Icon name="x" size={14} /></button>
           </div>
           {#if drillData[cell.id]?.length}
@@ -144,10 +144,10 @@
  .cell { grid-column: 1 / -1 !important; grid-row: auto !important; }
  }
  @keyframes panelfadein-new {
-   from { opacity: 0; transform: translateY(8px); }
-   to { opacity: 1; transform: translateY(0); }
+ from { opacity: 0; transform: translateY(8px); }
+ to { opacity: 1; transform: translateY(0); }
  }
  :global(.cell-panel-new) {
-   animation: panelfadein-new 400ms ease-out;
+ animation: panelfadein-new 400ms ease-out;
  }
 </style>

@@ -1,101 +1,101 @@
 <script lang="ts">
-  import { dashFetch } from '$lib/api';
-  import { onMount } from 'svelte';
+ import { dashFetch } from '$lib/api';
+ import { onMount } from 'svelte';
 
-  type SeriesRow = { date: string | null; pass_rate: number; tier: string; n: number };
-  type Trend = {
-    series: SeriesRow[];
-    by_tier: Record<string, number>;
-    overall: number;
-    last_run_at: string | null;
-  };
+ type SeriesRow = { date: string | null; pass_rate: number; tier: string; n: number };
+ type Trend = {
+ series: SeriesRow[];
+ by_tier: Record<string, number>;
+ overall: number;
+ last_run_at: string | null;
+ };
 
-  let data = $state<Trend | null>(null);
-  let loading = $state(true);
-  let error = $state<string | null>(null);
-  let days = $state(30);
+ let data = $state<Trend | null>(null);
+ let loading = $state(true);
+ let error = $state<string | null>(null);
+ let days = $state(30);
 
-  async function load() {
-    loading = true;
-    error = null;
-    try {
-      const r = await dashFetch(`/api/accuracy/trend?days=${days}`, {
-        headers: { 'Accept': 'application/json' }
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      data = await r.json();
-    } catch (e: any) {
-      error = e?.message || String(e);
-      data = null;
-    } finally {
-      loading = false;
-    }
-  }
+ async function load() {
+ loading = true;
+ error = null;
+ try {
+ const r = await dashFetch(`/api/accuracy/trend?days=${days}`, {
+ headers: { 'Accept': 'application/json' }
+ });
+ if (!r.ok) throw new Error(`HTTP ${r.status}`);
+ data = await r.json();
+ } catch (e: any) {
+ error = e?.message || String(e);
+ data = null;
+ } finally {
+ loading = false;
+ }
+ }
 
-  onMount(load);
+ onMount(load);
 
-  // Derived KPIs
-  const overallPct = $derived(data ? (data.overall * 100).toFixed(1) : '—');
-  const totalEvals = $derived(
-    data ? data.series.reduce((acc, r) => acc + (r.n || 0), 0) : 0
-  );
-  const last7d = $derived(() => {
-    if (!data || !data.series.length) return '—';
-    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    let pass = 0;
-    let total = 0;
-    for (const r of data.series) {
-      if (!r.date) continue;
-      if (new Date(r.date).getTime() < cutoff) continue;
-      pass += (r.pass_rate || 0) * (r.n || 0);
-      total += r.n || 0;
-    }
-    return total > 0 ? ((pass / total) * 100).toFixed(1) : '—';
-  });
+ // Derived KPIs
+ const overallPct = $derived(data ? (data.overall * 100).toFixed(1) : '—');
+ const totalEvals = $derived(
+ data ? data.series.reduce((acc, r) => acc + (r.n || 0), 0) : 0
+ );
+ const last7d = $derived(() => {
+ if (!data || !data.series.length) return '—';
+ const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+ let pass = 0;
+ let total = 0;
+ for (const r of data.series) {
+ if (!r.date) continue;
+ if (new Date(r.date).getTime() < cutoff) continue;
+ pass += (r.pass_rate || 0) * (r.n || 0);
+ total += r.n || 0;
+ }
+ return total > 0 ? ((pass / total) * 100).toFixed(1) : '—';
+ });
 
-  // Build chart points: one per date (average pass_rate across tiers, weighted by n)
-  const chartPoints = $derived(() => {
-    if (!data || !data.series.length) return [] as { date: string; rate: number }[];
-    const byDate: Record<string, { p: number; n: number }> = {};
-    for (const r of data.series) {
-      if (!r.date) continue;
-      const cur = byDate[r.date] || { p: 0, n: 0 };
-      cur.p += (r.pass_rate || 0) * (r.n || 0);
-      cur.n += r.n || 0;
-      byDate[r.date] = cur;
-    }
-    return Object.entries(byDate)
-      .map(([date, v]) => ({ date, rate: v.n > 0 ? v.p / v.n : 0 }))
-      .sort((a, b) => a.date.localeCompare(b.date));
-  });
+ // Build chart points: one per date (average pass_rate across tiers, weighted by n)
+ const chartPoints = $derived(() => {
+ if (!data || !data.series.length) return [] as { date: string; rate: number }[];
+ const byDate: Record<string, { p: number; n: number }> = {};
+ for (const r of data.series) {
+ if (!r.date) continue;
+ const cur = byDate[r.date] || { p: 0, n: 0 };
+ cur.p += (r.pass_rate || 0) * (r.n || 0);
+ cur.n += r.n || 0;
+ byDate[r.date] = cur;
+ }
+ return Object.entries(byDate)
+ .map(([date, v]) => ({ date, rate: v.n > 0 ? v.p / v.n : 0 }))
+ .sort((a, b) => a.date.localeCompare(b.date));
+ });
 
-  // Deploy gate — mirrors the CI golden gate (python -m evals.run --golden --min-pass 90)
-  const GATE_THRESHOLD = 90;
-  const gatePct = $derived<number | null>(
-    data && data.overall != null ? Math.round(data.overall * 1000) / 10 : null
-  );
-  const gateStatus = $derived(
-    gatePct == null ? 'unknown' : gatePct >= GATE_THRESHOLD ? 'pass' : 'fail'
-  );
+ // Deploy gate — mirrors the CI golden gate (python -m evals.run --golden --min-pass 90)
+ const GATE_THRESHOLD = 90;
+ const gatePct = $derived<number | null>(
+ data && data.overall != null ? Math.round(data.overall * 1000) / 10 : null
+ );
+ const gateStatus = $derived(
+ gatePct == null ? 'unknown' : gatePct >= GATE_THRESHOLD ? 'pass' : 'fail'
+ );
 
-  // SVG chart math
-  const W = 800;
-  const H = 220;
-  const PAD = { top: 16, right: 16, bottom: 28, left: 40 };
+ // SVG chart math
+ const W = 800;
+ const H = 220;
+ const PAD = { top: 16, right: 16, bottom: 28, left: 40 };
 
-  function chartPath(pts: { date: string; rate: number }[]): string {
-    if (pts.length === 0) return '';
-    const innerW = W - PAD.left - PAD.right;
-    const innerH = H - PAD.top - PAD.bottom;
-    const stepX = pts.length > 1 ? innerW / (pts.length - 1) : 0;
-    return pts
-      .map((p, i) => {
-        const x = PAD.left + i * stepX;
-        const y = PAD.top + innerH - p.rate * innerH;
-        return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
-      })
-      .join(' ');
-  }
+ function chartPath(pts: { date: string; rate: number }[]): string {
+ if (pts.length === 0) return '';
+ const innerW = W - PAD.left - PAD.right;
+ const innerH = H - PAD.top - PAD.bottom;
+ const stepX = pts.length > 1 ? innerW / (pts.length - 1) : 0;
+ return pts
+ .map((p, i) => {
+ const x = PAD.left + i * stepX;
+ const y = PAD.top + innerH - p.rate * innerH;
+ return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+ })
+ .join(' ');
+ }
 </script>
 
 <div class="acc-shell">
@@ -142,7 +142,7 @@
         <div class="gate-label">Deploy gate</div>
         <div class="gate-row">
           <span class="gate-pill gate-{gateStatus}">
-            {gateStatus === 'pass' ? '✓ PASS' : gateStatus === 'fail' ? '✗ FAIL' : '— unknown'}
+            {gateStatus === 'pass' ? 'OK PASS' : gateStatus === 'fail' ? 'x FAIL' : '— unknown'}
           </span>
           <span class="gate-detail">
             last pass-rate {gatePct == null ? '—' : `${gatePct}%`} · threshold {GATE_THRESHOLD}%
@@ -217,122 +217,122 @@
 </div>
 
 <style>
-  .acc-shell {
-    padding: 24px 32px;
-    max-width: 1100px;
-    margin: 0 auto;
-    font-family: system-ui, -apple-system, sans-serif;
-    color: #1f1c17;
-  }
-  .acc-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    gap: 16px;
-    margin-bottom: 24px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid #e8e3d6;
-  }
-  .acc-head h1 {
-    font-size: 22px;
-    margin: 0 0 4px 0;
-    font-weight: 600;
-  }
-  .muted { color: #777; font-size: 13px; margin: 0; }
-  .small { font-size: 12px; }
-  .err { color: #b3261e; font-size: 13px; }
-  .ctrls { display: flex; gap: 8px; }
-  .ctrls select, .ctrls button {
-    padding: 6px 10px;
-    border: 1px solid #d6d1c2;
-    background: #fff;
-    border-radius: 4px;
-    font-size: 13px;
-    cursor: pointer;
-  }
-  .ctrls button.refresh:hover { background: #f7f3e9; }
-  .ctrls button:disabled { opacity: 0.5; cursor: default; }
+ .acc-shell {
+ padding: 24px 32px;
+ max-width: 1100px;
+ margin: 0 auto;
+ font-family: system-ui, -apple-system, sans-serif;
+ color: #1f1c17;
+ }
+ .acc-head {
+ display: flex;
+ justify-content: space-between;
+ align-items: flex-end;
+ gap: 16px;
+ margin-bottom: 24px;
+ padding-bottom: 12px;
+ border-bottom: 1px solid #e8e3d6;
+ }
+ .acc-head h1 {
+ font-size: 22px;
+ margin: 0 0 4px 0;
+ font-weight: 600;
+ }
+ .muted { color: #777; font-size: 13px; margin: 0; }
+ .small { font-size: 12px; }
+ .err { color: #b3261e; font-size: 13px; }
+ .ctrls { display: flex; gap: 8px; }
+ .ctrls select, .ctrls button {
+ padding: 6px 10px;
+ border: 1px solid #d6d1c2;
+ background: #fff;
+ border-radius: 4px;
+ font-size: 13px;
+ cursor: pointer;
+ }
+ .ctrls button.refresh:hover { background: #f7f3e9; }
+ .ctrls button:disabled { opacity: 0.5; cursor: default; }
 
-  .tiles {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 14px;
-    margin-bottom: 24px;
-  }
-  .tile {
-    background: #fff;
-    border: 1px solid #e8e3d6;
-    border-radius: 6px;
-    padding: 16px;
-  }
-  .tile-label { font-size: 11px; color: #777; text-transform: uppercase; letter-spacing: 0.04em; }
-  .tile-value { font-size: 28px; font-weight: 600; margin: 6px 0 4px 0; color: #c96342; }
-  .tile-sub { font-size: 11px; color: #999; }
+ .tiles {
+ display: grid;
+ grid-template-columns: repeat(3, 1fr);
+ gap: 14px;
+ margin-bottom: 24px;
+ }
+ .tile {
+ background: #fff;
+ border: 1px solid #e8e3d6;
+ border-radius: 6px;
+ padding: 16px;
+ }
+ .tile-label { font-size: 11px; color: #777; text-transform: uppercase; letter-spacing: 0.04em; }
+ .tile-value { font-size: 28px; font-weight: 600; margin: 6px 0 4px 0; color: #c96342; }
+ .tile-sub { font-size: 11px; color: #999; }
 
-  .chart-card, .tier-card {
-    background: #fff;
-    border: 1px solid #e8e3d6;
-    border-radius: 6px;
-    padding: 16px;
-    margin-bottom: 20px;
-  }
+ .chart-card, .tier-card {
+ background: #fff;
+ border: 1px solid #e8e3d6;
+ border-radius: 6px;
+ padding: 16px;
+ margin-bottom: 20px;
+ }
 
-  .gate-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    background: #fff;
-    border: 1px solid #e8e3d6;
-    border-left: 3px solid #c96342;
-    border-radius: 6px;
-    padding: 16px;
-    margin-bottom: 20px;
-  }
-  .gate-label { font-size: 11px; color: #777; text-transform: uppercase; letter-spacing: 0.04em; }
-  .gate-row { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px 0; }
-  .gate-pill {
-    font-size: 12px;
-    font-weight: 600;
-    padding: 3px 10px;
-    border-radius: 999px;
-    border: 1px solid #e8e3d6;
-  }
-  .gate-pass { color: #c96342; background: #fdf2ee; border-color: #f0d4ca; }
-  .gate-fail { color: #b3261e; background: #fbeceb; border-color: #f0cdca; }
-  .gate-unknown { color: #999; background: #f7f3e9; }
-  .gate-detail { font-size: 14px; color: #1f1c17; font-weight: 600; }
-  .gate-sub { font-size: 11px; color: #999; }
-  .gate-run {
-    flex-shrink: 0;
-    padding: 8px 14px;
-    border: 1px solid #c96342;
-    background: #c96342;
-    color: #fff;
-    border-radius: 4px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .gate-run:hover:not(:disabled) { background: #b5573a; }
-  .gate-run:disabled { opacity: 0.5; cursor: default; }
-  .chart-card h2, .tier-card h2 {
-    font-size: 14px;
-    margin: 0 0 12px 0;
-    font-weight: 600;
-    color: #555;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-  .chart { width: 100%; height: auto; display: block; }
+ .gate-card {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ gap: 16px;
+ background: #fff;
+ border: 1px solid #e8e3d6;
+ border-left: 3px solid #c96342;
+ border-radius: 6px;
+ padding: 16px;
+ margin-bottom: 20px;
+ }
+ .gate-label { font-size: 11px; color: #777; text-transform: uppercase; letter-spacing: 0.04em; }
+ .gate-row { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px 0; }
+ .gate-pill {
+ font-size: 12px;
+ font-weight: 600;
+ padding: 3px 10px;
+ border-radius: 999px;
+ border: 1px solid #e8e3d6;
+ }
+ .gate-pass { color: #c96342; background: #fdf2ee; border-color: #f0d4ca; }
+ .gate-fail { color: #b3261e; background: #fbeceb; border-color: #f0cdca; }
+ .gate-unknown { color: #999; background: #f7f3e9; }
+ .gate-detail { font-size: 14px; color: #1f1c17; font-weight: 600; }
+ .gate-sub { font-size: 11px; color: #999; }
+ .gate-run {
+ flex-shrink: 0;
+ padding: 8px 14px;
+ border: 1px solid #c96342;
+ background: #c96342;
+ color: #fff;
+ border-radius: 4px;
+ font-size: 13px;
+ font-weight: 600;
+ cursor: pointer;
+ }
+ .gate-run:hover:not(:disabled) { background: #b5573a; }
+ .gate-run:disabled { opacity: 0.5; cursor: default; }
+ .chart-card h2, .tier-card h2 {
+ font-size: 14px;
+ margin: 0 0 12px 0;
+ font-weight: 600;
+ color: #555;
+ text-transform: uppercase;
+ letter-spacing: 0.04em;
+ }
+ .chart { width: 100%; height: auto; display: block; }
 
-  table { width: 100%; border-collapse: collapse; }
-  th, td {
-    text-align: left;
-    padding: 8px 10px;
-    border-bottom: 1px solid #f0ebde;
-    font-size: 13px;
-  }
-  th { font-size: 11px; color: #777; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 500; }
-  td code { background: #f7f3e9; padding: 1px 6px; border-radius: 3px; font-size: 12px; }
+ table { width: 100%; border-collapse: collapse; }
+ th, td {
+ text-align: left;
+ padding: 8px 10px;
+ border-bottom: 1px solid #f0ebde;
+ font-size: 13px;
+ }
+ th { font-size: 11px; color: #777; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 500; }
+ td code { background: #f7f3e9; padding: 1px 6px; border-radius: 3px; font-size: 12px; }
 </style>

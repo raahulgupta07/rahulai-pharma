@@ -1,7 +1,7 @@
 """Pharma Brain seed entries — drug aliases, dosage forms, expiry rules, KPIs, interactions."""
 from __future__ import annotations
 
-# Drug aliases (generic ↔ brand). category='alias'.
+# Drug aliases (generic <> brand). category='alias'.
 DRUG_ALIASES: list[tuple[str, str]] = [
     ("Paracetamol", "Also known as Acetaminophen, Tylenol, Crocin, Calpol, Dolo"),
     ("Acetaminophen", "Same drug as Paracetamol"),
@@ -73,9 +73,9 @@ COMMERCIAL_KPIS: list[tuple[str, str]] = [
 # Drug interactions. category='pattern' (alert-style).
 DRUG_INTERACTIONS: list[tuple[str, str]] = [
     ("Warfarin + Aspirin interaction", "ALERT: Warfarin combined with Aspirin or NSAIDs increases bleeding risk significantly. Requires INR monitoring and prescriber confirmation"),
-    ("ACE inhibitor + Potassium interaction", "ALERT: ACE inhibitors (Lisinopril, Enalapril) with potassium supplements or K-sparing diuretics → hyperkalemia risk"),
-    ("SSRI + MAOI interaction", "ALERT: SSRIs (Sertraline, Fluoxetine) with MAOIs → serotonin syndrome risk. Requires 14-day washout between classes"),
-    ("Statin + Macrolide interaction", "ALERT: Statins with Clarithromycin or Erythromycin → rhabdomyolysis risk via CYP3A4 inhibition"),
+    ("ACE inhibitor + Potassium interaction", "ALERT: ACE inhibitors (Lisinopril, Enalapril) with potassium supplements or K-sparing diuretics > hyperkalemia risk"),
+    ("SSRI + MAOI interaction", "ALERT: SSRIs (Sertraline, Fluoxetine) with MAOIs > serotonin syndrome risk. Requires 14-day washout between classes"),
+    ("Statin + Macrolide interaction", "ALERT: Statins with Clarithromycin or Erythromycin > rhabdomyolysis risk via CYP3A4 inhibition"),
     ("Metformin + Iodinated contrast interaction", "ALERT: Hold Metformin 48h around iodinated contrast imaging due to lactic acidosis risk in renal impairment"),
     ("NSAID + Antihypertensive interaction", "ALERT: NSAIDs reduce efficacy of ACE inhibitors, ARBs, and diuretics, raising blood pressure"),
 ]

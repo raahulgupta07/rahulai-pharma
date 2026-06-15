@@ -86,7 +86,7 @@ def _exec(query: str, params: dict | None = None) -> bool:
 # Manager policy — analytics surfaces show keyword/aggregate analysis only, never
 # the actual question or answer. Text is HARD-REMOVED server-side by default; it
 # is not sent to the client at all. A deliberate, audited per-row reveal exists
-# for the 👎 train-review flow only (see /feedback/{fid}/reveal).
+# for the train-review flow only (see /feedback/{fid}/reveal).
 import os as _os
 import re as _re
 
@@ -135,7 +135,7 @@ def _tok(s: str) -> list[str]:
 
 
 def _keyword_rollup(texts: list[str], top: int = 40) -> dict:
-    """Pure server-side rollup of question text → terms/bigrams/intents. The input
+    """Pure server-side rollup of question text > terms/bigrams/intents. The input
     strings are consumed here and discarded; only counts leave this function."""
     uni: dict[str, int] = {}
     bi: dict[str, int] = {}
@@ -308,8 +308,8 @@ def get_logins(request: Request, frm: str | None = Query(None, alias="from"),
             "SELECT u.username, u.last_login, COALESCE(u.role,'user'), "
             "COALESCE(x.req,0), COALESCE(x.cost,0), COALESCE(x.tok,0), x.last_use "
             "FROM public.dash_users u LEFT JOIN ("
-            "  SELECT actor, COUNT(*) req, SUM(cost_usd) cost, SUM(tokens_in+tokens_out) tok, MAX(ts) last_use "
-            "  FROM public.v_usage_unified WHERE ts >= :s AND ts < :e GROUP BY actor"
+            " SELECT actor, COUNT(*) req, SUM(cost_usd) cost, SUM(tokens_in+tokens_out) tok, MAX(ts) last_use "
+            " FROM public.v_usage_unified WHERE ts >= :s AND ts < :e GROUP BY actor"
             ") x ON x.actor = u.username ORDER BY u.last_login DESC NULLS LAST LIMIT :l",
             {"s": start, "e": end, "l": max(1, min(limit, 500))})
         return {"logins": [{"username": r[0], "last_login": str(r[1]) if r[1] else None, "role": r[2],
@@ -517,8 +517,8 @@ def get_people(request: Request, frm: str | None = Query(None, alias="from"), to
                COALESCE(f.ups, 0), COALESCE(f.downs, 0)
         FROM public.dash_users u
         LEFT JOIN usage us ON us.actor = u.username
-        LEFT JOIN sess  s  ON s.user_id = u.id
-        LEFT JOIN fb    f  ON f.user_id = u.id
+        LEFT JOIN sess s ON s.user_id = u.id
+        LEFT JOIN fb f ON f.user_id = u.id
         ORDER BY COALESCE(us.reqs, 0) DESC, COALESCE(s.sessions, 0) DESC, u.username
     """
     try:
@@ -575,7 +575,7 @@ def get_person(request: Request, username: str,
                frm: str | None = Query(None, alias="from"), to: str | None = None,
                limit: int = 50):
     """Drill-down for one user: header agg + daily series + their sessions +
-    rated questions (with 👍/👎). Usage joined by actor=username, sessions +
+    rated questions (with /). Usage joined by actor=username, sessions +
     feedback by user_id."""
     _gate(request)
     start, end = _window(frm, to)
@@ -647,7 +647,7 @@ def get_person(request: Request, username: str,
 def get_embed_people(request: Request, frm: str | None = Query(None, alias="from"), to: str | None = None,
                      limit: int = 200):
     """Embed-widget visitors. NOT registered users — anonymous browser sessions
-    (session_token) on public widgets, grouped per widget (embed_id → store).
+    (session_token) on public widgets, grouped per widget (embed_id > store).
     Sourced from dash_embed_calls, joined to dash_agent_embeds for the label.
     Kept fully separate from /people (registered dash_users)."""
     _gate(request)
@@ -796,7 +796,7 @@ def get_key_detail(request: Request, name: str,
               "AND api_key IS NOT NULL LIMIT 1", {"n": name})
     if not u:
         return {"key": name, "found": False, "header": {}, "questions": [], "messages_enabled": False}
-    sa = u[0][0]  # canonical service_account incl any svc: prefix
+    sa = u[0][0] # canonical service_account incl any svc: prefix
     p["sa"] = sa
     # aggregate usage for this key (windowed)
     g = _rows(
@@ -867,11 +867,11 @@ def get_live(request: Request):
     try:
         active = _rows(
             "WITH recent AS (SELECT DISTINCT session_id FROM public.dash_sse_audit "
-            "  WHERE ts >= now() - interval '5 minutes' "
-            "  AND event_name IN ('ReasoningStep','ToolCallStarted','ToolCallCompleted')), "
+            " WHERE ts >= now() - interval '5 minutes' "
+            " AND event_name IN ('ReasoningStep','ToolCallStarted','ToolCallCompleted')), "
             "done AS (SELECT DISTINCT session_id FROM public.dash_sse_audit "
-            "  WHERE event_name IN ('TeamRunCompleted','TeamRunContent') "
-            "  AND ts >= now() - interval '5 minutes') "
+            " WHERE event_name IN ('TeamRunCompleted','TeamRunContent') "
+            " AND ts >= now() - interval '5 minutes') "
             "SELECT r.session_id, (SELECT MAX(ts) FROM public.dash_sse_audit WHERE session_id=r.session_id) "
             "FROM recent r LEFT JOIN done d ON r.session_id=d.session_id "
             "WHERE d.session_id IS NULL ORDER BY 2 DESC LIMIT 25")
@@ -943,20 +943,20 @@ def get_outlet_stats(request: Request, days: int = Query(7)):
 
     Groups dash_apigw_usage by service_account for accounts matching the
     svc:outlet-* naming convention. Strips the 'svc:outlet-' prefix to expose
-    the site_code as the key.  Fail-soft — returns empty list on any error.
+    the site_code as the key. Fail-soft — returns empty list on any error.
     """
     _gate(request)
     days = max(1, min(days, 90))
     try:
         rows = _rows(
             "SELECT service_account, "
-            "  COUNT(*)                                          AS reqs, "
-            "  COUNT(*) FILTER (WHERE status <> 'ok')           AS errors, "
-            "  COALESCE(SUM(total_tokens), 0)                   AS tokens, "
-            "  MAX(ts)                                           AS last_used "
+            " COUNT(*) AS reqs, "
+            " COUNT(*) FILTER (WHERE status <> 'ok') AS errors, "
+            " COALESCE(SUM(total_tokens), 0) AS tokens, "
+            " MAX(ts) AS last_used "
             "FROM public.dash_apigw_usage "
             "WHERE service_account LIKE 'svc:outlet-%' "
-            "  AND ts >= now() - (:days * interval '1 day') "
+            " AND ts >= now() - (:days * interval '1 day') "
             "GROUP BY service_account",
             {"days": days},
         )
@@ -978,7 +978,7 @@ def get_outlet_stats(request: Request, days: int = Query(7)):
         return {"days": days, "stats": [], "error": str(e)}
 
 
-# --- invoice rollup (frontend → CSV) -----------------------------------------
+# --- invoice rollup (frontend > CSV) -----------------------------------------
 @router.get("/invoice")
 def get_invoice(request: Request, group: str = "store",
                 frm: str | None = Query(None, alias="from"), to: str | None = None):
@@ -1016,7 +1016,7 @@ def gateway_overview(request: Request, range: str = "7d", gran: str = "day",
     bucket = "hour" if gran == "hour" else "day"
     # build optional filters (match key with/without svc: prefix)
     filt = ["ts >= :s", "ts < :e"]; p = {"s": start, "e": end}
-    if key:   filt.append("(service_account = :k OR service_account = 'svc:' || :k)"); p["k"] = key
+    if key: filt.append("(service_account = :k OR service_account = 'svc:' || :k)"); p["k"] = key
     if model: filt.append("model = :m"); p["m"] = model
     if store: filt.append("store_id = :st"); p["st"] = store
     W = " AND ".join(filt)
@@ -1077,7 +1077,7 @@ def gateway_overview(request: Request, range: str = "7d", gran: str = "day",
             f"COALESCE(AVG(latency_ms) FILTER (WHERE latency_ms IS NOT NULL),0), "
             f"COALESCE(SUM((status IS NOT NULL AND status<>'ok')::int),0) "
             f"FROM public.dash_apigw_usage WHERE {W} GROUP BY model ORDER BY 2 DESC", p)]
-        # by key (clickable in UI → existing drill-down). strip svc: prefix in output.
+        # by key (clickable in UI > existing drill-down). strip svc: prefix in output.
         by_key = [{"key": (r[0] or "").replace("svc:", ""), "scope": r[1] or "global", "store": r[2] or "",
                    "requests": int(r[3] or 0), "tokens": int(r[4] or 0), "cost": float(r[5] or 0),
                    "avg_latency_ms": int(r[6] or 0), "errors": int(r[7] or 0),
@@ -1088,14 +1088,14 @@ def gateway_overview(request: Request, range: str = "7d", gran: str = "day",
             f"COALESCE(SUM(cost_usd),0), COALESCE(AVG(latency_ms) FILTER (WHERE latency_ms IS NOT NULL),0), "
             f"COALESCE(SUM((status IS NOT NULL AND status<>'ok')::int),0), COALESCE(SUM(streamed::int),0), MAX(ts) "
             f"FROM public.dash_apigw_usage WHERE {W} GROUP BY service_account ORDER BY 4 DESC LIMIT 50", p)]
-        # top key per store — computed Python-side (robust; avoids the fragile ts→u2.ts replace gotcha)
+        # top key per store — computed Python-side (robust; avoids the fragile ts>u2.ts replace gotcha)
         topkey_map: dict = {}
         for r in _rows(
                 f"SELECT store_id, service_account, COUNT(*) c "
                 f"FROM public.dash_apigw_usage WHERE {W} AND store_id IS NOT NULL "
                 f"GROUP BY store_id, service_account ORDER BY store_id, c DESC", p):
             sid = r[0]
-            if sid not in topkey_map:  # first row per store = highest count (ordered)
+            if sid not in topkey_map: # first row per store = highest count (ordered)
                 topkey_map[sid] = (r[1] or "").replace("svc:", "")
         # by store/outlet
         by_store = [{"store": r[0] or "(none)", "requests": int(r[1] or 0), "tokens": int(r[2] or 0),
@@ -1478,7 +1478,7 @@ def keywords_analytics(request: Request,
     try:
         cur = _collect_questions(start, end)
         roll = _keyword_rollup(cur)
-        # previous equal window → rising terms (delta in rank/count)
+        # previous equal window > rising terms (delta in rank/count)
         span = end - start
         prev = _collect_questions(start - span, start)
         prev_counts = {k["term"]: k["count"] for k in _keyword_rollup(prev)["keywords"]}
@@ -1631,7 +1631,7 @@ def embeddings_analytics(request: Request,
 def feedback_analytics(request: Request,
                        frm: str | None = Query(None, alias="from"),
                        to: str | None = None, limit: int = 50):
-    """Like/dislike learning analytics from dash_feedback: totals, 👍/👎 over
+    """Like/dislike learning analytics from dash_feedback: totals, / over
     time, by-project satisfaction, and the most recent disliked answers."""
     _gate(request)
     start, end = _window(frm, to)
@@ -1650,7 +1650,7 @@ def feedback_analytics(request: Request,
                   for r in _rows("SELECT COALESCE(project_slug,'(none)'), "
                                  "COUNT(*) FILTER (WHERE rating='up'), COUNT(*) FILTER (WHERE rating='down') "
                                  "FROM public.dash_feedback " + win + " GROUP BY 1 ORDER BY 3 DESC LIMIT 20", p)]
-    # Privacy: the analytics dashboard shows NO raw text. Each 👎 row carries only
+    # Privacy: the analytics dashboard shows NO raw text. Each row carries only
     # keyword chips (top terms from its own question) + meta + char counts. The full
     # text is retrievable for review only via the audited /feedback/{fid}/reveal.
     disliked = [{"id": int(r[0]), "project": r[1],
@@ -1680,7 +1680,7 @@ def feedback_analytics(request: Request,
 
 @router.post("/feedback/{fid}/promote")
 def feedback_promote(fid: int, request: Request, body: dict = Body(default={})):
-    """Admin promotes a 👎 row's user-supplied correction (or its SQL) to the
+    """Admin promotes a row's user-supplied correction (or its SQL) to the
     golden corpus. A user correction is an UNVERIFIED claim — never auto-promoted
     on click; it lands here for human review first. Optional body.sql overrides
     the stored correction (admin edited it)."""
@@ -1725,7 +1725,7 @@ def feedback_dismiss(fid: int, request: Request):
 
 @router.get("/feedback/{fid}/reveal")
 def feedback_reveal(fid: int, request: Request):
-    """Deliberate, AUDITED reveal of ONE 👎 row's raw text — the only path that
+    """Deliberate, AUDITED reveal of ONE row's raw text — the only path that
     returns question/answer/correction in cleartext. Used solely by the train-review
     flow so an admin can judge a correction before promote/dismiss. Super-admin gated
     + written to dash_audit_log. The general analytics dashboard never calls this."""
@@ -1774,11 +1774,11 @@ def tokens_analytics(request: Request,
                "completion": int(r[2]), "reasoning": int(r[3]), "cached": int(r[4])}
               for r in _rows(
                   "SELECT b, SUM(pp), SUM(cc), SUM(rr), SUM(ca) FROM ("
-                  "  SELECT date_trunc('day',ts) b, tokens_in pp, tokens_out cc, reasoning_tokens rr, cached_tokens ca "
-                  "  FROM public.dash_llm_costs WHERE ts >= :start AND ts < :end "
-                  "  UNION ALL "
-                  "  SELECT date_trunc('day',ts) b, prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens "
-                  "  FROM public.dash_apigw_usage WHERE ts >= :start AND ts < :end"
+                  " SELECT date_trunc('day',ts) b, tokens_in pp, tokens_out cc, reasoning_tokens rr, cached_tokens ca "
+                  " FROM public.dash_llm_costs WHERE ts >= :start AND ts < :end "
+                  " UNION ALL "
+                  " SELECT date_trunc('day',ts) b, prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens "
+                  " FROM public.dash_apigw_usage WHERE ts >= :start AND ts < :end"
                   ") x GROUP BY b ORDER BY b", p)]
     return {"window": {"from": start.isoformat(), "to": end.isoformat()},
             "prompt": prompt, "completion": completion, "reasoning": reasoning,

@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from dash.providers.federation.translator import (  # noqa: E402
+from dash.providers.federation.translator import ( # noqa: E402
     TranslationResult,
     get_supported_dialects,
     normalize_to_canonical,
@@ -65,7 +65,7 @@ def test_get_supported_dialects():
 
 
 # ---------------------------------------------------------------------------
-# Postgres ↔ T-SQL via regex fallback
+# Postgres <> T-SQL via regex fallback
 # ---------------------------------------------------------------------------
 
 def test_postgres_to_tsql_limit_to_top(monkeypatch):
@@ -114,7 +114,7 @@ def test_tsql_to_postgres_isnull_to_coalesce(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Postgres ↔ MySQL
+# Postgres <> MySQL
 # ---------------------------------------------------------------------------
 
 def test_postgres_to_mysql_quotes_to_backticks(monkeypatch):
@@ -166,7 +166,7 @@ def test_warnings_when_sqlglot_fails(monkeypatch):
     _force_regex(monkeypatch)
     sql = "SELECT NOW()"
     result = translate(sql, source_dialect="postgres", target_dialect="tsql")
-    # sqlglot import failed → warning recorded
+    # sqlglot import failed > warning recorded
     assert any("sqlglot" in w for w in result.warnings)
 
 
@@ -177,7 +177,7 @@ def test_warnings_when_sqlglot_fails(monkeypatch):
 def test_normalize_to_canonical():
     sql = "SELECT 1"
     out = normalize_to_canonical(sql, "postgres")
-    # canonical = postgres → unchanged
+    # canonical = postgres > unchanged
     assert out == sql
 
 
@@ -196,7 +196,7 @@ def test_to_dialect_helper(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# T-SQL ↔ MySQL
+# T-SQL <> MySQL
 # ---------------------------------------------------------------------------
 
 def test_tsql_to_mysql_top_to_limit(monkeypatch):

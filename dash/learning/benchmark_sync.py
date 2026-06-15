@@ -1,13 +1,13 @@
 """Industry benchmark sync — fetches public KPI/benchmark data from curated
 web sources, parses it through an LLM, runs PII + generalization gates, and
 upserts the resulting global facts into ``dash_company_brain`` under
-``category='benchmark'`` (project_slug=NULL → globally shared).
+``category='benchmark'`` (project_slug=NULL > globally shared).
 
 Pipeline:
-    1. fetch_benchmark(url)          → raw HTML/text
-    2. parse_benchmark(text, indus)  → list[KPI dict]   (LITE_MODEL, strict JSON)
-    3. PII scrub                      (reuses learning.promotion regex set)
-    4. LLM generalize gate            (only A/B verdicts promoted)
+    1. fetch_benchmark(url) > raw HTML/text
+    2. parse_benchmark(text, indus) > list[KPI dict] (LITE_MODEL, strict JSON)
+    3. PII scrub (reuses learning.promotion regex set)
+    4. LLM generalize gate (only A/B verdicts promoted)
     5. UPSERT into dash_company_brain (sha256(industry,kpi_name) dedupe)
 
 Per-run safety net: ``cost_guard.get_status('__benchmark_sync__')`` aborts
@@ -38,12 +38,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 # url -> {"failures": int, "disabled_until": float | None,
-#         "last_success_at": str | None, "last_failure_at": str | None,
-#         "last_error": str | None}
+# "last_success_at": str | None, "last_failure_at": str | None,
+# "last_error": str | None}
 dash_benchmark_source_health: dict[str, dict[str, Any]] = {}
 
 _FAIL_THRESHOLD = 3
-_DISABLE_COOLDOWN_S = 24 * 3600  # 24h
+_DISABLE_COOLDOWN_S = 24 * 3600 # 24h
 
 
 def _source_is_disabled(url: str) -> bool:
@@ -95,7 +95,7 @@ _BUDGET_KEY = "__benchmark_sync__"
 HTTP_TIMEOUT_S: int = 30
 HTTP_RETRIES: int = 2
 MAX_KPIS_PER_SOURCE: int = 30
-MAX_RAW_TEXT_CHARS: int = 60_000        # cap before LLM
+MAX_RAW_TEXT_CHARS: int = 60_000 # cap before LLM
 
 
 # ---------------------------------------------------------------------------
@@ -202,9 +202,9 @@ BENCHMARK_SOURCES: dict[str, list[dict[str, str]]] = {
 class BenchmarkKPI:
     """Normalized industry benchmark fact."""
     kpi_name: str
-    value: str            # keep as text — units / ranges / percentiles may be embedded
+    value: str # keep as text — units / ranges / percentiles may be embedded
     unit: str = ""
-    percentile: str = ""  # e.g. "p50", "median", "top quartile"
+    percentile: str = "" # e.g. "p50", "median", "top quartile"
     source: str = ""
     source_url: str = ""
     industry: str = ""
@@ -227,7 +227,7 @@ class SyncStats:
 # ---------------------------------------------------------------------------
 
 async def fetch_benchmark(source_url: str) -> Optional[str]:
-    """Fetch URL → plain text (stripped of tags). Returns None on failure.
+    """Fetch URL > plain text (stripped of tags). Returns None on failure.
 
     30-second timeout, 2 retries with exponential backoff. Reuses the
     requests/httpx-style fetch shape so callers can swap in the existing
@@ -277,7 +277,7 @@ async def fetch_benchmark(source_url: str) -> Optional[str]:
                 await asyncio.sleep(backoff)
                 backoff *= 2
                 continue
-            # Demoted WARNING → DEBUG (Issue #16) — fail-counter handles
+            # Demoted WARNING > DEBUG (Issue #16) — fail-counter handles
             # repeat-offender suppression; verbose mode still surfaces these.
             _record_failure(source_url, last_err)
             logger.debug(
@@ -302,8 +302,8 @@ Return STRICT JSON (no commentary, no markdown). Schema:
   "kpis": [
     {{
       "kpi_name": "string (<=80 chars, business-readable, e.g. 'Same-Store Sales Growth YoY')",
-      "value":    "string (the published value or range, e.g. '3.2%' or '$420 - $580')",
-      "unit":     "string (e.g. '%', 'USD', 'days', or empty)",
+      "value": "string (the published value or range, e.g. '3.2%' or '$420 - $580')",
+      "unit": "string (e.g. '%', 'USD', 'days', or empty)",
       "percentile":"string (e.g. 'median', 'p50', 'top quartile', or empty)"
     }}
   ]
@@ -358,10 +358,10 @@ async def parse_benchmark(
 
     try:
         from dash.settings import training_llm_call
-        from dash.learning.cost_guard import set_llm_project as _maybe_set_proj  # type: ignore  # noqa: F401
+        from dash.learning.cost_guard import set_llm_project as _maybe_set_proj # type: ignore # noqa: F401
     except Exception:
         # Older code paths only need the LLM call.
-        from dash.settings import training_llm_call  # type: ignore
+        from dash.settings import training_llm_call # type: ignore
 
     # Run the synchronous LLM helper in a thread to keep this coroutine
     # cooperative (it's gated by httpx internally).
@@ -420,7 +420,7 @@ async def parse_benchmark(
 def _pii_safe(text_to_check: str) -> bool:
     """Reuse the regex set from learning.promotion."""
     try:
-        from dash.learning.promotion import _PII_BLOCKERS  # type: ignore
+        from dash.learning.promotion import _PII_BLOCKERS # type: ignore
     except Exception:
         return True
     for pat in _PII_BLOCKERS:
@@ -433,7 +433,7 @@ def _pii_safe(text_to_check: str) -> bool:
 
 
 def _generalizable(kpi: BenchmarkKPI) -> bool:
-    """Cheap LLM gate. On any failure → fail-open (allow promotion)."""
+    """Cheap LLM gate. On any failure > fail-open (allow promotion)."""
     if not _budget_remaining():
         return True
     try:
@@ -504,8 +504,8 @@ def _upsert_benchmark(kpi: BenchmarkKPI) -> str:
             existing = conn.execute(text(
                 "SELECT id FROM public.dash_company_brain "
                 "WHERE category = 'benchmark' "
-                "  AND project_slug IS NULL "
-                "  AND metadata->>'fact_hash' = :h "
+                " AND project_slug IS NULL "
+                " AND metadata->>'fact_hash' = :h "
                 "LIMIT 1"
             ), {"h": h}).fetchone()
 
@@ -513,7 +513,7 @@ def _upsert_benchmark(kpi: BenchmarkKPI) -> str:
                 conn.execute(text(
                     "UPDATE public.dash_company_brain "
                     "SET definition = :defn, metadata = CAST(:meta AS jsonb), "
-                    "    updated_at = NOW() "
+                    " updated_at = NOW() "
                     "WHERE id = :id"
                 ), {"defn": definition[:4000], "meta": json.dumps(metadata),
                     "id": int(existing[0])})
@@ -524,7 +524,7 @@ def _upsert_benchmark(kpi: BenchmarkKPI) -> str:
                 "INSERT INTO public.dash_company_brain "
                 "(category, name, definition, metadata, project_slug, created_by) "
                 "VALUES ('benchmark', :nm, :defn, CAST(:meta AS jsonb), NULL, "
-                "        'benchmark_sync')"
+                " 'benchmark_sync')"
             ), {"nm": kpi.kpi_name[:200],
                 "defn": definition[:4000],
                 "meta": json.dumps(metadata)})

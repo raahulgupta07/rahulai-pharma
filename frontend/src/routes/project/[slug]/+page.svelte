@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount, onDestroy, tick } from 'svelte';
  import { page } from '$app/state';
  import { goto } from '$app/navigation';
@@ -87,30 +87,30 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  let isStreaming = $state(false);
  let sessionId = $state('');
  let sessionStartTime = $state('');
- // Chat presentation style: 'claude' (full-width, no avatar, ✻ thinking, quiet trace)
+ // Chat presentation style: 'claude' (full-width, no avatar, * thinking, quiet trace)
  // or 'classic' (current robot-avatar + dotted thinking + full trace). Toggle persists;
  // instant rollback to the old look without a redeploy.
  let chatStyle = $state<'claude' | 'classic'>(
-   (typeof localStorage !== 'undefined' && localStorage.getItem('cp_chat_style') === 'classic') ? 'classic' : 'claude'
+ (typeof localStorage !== 'undefined' && localStorage.getItem('cp_chat_style') === 'classic') ? 'classic' : 'claude'
  );
  function toggleChatStyle() {
-   chatStyle = chatStyle === 'claude' ? 'classic' : 'claude';
-   try { localStorage.setItem('cp_chat_style', chatStyle); } catch {}
+ chatStyle = chatStyle === 'claude' ? 'classic' : 'claude';
+ try { localStorage.setItem('cp_chat_style', chatStyle); } catch {}
  }
  // OKF test toggle: when on, chat also reads the imported (pending) OKF lane.
- // Default OFF = live behaviour. sendMessage() reads localStorage 'cp_use_okf'.
+ // Default ON now. sendMessage() reads localStorage 'cp_use_okf'. Toggle UI hidden.
  let useOkf = $state<boolean>(
-   typeof localStorage !== 'undefined' && localStorage.getItem('cp_use_okf') === '1'
+ typeof localStorage === 'undefined' || localStorage.getItem('cp_use_okf') !== '0'
  );
  function toggleOkf() {
-   useOkf = !useOkf;
-   try { localStorage.setItem('cp_use_okf', useOkf ? '1' : '0'); } catch {}
+ useOkf = !useOkf;
+ try { localStorage.setItem('cp_use_okf', useOkf ? '1' : '0'); } catch {}
  }
  // Claude-style empty state: signed-in user + time-based greeting
  let userName = $state('');
  const greeting = $derived.by(() => {
-   const h = new Date().getHours();
-   return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+ const h = new Date().getHours();
+ return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
  });
  let messagesEl: HTMLDivElement;
  let textareaEl: HTMLTextAreaElement;
@@ -319,23 +319,23 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  // even though the trace clearly ran one). Pull SELECT/WITH SQL out of each
  // tool item's args.
  function _sqlsFromTrace(trace: any): string[] {
-  if (!Array.isArray(trace)) return [];
-  const out: string[] = [];
-  for (const it of trace) {
-   if (!it || it.kind !== 'tool') continue;
-   const a = it.args;
-   let sql = '';
-   if (typeof a === 'string') {
-    if (/\b(SELECT|WITH|INSERT|UPDATE|DELETE|EXPLAIN)\b/i.test(a)) sql = a;
-   } else if (a && typeof a === 'object') {
-    for (const k of ['sql', 'query', 'statement', 'sql_query', 'q']) {
-     const v = a[k];
-     if (typeof v === 'string' && /\b(SELECT|WITH|INSERT|UPDATE|DELETE|EXPLAIN)\b/i.test(v)) { sql = v; break; }
-    }
-   }
-   if (sql && !out.includes(sql)) out.push(sql);
-  }
-  return out;
+ if (!Array.isArray(trace)) return [];
+ const out: string[] = [];
+ for (const it of trace) {
+ if (!it || it.kind !== 'tool') continue;
+ const a = it.args;
+ let sql = '';
+ if (typeof a === 'string') {
+ if (/\b(SELECT|WITH|INSERT|UPDATE|DELETE|EXPLAIN)\b/i.test(a)) sql = a;
+ } else if (a && typeof a === 'object') {
+ for (const k of ['sql', 'query', 'statement', 'sql_query', 'q']) {
+ const v = a[k];
+ if (typeof v === 'string' && /\b(SELECT|WITH|INSERT|UPDATE|DELETE|EXPLAIN)\b/i.test(v)) { sql = v; break; }
+ }
+ }
+ if (sql && !out.includes(sql)) out.push(sql);
+ }
+ return out;
  }
 
  async function loadSessions() {
@@ -409,6 +409,18 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  let memoryCount = $state(0);
 
  let sessionCount = $derived(pastSessions.length);
+
+ // Empty-state stat line — "N datasets · N rows · N sessions" (Aria-style).
+ let emptyStats = $derived.by(() => {
+ const ds = projectTables.length;
+ const rows = projectTables.reduce((a, t) => a + (t.rows || 0), 0);
+ const parts: string[] = [];
+ if (ds) parts.push(`${ds} dataset${ds === 1 ? '' : 's'}`);
+ if (rows) parts.push(`${rows.toLocaleString()} rows`);
+ if (sessionCount) parts.push(`${sessionCount} session${sessionCount === 1 ? '' : 's'}`);
+ if (memoryCount) parts.push(`${memoryCount} memor${memoryCount === 1 ? 'y' : 'ies'}`);
+ return parts.join('  ·  ');
+ });
 
  async function loadChatStats() {
  // Fetch average quality score
@@ -604,16 +616,16 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 
  // Auto-trigger Deep Dash if redirected from /chat with ?build_dash=1
  try {
-   const params = new URLSearchParams(window.location.search);
-   if (params.get('build_dash') === '1') {
-     // Wait for messages to load (loadSession runs further below); poll briefly.
-     setTimeout(() => {
-       if (messages.length >= 2) openDeepDashboard();
-     }, 800);
-     // Clean URL so refresh doesn't retrigger.
-     const clean = window.location.pathname + window.location.hash;
-     window.history.replaceState({}, '', clean);
-   }
+ const params = new URLSearchParams(window.location.search);
+ if (params.get('build_dash') === '1') {
+ // Wait for messages to load (loadSession runs further below); poll briefly.
+ setTimeout(() => {
+ if (messages.length >= 2) openDeepDashboard();
+ }, 800);
+ // Clean URL so refresh doesn't retrigger.
+ const clean = window.location.pathname + window.location.hash;
+ window.history.replaceState({}, '', clean);
+ }
  } catch {}
 
  // Scope guard — if project requires scope and none is selected, bounce to picker.
@@ -844,7 +856,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  headers: { ..._headers(), 'Content-Type': 'application/json' },
  body: payload || '{}',
  });
- if (res.ok) _flash('ok', '✓ Saved to decision diary');
+ if (res.ok) _flash('ok', 'OK Saved to decision diary');
  else _flash('warn', 'Diary save not available yet');
  } catch { _flash('warn', 'Diary save not available yet'); }
  return;
@@ -852,7 +864,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 
  if (a === 'copy') {
  if (ctx) {
- try { await navigator.clipboard.writeText(ctx.msg.content || ''); _flash('ok', '✓ Copied'); }
+ try { await navigator.clipboard.writeText(ctx.msg.content || ''); _flash('ok', 'OK Copied'); }
  catch { _flash('err', 'Copy failed'); }
  }
  return;
@@ -868,7 +880,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  headers: { ..._headers(), 'Content-Type': 'application/json' },
  body: JSON.stringify({ scope: 'project', source: 'user', content: `Q: ${q}\nA: ${(ctx.msg.content || '').slice(0, 1200)}` }),
  });
- if (res.ok) _flash('ok', '✓ Saved to memory');
+ if (res.ok) _flash('ok', 'OK Saved to memory');
  else _flash('warn', 'Save not available yet');
  } catch { _flash('warn', 'Save not available yet'); }
  return;
@@ -880,7 +892,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  return;
  }
  if (a === 'csv' || a === 'excel') {
- try { await exportExcelChat(); _flash('ok', '✓ Excel generated'); }
+ try { await exportExcelChat(); _flash('ok', 'OK Excel generated'); }
  catch { _flash('err', 'Excel export failed'); }
  return;
  }
@@ -889,7 +901,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  try {
  const url = `${window.location.origin}/ui/project/${projectSlug}?session=${encodeURIComponent(sessionId || '')}`;
  await navigator.clipboard.writeText(url);
- _flash('ok', '✓ Share link copied to clipboard');
+ _flash('ok', 'OK Share link copied to clipboard');
  } catch { _flash('warn', 'Share not available yet'); }
  return;
  }
@@ -926,18 +938,18 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  // Reasoning mode: slash command > mode picker > router default.
  let forcedReasoning = '';
  if (msgText.startsWith('/deep ')) {
-   forcedReasoning = 'deep';
-   msgText = msgText.slice(6).trim();
+ forcedReasoning = 'deep';
+ msgText = msgText.slice(6).trim();
  } else if (msgText.startsWith('/quick ')) {
-   forcedReasoning = 'quick';
-   msgText = msgText.slice(7).trim();
+ forcedReasoning = 'quick';
+ msgText = msgText.slice(7).trim();
  } else if (reasoningMode === 'fast') {
-   forcedReasoning = 'quick';
+ forcedReasoning = 'quick';
  } else if (reasoningMode === 'reason') {
-   forcedReasoning = 'deep';
- }  // else 'auto' → empty → router decides
+ forcedReasoning = 'deep';
+ } // else 'auto' > empty > router decides
  // (DEEP/REASONING/ULTRA tiers removed — pharmacy counter needs none. `/deep `
- //  slash command above still works as a power-user escape hatch.)
+ // slash command above still works as a power-user escape hatch.)
  const msg = msgText;
  if (!msg) return;
  inputText = '';
@@ -979,7 +991,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  activePresId = parseInt(presMatch[1]);
  presPanelOpen = true;
  }
- // Detect [CONFIRM_OUTLINE] tag → frontend renders approve buttons inline
+ // Detect [CONFIRM_OUTLINE] tag > frontend renders approve buttons inline
  if (last.content.includes('[CONFIRM_OUTLINE]')) {
  last.outlinePending = true;
  }
@@ -1152,7 +1164,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  },
  undefined, // mode (global super-chat only)
  (r: any) => {
- // Complexity router decision (Feature A) → attach to message for trace badge.
+ // Complexity router decision (Feature A) > attach to message for trace badge.
  const last = messages[messages.length - 1];
  if (!last || last.role !== 'assistant') return;
  messages = [...messages.slice(0, -1), { ...last, routing: r }];
@@ -1181,9 +1193,9 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  if (d.url) {
  const full = `${location.origin}${d.url}`;
  shareLink = full;
- try { await navigator.clipboard.writeText(full); } catch {}
- }
- } catch {} finally { shareBusy = false; }
+ try { await navigator.clipboard.writeText(full); _flash('ok', 'OK Share link copied to clipboard'); } catch { _flash('ok', 'Share link ready'); }
+ } else { _flash('warn', 'Share not available yet'); }
+ } catch { _flash('warn', 'Share not available yet'); } finally { shareBusy = false; }
  }
 
  function renderStars(score: number | undefined): string {
@@ -1217,79 +1229,79 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  // Research deep-dive export — POST last question to /api/research/deep, download PDF
  let researchBusy = $state(false);
  async function exportResearchChat() {
-   if (researchBusy || messages.length < 1) return;
-   const lastUser = [...messages].reverse().find(m => m.role === 'user');
-   const lastUserQuestion = lastUser?.content?.trim();
-   if (!lastUserQuestion) return;
-   researchBusy = true;
-   try {
-     const res = await fetch('/api/research/deep', {
-       method: 'POST',
-       headers: { ..._headers(), 'Content-Type': 'application/json' },
-       body: JSON.stringify({ question: lastUserQuestion, project_slug: projectSlug }),
-     });
-     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-     const data = await res.json();
-     if (!data?.run_id) throw new Error('No run_id returned');
-     const pdfRes = await fetch(`/api/research/${encodeURIComponent(data.run_id)}/pdf`, { headers: _headers() });
-     if (!pdfRes.ok) throw new Error(`PDF HTTP ${pdfRes.status}`);
-     const blob = await pdfRes.blob();
-     const url = URL.createObjectURL(blob);
-     const a = document.createElement('a');
-     a.href = url;
-     a.download = `research_${(projectSlug || 'project').replace(/[^\w-]/g,'_')}_${Date.now()}.pdf`;
-     document.body.appendChild(a); a.click(); a.remove();
-     URL.revokeObjectURL(url);
-   } catch (e) {
-     console.error('Research export failed', e);
-   } finally {
-     researchBusy = false;
-   }
+ if (researchBusy || messages.length < 1) return;
+ const lastUser = [...messages].reverse().find(m => m.role === 'user');
+ const lastUserQuestion = lastUser?.content?.trim();
+ if (!lastUserQuestion) return;
+ researchBusy = true;
+ try {
+ const res = await fetch('/api/research/deep', {
+ method: 'POST',
+ headers: { ..._headers(), 'Content-Type': 'application/json' },
+ body: JSON.stringify({ question: lastUserQuestion, project_slug: projectSlug }),
+ });
+ if (!res.ok) throw new Error(`HTTP ${res.status}`);
+ const data = await res.json();
+ if (!data?.run_id) throw new Error('No run_id returned');
+ const pdfRes = await fetch(`/api/research/${encodeURIComponent(data.run_id)}/pdf`, { headers: _headers() });
+ if (!pdfRes.ok) throw new Error(`PDF HTTP ${pdfRes.status}`);
+ const blob = await pdfRes.blob();
+ const url = URL.createObjectURL(blob);
+ const a = document.createElement('a');
+ a.href = url;
+ a.download = `research_${(projectSlug || 'project').replace(/[^\w-]/g,'_')}_${Date.now()}.pdf`;
+ document.body.appendChild(a); a.click(); a.remove();
+ URL.revokeObjectURL(url);
+ } catch (e) {
+ console.error('Research export failed', e);
+ } finally {
+ researchBusy = false;
+ }
  }
 
  // Excel export — POST messages to /api/export/excel-from-chat, download .xlsx
  let excelBusy = $state(false);
  async function exportExcelChat() {
-   if (excelBusy || messages.length < 2) return;
-   excelBusy = true;
-   try {
-     const res = await fetch('/api/export/excel-from-chat', {
-       method: 'POST',
-       headers: { ..._headers(), 'Content-Type': 'application/json' },
-       body: JSON.stringify({
-         messages: messages.map(m => ({ role: m.role, content: m.content, sqlQueries: (m as any).sqlQueries || [] })),
-         title: `${projectInfo?.name || 'Analysis'} — Chat Export`,
-         agent_name: projectInfo?.agent_name || 'Agent',
-       }),
-     });
-     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-     const blob = await res.blob();
-     const url = URL.createObjectURL(blob);
-     const a = document.createElement('a');
-     a.href = url;
-     a.download = `${(projectInfo?.name || 'export').replace(/[^\w-]/g,'_')}_${new Date().toISOString().slice(0,10)}.xlsx`;
-     document.body.appendChild(a); a.click(); a.remove();
-     URL.revokeObjectURL(url);
-   } catch (e) {
-     console.error('Excel export failed', e);
-   } finally {
-     excelBusy = false;
-   }
+ if (excelBusy || messages.length < 2) return;
+ excelBusy = true;
+ try {
+ const res = await fetch('/api/export/excel-from-chat', {
+ method: 'POST',
+ headers: { ..._headers(), 'Content-Type': 'application/json' },
+ body: JSON.stringify({
+ messages: messages.map(m => ({ role: m.role, content: m.content, sqlQueries: (m as any).sqlQueries || [] })),
+ title: `${projectInfo?.name || 'Analysis'} — Chat Export`,
+ agent_name: projectInfo?.agent_name || 'Agent',
+ }),
+ });
+ if (!res.ok) throw new Error(`HTTP ${res.status}`);
+ const blob = await res.blob();
+ const url = URL.createObjectURL(blob);
+ const a = document.createElement('a');
+ a.href = url;
+ a.download = `${(projectInfo?.name || 'export').replace(/[^\w-]/g,'_')}_${new Date().toISOString().slice(0,10)}.xlsx`;
+ document.body.appendChild(a); a.click(); a.remove();
+ URL.revokeObjectURL(url);
+ } catch (e) {
+ console.error('Excel export failed', e);
+ } finally {
+ excelBusy = false;
+ }
  }
 
  function startDeepDeck() {
-   if (messages.length < 2) return;
-   // Close other panels
-   slidesPanelOpen = false;
-   presPanelOpen = false;
-   pptxSteps = [];
-   deepDeckOpen = true;
+ if (messages.length < 2) return;
+ // Close other panels
+ slidesPanelOpen = false;
+ presPanelOpen = false;
+ pptxSteps = [];
+ deepDeckOpen = true;
  }
 
  function onDeepDeckComplete(presId: number) {
-   deepDeckOpen = false;
-   activePresId = presId;
-   presPanelOpen = true;
+ deepDeckOpen = false;
+ activePresId = presId;
+ presPanelOpen = true;
  }
 
  // Deep Dashboard artifact panel
@@ -1303,224 +1315,224 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  let dashCurrentVersion = $state<number | null>(null);
  let dashVersionsDropdownOpen = $state(false);
 
- // CHAT→DASH (build dashboard from full chat session via SSE)
+ // CHAT>DASH (build dashboard from full chat session via SSE)
  let chatDashBusy = $state(false);
- let splitMode = $state(false);  // when true, chat shrinks to 50% + dashboard renders right
+ let splitMode = $state(false); // when true, chat shrinks to 50% + dashboard renders right
  let chatDashProgress = $state<any>({ stage: '', current: 0, total: 9, panel_pills: [] as any[], narrative: '', complete: false, error: '', dashboard_id: '', started_at: 0, stages_done: [] as any[], events_log: [] as any[], tokens: 0, cost_usd: 0, intent: null, schema_tables: 0, sql_count: 0 });
- let chatDashElapsed = $state(0);  // seconds, ticks every 1s while busy
+ let chatDashElapsed = $state(0); // seconds, ticks every 1s while busy
  const DASH_STAGE_DEFS: Record<string, { label: string; desc: string }> = {
-   intent_classify:     { label: '1 · Intent',       desc: 'Classifying chat intent + extracting audience + topics' },
-   schema_rag:          { label: '2 · Schema RAG',   desc: 'Pulling table catalog + Codex pipeline_logic + Brain context' },
-   panel_plan:          { label: '3 · Panel Plan',   desc: 'Deciding 4–12 panels: KPIs, charts, tables, narratives' },
-   sql_gen:             { label: '4 · SQL Gen',      desc: 'Writing Postgres SELECT per panel (dialect-aware, dtype casts)' },
-   explain_gate:        { label: '5 · EXPLAIN gate', desc: 'Validating SQL via EXPLAIN before execute; retries on failure' },
-   execute:             { label: '6 · Execute',      desc: 'Running SQL against read-only project engine; profiling rows' },
-   executive_overview:  { label: '6.5 · Overview',   desc: 'Drafting truth-grounded narrative (uses verified metrics)' },
-   chart_specs:         { label: '7 · Chart Specs',  desc: 'Generating ECharts options per panel + Pydantic validation' },
-   panel_announce:      { label: '7.5 · Announce',   desc: 'Emitting per-panel chat pill + mini sparkline' },
-   judge:               { label: '8 · Judge',        desc: 'Different-model critic scoring spec (TACL rule)' },
-   layout:              { label: '9 · Layout',       desc: 'Packing panels into grid: executive | operational | narrative' },
-   intent: { label: '1 · Intent', desc: 'Classifying chat intent + extracting audience + topics' },
+ intent_classify: { label: '1 · Intent', desc: 'Classifying chat intent + extracting audience + topics' },
+ schema_rag: { label: '2 · Schema RAG', desc: 'Pulling table catalog + Codex pipeline_logic + Brain context' },
+ panel_plan: { label: '3 · Panel Plan', desc: 'Deciding 4–12 panels: KPIs, charts, tables, narratives' },
+ sql_gen: { label: '4 · SQL Gen', desc: 'Writing Postgres SELECT per panel (dialect-aware, dtype casts)' },
+ explain_gate: { label: '5 · EXPLAIN gate', desc: 'Validating SQL via EXPLAIN before execute; retries on failure' },
+ execute: { label: '6 · Execute', desc: 'Running SQL against read-only project engine; profiling rows' },
+ executive_overview: { label: '6.5 · Overview', desc: 'Drafting truth-grounded narrative (uses verified metrics)' },
+ chart_specs: { label: '7 · Chart Specs', desc: 'Generating ECharts options per panel + Pydantic validation' },
+ panel_announce: { label: '7.5 · Announce', desc: 'Emitting per-panel chat pill + mini sparkline' },
+ judge: { label: '8 · Judge', desc: 'Different-model critic scoring spec (TACL rule)' },
+ layout: { label: '9 · Layout', desc: 'Packing panels into grid: executive | operational | narrative' },
+ intent: { label: '1 · Intent', desc: 'Classifying chat intent + extracting audience + topics' },
  };
  const DASH_STAGE_ORDER = ['intent_classify','schema_rag','panel_plan','sql_gen','explain_gate','execute','executive_overview','chart_specs','panel_announce','judge','layout'];
 
  async function loadDashForSession() {
-   if (!sessionId || !projectSlug) return;
-   try {
-     const r = await fetch(`/api/dashboards/by-session/${encodeURIComponent(sessionId)}/latest?project_slug=${encodeURIComponent(projectSlug)}`, { headers: _headers() });
-     if (r.status === 404) { dashSpec = null; dashVersions = []; dashCurrentVersion = null; splitMode = false; return; }
-     if (!r.ok) return;
-     const j = await r.json();
-     const s = j.spec || {};
-     if ((!Array.isArray(s.cells) || s.cells.length === 0) && Array.isArray(s.panels) && s.panels.length) {
-       s.cells = s.panels.map((p:any) => panelToCell(p));
-     }
-     s.id = j.dashboard_id;
-     dashSpec = s;
-     dashCurrentVersion = j.version;
-     splitMode = true;
-     fetchDashData(s);
-     // also load version list
-     const lr = await fetch(`/api/dashboards/by-session/${encodeURIComponent(sessionId)}?project_slug=${encodeURIComponent(projectSlug)}`, { headers: _headers() });
-     if (lr.ok) dashVersions = await lr.json();
-   } catch {}
+ if (!sessionId || !projectSlug) return;
+ try {
+ const r = await fetch(`/api/dashboards/by-session/${encodeURIComponent(sessionId)}/latest?project_slug=${encodeURIComponent(projectSlug)}`, { headers: _headers() });
+ if (r.status === 404) { dashSpec = null; dashVersions = []; dashCurrentVersion = null; splitMode = false; return; }
+ if (!r.ok) return;
+ const j = await r.json();
+ const s = j.spec || {};
+ if ((!Array.isArray(s.cells) || s.cells.length === 0) && Array.isArray(s.panels) && s.panels.length) {
+ s.cells = s.panels.map((p:any) => panelToCell(p));
+ }
+ s.id = j.dashboard_id;
+ dashSpec = s;
+ dashCurrentVersion = j.version;
+ splitMode = true;
+ fetchDashData(s);
+ // also load version list
+ const lr = await fetch(`/api/dashboards/by-session/${encodeURIComponent(sessionId)}?project_slug=${encodeURIComponent(projectSlug)}`, { headers: _headers() });
+ if (lr.ok) dashVersions = await lr.json();
+ } catch {}
  }
 
  async function loadDashVersion(dashboardId: string) {
-   try {
-     const r = await fetch(`/api/dashboards/${encodeURIComponent(dashboardId)}`, { headers: _headers() });
-     if (!r.ok) return;
-     const j = await r.json();
-     const s = j.spec || j;
-     if ((!Array.isArray(s.cells) || s.cells.length === 0) && Array.isArray(s.panels) && s.panels.length) {
-       s.cells = s.panels.map((p:any) => panelToCell(p));
-     }
-     s.id = dashboardId;
-     dashSpec = s;
-     const ver = dashVersions.find(v => v.dashboard_id === dashboardId);
-     dashCurrentVersion = ver ? ver.version : null;
-     fetchDashData(s);
-     dashVersionsDropdownOpen = false;
-   } catch {}
+ try {
+ const r = await fetch(`/api/dashboards/${encodeURIComponent(dashboardId)}`, { headers: _headers() });
+ if (!r.ok) return;
+ const j = await r.json();
+ const s = j.spec || j;
+ if ((!Array.isArray(s.cells) || s.cells.length === 0) && Array.isArray(s.panels) && s.panels.length) {
+ s.cells = s.panels.map((p:any) => panelToCell(p));
+ }
+ s.id = dashboardId;
+ dashSpec = s;
+ const ver = dashVersions.find(v => v.dashboard_id === dashboardId);
+ dashCurrentVersion = ver ? ver.version : null;
+ fetchDashData(s);
+ dashVersionsDropdownOpen = false;
+ } catch {}
  }
 
  async function deleteDashVersion(dashboardId: string, version: number) {
-   if (dashVersions.length <= 1) return;
-   if (!confirm(`Delete v${version}? This cannot be undone.`)) return;
-   try {
-     const r = await fetch(`/api/dashboards/${encodeURIComponent(dashboardId)}?project_slug=${encodeURIComponent(projectSlug)}`, { method: 'DELETE', headers: _headers() });
-     if (!r.ok) { alert('Delete failed'); return; }
-     const lr = await fetch(`/api/dashboards/by-session/${encodeURIComponent(sessionId)}?project_slug=${encodeURIComponent(projectSlug)}`, { headers: _headers() });
-     if (lr.ok) dashVersions = await lr.json();
-     if (dashboardId === dashSpec?.id) {
-       if (dashVersions.length > 0) {
-         await loadDashVersion(dashVersions[0].dashboard_id);
-       } else {
-         dashSpec = null;
-         dashCurrentVersion = null;
-         splitMode = false;
-       }
-     }
-   } catch (e) {
-     alert('Delete failed');
-   }
+ if (dashVersions.length <= 1) return;
+ if (!confirm(`Delete v${version}? This cannot be undone.`)) return;
+ try {
+ const r = await fetch(`/api/dashboards/${encodeURIComponent(dashboardId)}?project_slug=${encodeURIComponent(projectSlug)}`, { method: 'DELETE', headers: _headers() });
+ if (!r.ok) { alert('Delete failed'); return; }
+ const lr = await fetch(`/api/dashboards/by-session/${encodeURIComponent(sessionId)}?project_slug=${encodeURIComponent(projectSlug)}`, { headers: _headers() });
+ if (lr.ok) dashVersions = await lr.json();
+ if (dashboardId === dashSpec?.id) {
+ if (dashVersions.length > 0) {
+ await loadDashVersion(dashVersions[0].dashboard_id);
+ } else {
+ dashSpec = null;
+ dashCurrentVersion = null;
+ splitMode = false;
+ }
+ }
+ } catch (e) {
+ alert('Delete failed');
+ }
  }
 
  async function buildDashFromChat(force = false) {
-   if (chatDashBusy || messages.length === 0) return;
-   // If we already have dashSpec for this session and not forcing, just open pane
-   if (!force && dashSpec && dashCurrentVersion != null) { splitMode = true; return; }
-   chatDashBusy = true;
-   splitMode = true;   // open right pane immediately — progress lives there, not at bottom
-   const t0 = Date.now();
-   chatDashProgress = { stage: 'starting', current: 0, total: 9, panel_pills: [], narrative: '', complete: false, error: '', dashboard_id: '', started_at: t0, stages_done: [], events_log: [{ at: 0, type: 'start', msg: `POST /api/dashboards/from-chat/stream · session=${sessionId}` }], tokens: 0, cost_usd: 0, intent: null, schema_tables: 0, sql_count: 0 };
-   chatDashElapsed = 0;
-   const tick = setInterval(() => { if (chatDashBusy) chatDashElapsed = Math.floor((Date.now() - t0) / 1000); else clearInterval(tick); }, 1000);
-   try {
-     const res = await fetch('/api/dashboards/from-chat/stream', {
-       method: 'POST',
-       headers: { ..._headers(), 'content-type': 'application/json' },
-       body: JSON.stringify({ project_slug: projectSlug, session_id: sessionId, audience: 'Exec', deepen: true, force_rebuild: force })
-     });
-     if (!res.body) { chatDashBusy = false; chatDashProgress = { ...chatDashProgress, error: 'No response body' }; return; }
-     const reader = res.body.getReader();
-     const decoder = new TextDecoder();
-     let buf = '';
-     while (true) {
-       const { done, value } = await reader.read();
-       if (done) break;
-       buf += decoder.decode(value, { stream: true });
-       const blocks = buf.split('\n\n');
-       buf = blocks.pop() || '';
-       for (const block of blocks) {
-         if (!block.startsWith('data: ')) continue;
-         try {
-           const evt = JSON.parse(block.slice(6));
-           const t = evt.type;
-           const _now = Math.floor((Date.now() - chatDashProgress.started_at) / 1000);
-           if (t === 'stage_start') {
-             const stg = evt.stage || evt.name || '';
-             const def = DASH_STAGE_DEFS[stg];
-             chatDashProgress = {
-               ...chatDashProgress,
-               stage: stg,
-               current: Math.min((chatDashProgress.current || 0) + 1, chatDashProgress.total),
-               events_log: [...chatDashProgress.events_log, { at: _now, type: 'stage_start', stage: stg, msg: def ? def.desc : `Stage: ${stg}` }],
-             };
-           } else if (t === 'stage_done') {
-             const stg = evt.stage || evt.name || chatDashProgress.stage;
-             const took = evt.duration_ms != null ? Math.round(evt.duration_ms) : null;
-             const stages_done = [...chatDashProgress.stages_done, { stage: stg, at: _now, took_ms: took, payload: evt.payload || evt.result || null }];
-             // capture stage-specific payload details
-             let extra: any = {};
-             const p = evt.payload || evt.result || {};
-             if (stg === 'intent_classify')     extra.intent = p.intent || p.classification || p;
-             else if (stg === 'schema_rag')     extra.schema_tables = (p.tables && p.tables.length) || p.n_tables || chatDashProgress.schema_tables;
-             else if (stg === 'sql_gen')        extra.sql_count = (p.sqls && p.sqls.length) || p.n_sqls || chatDashProgress.sql_count;
-             chatDashProgress = {
-               ...chatDashProgress,
-               ...extra,
-               stages_done,
-               events_log: [...chatDashProgress.events_log, { at: _now, type: 'stage_done', stage: stg, msg: took != null ? `✓ ${stg} (${took}ms)` : `✓ ${stg}` }],
-             };
-           } else if (t === 'panel_ready') {
-             const pn = evt.panel || {};
-             const title = pn.title || pn.name || evt.title || 'Panel';
-             const rows = pn.row_count || pn.rows || evt.row_count;
-             const chart_type = pn.chart_type || pn.panel_type || evt.chart_type || '';
-             const cols = (pn.columns && pn.columns.length) || evt.n_columns;
-             chatDashProgress = {
-               ...chatDashProgress,
-               panel_pills: [...chatDashProgress.panel_pills, { title, rows, chart_type, cols, panel_id: pn.id || pn.panel_id, kind: 'panel' }],
-               events_log: [...chatDashProgress.events_log, { at: _now, type: 'panel', msg: `+ panel: ${title}${chart_type ? ` (${chart_type})` : ''}${rows ? ` · ${rows} rows` : ''}` }],
-             };
-           } else if (t === 'panel_announcement') {
-             chatDashProgress = { ...chatDashProgress, panel_pills: [...chatDashProgress.panel_pills, { title: evt.message || evt.title || 'Panel announced', mini: evt.mini_thumbnail_spec, kind: 'announcement' }] };
-           } else if (t === 'narrative_ready') {
-             chatDashProgress = {
-               ...chatDashProgress,
-               narrative: evt.text || evt.narrative || '',
-               events_log: [...chatDashProgress.events_log, { at: _now, type: 'narrative', msg: `narrative ready (${(evt.verified_value_count != null ? evt.verified_value_count + ' verified' : (evt.text || '').length + ' chars')})` }],
-             };
-           } else if (t === 'done') {
-             const dashId = evt.dashboard_id || (evt.spec && evt.spec.id) || '';
-             let s: any = null;
-             if (evt.spec && typeof evt.spec === 'object') {
-               s = { ...evt.spec };
-               if ((!Array.isArray(s.cells) || s.cells.length === 0) && Array.isArray(s.panels) && s.panels.length) {
-                 s.cells = s.panels.map((p: any) => panelToCell(p));
-               }
-               s.id = dashId;
-               dashSpec = s;
-               dashFindings = (evt.spec.insights || evt.spec.findings || []);
-               splitMode = true;
-               if (evt.version) dashCurrentVersion = evt.version;
-               try { fetchDashData(s); } catch (e) { console.warn('fetchDashData failed', e); }
-             } else if (dashId) {
-               try {
-                 const r = await fetch(`/api/dashboards/${encodeURIComponent(dashId)}`, { headers: _headers() });
-                 if (r.ok) {
-                   const j = await r.json();
-                   s = j.spec || j;
-                   if ((!Array.isArray(s.cells) || s.cells.length === 0) && Array.isArray(s.panels) && s.panels.length) {
-                     s.cells = s.panels.map((p: any) => panelToCell(p));
-                   }
-                   s.id = dashId;
-                   dashSpec = s;
-                   splitMode = true;
-                   if (j.version) dashCurrentVersion = j.version;
-                   try { fetchDashData(s); } catch {}
-                 }
-               } catch (e) { console.warn('post-done fetch failed', e); }
-             }
-             chatDashProgress = {
-               ...chatDashProgress,
-               complete: true,
-               dashboard_id: dashId,
-               tokens: evt.tokens_used || evt.tokens || chatDashProgress.tokens,
-               cost_usd: evt.cost_usd || evt.cost || chatDashProgress.cost_usd,
-               events_log: [...chatDashProgress.events_log, { at: _now, type: 'done', msg: `✓ done · ${s ? (Array.isArray(s.cells) ? s.cells.length : 0) : 0} cells rendered` }],
-             };
-             // reload versions list
-             try {
-               const lr = await fetch(`/api/dashboards/by-session/${encodeURIComponent(sessionId)}?project_slug=${encodeURIComponent(projectSlug)}`, { headers: _headers() });
-               if (lr.ok) dashVersions = await lr.json();
-             } catch {}
-           } else if (t === 'error' || t === 'stage_error') {
-             chatDashProgress = { ...chatDashProgress, error: evt.detail || evt.error || 'Build error' };
-           }
-         } catch {}
-       }
-     }
-   } catch (e: any) {
-     chatDashProgress = { ...chatDashProgress, error: e?.message || 'Network error' };
-   }
-   chatDashBusy = false;
+ if (chatDashBusy || messages.length === 0) return;
+ // If we already have dashSpec for this session and not forcing, just open pane
+ if (!force && dashSpec && dashCurrentVersion != null) { splitMode = true; return; }
+ chatDashBusy = true;
+ splitMode = true; // open right pane immediately — progress lives there, not at bottom
+ const t0 = Date.now();
+ chatDashProgress = { stage: 'starting', current: 0, total: 9, panel_pills: [], narrative: '', complete: false, error: '', dashboard_id: '', started_at: t0, stages_done: [], events_log: [{ at: 0, type: 'start', msg: `POST /api/dashboards/from-chat/stream · session=${sessionId}` }], tokens: 0, cost_usd: 0, intent: null, schema_tables: 0, sql_count: 0 };
+ chatDashElapsed = 0;
+ const tick = setInterval(() => { if (chatDashBusy) chatDashElapsed = Math.floor((Date.now() - t0) / 1000); else clearInterval(tick); }, 1000);
+ try {
+ const res = await fetch('/api/dashboards/from-chat/stream', {
+ method: 'POST',
+ headers: { ..._headers(), 'content-type': 'application/json' },
+ body: JSON.stringify({ project_slug: projectSlug, session_id: sessionId, audience: 'Exec', deepen: true, force_rebuild: force })
+ });
+ if (!res.body) { chatDashBusy = false; chatDashProgress = { ...chatDashProgress, error: 'No response body' }; return; }
+ const reader = res.body.getReader();
+ const decoder = new TextDecoder();
+ let buf = '';
+ while (true) {
+ const { done, value } = await reader.read();
+ if (done) break;
+ buf += decoder.decode(value, { stream: true });
+ const blocks = buf.split('\n\n');
+ buf = blocks.pop() || '';
+ for (const block of blocks) {
+ if (!block.startsWith('data: ')) continue;
+ try {
+ const evt = JSON.parse(block.slice(6));
+ const t = evt.type;
+ const _now = Math.floor((Date.now() - chatDashProgress.started_at) / 1000);
+ if (t === 'stage_start') {
+ const stg = evt.stage || evt.name || '';
+ const def = DASH_STAGE_DEFS[stg];
+ chatDashProgress = {
+ ...chatDashProgress,
+ stage: stg,
+ current: Math.min((chatDashProgress.current || 0) + 1, chatDashProgress.total),
+ events_log: [...chatDashProgress.events_log, { at: _now, type: 'stage_start', stage: stg, msg: def ? def.desc : `Stage: ${stg}` }],
+ };
+ } else if (t === 'stage_done') {
+ const stg = evt.stage || evt.name || chatDashProgress.stage;
+ const took = evt.duration_ms != null ? Math.round(evt.duration_ms) : null;
+ const stages_done = [...chatDashProgress.stages_done, { stage: stg, at: _now, took_ms: took, payload: evt.payload || evt.result || null }];
+ // capture stage-specific payload details
+ let extra: any = {};
+ const p = evt.payload || evt.result || {};
+ if (stg === 'intent_classify') extra.intent = p.intent || p.classification || p;
+ else if (stg === 'schema_rag') extra.schema_tables = (p.tables && p.tables.length) || p.n_tables || chatDashProgress.schema_tables;
+ else if (stg === 'sql_gen') extra.sql_count = (p.sqls && p.sqls.length) || p.n_sqls || chatDashProgress.sql_count;
+ chatDashProgress = {
+ ...chatDashProgress,
+ ...extra,
+ stages_done,
+ events_log: [...chatDashProgress.events_log, { at: _now, type: 'stage_done', stage: stg, msg: took != null ? `OK ${stg} (${took}ms)` : `OK ${stg}` }],
+ };
+ } else if (t === 'panel_ready') {
+ const pn = evt.panel || {};
+ const title = pn.title || pn.name || evt.title || 'Panel';
+ const rows = pn.row_count || pn.rows || evt.row_count;
+ const chart_type = pn.chart_type || pn.panel_type || evt.chart_type || '';
+ const cols = (pn.columns && pn.columns.length) || evt.n_columns;
+ chatDashProgress = {
+ ...chatDashProgress,
+ panel_pills: [...chatDashProgress.panel_pills, { title, rows, chart_type, cols, panel_id: pn.id || pn.panel_id, kind: 'panel' }],
+ events_log: [...chatDashProgress.events_log, { at: _now, type: 'panel', msg: `+ panel: ${title}${chart_type ? ` (${chart_type})` : ''}${rows ? ` · ${rows} rows` : ''}` }],
+ };
+ } else if (t === 'panel_announcement') {
+ chatDashProgress = { ...chatDashProgress, panel_pills: [...chatDashProgress.panel_pills, { title: evt.message || evt.title || 'Panel announced', mini: evt.mini_thumbnail_spec, kind: 'announcement' }] };
+ } else if (t === 'narrative_ready') {
+ chatDashProgress = {
+ ...chatDashProgress,
+ narrative: evt.text || evt.narrative || '',
+ events_log: [...chatDashProgress.events_log, { at: _now, type: 'narrative', msg: `narrative ready (${(evt.verified_value_count != null ? evt.verified_value_count + ' verified' : (evt.text || '').length + ' chars')})` }],
+ };
+ } else if (t === 'done') {
+ const dashId = evt.dashboard_id || (evt.spec && evt.spec.id) || '';
+ let s: any = null;
+ if (evt.spec && typeof evt.spec === 'object') {
+ s = { ...evt.spec };
+ if ((!Array.isArray(s.cells) || s.cells.length === 0) && Array.isArray(s.panels) && s.panels.length) {
+ s.cells = s.panels.map((p: any) => panelToCell(p));
+ }
+ s.id = dashId;
+ dashSpec = s;
+ dashFindings = (evt.spec.insights || evt.spec.findings || []);
+ splitMode = true;
+ if (evt.version) dashCurrentVersion = evt.version;
+ try { fetchDashData(s); } catch (e) { console.warn('fetchDashData failed', e); }
+ } else if (dashId) {
+ try {
+ const r = await fetch(`/api/dashboards/${encodeURIComponent(dashId)}`, { headers: _headers() });
+ if (r.ok) {
+ const j = await r.json();
+ s = j.spec || j;
+ if ((!Array.isArray(s.cells) || s.cells.length === 0) && Array.isArray(s.panels) && s.panels.length) {
+ s.cells = s.panels.map((p: any) => panelToCell(p));
+ }
+ s.id = dashId;
+ dashSpec = s;
+ splitMode = true;
+ if (j.version) dashCurrentVersion = j.version;
+ try { fetchDashData(s); } catch {}
+ }
+ } catch (e) { console.warn('post-done fetch failed', e); }
+ }
+ chatDashProgress = {
+ ...chatDashProgress,
+ complete: true,
+ dashboard_id: dashId,
+ tokens: evt.tokens_used || evt.tokens || chatDashProgress.tokens,
+ cost_usd: evt.cost_usd || evt.cost || chatDashProgress.cost_usd,
+ events_log: [...chatDashProgress.events_log, { at: _now, type: 'done', msg: `OK done · ${s ? (Array.isArray(s.cells) ? s.cells.length : 0) : 0} cells rendered` }],
+ };
+ // reload versions list
+ try {
+ const lr = await fetch(`/api/dashboards/by-session/${encodeURIComponent(sessionId)}?project_slug=${encodeURIComponent(projectSlug)}`, { headers: _headers() });
+ if (lr.ok) dashVersions = await lr.json();
+ } catch {}
+ } else if (t === 'error' || t === 'stage_error') {
+ chatDashProgress = { ...chatDashProgress, error: evt.detail || evt.error || 'Build error' };
+ }
+ } catch {}
+ }
+ }
+ } catch (e: any) {
+ chatDashProgress = { ...chatDashProgress, error: e?.message || 'Network error' };
+ }
+ chatDashBusy = false;
  }
 
  function dismissChatDashProgress() {
-   chatDashBusy = false;
-   chatDashProgress = { stage: '', current: 0, total: 9, panel_pills: [], narrative: '', complete: false, error: '', dashboard_id: '' };
+ chatDashBusy = false;
+ chatDashProgress = { stage: '', current: 0, total: 9, panel_pills: [], narrative: '', complete: false, error: '', dashboard_id: '' };
  }
 
  async function fetchDashData(spec: any) {
@@ -1536,30 +1548,30 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  } catch {}
  }
 
- // Adapt new Deep Dash 9-stage panel → legacy cell shape consumed by DashRenderer/Cell.svelte
+ // Adapt new Deep Dash 9-stage panel > legacy cell shape consumed by DashRenderer/Cell.svelte
  function panelToCell(p: any) {
-   const grid = Array.isArray(p.grid) && p.grid.length >= 4 ? p.grid : [0, 0, 6, 3];
-   const ptype = (p.panel_type || 'chart').toLowerCase();
-   const type = ptype === 'kpi' ? 'kpi'
-              : ptype === 'insight' ? 'insight'
-              : ptype === 'narrative' ? 'insight'
-              : ptype === 'table' ? 'table'
-              : 'chart';
-   return {
-     id: p.panel_id || `p_${Math.random().toString(36).slice(2, 8)}`,
-     type,
-     grid,
-     title: p.title || '',
-     config: {
-       chart_type: p.chart_type || 'bar',
-       echarts_options: p.options || {},   // Cell.svelte uses this directly (Deep Dash path)
-       narrative: p.narrative || '',
-       confidence: p.confidence || 'medium',
-       sources: p.sources || [],
-       headline: (type === 'insight' || type === 'kpi') ? (p.title || '') : undefined,
-       cause: (type === 'insight') ? (p.narrative || '') : undefined,
-     },
-   };
+ const grid = Array.isArray(p.grid) && p.grid.length >= 4 ? p.grid : [0, 0, 6, 3];
+ const ptype = (p.panel_type || 'chart').toLowerCase();
+ const type = ptype === 'kpi' ? 'kpi'
+ : ptype === 'insight' ? 'insight'
+ : ptype === 'narrative' ? 'insight'
+ : ptype === 'table' ? 'table'
+ : 'chart';
+ return {
+ id: p.panel_id || `p_${Math.random().toString(36).slice(2, 8)}`,
+ type,
+ grid,
+ title: p.title || '',
+ config: {
+ chart_type: p.chart_type || 'bar',
+ echarts_options: p.options || {}, // Cell.svelte uses this directly (Deep Dash path)
+ narrative: p.narrative || '',
+ confidence: p.confidence || 'medium',
+ sources: p.sources || [],
+ headline: (type === 'insight' || type === 'kpi') ? (p.title || '') : undefined,
+ cause: (type === 'insight') ? (p.narrative || '') : undefined,
+ },
+ };
  }
 
  async function openDeepDashboard(force: boolean = false) {
@@ -1600,50 +1612,50 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  // NEW: 9-stage Deep Dash event handler.
  // SSE event types: stage_start, stage_done, stage_error, panel_ready, done, error
  function handleEvent(evt: any) {
-   if (evt.type === 'stage_start') {
-     dashThinking = [...dashThinking, `[${evt.n}/9] ${evt.stage} starting…`];
-   } else if (evt.type === 'stage_done') {
-     let tail = '';
-     if (evt.stage === 'panel_plan' && evt.panels) tail = ` (${evt.panels.length} panels)`;
-     else if (evt.stage === 'explain_gate') tail = ` passed=${evt.passed} failed=${evt.failed}`;
-     else if (evt.stage === 'chart_specs') tail = ` count=${evt.count}`;
-     else if (evt.stage === 'judge') tail = ` score=${evt.score} issues=${evt.issues}`;
-     dashThinking = [...dashThinking, `[${evt.n}/9] ${evt.stage} done${tail}`];
-   } else if (evt.type === 'stage_error') {
-     dashThinking = [...dashThinking, `[ERR] ${evt.stage}: ${evt.error}`];
-   } else if (evt.type === 'panel_ready') {
-     const cell = panelToCell(evt.panel || {});
-     dashThinking = [...dashThinking, `[panel] ${cell.title}`];
-     dashSpec = dashSpec
-       ? { ...dashSpec, cells: [...(dashSpec.cells || []), cell] }
-       : { id: '', title: 'Dashboard', cells: [cell], insights: [] };
-   } else if (evt.type === 'done') {
-     const finalSpec = evt.spec || {};
-     // Replace cells with final ordered panels (layout stage applies grid packing)
-     if (Array.isArray(finalSpec.panels) && finalSpec.panels.length) {
-       const cells = finalSpec.panels.map(panelToCell);
-       dashSpec = {
-         id: finalSpec.id || '',
-         title: finalSpec.title || 'Dashboard',
-         project_slug: finalSpec.project_slug || projectSlug,
-         cells,
-         insights: [],
-         template: finalSpec.layout || 'executive',
-         persona: finalSpec.persona || '',
-         spec_version: finalSpec.spec_version || 1,
-         judge_score: finalSpec.judge_score,
-         _deep_dash_raw: finalSpec,
-       };
-     }
-     dashThinking = [...dashThinking, `[done] tokens=${evt.tokens_used} wall=${evt.wall_s}s`];
-     dashDeepening = false;
-     try {
-       sessionStorage.setItem(`dash_panel_${sessionId}`, JSON.stringify({ spec: dashSpec, data: dashData, findings: dashFindings }));
-     } catch {}
-   } else if (evt.type === 'error') {
-     dashThinking = [...dashThinking, `[ERROR] ${evt.error}`];
-     dashDeepening = false;
-   }
+ if (evt.type === 'stage_start') {
+ dashThinking = [...dashThinking, `[${evt.n}/9] ${evt.stage} starting…`];
+ } else if (evt.type === 'stage_done') {
+ let tail = '';
+ if (evt.stage === 'panel_plan' && evt.panels) tail = ` (${evt.panels.length} panels)`;
+ else if (evt.stage === 'explain_gate') tail = ` passed=${evt.passed} failed=${evt.failed}`;
+ else if (evt.stage === 'chart_specs') tail = ` count=${evt.count}`;
+ else if (evt.stage === 'judge') tail = ` score=${evt.score} issues=${evt.issues}`;
+ dashThinking = [...dashThinking, `[${evt.n}/9] ${evt.stage} done${tail}`];
+ } else if (evt.type === 'stage_error') {
+ dashThinking = [...dashThinking, `[ERR] ${evt.stage}: ${evt.error}`];
+ } else if (evt.type === 'panel_ready') {
+ const cell = panelToCell(evt.panel || {});
+ dashThinking = [...dashThinking, `[panel] ${cell.title}`];
+ dashSpec = dashSpec
+ ? { ...dashSpec, cells: [...(dashSpec.cells || []), cell] }
+ : { id: '', title: 'Dashboard', cells: [cell], insights: [] };
+ } else if (evt.type === 'done') {
+ const finalSpec = evt.spec || {};
+ // Replace cells with final ordered panels (layout stage applies grid packing)
+ if (Array.isArray(finalSpec.panels) && finalSpec.panels.length) {
+ const cells = finalSpec.panels.map(panelToCell);
+ dashSpec = {
+ id: finalSpec.id || '',
+ title: finalSpec.title || 'Dashboard',
+ project_slug: finalSpec.project_slug || projectSlug,
+ cells,
+ insights: [],
+ template: finalSpec.layout || 'executive',
+ persona: finalSpec.persona || '',
+ spec_version: finalSpec.spec_version || 1,
+ judge_score: finalSpec.judge_score,
+ _deep_dash_raw: finalSpec,
+ };
+ }
+ dashThinking = [...dashThinking, `[done] tokens=${evt.tokens_used} wall=${evt.wall_s}s`];
+ dashDeepening = false;
+ try {
+ sessionStorage.setItem(`dash_panel_${sessionId}`, JSON.stringify({ spec: dashSpec, data: dashData, findings: dashFindings }));
+ } catch {}
+ } else if (evt.type === 'error') {
+ dashThinking = [...dashThinking, `[ERROR] ${evt.error}`];
+ dashDeepening = false;
+ }
  }
 
  try {
@@ -1656,10 +1668,10 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  : (allQuestions[0] || question || 'overview dashboard');
 
  const body: any = {
-   project_slug: projectSlug,
-   question: questionText,
-   audience: 'executive',
-   n_panels: 8,
+ project_slug: projectSlug,
+ question: questionText,
+ audience: 'executive',
+ n_panels: 8,
  };
  const res = await fetch('/api/dashboards/deep-build/stream', {
  method: 'POST', headers: { ..._headers(), 'content-type':'application/json' },
@@ -2269,25 +2281,33 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  // BI-research tiers with no counter use — removed 2026-06-08.
  const _ALLOWED_MODES = ['auto', 'fast', 'reason'];
  let reasoningMode = $state<string>((() => {
-   if (typeof window === 'undefined') return 'auto';
-   let v = localStorage.getItem('reasoning_mode') || 'auto';
-   if (v === 'standard') v = 'reason';   // migrate old STANDARD → REASON
-   return _ALLOWED_MODES.includes(v) ? v : 'auto';   // clamp stale deep/reasoning/ultra
+ if (typeof window === 'undefined') return 'auto';
+ let v = localStorage.getItem('reasoning_mode') || 'auto';
+ if (v === 'standard') v = 'reason'; // migrate old STANDARD > REASON
+ return _ALLOWED_MODES.includes(v) ? v : 'auto'; // clamp stale deep/reasoning/ultra
  })());
  $effect(() => { try { localStorage.setItem('reasoning_mode', reasoningMode); } catch {} });
  let modeMenuOpen = $state(false);
+ // Per-message "Saved N to memory" expand toggle (shows the saved facts).
+ let savedMemOpen = $state<Record<number, boolean>>({});
  const MODE_OPTIONS = [
-   { id: 'auto',    label: 'AUTO',   desc: 'Router auto-picks FAST or REASON' },
-   { id: 'fast',    label: 'FAST',   desc: 'Quick answer — stock / lookup · <500ms' },
-   { id: 'reason',  label: 'REASON', desc: 'Thinks step-by-step — multi-part / analytical' },
+ { id: 'auto', label: 'AUTO', desc: 'Router auto-picks FAST or REASON' },
+ { id: 'fast', label: 'FAST', desc: 'Quick answer — stock / lookup · <500ms' },
+ { id: 'reason', label: 'REASON', desc: 'Thinks step-by-step — multi-part / analytical' },
+ ];
+ // Segmented composer toggle — friendly labels over the same mode ids.
+ const MODE_SEG = [
+ { id: 'auto', label: 'Auto', desc: 'Router auto-picks Quick or Deep' },
+ { id: 'fast', label: 'Quick', desc: 'Fast answer — stock / lookup' },
+ { id: 'reason', label: 'Deep', desc: 'Thinks step-by-step — analytical' },
  ];
  const analysisType = '';
  const effort = '';
 
- // Model picker removed — backend router decides per question.
- // Empty-string constants kept for any downstream readers (sendMessage, trace badges).
+ // Model picker — brand face is "Dash 1.0" (backend router still decides the
+ // underlying model per question; this is a display/brand control).
  const modelPref = '';
- let modelMenuOpen = false;
+ let modelMenuOpen = $state(false);
 
  async function loadWorkflows() {
  try {
@@ -2439,17 +2459,6 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
           <div style="font-family: var(--pw-font-headline); font-size: 16px; font-weight: 500; color: var(--pw-ink);">
             {projectInfo?.agent_name || 'Agent'}
           </div>
-          <button
-            class="chatstyle-toggle"
-            onclick={toggleChatStyle}
-            title={chatStyle === 'claude' ? 'Switch to Classic look (robot avatar + full trace)' : 'Switch to Claude look (clean, full-width)'}
-          >{chatStyle === 'claude' ? '✻ Claude' : '🤖 Classic'}</button>
-          <button
-            class="chatstyle-toggle"
-            class:okf-on={useOkf}
-            onclick={toggleOkf}
-            title={useOkf ? 'OKF test lane ON — chat also reads imported (pending) OKF knowledge' : 'OKF test lane OFF — chat uses live knowledge only'}
-          >{useOkf ? '🧪 OKF: on' : '🧪 OKF: off'}</button>
         </div>
       {/if}
       {#if sessionStartTime}
@@ -2479,7 +2488,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
               <button
                 style="padding: 5px 12px; font-size: 11px; border-radius: var(--pw-radius-sm); border: 1px solid var(--pw-border, #ddd); background: #fff; color: var(--pw-ink); cursor: pointer;"
                 onclick={browseAllTemplates}
-              >Browse all →</button>
+              >Browse all <Icon name="arrow-right" size={16} /></button>
               <button
                 style="padding: 5px 10px; font-size: 11px; border-radius: var(--pw-radius-sm); border: 1px solid transparent; background: transparent; color: var(--pw-muted); cursor: pointer;"
                 onclick={skipTemplatePrompt}
@@ -2488,10 +2497,10 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
           </div>
         {/if}
 
-        <!-- Claude.ai-style empty state: greeting → centered composer → subtle chips -->
+        <!-- Claude.ai-style empty state: greeting -&gt; centered composer -&gt; subtle chips -->
         <div class="claude-empty animate-fade-up">
           <div class="ce-greet">
-            <div class="ce-star">✻</div>
+            <div class="ce-star"><Icon name="sparkles" size={26} /></div>
             <div class="ce-hello">{greeting}{userName ? `, ${userName}` : ''}</div>
             {#if projectInfo?.agent_role}
               <div class="ce-sub">{projectInfo.agent_role}</div>
@@ -2510,6 +2519,10 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
                 </button>
               {/each}
             </div>
+          {/if}
+
+          {#if emptyStats}
+            <div class="ce-stats">{emptyStats}</div>
           {/if}
         </div>
       {:else}
@@ -2531,6 +2544,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
             onTrackPreference={(kind, value) => trackPreference(kind, value)}
             onAction={(act, arg) => handleAction(act, arg)}
             onSaveMemory={(idx) => { const fact = prompt("Save a fact the agent should remember:", ""); if (fact) fetch(`/api/projects/${projectSlug}/memories`, { method: "POST", headers: { ..._headers(), "Content-Type": "application/json" }, body: JSON.stringify({ fact, scope: "project" }) }); }}
+            onShare={() => shareConversation()}
             onExportCsv={(idx, tables) => { if (!tables[0]) return; const csv = tableToCsv(tables[0]); const blob = new Blob([csv], { type: "text/csv" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `dash-export-${Date.now()}.csv`; a.click(); URL.revokeObjectURL(url); }}
             onExportPdf={async (idx) => { const m = messages[idx]; if (!m) return; try { const res = await fetch("/api/export/pdf", { method: "POST", headers: { ..._headers(), "Content-Type": "application/json" }, body: JSON.stringify({ content: m.content, title: projectInfo?.agent_name || "Report" }) }); if (res.ok) { const blob = await res.blob(); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `dash-report-${Date.now()}.pdf`; a.click(); URL.revokeObjectURL(url); } } catch {} }}
             onPin={(idx, tables) => { const m = messages[idx]; if (!m) return; openPinModal(idx, tables, m.content); }}
@@ -2540,14 +2554,6 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
             {#snippet analysisExtras({ msg, index: i })}
               {#if Array.isArray((msg as any).trace) && (msg as any).trace.length}
                 <TraceTimeline variant={chatStyle} steps={(msg as any).trace} usage={(msg as any).usage ?? null} routerDecision={(msg as any).routing ?? null} mode={(msg as any).reasoningUsed ?? ''} analysis={(msg as any).analysisUsed ?? ''} elapsedMs={((msg as any).traceDoneAt ?? Date.now()) - ((msg as any).traceStart ?? Date.now())} live={(msg as any).traceLive === true} />
-              {/if}
-              {#if msg.status === 'done' && i === messages.length - 1}
-                <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
-                  <button class="action-btn" onclick={shareConversation} disabled={shareBusy} title="Create a read-only public link to this conversation">🔗 {shareBusy ? 'Sharing…' : 'Share'}</button>
-                  {#if shareLink}
-                    <input readonly value={shareLink} onclick={(e) => (e.currentTarget as HTMLInputElement).select()} style="flex:1; font-size:11px; font-family:monospace; padding:4px 8px; border:1px solid var(--pw-border); border-radius: var(--pw-radius-sm); background:var(--pw-bg-alt); color:var(--pw-ink);" />
-                  {/if}
-                </div>
               {/if}
               {@const proposalMatches = msg.content?.match(/\[CAMPAIGN_PROPOSAL:([^\]]+)\]/g) || []}
               {#if proposalMatches.length > 0}
@@ -2584,7 +2590,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
                     <div style="font-size: 11px; font-weight:900; letter-spacing:0.06em; color:var(--pw-accent); margin-bottom:2px;">SIMULATION RUNNING</div>
                     <div style="font-size:11px; color:var(--pw-ink);">Simulating scenario · {simId}</div>
                   </div>
-                  <a href="{base}/sim/process/{simId}" class="sim-link">View live →</a>
+                  <a href="{base}/sim/process/{simId}" class="sim-link">View live <Icon name="arrow-right" size={16} /></a>
                 </div>
               {/each}
 
@@ -2597,7 +2603,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
                     <div style="font-size: 11px; font-weight:900; letter-spacing:0.06em; color:#2e7d32; margin-bottom:2px;">SIMULATION COMPLETE</div>
                     <div style="font-size:11px; color:var(--pw-ink);">Report ready · {simRId}</div>
                   </div>
-                  <a href="{base}/sim/process/{simRId}" class="sim-link sim-link-done">Open full →</a>
+                  <a href="{base}/sim/process/{simRId}" class="sim-link sim-link-done">Open full <Icon name="arrow-right" size={16} /></a>
                 </div>
               {/each}
 
@@ -2614,7 +2620,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
                     30 grounded personas reacting over horizon. Live progress + report when done.
                   </div>
                   <button class="sim-launch-open" onclick={() => goto(`${base}/sim/process/${simId}`)}>
-                    Open simulation →
+                    Open simulation <Icon name="arrow-right" size={16} />
                   </button>
                 </div>
               {/each}
@@ -2631,24 +2637,26 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
                       font-family:monospace; font-size:10px; font-weight:700;
                       letter-spacing:0.05em; cursor:pointer;
                     "
-                  >✓ {mTag[1]} (verified metric)</button>
+                  ><Icon name="check" size={16} /> {mTag[1]} (verified metric)</button>
                 {/if}
               {/each}
             {/snippet}
 
             {#snippet messageFooter({ msg, index: i })}
               {#if msg.status === "done" && msg.autoSavedLearnings && msg.autoSavedLearnings.length > 0}
-                <div class="learning-card" style="opacity: 0.7; border-color: var(--pw-accent);">
-                  <div class="learning-card-header" style="color: var(--pw-accent);">Auto-saved {msg.autoSavedLearnings.length} {msg.autoSavedLearnings.length === 1 ? "learning" : "learnings"} to memory.</div>
-                  <div class="learning-card-facts">
-                    {#each (msg.autoSavedWithScores || msg.autoSavedLearnings.map((f) => ({fact: f, score: 90}))) as item}
-                      <div class="learning-fact" style="opacity: 0.7; display: flex; align-items: center; gap: 8px;">
-                        <span style="flex: 1;">{item.fact}</span>
-                        <span style="font-size: 11px; font-weight: 900; padding: 1px 6px; background: var(--pw-accent); color: white; flex-shrink: 0;">{item.score}%</span>
-                      </div>
+                <!-- Quiet one-line confirmation; click to expand the saved facts -->
+                <button class="saved-line" onclick={() => savedMemOpen = { ...savedMemOpen, [i]: !savedMemOpen[i] }} aria-expanded={!!savedMemOpen[i]}>
+                  <Icon name="sparkles" size={13} />
+                  <span>Saved {msg.autoSavedLearnings.length} to memory</span>
+                  <span class="saved-chev" class:open={savedMemOpen[i]}>›</span>
+                </button>
+                {#if savedMemOpen[i]}
+                  <ul class="saved-facts">
+                    {#each (msg.autoSavedWithScores || msg.autoSavedLearnings.map((f) => ({ fact: f, score: 0 }))) as item}
+                      <li><span class="saved-dot"></span><span class="saved-fact-txt">{item.fact}</span>{#if item.score}<span class="saved-score">{item.score}%</span>{/if}</li>
                     {/each}
-                  </div>
-                </div>
+                  </ul>
+                {/if}
               {/if}
               {#if msg.status === "done" && msg.proposedLearnings && msg.proposedLearnings.length > 0 && !msg.learningsSaved}
                 <div class="learning-card">
@@ -2672,14 +2680,22 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
                   <div class="learning-card-header" style="color: var(--pw-accent);">Saved to project memory.</div>
                 </div>
               {/if}
-              {#if msg.status === "done" && msg.suggestions && i === messages.length - 1}
-                <div class="flex flex-wrap gap-2 mt-3">
-                  {#each msg.suggestions as suggestion}
-                    <button class="suggestion-btn" onclick={() => send(suggestion)} disabled={isStreaming}>{suggestion}</button>
-                  {/each}
-                </div>
+              {#if msg.status === "done" && i === messages.length - 1}
+                {@const _explore = (msg.suggestions && msg.suggestions.length ? msg.suggestions : (dynamicSuggestions || [])).slice(0, 5)}
+                {#if _explore.length}
+                  <div class="explore">
+                    <div class="explore-label">EXPLORE</div>
+                    <div class="explore-chips">
+                      {#each _explore as suggestion}
+                        <button class="explore-chip" onclick={() => send(suggestion)} disabled={isStreaming} title={suggestion}>
+                          <span class="explore-q">?</span><span class="explore-txt">{suggestion}</span>
+                        </button>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
               {/if}
-              <!-- Define/Fix metric button REMOVED 2026-06-06 — unused (0 metrics defined), clutter on every answer, nonsensical on drug cards. Metric defs managed via Workspace → Definitions. -->
+              <!-- Define/Fix metric button REMOVED 2026-06-06 — unused (0 metrics defined), clutter on every answer, nonsensical on drug cards. Metric defs managed via Workspace -&gt; Definitions. -->
             {/snippet}
           </ChatMessageList>
         </div>
@@ -2691,73 +2707,49 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 
   {#snippet composerCard()}
       <div class="composer-card" class:focused={inputFocused}>
-        <div class="composer-row">
-          <!-- Segment 1: Filter pills -->
-          <div class="composer-seg composer-filters">
-        <!-- Workflow picker REMOVED 2026-06-06 — dead multi-agent Dash inheritance, single-agent CityPharma has no canned macros -->
+        <!-- Row 1: the input -->
+        <textarea
+          bind:this={textareaEl}
+          bind:value={inputText}
+          onkeydown={handleKeydown}
+          oninput={autoResize}
+          onfocus={() => inputFocused = true}
+          onblur={() => inputFocused = false}
+          placeholder="Ask anything…"
+          rows="1"
+          disabled={isStreaming}
+          class="composer-input"
+        ></textarea>
 
-        <!-- Mode picker (AUTO / FAST / STANDARD) -->
-        <div class="mode-selector" style="position: relative; margin-left: 4px;">
-          <button class="cmp-chip" onclick={() => { workflowPickerOpen = false; modeMenuOpen = !modeMenuOpen; }} disabled={isStreaming} title="Reasoning mode">
-            <span style="opacity: 0.7;">◐</span>
-            <span style="text-transform: uppercase; font-weight: 700; letter-spacing: 0.04em;">{(MODE_OPTIONS.find(m => m.id === reasoningMode) || MODE_OPTIONS[0]).label}</span>
-            <span class="caret">▾</span>
-          </button>
-          {#if modeMenuOpen}
-            <div class="mode-dropdown" style="min-width: 240px;">
-              {#each MODE_OPTIONS as opt}
-                <button class="mode-dropdown-item" onclick={() => { reasoningMode = opt.id; modeMenuOpen = false; }}>
-                  <div>
-                    <div style="font-weight: 900; color: {opt.id === reasoningMode ? 'var(--pw-accent)' : 'inherit'};">
-                      {opt.id === reasoningMode ? '● ' : ''}{opt.label}
-                    </div>
-                    <span class="mode-dropdown-label">{opt.desc}</span>
-                  </div>
-                </button>
+        <!-- Row 2: controls — segmented mode toggle left, model + send right -->
+        <div class="composer-controls">
+          <div class="composer-left">
+            <!-- Segmented reasoning-mode toggle (Auto / Quick / Deep) -->
+            <div class="seg-toggle" role="group" aria-label="Reasoning mode">
+              {#each MODE_SEG as s}
+                <button class="seg-btn" class:active={reasoningMode === s.id} onclick={() => reasoningMode = s.id} disabled={isStreaming} title={s.desc}>{s.label}</button>
               {/each}
             </div>
-          {/if}
-        </div>
-
-        <!-- OKF test toggle (always visible — empty state + active chat) -->
-        <button class="cmp-chip" class:okf-chip-on={useOkf} onclick={toggleOkf} disabled={isStreaming}
-          title={useOkf ? 'OKF test lane ON — chat also reads imported (pending) OKF knowledge' : 'OKF test lane OFF — live knowledge only. Click to preview imported OKF before promoting.'}>
-          <span>🧪</span><span style="font-weight:700;">{useOkf ? 'OKF on' : 'OKF off'}</span>
-        </button>
-
           </div>
 
-          <!-- Segment 3: Input -->
-          <textarea
-            bind:this={textareaEl}
-            bind:value={inputText}
-            onkeydown={handleKeydown}
-            oninput={autoResize}
-            onfocus={() => inputFocused = true}
-            onblur={() => inputFocused = false}
-            placeholder="Ask anything…"
-            rows="1"
-            disabled={isStreaming}
-            class="composer-input"
-          ></textarea>
-
-          <!-- Segment 4: Send -->
-          {#if isStreaming}
-            <button class="composer-send" onclick={stopStreaming} aria-label="Stop" title="Stop" style="background: var(--pw-error, #dc2626);">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-            </button>
-          {:else}
-            <button class="composer-send" onclick={() => send()} disabled={!inputText.trim()} aria-label="Send" title="Send">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="22" y1="2" x2="11" y2="13"/>
-                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-              </svg>
-            </button>
-          {/if}
-
-          <!-- composer actions (Dashboard/Slides/Excel/Research) removed — chat-only product -->
+          <div class="composer-right">
+            <span class="composer-model" title="Model">Dash 1.0</span>
+            {#if isStreaming}
+              <button class="composer-send" onclick={stopStreaming} aria-label="Stop" title="Stop" style="background: var(--pw-error, #dc2626);">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+              </button>
+            {:else}
+              <button class="composer-send" onclick={() => send()} disabled={!inputText.trim()} aria-label="Send" title="Send">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"/>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+              </button>
+            {/if}
+          </div>
         </div>
       </div>
+      <div class="composer-hint-line">Dash answers from your pharmacy data and cites the source. Verify critical figures.</div>
   {/snippet}
 
   <div class="input-bar shrink-0" style="display:{messages.length === 0 ? 'none' : 'block'};">
@@ -2765,7 +2757,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
       {#if messages.length > 0}{@render composerCard()}{/if}
       {#if !splitMode && dashVersions.length > 0}
         <div style="margin: 6px 0; padding: 6px 10px; background: var(--pw-bg-alt); border: 1px solid var(--pw-border); display: inline-flex; align-items: center; gap: 8px; font-size: 11px; max-width: 420px;">
-          <span style="color: var(--pw-accent);">📊</span>
+          <span style="color: var(--pw-accent);"><Icon name="bar-chart" size={16} /></span>
           <span>{dashVersions.length} dashboard{dashVersions.length === 1 ? '' : 's'} from this chat</span>
           <button onclick={() => { splitMode = true; if (dashVersions[0]) loadDashVersion(dashVersions[0].dashboard_id); }}
                   style="margin-left: auto; padding: 2px 8px; background: var(--pw-accent); color: #fff; border: none; cursor: pointer; font-family: inherit; font-size: 10px;">OPEN ▸</button>
@@ -2774,18 +2766,18 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
       {#if false && !splitMode && (chatDashBusy || chatDashProgress.complete || chatDashProgress.error)}
         <!-- Bottom pill only when split-pane is OFF (otherwise progress lives in the right pane) -->
         <div style="margin: 6px 0 6px 0; padding: 8px 10px; background: #fff8f0; border: 1px solid var(--pw-accent, #c96342); color: var(--pw-ink); font-family: inherit; font-size: 11px; animation: fadeIn 0.25s ease-out; position: relative; max-width: 420px; margin-right: auto;">
-          <button onclick={dismissChatDashProgress} title="Dismiss" style="position: absolute; top: 2px; right: 4px; background: none; border: none; cursor: pointer; font-size: 12px; color: var(--pw-muted);">✕</button>
+          <button onclick={dismissChatDashProgress} title="Dismiss" style="position: absolute; top: 2px; right: 4px; background: none; border: none; cursor: pointer; font-size: 12px; color: var(--pw-muted);"><Icon name="x" size={16} /></button>
           {#if chatDashProgress.error}
-            <div style="color: #c0392b; font-weight: 700;">⚠ {chatDashProgress.error}</div>
+            <div style="color: #c0392b; font-weight: 700;"><Icon name="alert-triangle" size={16} /> {chatDashProgress.error}</div>
           {:else if chatDashProgress.complete}
             <div style="display: flex; align-items: center; gap: 6px;">
-              <span style="font-weight: 700; color: var(--pw-accent, #c96342);">✓ Dashboard ready</span>
-              <span style="color: var(--pw-muted);">— opened in panel →</span>
+              <span style="font-weight: 700; color: var(--pw-accent, #c96342);"><Icon name="check" size={16} /> Dashboard ready</span>
+              <span style="color: var(--pw-muted);">— opened in panel <Icon name="arrow-right" size={16} /></span>
               <span>({chatDashProgress.panel_pills.length} panel{chatDashProgress.panel_pills.length === 1 ? '' : 's'})</span>
             </div>
           {:else}
             <div style="display: flex; align-items: center; gap: 6px;">
-              <span>📋</span>
+              <span><Icon name="clipboard" size={16} /></span>
               <span style="font-weight: 600;">Building…</span>
               <span style="color: var(--pw-muted);">{chatDashProgress.stage ? `${chatDashProgress.current}/${chatDashProgress.total} · ${chatDashProgress.stage}` : `${chatDashProgress.current}/${chatDashProgress.total}`}</span>
               <span style="font-family: monospace; color: var(--pw-accent, #c96342); font-size: 10px;">{'█'.repeat(Math.max(0, chatDashProgress.current))}{'░'.repeat(Math.max(0, chatDashProgress.total - chatDashProgress.current))}</span>
@@ -2823,7 +2815,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
     <div style="position: fixed; top: 56px; right: 0; bottom: 0; width: 48vw; max-width: 900px; min-width: 360px; z-index: 8500; border-left: 1px solid var(--pw-border, #e2ddd2); background: var(--pw-bg, #fdfaf5); display: flex; flex-direction: column; overflow: hidden; box-shadow: -4px 0 16px rgba(0,0,0,0.06);">
       <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; background: var(--pw-bg-alt, #f7f6f3); border-bottom: 1px solid var(--pw-border, #e2ddd2);">
         <div style="font-size: 12px; font-weight: 700; color: var(--pw-accent, #c96342); text-transform: uppercase; letter-spacing: 0.05em;">
-          📊 Dashboard {#if chatDashBusy && !dashSpec}· Building…{/if}
+          <Icon name="bar-chart" size={16} /> Dashboard {#if chatDashBusy && !dashSpec}· Building…{/if}
         </div>
         <div class="dash-versions-actions" style="display: flex; gap: 6px; align-items: center; position: relative;">
           {#if dashCurrentVersion}
@@ -2847,7 +2839,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
                     <button onclick={(e) => { e.stopPropagation(); deleteDashVersion(v.dashboard_id, v.version); }}
                             disabled={dashVersions.length === 1}
                             title={dashVersions.length === 1 ? 'Last version, cannot delete' : `Delete v${v.version}`}
-                            style="padding: 4px 8px; margin-right: 4px; background: transparent; color: {dashVersions.length === 1 ? 'var(--pw-muted)' : '#c0392b'}; border: none; cursor: {dashVersions.length === 1 ? 'not-allowed' : 'pointer'}; opacity: {dashVersions.length === 1 ? 0.45 : 1}; font-size: 12px;">✕</button>
+                            style="padding: 4px 8px; margin-right: 4px; background: transparent; color: {dashVersions.length === 1 ? 'var(--pw-muted)' : '#c0392b'}; border: none; cursor: {dashVersions.length === 1 ? 'not-allowed' : 'pointer'}; opacity: {dashVersions.length === 1 ? 0.45 : 1}; font-size: 12px;"><Icon name="x" size={16} /></button>
                   </div>
                 {/each}
               </div>
@@ -2855,11 +2847,11 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
           {/if}
           <button onclick={() => buildDashFromChat(true)} disabled={chatDashBusy}
                   style="font-size: 11px; padding: 3px 8px; background: transparent; color: var(--pw-accent); border: 1px solid var(--pw-accent); cursor: {chatDashBusy ? 'not-allowed' : 'pointer'}; opacity: {chatDashBusy ? 0.45 : 1}; font-family: inherit;"
-                  title="Rebuild as new version">↻ Rebuild</button>
+                  title="Rebuild as new version"><Icon name="refresh" size={16} /> Rebuild</button>
           {#if dashSpec?.id}
-            <button onclick={() => goto(`${base}/project/${encodeURIComponent(projectSlug)}/studio/${encodeURIComponent(dashSpec.id)}`)} style="font-size: 11px; padding: 3px 8px; background: transparent; color: var(--pw-accent, #c96342); border: 1px solid var(--pw-accent, #c96342); cursor: pointer; font-family: inherit;" title="Open in full Studio">↗ Studio</button>
+            <button onclick={() => goto(`${base}/project/${encodeURIComponent(projectSlug)}/studio/${encodeURIComponent(dashSpec.id)}`)} style="font-size: 11px; padding: 3px 8px; background: transparent; color: var(--pw-accent, #c96342); border: 1px solid var(--pw-accent, #c96342); cursor: pointer; font-family: inherit;" title="Open in full Studio"><Icon name="trending-up" size={16} /> Studio</button>
           {/if}
-          <button onclick={() => { splitMode = false; }} style="font-size: 11px; padding: 3px 8px; background: transparent; color: var(--pw-muted); border: 1px solid var(--pw-border, #e2ddd2); cursor: pointer; font-family: inherit;" title="Close split view (chat stays)">✕</button>
+          <button onclick={() => { splitMode = false; }} style="font-size: 11px; padding: 3px 8px; background: transparent; color: var(--pw-muted); border: 1px solid var(--pw-border, #e2ddd2); cursor: pointer; font-family: inherit;" title="Close split view (chat stays)"><Icon name="x" size={16} /></button>
         </div>
       </div>
 
@@ -2867,7 +2859,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
         <!-- BUILD PROGRESS view: detailed event log + stage checklist + panels + narrative -->
         <div style="flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px;">
           {#if chatDashProgress.error}
-            <div style="padding: 10px 12px; background: #fdecea; border-left: 3px solid #c0392b; color: #c0392b; font-weight: 700; font-size: 13px;">⚠ {chatDashProgress.error}</div>
+            <div style="padding: 10px 12px; background: #fdecea; border-left: 3px solid #c0392b; color: #c0392b; font-weight: 700; font-size: 13px;"><Icon name="alert-triangle" size={16} /> {chatDashProgress.error}</div>
           {/if}
 
           <!-- Top meta row -->
@@ -2893,7 +2885,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
           <!-- Progress bar -->
           <div>
             <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 4px;">
-              <span style="font-weight: 700; color: var(--pw-accent, #c96342);">📋 {chatDashProgress.stage || 'starting…'}</span>
+              <span style="font-weight: 700; color: var(--pw-accent, #c96342);"><Icon name="clipboard" size={16} /> {chatDashProgress.stage || 'starting…'}</span>
               {#if DASH_STAGE_DEFS[chatDashProgress.stage]}
                 <span style="color: var(--pw-muted); font-size: 11px;">— {DASH_STAGE_DEFS[chatDashProgress.stage].desc}</span>
               {/if}
@@ -2908,7 +2900,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
               {#each DASH_STAGE_ORDER as sg}
                 {@const _done = chatDashProgress.stages_done.find((s: any) => s.stage === sg)}
                 {@const _current = chatDashProgress.stage === sg && !_done}
-                {@const _glyph = _done ? '✓' : _current ? '●' : '○'}
+                {@const _glyph = _done ? 'OK' : _current ? '●' : '○'}
                 {@const _color = _done ? '#16a34a' : _current ? 'var(--pw-accent, #c96342)' : 'var(--pw-muted)'}
                 <div style="display: flex; align-items: center; gap: 8px; padding: 3px 6px; background: {_current ? 'rgba(201,99,66,0.06)' : 'transparent'}; border-left: 2px solid {_current ? 'var(--pw-accent, #c96342)' : 'transparent'};">
                   <span style="font-family: monospace; color: {_color}; font-weight: 700; width: 12px;">{_glyph}</span>
@@ -3305,13 +3297,13 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 
     <!-- Thumbnail navigation -->
     <div style="padding: 8px 16px; border-top: 2px solid #1a1a1a; background: #f5f5f0; display: flex; align-items: center; justify-content: space-between;">
-      <button onclick={() => currentSlide = Math.max(0, currentSlide - 1)} disabled={currentSlide === 0} style="font-size: 11px; font-weight: 900; padding: 4px 10px; border: 1px solid #ccc; background: #fff; cursor: pointer;">← PREV</button>
+      <button onclick={() => currentSlide = Math.max(0, currentSlide - 1)} disabled={currentSlide === 0} style="font-size: 11px; font-weight: 900; padding: 4px 10px; border: 1px solid #ccc; background: #fff; cursor: pointer;"><Icon name="arrow-left" size={16} /> PREV</button>
       <div style="display: flex; gap: 3px; align-items: center;">
         {#each slidesData as s, si}
           <button onclick={() => currentSlide = si} style="width: 28px; height: 18px; border: {si === currentSlide ? '2px solid #D24726' : '1px solid #ccc'}; background: {si === currentSlide ? '#FFF3E0' : '#fff'}; cursor: pointer; padding: 0; font-size: 7px; font-weight: 700; color: {si === currentSlide ? '#D24726' : '#999'};">{si + 1}</button>
         {/each}
       </div>
-      <button onclick={() => currentSlide = Math.min(slidesData.length - 1, currentSlide + 1)} disabled={currentSlide >= slidesData.length - 1} style="font-size: 11px; font-weight: 900; padding: 4px 10px; border: 1px solid #ccc; background: #fff; cursor: pointer;">NEXT →</button>
+      <button onclick={() => currentSlide = Math.min(slidesData.length - 1, currentSlide + 1)} disabled={currentSlide >= slidesData.length - 1} style="font-size: 11px; font-weight: 900; padding: 4px 10px; border: 1px solid #ccc; background: #fff; cursor: pointer;">NEXT <Icon name="arrow-right" size={16} /></button>
     </div>
 
   {:else}
@@ -3402,7 +3394,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 {#if scheduleToast}
   <div style="position: fixed; bottom: 20px; right: 20px; z-index: 240; background: var(--pw-ink); color: var(--pw-bg); padding: 10px 14px; border-radius: var(--pw-radius-sm); box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 12px; display: flex; gap: 10px; align-items: center;">
     <span>Saved as workflow #{scheduleToast.wfId}</span>
-    <a href="{base}/ui/agent-os/workflows" style="color: var(--pw-accent-soft, #f0c4b0); text-decoration: underline; font-weight: 700;">View →</a>
+    <a href="{base}/ui/agent-os/workflows" style="color: var(--pw-accent-soft, #f0c4b0); text-decoration: underline; font-weight: 700;">View <Icon name="arrow-right" size={16} /></a>
   </div>
 {/if}
 
@@ -3458,7 +3450,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
   ondone={(d) => { if (d?.promoted?.total_goldens) console.log(`[golden] promoted (total: ${d.promoted.total_goldens})`); }} />
 
 <style>
-/* === Claude.ai-style empty state: greeting → centered composer → subtle chips === */
+/* === Claude.ai-style empty state: greeting > centered composer > subtle chips === */
 :global(.claude-empty) {
  display: flex;
  flex-direction: column;
@@ -3466,7 +3458,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  justify-content: center;
  min-height: min(64vh, 620px);
  width: 100%;
- max-width: 740px;
+ max-width: 880px;
  margin: 0 auto;
  padding: 24px 0 40px;
 }
@@ -3494,6 +3486,8 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 /* The composer becomes the hero — center it and cap width like Claude */
 :global(.ce-composer) { width: 100%; }
 :global(.ce-composer .composer-card) { max-width: 100%; }
+/* Aria-style stat line under the suggestion chips */
+:global(.ce-stats) { text-align: center; margin-top: 18px; font-size: 12.5px; color: var(--pw-muted, #9b948a); letter-spacing: 0.01em; }
 /* Subtle pill suggestions under the box */
 :global(.ce-chips) {
  display: flex;
@@ -3601,17 +3595,32 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 .sim-chip:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* === Single-row composer card === */
-.composer-card { background:#fff; border:1px solid var(--pw-border); border-radius: var(--pw-radius-sm); padding:0; margin:0 auto; max-width:1100px; overflow:visible; transition:box-shadow .15s, border-color .15s; box-shadow:0 2px 8px rgba(0,0,0,0.04); }
+.composer-card { background:#fff; border:1px solid var(--pw-border); border-radius:16px; padding:0; margin:0 auto; max-width:880px; overflow:visible; transition:box-shadow .15s, border-color .15s; box-shadow:0 2px 8px rgba(0,0,0,0.04); }
 .composer-card.focused, .composer-card:focus-within { border-color:var(--pw-accent, #c96342); box-shadow:0 0 0 3px rgba(201,99,66,0.10); }
 .composer-row { display:flex; align-items:center; gap:0; min-height:48px; padding:4px 6px; overflow:visible; }
 .composer-seg { display:flex; align-items:center; gap:4px; flex-shrink:0; padding:0 8px; position:relative; }
 .composer-seg :global(.mode-dropdown) { z-index: 1000; max-height: 60vh; overflow-y: auto; }
 .composer-seg + .composer-seg { border-left:1px solid var(--pw-border); }
-.composer-input { flex:1 1 auto; min-width:0; border:0; outline:0; resize:none; background:transparent; font:inherit; font-size:13px; color:var(--pw-ink); line-height:1.5; padding:10px 12px; min-height:36px; max-height:200px; border-left:1px solid var(--pw-border); }
+.composer-input { display:block; width:100%; box-sizing:border-box; border:0; outline:0; resize:none; background:transparent; font:inherit; font-size:15px; color:var(--pw-ink); line-height:1.55; padding:16px 18px 8px; min-height:50px; max-height:220px; }
 .composer-input::placeholder { color:var(--pw-muted, #9b9b9b); }
-.composer-send { width:36px; height:36px; border-radius:50%; background:var(--pw-accent, #c96342); color:#fff; border:0; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; margin:0 6px; box-shadow:0 2px 6px rgba(201,99,66,0.25); transition:all .15s; }
-.composer-send:hover:not(:disabled) { background:#b85a3a; box-shadow:0 4px 10px rgba(201,99,66,0.35); }
-.composer-send:disabled { background:#e5b4b4; cursor:not-allowed; box-shadow:none; }
+/* control row beneath the input: mode toggle left, model + send right */
+.composer-controls { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 8px 7px; }
+.composer-left { display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0; }
+.composer-right { display:flex; align-items:center; gap:12px; flex-shrink:0; }
+/* segmented Auto | Quick | Deep toggle (Aria-style) */
+.seg-toggle { display:inline-flex; align-items:center; gap:2px; padding:3px; background:var(--pw-bg-alt, #f1efe9); border-radius:999px; }
+.seg-btn { appearance:none; border:0; background:transparent; cursor:pointer; font:inherit; font-size:12.5px; font-weight:600; color:var(--pw-muted, #7c766b); padding:5px 14px; border-radius:999px; line-height:1; transition:background .15s, color .15s, box-shadow .15s; }
+.seg-btn:hover:not(:disabled):not(.active) { color:var(--pw-ink, #2c2a26); }
+.seg-btn.active { background:#fff; color:var(--pw-ink, #2c2a26); box-shadow:0 1px 2px rgba(0,0,0,0.08); }
+.seg-btn:disabled { opacity:.55; cursor:not-allowed; }
+/* plain model label next to send (brand face, not a control) */
+.composer-model { font-size:12.5px; font-weight:600; color:var(--pw-muted, #8a8175); white-space:nowrap; }
+/* one quiet hint line under the composer card */
+.composer-hint-line { text-align:center; margin:8px auto 0; max-width:760px; font-size:11.5px; color:var(--pw-muted, #9b948a); line-height:1.5; }
+/* Aria-style send: flat gray circle, no coral, no shadow */
+.composer-send { width:34px; height:34px; border-radius:50%; background:var(--pw-muted, #8a8175); color:#fff; border:0; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; margin:0 2px; transition:background .15s; }
+.composer-send:hover:not(:disabled) { background:var(--pw-ink-soft, #57544d); }
+.composer-send:disabled { background:var(--pw-border-strong, #d8d5cb); cursor:not-allowed; }
 .composer-actions { border-left:1px solid var(--pw-border); display:flex; gap:4px; padding:0 4px; }
 .composer-actions button { padding:6px 8px; border-radius: 6px; background:transparent; border:1px solid transparent; cursor:pointer; font-size:11px; font-weight:600; color:var(--pw-ink); transition:all .15s; font-family:inherit; }
 .composer-actions button:hover:not(:disabled) { background:var(--pw-bg-alt); border-color:var(--pw-border); }
@@ -3632,7 +3641,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 .cmp-research { color:#7c3aed; }
 .cmp-research:hover:not(:disabled) { background:rgba(124,58,237,0.08); border-color:rgba(124,58,237,0.3); color:#7c3aed; }
 @media (max-width: 720px) {
-  .cmp-icon-label { display:none; }
+ .cmp-icon-label { display:none; }
 }
 .composer-filters button { padding:4px 8px; border-radius: var(--pw-radius-sm); background:transparent; border:0; cursor:pointer; font-size:11px; font-weight:500; color:var(--pw-muted); display:inline-flex; align-items:center; gap:4px; font-family:inherit; }
 .composer-filters button:hover:not(:disabled) { background:var(--pw-bg-alt); color:var(--pw-ink); }
@@ -3641,8 +3650,6 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 .composer-hint { font-size: 11px; color: var(--pw-ink-muted, #7a6f60); padding: 4px 12px 0; flex-basis: 100%; }
 .composer-hint code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; padding: 1px 4px; background: var(--pw-bg-alt); border-radius: 2px; }
 @media (max-width: 720px) {
- .composer-row { flex-wrap:wrap; }
- .composer-input { width:100%; flex-basis:100%; border-left:0; border-top:1px solid var(--pw-border); margin-top:4px; }
  .composer-card { margin:0 12px; }
 }
 .cmp-chip { display:inline-flex; align-items:center; gap:5px; height:28px; padding:0 10px; border-radius: var(--pw-radius-sm); border:1px solid var(--pw-border); background:transparent; cursor:pointer; font:inherit; font-size:11px; color:var(--pw-ink); }
@@ -3696,6 +3703,25 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 :global(.cli-spinner span), :global(.typing-indicator span) { background:var(--pw-accent) !important; }
 
 /* === Auto-saved learnings — soft green === */
+/* EXPLORE — related follow-up question chips under the answer (Aria-style) */
+:global(.explore) { margin-top: 22px; }
+:global(.explore-label) { font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; color: var(--pw-dim, #a8a195); margin-bottom: 10px; }
+:global(.explore-chips) { display: flex; flex-wrap: wrap; gap: 9px; }
+:global(.explore-chip) { display: inline-flex; align-items: center; gap: 7px; max-width: 420px; padding: 8px 14px; border: 1px solid var(--pw-border, #e3e0d6); border-radius: 999px; background: transparent; color: var(--pw-ink-soft, #57544d); font-size: 13px; cursor: pointer; transition: border-color .15s, background .15s, color .15s; }
+:global(.explore-chip:hover:not(:disabled)) { border-color: var(--pw-accent, #c96342); color: var(--pw-ink, #2c2a26); background: var(--pw-bg-alt, #f7f6f3); }
+:global(.explore-chip:disabled) { opacity: .5; cursor: default; }
+:global(.explore-q) { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; background: var(--pw-bg-alt, #f1efe9); color: var(--pw-muted, #8a8175); font-size: 10px; font-weight: 700; flex-shrink: 0; }
+:global(.explore-txt) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:global(.saved-line) { display:inline-flex; align-items:center; gap:6px; margin-top:8px; padding:0; border:0; background:none; font:inherit; font-size:11.5px; color:var(--pw-muted, #9b948a); cursor:pointer; }
+:global(.saved-line:hover) { color:var(--pw-ink-soft, #57544d); }
+:global(.saved-line svg) { color:var(--pw-accent, #c96342); }
+:global(.saved-chev) { font-size:13px; color:var(--pw-dim, #b0a89c); transition:transform .15s ease; line-height:1; }
+:global(.saved-chev.open) { transform:rotate(90deg); }
+:global(.saved-facts) { list-style:none; margin:6px 0 0; padding:0 0 0 4px; display:flex; flex-direction:column; gap:5px; }
+:global(.saved-facts li) { display:flex; align-items:flex-start; gap:8px; font-size:12.5px; line-height:1.5; color:var(--pw-ink-soft, #57544d); max-width:760px; }
+:global(.saved-dot) { width:5px; height:5px; border-radius:50%; background:var(--pw-accent, #c96342); margin-top:7px; flex-shrink:0; }
+:global(.saved-fact-txt) { flex:1; }
+:global(.saved-score) { font-size:10.5px; font-weight:700; color:var(--pw-dim, #a8a195); flex-shrink:0; }
 :global(.learning-card) { background:#f0f9f4 !important; border:1px solid #cfe6d7 !important; border-radius: var(--pw-radius-sm)!important; padding:14px !important; margin-top:10px; }
 :global(.learning-card-header) { color:#2c6e3f !important; font-size:12px !important; font-weight:500 !important; text-transform:none !important; letter-spacing:0 !important; display:flex; align-items:center; gap:8px; }
 :global(.learning-card-facts .learning-fact) { font-size:12px !important; font-weight:400 !important; color:var(--pw-ink-soft, var(--pw-ink)) !important; }
@@ -4141,21 +4167,21 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 }
 
 .sim-launch-card {
-  margin: 12px 0;
-  padding: 14px 16px;
-  background: rgba(201, 99, 66, 0.06);
-  border: 1px solid var(--pw-accent, #c96342);
-  border-radius: var(--pw-radius-sm);
+ margin: 12px 0;
+ padding: 14px 16px;
+ background: rgba(201, 99, 66, 0.06);
+ border: 1px solid var(--pw-accent, #c96342);
+ border-radius: var(--pw-radius-sm);
 }
 .sim-launch-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .sim-launch-title { font-weight: 600; font-size: 13px; color: var(--pw-accent, #c96342); }
 .sim-launch-id { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--pw-ink-soft); background: rgba(0,0,0,0.04); padding: 2px 6px; border-radius: var(--pw-radius-sm); }
 .sim-launch-body { font-size: 12px; color: var(--pw-ink-soft); margin-bottom: 10px; }
 .sim-launch-open {
-  display: inline-flex; align-items: center; gap: 4px;
-  background: var(--pw-accent, #c96342); color: #fff; border: none;
-  padding: 6px 14px; border-radius: var(--pw-radius-sm); font-size: 12px; font-weight: 600;
-  cursor: pointer;
+ display: inline-flex; align-items: center; gap: 4px;
+ background: var(--pw-accent, #c96342); color: #fff; border: none;
+ padding: 6px 14px; border-radius: var(--pw-radius-sm); font-size: 12px; font-weight: 600;
+ cursor: pointer;
 }
 .sim-launch-open:hover { filter: brightness(0.95); }
 </style>

@@ -4,20 +4,20 @@ Read-only super-admin endpoints aggregating Dash's ontology across all
 templates + all projects/agents. Source data comes from existing tables.
 
 Endpoints:
-- GET  /api/ontology/summary
-- GET  /api/ontology/types
-- GET  /api/ontology/types/{name}
-- GET  /api/ontology/links
-- GET  /api/ontology/actions
-- GET  /api/ontology/glossary
-- GET  /api/ontology/growth
-- GET  /api/ontology/lineage
-- GET  /api/ontology/promotions/pending
+- GET /api/ontology/summary
+- GET /api/ontology/types
+- GET /api/ontology/types/{name}
+- GET /api/ontology/links
+- GET /api/ontology/actions
+- GET /api/ontology/glossary
+- GET /api/ontology/growth
+- GET /api/ontology/lineage
+- GET /api/ontology/promotions/pending
 - POST /api/ontology/promotions/{id}/approve
 - POST /api/ontology/promotions/{id}/reject
 - POST /api/ontology/actions/{name}/test-run
-- GET  /api/ontology/healthcheck
-- GET  /api/ontology/audit
+- GET /api/ontology/healthcheck
+- GET /api/ontology/audit
 - POST /api/ontology/cluster-suggest
 """
 from __future__ import annotations
@@ -98,7 +98,7 @@ def _registry() -> dict:
 
 
 def _entities_index() -> dict[str, dict]:
-    """Build entity → metadata across all templates."""
+    """Build entity > metadata across all templates."""
     idx: dict[str, dict] = {}
     for tpl in _registry().values():
         for ent in (tpl.entities or []):
@@ -670,19 +670,19 @@ def growth_series(request: Request, days: int = 30):
             every day appears (count=0 if no rows that day)."""
             sql = (
                 "WITH d AS ("
-                "  SELECT generate_series("
-                "    date_trunc('day', NOW() - (:d || ' days')::interval),"
-                "    date_trunc('day', NOW()),"
-                "    '1 day'"
-                "  )::date AS day"
+                " SELECT generate_series("
+                " date_trunc('day', NOW() - (:d || ' days')::interval),"
+                " date_trunc('day', NOW()),"
+                " '1 day'"
+                " )::date AS day"
                 ") "
                 f"SELECT d.day, COALESCE(c.cnt, 0) AS cnt "
                 f"FROM d LEFT JOIN ("
-                f"  SELECT date_trunc('day', created_at)::date AS day, COUNT(*) AS cnt "
-                f"  FROM {table} "
-                f"  WHERE created_at > NOW() - (:d || ' days')::interval "
-                f"  {('AND ' + where_extra) if where_extra else ''} "
-                f"  GROUP BY 1"
+                f" SELECT date_trunc('day', created_at)::date AS day, COUNT(*) AS cnt "
+                f" FROM {table} "
+                f" WHERE created_at > NOW() - (:d || ' days')::interval "
+                f" {('AND ' + where_extra) if where_extra else ''} "
+                f" GROUP BY 1"
                 f") c ON c.day = d.day "
                 f"ORDER BY d.day"
             )
@@ -812,7 +812,7 @@ def promotions_pending(request: Request):
             try:
                 rows = cn.execute(_t(
                     "SELECT id, fact_text, fact_type, source_project_slug, approved_at, "
-                    "       triangulation_count, approval_method "
+                    " triangulation_count, approval_method "
                     "FROM dash_promotion_log "
                     "WHERE approver IS NULL "
                     "ORDER BY id DESC LIMIT 100"
@@ -1097,7 +1097,7 @@ def compute_cluster_suggestions(max_suggestions: int = 50) -> list[dict]:
             if key in seen:
                 continue
 
-            # Rule 1: A's aliases ⊆ B's name+aliases → A is alias of B
+            # Rule 1: A's aliases ⊆ B's name+aliases > A is alias of B
             if ra["aliases"] and ra["aliases"].issubset(rb["name_set"]):
                 seen.add(key)
                 suggestions.append({"primary": b, "merge_candidate": a,
@@ -1110,7 +1110,7 @@ def compute_cluster_suggestions(max_suggestions: int = 50) -> list[dict]:
                     "reason": f"{b}'s aliases are subset of {a}'s names",
                     "confidence": 0.97})
                 continue
-            # Rule 2: ≥3 shared columns → merge candidate
+            # Rule 2: ≥3 shared columns > merge candidate
             shared = ra["columns"] & rb["columns"]
             if len(shared) >= 3:
                 union = ra["columns"] | rb["columns"]
@@ -1173,7 +1173,7 @@ def cluster_run_now(request: Request):
         raise HTTPException(500, str(e))
 
 
-# ── 16. Benchmark sync (web → global Brain) ───────────────────────────────
+# ── 16. Benchmark sync (web > global Brain) ───────────────────────────────
 
 @router.post("/benchmarks/sync-now")
 async def benchmarks_sync_now(request: Request, industry: str = ""):
@@ -1218,7 +1218,7 @@ def benchmarks_list(
 
     Filters:
         - ``industry`` — exact match against ``metadata->>industry``.
-        - ``kpi``      — case-insensitive substring against ``name``.
+        - ``kpi`` — case-insensitive substring against ``name``.
 
     No auth required for read (glossary/UI-facing); rows are global by
     construction (``project_slug IS NULL``, ``category='benchmark'``).
@@ -1231,7 +1231,7 @@ def benchmarks_list(
         "SELECT id, name, definition, metadata, updated_at "
         "FROM public.dash_company_brain "
         "WHERE category = 'benchmark' "
-        "  AND project_slug IS NULL "
+        " AND project_slug IS NULL "
     )
     params: dict[str, Any] = {}
     if industry:
@@ -1285,8 +1285,8 @@ def benchmarks_list(
 
 class _ApiKeyCreateBody(BaseModel):
     name: str
-    project_slug: str | None = None  # None == global (all projects readable)
-    scope: dict | None = None        # {types,glossary,links,lineage,...}
+    project_slug: str | None = None # None == global (all projects readable)
+    scope: dict | None = None # {types,glossary,links,lineage,...}
     rate_limit_per_min: int | None = 60
     allowed_origins: list[str] | None = None
 

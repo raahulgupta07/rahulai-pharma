@@ -2,9 +2,9 @@
 
 Hybrid, two-tier (cheap deterministic first, LLM only on ambiguity):
 
-  exact column-set match   → append   (no LLM, confidence 0.99)
-  close match (>=70% cols) → LLM route → append / transform_then_append / new_table
-  no close match           → new_table (no LLM)
+  exact column-set match > append (no LLM, confidence 0.99)
+  close match (>=70% cols) > LLM route > append / transform_then_append / new_table
+  no close match > new_table (no LLM)
 
 Why combine instead of one-table-per-file: a CRM that drops one CSV per month
 should land in ONE canonical table with a `_period` stamp, not 6 sibling tables
@@ -42,12 +42,12 @@ def _norm_cols(cols) -> list[str]:
 
 
 def col_fingerprint(cols) -> str:
-    """Stable hash of a column SET (order-independent). Same cols → same hash."""
+    """Stable hash of a column SET (order-independent). Same cols > same hash."""
     norm = sorted(set(_norm_cols(cols)))
     return hashlib.md5("|".join(norm).encode()).hexdigest()
 
 
-# Filename → period. Handles Jan2025 / 2025-01 / apr_25 / 2025_04 / Q1-2025.
+# Filename > period. Handles Jan2025 / 2025-01 / apr_25 / 2025_04 / Q1-2025.
 _MONTHS = {
     "jan": "01", "feb": "02", "mar": "03", "apr": "04", "may": "05", "jun": "06",
     "jul": "07", "aug": "08", "sep": "09", "oct": "10", "nov": "11", "dec": "12",

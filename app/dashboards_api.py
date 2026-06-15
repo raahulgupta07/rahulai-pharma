@@ -241,16 +241,16 @@ class DeepBuildRequest(BaseModel):
     persona: str = ""
     audience: str = "executive"
     n_panels: int = 8
-    gen_model: str | None = None      # generator (e.g. google/gemini-3-flash)
-    judge_model: str | None = None    # judge — MUST differ from gen_model
+    gen_model: str | None = None # generator (e.g. google/gemini-3-flash)
+    judge_model: str | None = None # judge — MUST differ from gen_model
 
 
 @router.post("/deep-build/stream")
 async def deep_build_stream(req: DeepBuildRequest):
     """9-stage Deep Dash pipeline. SSE stream of stage events + final spec.
 
-    Stages: intent → schema_rag → panel_plan → sql_gen → explain_gate →
-    execute → chart_specs → judge (different-model) → layout.
+    Stages: intent > schema_rag > panel_plan > sql_gen > explain_gate >
+    execute > chart_specs > judge (different-model) > layout.
     """
     if req.judge_model and req.gen_model and req.judge_model == req.gen_model:
         raise HTTPException(status_code=400, detail="judge_model must differ from gen_model (TACL self-bias)")
@@ -299,7 +299,7 @@ async def from_chat_stream(req: FromChatStreamBody, request: Request):
         yield f"data: {safe_dumps({'type': 'error', 'detail': detail})}\n\n"
 
     # #15b — Compute signature: sha256(project|sorted_question_hashes|schema_fingerprint).
-    # Fail-soft: any error → signature_hash=None and fall through to session cache.
+    # Fail-soft: any error > signature_hash=None and fall through to session cache.
     signature_hash: str | None = None
     try:
         try:
@@ -461,7 +461,7 @@ async def deep_build_sync(req: DeepBuildRequest):
 
 class DeepPatchRequest(BaseModel):
     spec: dict
-    ops: list[dict]  # RFC 6902 JSON Patch operations
+    ops: list[dict] # RFC 6902 JSON Patch operations
 
 
 @router.post("/deep-patch")
@@ -483,7 +483,7 @@ class RefineRequest(BaseModel):
 
 @router.post("/{dashboard_id}/refine")
 async def refine_dashboard(dashboard_id: str, req: RefineRequest):
-    """NL → JSON Patch refine. Loads spec, derives ops via skl_dashboard_refiner,
+    """NL > JSON Patch refine. Loads spec, derives ops via skl_dashboard_refiner,
     applies via RFC-6902 apply_patch, persists new spec, returns new spec +
     summary + streamed `panel_announcement` events for affected panels.
     """
@@ -869,7 +869,7 @@ class MemoryLogRequest(BaseModel):
 def memory_log(req: MemoryLogRequest, request: Request):
     uid = _user_id(request) or "anonymous"
     ok = log_action(uid, req.project_slug, req.action, cell=req.cell, spec_id=req.spec_id)
-    # Phase G — feed finding-retention loop. Backward compatible: missing hash → no-op.
+    # Phase G — feed finding-retention loop. Backward compatible: missing hash > no-op.
     fhash = req.finding_hash
     if not fhash and isinstance(req.cell, dict):
         fhash = (req.cell.get("config") or {}).get("finding_hash")
@@ -895,7 +895,7 @@ def memory_preferences(project_slug: str, request: Request):
 # ─────────────────── by-session dashboard endpoints ───────────────────
 
 def _normalize_panels_to_cells(spec: dict) -> dict:
-    """Mirror spec.panels → spec.cells (legacy DashRenderer shape). Idempotent."""
+    """Mirror spec.panels > spec.cells (legacy DashRenderer shape). Idempotent."""
     if not isinstance(spec, dict):
         return spec
     panels = spec.get("panels") or []
@@ -951,7 +951,7 @@ def _check_project_perm(request: Request, slug: str, role: str = "viewer") -> No
 @router.get("/by-session/{session_id}/latest")
 async def get_latest_by_session(session_id: str, project_slug: str, request: Request):
     """Return latest dashboard version for a given (project_slug, session_id).
-    Normalizes spec.panels → spec.cells for legacy renderer."""
+    Normalizes spec.panels > spec.cells for legacy renderer."""
     _check_project_perm(request, project_slug)
     from db.session import get_sql_engine as _get_ro
     try:
@@ -1073,13 +1073,13 @@ async def chat_with_dashboard(dashboard_id: str, req: DashChatRequest, request: 
         cols = p.get("columns") or []
         line = f"\n[Panel {i+1}] {title} ({ptype})"
         if narrative:
-            line += f"\n  narrative: {narrative[:300]}"
+            line += f"\n narrative: {narrative[:300]}"
         if rows and cols:
-            line += f"\n  data ({len(rows)} rows, columns: {', '.join(str(c) for c in cols[:10])}):"
+            line += f"\n data ({len(rows)} rows, columns: {', '.join(str(c) for c in cols[:10])}):"
             for r in rows[:5]:
                 try:
                     row_str = " | ".join(f"{k}={v}" for k, v in list(r.items())[:8])
-                    line += f"\n    {row_str}"
+                    line += f"\n {row_str}"
                 except Exception:
                     pass
         context_lines.append(line)

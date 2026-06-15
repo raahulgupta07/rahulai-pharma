@@ -5,21 +5,21 @@ Spec shape:
   "steps": [
     {
       "id": "fetch_data",
-      "kind": "agent",                  // 'agent' | 'tool' | 'router' | 'parallel' | 'loop' | 'hitl'
-      "agent": "Analyst",               // for kind='agent'
-      "tool": "make_pdf",               // for kind='tool'
-      "prompt": "...",                  // jinja-style {var} substitution from prior outputs
-      "args": {...},                    // for kind='tool'
+      "kind": "agent", // 'agent' | 'tool' | 'router' | 'parallel' | 'loop' | 'hitl'
+      "agent": "Analyst", // for kind='agent'
+      "tool": "make_pdf", // for kind='tool'
+      "prompt": "...", // jinja-style {var} substitution from prior outputs
+      "args": {...}, // for kind='tool'
       "depends_on": ["step_id"],
-      "parallel_group": "gather",       // run concurrently w/ siblings sharing same group
-      "loop_until": "expr",             // python expr eval against ctx, kind='loop' only
-      "max_iter": 3,                    // loop cap
-      "route_by": "expr",               // kind='router' — eval expr → branch name
+      "parallel_group": "gather", // run concurrently w/ siblings sharing same group
+      "loop_until": "expr", // python expr eval against ctx, kind='loop' only
+      "max_iter": 3, // loop cap
+      "route_by": "expr", // kind='router' — eval expr > branch name
       "branches": {"high": ["step_id1"], "low": ["step_id2"]},
-      "condition": "expr",              // skip step if False
+      "condition": "expr", // skip step if False
       "on_error": "fail" | "continue" | "retry",
       "retry_max": 2,
-      "hitl_action": "confirmation"     // kind='hitl' — pauses for human approval
+      "hitl_action": "confirmation" // kind='hitl' — pauses for human approval
     }
   ],
   "inputs": {"key": "default_value"},
@@ -35,8 +35,8 @@ try:
     HAS_PYDANTIC = True
 except Exception:
     HAS_PYDANTIC = False
-    BaseModel = object  # type: ignore
-    Field = lambda *a, **k: None  # type: ignore
+    BaseModel = object # type: ignore
+    Field = lambda *a, **k: None # type: ignore
 
 
 if HAS_PYDANTIC:
@@ -54,7 +54,7 @@ if HAS_PYDANTIC:
         route_by: Optional[str] = None
         branches: Optional[Dict[str, List[str]]] = None
         condition: Optional[str] = None
-        on_error: str = "fail"  # 'fail' | 'continue' | 'retry'
+        on_error: str = "fail" # 'fail' | 'continue' | 'retry'
         retry_max: int = 2
         hitl_action: Optional[str] = None
 

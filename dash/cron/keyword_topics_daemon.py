@@ -23,9 +23,9 @@ from datetime import datetime, timedelta, timezone
 logger = logging.getLogger(__name__)
 
 # How often the daemon wakes. The rollup itself covers a longer trailing window.
-_TICK_SECONDS = int(os.getenv("KEYWORD_TOPICS_TICK_SECONDS", "3600"))  # hourly
-_WINDOW_HOURS = int(os.getenv("KEYWORD_TOPICS_WINDOW_HOURS", "168"))   # trailing 7d
-_SAMPLE_MAX = int(os.getenv("KEYWORD_TOPICS_SAMPLE_MAX", "400"))        # cap LLM input
+_TICK_SECONDS = int(os.getenv("KEYWORD_TOPICS_TICK_SECONDS", "3600")) # hourly
+_WINDOW_HOURS = int(os.getenv("KEYWORD_TOPICS_WINDOW_HOURS", "168")) # trailing 7d
+_SAMPLE_MAX = int(os.getenv("KEYWORD_TOPICS_SAMPLE_MAX", "400")) # cap LLM input
 
 
 def _enabled() -> bool:
@@ -35,9 +35,9 @@ def _enabled() -> bool:
 
 
 def _run_once() -> dict:
-    """Sample → cluster via small LLM → store aggregates. Returns a small summary.
+    """Sample > cluster via small LLM > store aggregates. Returns a small summary.
     Blocking; the loop runs it off the event loop via asyncio.to_thread."""
-    from app.usage_api import _collect_questions  # reuse the multi-source collector
+    from app.usage_api import _collect_questions # reuse the multi-source collector
     end = datetime.now(timezone.utc)
     start = end - timedelta(hours=_WINDOW_HOURS)
     texts = _collect_questions(start, end)

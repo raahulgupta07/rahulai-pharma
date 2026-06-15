@@ -28,19 +28,19 @@ router = APIRouter(prefix="/api/export", tags=["Export"])
 # ── Branding / icon helpers (used by PPTX exporters) ──────────────────────
 LUCIDE_TO_GLYPH = {
     "trending-up": "▲", "trending-down": "▼", "minus": "━",
-    "dollar-sign": "$", "percent": "%", "check": "✓", "x": "✗",
-    "users": "👥", "user": "●", "package": "📦", "box": "📦",
-    "check-circle": "✓", "alert-triangle": "⚠", "target": "◎",
-    "clock": "◷", "calendar": "📅", "zap": "⚡", "trophy": "🏆",
-    "circle": "•", "search": "🔍", "wrench": "🔧", "heart": "♥",
-    "pill": "💊", "syringe": "◐", "shield-check": "🛡",
-    "alert-circle": "⚠", "info": "i", "star": "★", "flag": "⚑",
-    "arrow-up": "↑", "arrow-down": "↓", "arrow-right": "→",
+    "dollar-sign": "$", "percent": "%", "check": "OK", "x": "x",
+    "users": "", "user": "●", "package": "", "box": "",
+    "check-circle": "OK", "alert-triangle": "", "target": "◎",
+    "clock": "◷", "calendar": "", "zap": "", "trophy": "",
+    "circle": "•", "search": "", "wrench": "", "heart": "<3",
+    "pill": "", "syringe": "◐", "shield-check": "",
+    "alert-circle": "", "info": "i", "star": "*", "flag": "",
+    "arrow-up": "^", "arrow-down": "v", "arrow-right": ">",
 }
 
 
 def _glyph_for_icon(name: str) -> str:
-    """Map a Lucide icon name → Unicode glyph. Fallback to bullet •."""
+    """Map a Lucide icon name > Unicode glyph. Fallback to bullet •."""
     if not name:
         return "•"
     return LUCIDE_TO_GLYPH.get(str(name).strip().lower(), "•")
@@ -49,7 +49,7 @@ def _glyph_for_icon(name: str) -> str:
 def _get_brand_name() -> str:
     """Read tenant company.json["name"], fall back to CityAgent Insights."""
     try:
-        from app.branding import _load_company  # type: ignore
+        from app.branding import _load_company # type: ignore
         company = _load_company() or {}
         name = company.get("name")
         if name and isinstance(name, str):
@@ -248,11 +248,11 @@ def export_saved_pptx(pres_id: int, request: Request):
             filename=safe_name,
         )
 
-    # 1. Already rendered → serve from disk
+    # 1. Already rendered > serve from disk
     if rendered_pptx_path and _os.path.isfile(rendered_pptx_path):
         return _return_file(rendered_pptx_path)
 
-    # 2. Spec exists but not yet rendered → render NOW via Node + persist path
+    # 2. Spec exists but not yet rendered > render NOW via Node + persist path
     if pptxgenjs_spec and isinstance(pptxgenjs_spec, dict) and (pptxgenjs_spec.get("slides") or []):
         try:
             from dash.tools.render_pptxgenjs import render_pptx_via_js
@@ -280,7 +280,7 @@ def export_saved_pptx(pres_id: int, request: Request):
             pass
         return _return_file(new_path)
 
-    # 3. No spec, no rendered file → cannot serve. python-pptx fallback removed.
+    # 3. No spec, no rendered file > cannot serve. python-pptx fallback removed.
     raise HTTPException(
         500,
         "No pptxgenjs_spec on this presentation. Old python-pptx fallback removed. "
@@ -446,7 +446,7 @@ async def export_excel_from_chat(request: Request):
     ws2 = wb.add_worksheet('Data')
     ws2.set_column('A:Z', 18)
     data_row = 0
-    chart_data = []  # Collect for chart sheet
+    chart_data = [] # Collect for chart sheet
 
     for m in messages:
         if m.get('role') != 'assistant' or not m.get('content'):
@@ -494,7 +494,7 @@ async def export_excel_from_chat(request: Request):
             if len(headers) >= 2 and len(rows) >= 2:
                 chart_data.append({'headers': headers, 'rows': rows, 'start_row': data_row - len(rows), 'sheet': 'Data'})
 
-            data_row += 2  # Gap between tables
+            data_row += 2 # Gap between tables
 
     if data_row == 0:
         ws2.write(0, 0, 'No data tables found in conversation', text_fmt)
@@ -504,7 +504,7 @@ async def export_excel_from_chat(request: Request):
     ws3.hide_gridlines(2)
     chart_row = 0
 
-    for ci2, cd in enumerate(chart_data[:5]):  # Max 5 charts
+    for ci2, cd in enumerate(chart_data[:5]): # Max 5 charts
         headers = cd['headers']
         rows = cd['rows']
 

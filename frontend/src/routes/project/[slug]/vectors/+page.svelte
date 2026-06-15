@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount } from 'svelte';
  import { page } from '$app/stores';
  import { goto } from '$app/navigation';
@@ -321,10 +321,10 @@
 
   <!-- Header -->
   <div style="background: #1a1a1a; color: #00fc40; padding: 12px 18px; display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
-    <a href={`${base}/project/${slug}/settings`} style="color: #ccc; font-size: 11px; text-decoration: none; padding: 4px 8px; border: 1px solid #888;">←</a>
+    <a href={`${base}/project/${slug}/settings`} style="color: #ccc; font-size: 11px; text-decoration: none; padding: 4px 8px; border: 1px solid #888;"><Icon name="arrow-left" size={16} /></a>
     <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.06em;"><Icon name="dna" size={14} /> VECTORS · {slug}</span>
     <span style="margin-left: auto; font-size: 11px; color: #888;">{totalRows} rows</span>
-    <button onclick={loadBrowse} style="padding: 4px 10px; background: #00fc40; color: #000; border: 1px solid #00fc40; cursor: pointer; font-family: monospace; font-size: 10px; font-weight: 900;">↻ REFRESH</button>
+    <button onclick={loadBrowse} style="padding: 4px 10px; background: #00fc40; color: #000; border: 1px solid #00fc40; cursor: pointer; font-family: monospace; font-size: 10px; font-weight: 900;"><Icon name="refresh" size={16} /> REFRESH</button>
     <button onclick={recompute} disabled={recomputing} title="Re-embed all vectors" style="padding: 4px 10px; background: {recomputing ? '#555' : '#ff9d00'}; color: #000; border: 1px solid {recomputing ? '#555' : '#ff9d00'}; cursor: {recomputing ? 'wait' : 'pointer'}; font-family: monospace; font-size: 10px; font-weight: 900;">
       {recomputing ? 'COMPUTING…' : 'RECOMPUTE'}
     </button>
@@ -503,7 +503,7 @@
       <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
         <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.06em;">8 CANNED TESTS</span>
         <button onclick={runAllTests} disabled={testRunning} style="padding: 8px 18px; background: {testRunning ? '#555' : '#00fc40'}; color: #000; border: 1.5px solid #1a1a1a; cursor: {testRunning ? 'wait' : 'pointer'}; font-family: monospace; font-size: 11px; font-weight: 900;">
-          {testRunning ? 'RUNNING…' : '▶ RUN ALL'}
+          {testRunning ? 'RUNNING…' : ' RUN ALL'}
         </button>
         <button onclick={seedFixtures} disabled={seeding} style="padding: 8px 14px; background: {seeding ? '#555' : '#ff9d00'}; color: #000; border: 1.5px solid #1a1a1a; cursor: {seeding ? 'wait' : 'pointer'}; font-family: monospace; font-size: 11px; font-weight: 900;">
           {seeding ? 'SEEDING…' : 'SEED FIXTURES'}
@@ -547,7 +547,7 @@
               </td>
               <td style="padding: 6px 10px; color: #555; font-size: 10px;">{t.detail || '—'}</td>
               <td style="padding: 6px 10px; text-align: center;">
-                <button onclick={() => runTest(i)} disabled={t.running || testRunning} style="padding: 3px 8px; background: #1a1a1a; color: #00fc40; border: 1px solid #1a1a1a; cursor: pointer; font-family: monospace; font-size: 10px; font-weight: 900;">▶</button>
+                <button onclick={() => runTest(i)} disabled={t.running || testRunning} style="padding: 3px 8px; background: #1a1a1a; color: #00fc40; border: 1px solid #1a1a1a; cursor: pointer; font-family: monospace; font-size: 10px; font-weight: 900;"><Icon name="play" size={16} /></button>
               </td>
             </tr>
           {/each}

@@ -1,40 +1,41 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import Icon from '$lib/Icon.svelte';
+ import { onMount } from 'svelte';
 
-  let workflows = $state<any[]>([]);
-  let runs = $state<any[]>([]);
-  let selected = $state<any>(null);
-  let runOutput = $state<string>('');
+ let workflows = $state<any[]>([]);
+ let runs = $state<any[]>([]);
+ let selected = $state<any>(null);
+ let runOutput = $state<string>('');
 
-  const token = (): string | null =>
-    typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
+ const token = (): string | null =>
+ typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
 
-  async function load() {
-    const r = await fetch('/api/os/workflows', { headers: { Authorization: `Bearer ${token() || ''}` } });
-    const j = await r.json();
-    workflows = j?.workflows || [];
-    const rr = await fetch('/api/os/workflows/runs?limit=30', { headers: { Authorization: `Bearer ${token() || ''}` } });
-    const rj = await rr.json();
-    runs = rj?.runs || [];
-  }
+ async function load() {
+ const r = await fetch('/api/os/workflows', { headers: { Authorization: `Bearer ${token() || ''}` } });
+ const j = await r.json();
+ workflows = j?.workflows || [];
+ const rr = await fetch('/api/os/workflows/runs?limit=30', { headers: { Authorization: `Bearer ${token() || ''}` } });
+ const rj = await rr.json();
+ runs = rj?.runs || [];
+ }
 
-  async function run(id: string) {
-    runOutput = 'starting…';
-    const r = await fetch(`/api/os/workflows/${id}/run`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token() || ''}` },
-      body: JSON.stringify({ inputs: {} }),
-    });
-    const j = await r.json();
-    runOutput = JSON.stringify(j, null, 2);
-    load();
-  }
+ async function run(id: string) {
+ runOutput = 'starting…';
+ const r = await fetch(`/api/os/workflows/${id}/run`, {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token() || ''}` },
+ body: JSON.stringify({ inputs: {} }),
+ });
+ const j = await r.json();
+ runOutput = JSON.stringify(j, null, 2);
+ load();
+ }
 
-  function select(wf: any) {
-    selected = wf;
-  }
+ function select(wf: any) {
+ selected = wf;
+ }
 
-  onMount(load);
+ onMount(load);
 </script>
 
 <div class="page">
@@ -66,7 +67,7 @@
           <span><strong>Trigger:</strong> {selected.trigger_kind}{selected.cron_expr ? ` · ${selected.cron_expr}` : ''}</span>
           <span><strong>Steps:</strong> {(selected.spec?.steps || []).length}</span>
         </div>
-        <button class="primary" onclick={() => run(selected.id)}>▶ run now</button>
+        <button class="primary" onclick={() => run(selected.id)}><Icon name="play" size={16} /> run now</button>
 
         {#if selected.spec}
           <h3>DAG</h3>
@@ -100,32 +101,32 @@
 </div>
 
 <style>
-  .page { padding: 24px 32px 60px; max-width: 1280px; margin: 0 auto; font: 14px Inter; color: var(--pw-ink, #2c2a26); }
-  h1 { font: 600 28px 'Source Serif 4', Georgia, serif; margin: 0; color: var(--pw-accent, #c96342); }
-  h2 { font: 600 20px 'Source Serif 4', Georgia, serif; margin: 24px 0 8px; }
-  h3 { font: 600 14px Inter; text-transform: uppercase; letter-spacing: 0.04em; margin: 16px 0 6px; }
-  .muted { color: var(--pw-ink-soft, #87837a); font-size: 11px; }
-  .layout { display: grid; grid-template-columns: 320px 1fr; gap: 20px; margin: 24px 0; }
-  aside { background: var(--pw-surface, #faf9f5); border: 1px solid var(--pw-border, #e7e3da); border-radius: var(--pw-radius-sm); padding: 8px; max-height: 600px; overflow-y: auto; }
-  .row { display: block; width: 100%; text-align: left; background: none; border: none; padding: 10px 12px; cursor: pointer; border-radius: var(--pw-radius-sm); }
-  .row:hover { background: rgba(201, 99, 66, 0.04); }
-  .row.active { background: rgba(201, 99, 66, 0.08); }
-  .rname { font-weight: 600; font-size: 11px; }
-  .rmeta { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
-  main { background: var(--pw-surface, #faf9f5); border: 1px solid var(--pw-border, #e7e3da); border-radius: var(--pw-radius-sm); padding: 24px; min-height: 400px; }
-  .empty { text-align: center; color: var(--pw-ink-soft, #87837a); padding: 60px; }
-  .meta { display: flex; gap: 16px; flex-wrap: wrap; margin: 12px 0; font-size: 11px; }
-  .chip { display: inline-block; background: var(--pw-bg-alt, #f1ede4); border-radius: var(--pw-radius-sm); padding: 2px 8px; font: 600 10px Inter; text-transform: uppercase; letter-spacing: 0.04em; }
-  .chip.builtin { background: rgba(201, 99, 66, 0.14); color: var(--pw-accent, #c96342); }
-  .chip.status-done { background: #d1fae5; color: #065f46; }
-  .chip.status-running { background: #fef3c7; color: #92400e; }
-  .chip.status-failed { background: #fee2e2; color: #991b1b; }
-  .chip.status-regressed { background: #fee2e2; color: #991b1b; }
-  pre.dag { background: #1a1614; color: #e7e3da; padding: 16px; border-radius: var(--pw-radius-sm); overflow: auto; font: 12px/1.5 'JetBrains Mono', monospace; }
-  button.primary { background: var(--pw-accent, #c96342); color: white; border: none; border-radius: var(--pw-radius-sm); padding: 10px 18px; cursor: pointer; font: 600 13px Inter; margin: 8px 0; }
-  .tbl { width: 100%; border-collapse: collapse; background: var(--pw-surface, #faf9f5); border: 1px solid var(--pw-border, #e7e3da); border-radius: var(--pw-radius-sm); overflow: hidden; font-size: 11px; }
-  .tbl th, .tbl td { padding: 10px 14px; text-align: left; }
-  .tbl th { background: var(--pw-bg-alt, #f1ede4); font: 600 11px Inter; text-transform: uppercase; letter-spacing: 0.05em; }
-  .tbl tbody tr { border-top: 1px solid var(--pw-border, #e7e3da); }
-  .mono { font-family: 'JetBrains Mono', monospace; }
+ .page { padding: 24px 32px 60px; max-width: 1280px; margin: 0 auto; font: 14px Inter; color: var(--pw-ink, #2c2a26); }
+ h1 { font: 600 28px 'Source Serif 4', Georgia, serif; margin: 0; color: var(--pw-accent, #c96342); }
+ h2 { font: 600 20px 'Source Serif 4', Georgia, serif; margin: 24px 0 8px; }
+ h3 { font: 600 14px Inter; text-transform: uppercase; letter-spacing: 0.04em; margin: 16px 0 6px; }
+ .muted { color: var(--pw-ink-soft, #87837a); font-size: 11px; }
+ .layout { display: grid; grid-template-columns: 320px 1fr; gap: 20px; margin: 24px 0; }
+ aside { background: var(--pw-surface, #faf9f5); border: 1px solid var(--pw-border, #e7e3da); border-radius: var(--pw-radius-sm); padding: 8px; max-height: 600px; overflow-y: auto; }
+ .row { display: block; width: 100%; text-align: left; background: none; border: none; padding: 10px 12px; cursor: pointer; border-radius: var(--pw-radius-sm); }
+ .row:hover { background: rgba(201, 99, 66, 0.04); }
+ .row.active { background: rgba(201, 99, 66, 0.08); }
+ .rname { font-weight: 600; font-size: 11px; }
+ .rmeta { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+ main { background: var(--pw-surface, #faf9f5); border: 1px solid var(--pw-border, #e7e3da); border-radius: var(--pw-radius-sm); padding: 24px; min-height: 400px; }
+ .empty { text-align: center; color: var(--pw-ink-soft, #87837a); padding: 60px; }
+ .meta { display: flex; gap: 16px; flex-wrap: wrap; margin: 12px 0; font-size: 11px; }
+ .chip { display: inline-block; background: var(--pw-bg-alt, #f1ede4); border-radius: var(--pw-radius-sm); padding: 2px 8px; font: 600 10px Inter; text-transform: uppercase; letter-spacing: 0.04em; }
+ .chip.builtin { background: rgba(201, 99, 66, 0.14); color: var(--pw-accent, #c96342); }
+ .chip.status-done { background: #d1fae5; color: #065f46; }
+ .chip.status-running { background: #fef3c7; color: #92400e; }
+ .chip.status-failed { background: #fee2e2; color: #991b1b; }
+ .chip.status-regressed { background: #fee2e2; color: #991b1b; }
+ pre.dag { background: #1a1614; color: #e7e3da; padding: 16px; border-radius: var(--pw-radius-sm); overflow: auto; font: 12px/1.5 'JetBrains Mono', monospace; }
+ button.primary { background: var(--pw-accent, #c96342); color: white; border: none; border-radius: var(--pw-radius-sm); padding: 10px 18px; cursor: pointer; font: 600 13px Inter; margin: 8px 0; }
+ .tbl { width: 100%; border-collapse: collapse; background: var(--pw-surface, #faf9f5); border: 1px solid var(--pw-border, #e7e3da); border-radius: var(--pw-radius-sm); overflow: hidden; font-size: 11px; }
+ .tbl th, .tbl td { padding: 10px 14px; text-align: left; }
+ .tbl th { background: var(--pw-bg-alt, #f1ede4); font: 600 11px Inter; text-transform: uppercase; letter-spacing: 0.05em; }
+ .tbl tbody tr { border-top: 1px solid var(--pw-border, #e7e3da); }
+ .mono { font-family: 'JetBrains Mono', monospace; }
 </style>

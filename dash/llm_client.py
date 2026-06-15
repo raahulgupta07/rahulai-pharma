@@ -9,12 +9,12 @@ Public API:
     OPENROUTER_BASE = "https://openrouter.ai/api/v1/chat/completions"
 
 Env vars:
-    OPENROUTER_API_KEYS    semicolon-separated key list (preferred)
-    OPENROUTER_API_KEY     fallback single key (back-compat)
-    OPENROUTER_POOL_MAX_CONNECTIONS         default 100
+    OPENROUTER_API_KEYS semicolon-separated key list (preferred)
+    OPENROUTER_API_KEY fallback single key (back-compat)
+    OPENROUTER_POOL_MAX_CONNECTIONS default 100
     OPENROUTER_POOL_MAX_CONNECTIONS_PER_HOST default 30
-    OPENROUTER_429_COOLDOWN_SECONDS         default 30
-    OPENROUTER_MAX_RETRIES                  default 3
+    OPENROUTER_429_COOLDOWN_SECONDS default 30
+    OPENROUTER_MAX_RETRIES default 3
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ class _KeyState:
     in_flight: int = 0
     total_429: int = 0
     total_ok: int = 0
-    cooldown_until: float = 0.0  # epoch seconds
+    cooldown_until: float = 0.0 # epoch seconds
 
     def available(self, now: float) -> bool:
         return now >= self.cooldown_until
@@ -59,12 +59,12 @@ class OpenRouterPool:
 
     Pick algorithm: among non-cooled-down keys, choose least-in-flight.
     On 429: mark key cooldown for _COOLDOWN_S seconds (or Retry-After if larger).
-    All keys cooled → wait + retry on the soonest-available key.
+    All keys cooled > wait + retry on the soonest-available key.
 
     Key source priority on each refresh:
-      1. DB (dash.dash_llm_keys WHERE enabled=TRUE)  — UI-managed
-      2. Env OPENROUTER_API_KEYS (semicolon list)    — legacy
-      3. Env OPENROUTER_API_KEY (single)             — legacy
+      1. DB (dash.dash_llm_keys WHERE enabled=TRUE) — UI-managed
+      2. Env OPENROUTER_API_KEYS (semicolon list) — legacy
+      3. Env OPENROUTER_API_KEY (single) — legacy
     DB + env are merged (deduped); UI-managed keys preserve their in-flight counters
     across refreshes (keyed by plaintext) so cooldowns persist.
     """
@@ -107,7 +107,7 @@ class OpenRouterPool:
             new_states: list[_KeyState] = []
             for k in ordered:
                 if k in existing:
-                    new_states.append(existing[k])  # preserve in_flight, cooldown, counters
+                    new_states.append(existing[k]) # preserve in_flight, cooldown, counters
                 else:
                     new_states.append(_KeyState(key=k))
             prev_count = len(self._keys)
@@ -154,7 +154,7 @@ class OpenRouterPool:
                 ks.total_429 += 1
                 cd = retry_after if (retry_after and retry_after > _COOLDOWN_S) else _COOLDOWN_S
                 ks.cooldown_until = time.time() + cd
-                _LOG.warning("OpenRouter key 429 → cooldown %.0fs (total 429s: %d)", cd, ks.total_429)
+                _LOG.warning("OpenRouter key 429 > cooldown %.0fs (total 429s: %d)", cd, ks.total_429)
             elif success:
                 ks.total_ok += 1
 

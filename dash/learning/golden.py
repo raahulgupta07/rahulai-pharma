@@ -1,9 +1,9 @@
-"""Golden SQL promotion — append verified Q→SQL pairs to training corpus.
+"""Golden SQL promotion — append verified Q>SQL pairs to training corpus.
 
 Pattern matches `try_metric_shortcut` (verified_reward.py): reads
 KNOWLEDGE_DIR/{slug}/training/*.json, expects [{question, sql}] list shape.
 
-Underscore-prefix filename (`_golden.json`) sorts first alphabetically →
+Underscore-prefix filename (`_golden.json`) sorts first alphabetically >
 loaded ahead of auto-generated *_qa.json files.
 
 Fail-soft: any error returns {"ok": False, "error": ...}, never raises.
@@ -22,7 +22,7 @@ from dash.paths import KNOWLEDGE_DIR
 logger = logging.getLogger(__name__)
 
 GOLDEN_FILE = "_golden.json"
-MAX_ENTRIES = 500  # cap per project to prevent runaway disk usage
+MAX_ENTRIES = 500 # cap per project to prevent runaway disk usage
 
 
 def _path(slug: str) -> Path:
@@ -71,10 +71,10 @@ def promote(
     expected_rowcount: int | None = None,
     expected_value: str | None = None,
 ) -> dict:
-    """Promote a Q→SQL pair to the golden corpus.
+    """Promote a Q>SQL pair to the golden corpus.
 
     On next chat, `try_metric_shortcut` matches against this entry first
-    (rare-term lexical overlap ≥3 terms) → runs SQL deterministically,
+    (rare-term lexical overlap ≥3 terms) > runs SQL deterministically,
     zero LLM tokens, ~7ms.
 
     Idempotent: re-promoting same SQL replaces prior entry (dedup by sha256
@@ -115,7 +115,7 @@ def promote(
             entry["source_tables"] = tbls
         if sh:
             entry["schema_hash"] = sh
-    except Exception as _e:  # noqa: BLE001
+    except Exception as _e: # noqa: BLE001
         logger.debug("golden promote schema-stamp skipped for %s: %s", slug, _e)
 
     entries.append(entry)

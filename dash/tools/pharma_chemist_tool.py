@@ -193,7 +193,7 @@ def substitutes(name: str = "", in_stock_only: bool = False, limit: int = 20) ->
         return {"ok": False, "error": str(e)[:300]}
 
 
-# English → Burmese symptom/condition synonyms — indication column is Burmese.
+# English > Burmese symptom/condition synonyms — indication column is Burmese.
 # Each English key maps to Burmese substrings that appear in real indication text.
 _SYMPTOM_MM = {
     "fever": ["ဖျား"], "temperature": ["ဖျား"], "headache": ["ခေါင်းကိုက်"],

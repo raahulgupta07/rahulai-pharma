@@ -14,7 +14,7 @@ correct at promote time; the schema-drift guard on the serve path
 (`answer_cache.try_answer_cache`) retires a card if the source schema moves.
 
 Fail-soft everywhere: a single bad cluster never aborts the loop (it lands in
-`skipped` with a reason); any error → safe no-op, never raises.
+`skipped` with a reason); any error > safe no-op, never raises.
 
 `cluster_questions` (dash/learning/question_clusters) is imported LAZILY inside
 each function so a load-order issue (it is authored in parallel) can never crash
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # Work cap — judge/verify at most this many clusters per run (cost guard).
 _MAX_CLUSTERS = 25
 
-# Anything matching these = a write / DDL → reject (read-only gate).
+# Anything matching these = a write / DDL > reject (read-only gate).
 _FORBIDDEN_SQL = re.compile(
     r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|GRANT|TRUNCATE|MERGE|REPLACE|COPY)\b",
     re.I,
@@ -58,7 +58,7 @@ def _is_cached(project_slug: str, question: str) -> bool:
                 "LIMIT 1"
             ), {"s": project_slug, "n": norm}).fetchone()
         return bool(r)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("cache_curator._is_cached failed for %s: %s", project_slug, exc)
         return False
 
@@ -74,7 +74,7 @@ def _is_read_only(sql: str) -> bool:
     head = s.upper().lstrip("(").lstrip()
     if not (head.startswith("SELECT") or head.startswith("WITH")):
         return False
-    if ";" in s:                       # a `;` mid-statement = stacked statements
+    if ";" in s: # a `;` mid-statement = stacked statements
         return False
     if _FORBIDDEN_SQL.search(s):
         return False
@@ -103,7 +103,7 @@ def _parse_judge(raw: str) -> dict:
         out["cacheable"] = bool(obj.get("cacheable"))
         out["reason"] = str(obj.get("reason") or "").strip()[:300]
         out["canonical_sql"] = str(obj.get("canonical_sql") or "").strip()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("cache_curator._parse_judge failed: %s", exc)
     return out
 
@@ -134,7 +134,7 @@ def _schema_context(project_slug: str) -> str:
             cols = by_tbl[tname][:24]
             lines.append(f"{tname}({', '.join(cols)})")
         return "\n".join(lines)[:3000]
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("cache_curator._schema_context failed for %s: %s", project_slug, exc)
         return ""
 
@@ -147,7 +147,7 @@ def _judge_cluster(project_slug: str, question: str) -> dict:
     """
     try:
         from dash.settings import training_llm_call
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("cache_curator: training_llm_call import failed: %s", exc)
         return {"cacheable": False, "reason": "llm unavailable", "canonical_sql": ""}
 
@@ -161,11 +161,11 @@ def _judge_cluster(project_slug: str, question: str) -> dict:
         "counts, totals, distinct counts, category/segment splits, catalog facts, "
         "averages over the whole dataset.\n"
         "You MUST set cacheable=false for anything that is:\n"
-        "  - time-relative ('today', 'now', 'this week', 'latest', 'recent', "
+        " - time-relative ('today', 'now', 'this week', 'latest', 'recent', "
         "'yesterday', 'currently', 'right now'),\n"
-        "  - personal / per-asker / per-customer ('my', 'for me', 'this patient'),\n"
-        "  - dependent on who is asking or on the current moment,\n"
-        "  - advice / clinical recommendation / a greeting / chit-chat.\n\n"
+        " - personal / per-asker / per-customer ('my', 'for me', 'this patient'),\n"
+        " - dependent on who is asking or on the current moment,\n"
+        " - advice / clinical recommendation / a greeting / chit-chat.\n\n"
         "If (and only if) cacheable, produce ONE read-only SQL that answers it "
         "against this project's pharmacy data. The SQL MUST be a single statement "
         "starting with SELECT or WITH (no INSERT/UPDATE/DELETE/DDL, no semicolons, "
@@ -183,7 +183,7 @@ def _judge_cluster(project_slug: str, question: str) -> dict:
     )
     try:
         raw = training_llm_call(prompt, "extraction") or ""
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("cache_curator: judge llm call failed for %s: %s", project_slug, exc)
         return {"cacheable": False, "reason": "llm error", "canonical_sql": ""}
     return _parse_judge(raw)
@@ -206,17 +206,17 @@ def _build_card(question: str, value, rows: list, cols: list,
 
     Tag vocabulary (matches frontend/src/lib/chat/AnswerCard.svelte +
     dash/instructions.py KPI examples):
-      [ACTION_TITLE: <takeaway>]       — one sentence
-      [KPI: <value>|<label> 🟢|—|<sublabel>]   — headline number (status emoji
+      [ACTION_TITLE: <takeaway>] — one sentence
+      [KPI: <value>|<label> |—|<sublabel>] — headline number (status emoji
                                                   at END of label)
-      [KPI: <rows>|Rows returned|—|matching records]  — optional row-count KPI
+      [KPI: <rows>|Rows returned|—|matching records] — optional row-count KPI
       [CONFIDENCE:HIGH]
-      [FRESHNESS:<table>|NULL]         — one per source table
+      [FRESHNESS:<table>|NULL] — one per source table
       <short markdown sentence>
 
     HEADLINE RULE: `value` = first numeric cell of the FIRST row (verified_reward
     ._run_rows). That is the right headline only for a SINGLE-ROW scalar answer
-    ("how many SKUs" → 4892). For a MULTI-ROW breakdown (GROUP BY: categories +
+    ("how many SKUs" > 4892). For a MULTI-ROW breakdown (GROUP BY: categories +
     count) the first-row scalar is just the TOP group's number, NOT the answer —
     the meaningful headline is the ROW COUNT (101 categories). So multi-row
     results headline the count and demote the top-row scalar to a sublabel.
@@ -230,19 +230,19 @@ def _build_card(question: str, value, rows: list, cols: list,
 
     parts: list[str] = []
     if rc > 1:
-        # Multi-row breakdown → headline the COUNT, not the first scalar.
+        # Multi-row breakdown > headline the COUNT, not the first scalar.
         group = re.sub(r"[_\s]+", " ", str(cols[0] if cols else "row")).strip().lower() or "row"
         if group.endswith("s"):
             group_plural = group
-        elif re.search(r"[^aeiou]y$", group):   # category -> categories
+        elif re.search(r"[^aeiou]y$", group): # category -> categories
             group_plural = group[:-1] + "ies"
         else:
             group_plural = group + "s"
         rc_disp = _fmt_value(rc)
         parts.append(f"[ACTION_TITLE: {rc_disp} {group_plural} — {q_short}]")
-        parts.append(f"[KPI: {rc_disp}|{group_plural.title()} 🟢|—|distinct rows returned]")
+        parts.append(f"[KPI: {rc_disp}|{group_plural.title()} |—|distinct rows returned]")
         if value is not None:
-            parts.append(f"[KPI: {_fmt_value(value)}|Top {group} 🟢|—|highest value]")
+            parts.append(f"[KPI: {_fmt_value(value)}|Top {group} |—|highest value]")
         parts.append("[CONFIDENCE:HIGH]")
         for t in (tables or []):
             if t:
@@ -253,10 +253,10 @@ def _build_card(question: str, value, rows: list, cols: list,
         )
         return "\n".join(parts)
 
-    # Single-row scalar answer → the first numeric cell IS the answer.
+    # Single-row scalar answer > the first numeric cell IS the answer.
     val = _fmt_value(value)
     parts.append(f"[ACTION_TITLE: {val} — {q_short}]")
-    parts.append(f"[KPI: {val}|{label} 🟢|—|verified result]")
+    parts.append(f"[KPI: {val}|{label} |—|verified result]")
     parts.append("[CONFIDENCE:HIGH]")
     for t in (tables or []):
         if t:
@@ -269,7 +269,7 @@ def _build_card(question: str, value, rows: list, cols: list,
 
 
 async def curate_one(project_slug: str, question: str, *, dry_run: bool = False) -> dict:
-    """Judge → verify → (promote) ONE question. Reused by run_curator's loop and
+    """Judge > verify > (promote) ONE question. Reused by run_curator's loop and
     by the per-row 'Cache this' endpoint.
 
     Returns {"question", "outcome": "promoted"|"candidate"|"skipped",
@@ -330,14 +330,14 @@ async def curate_one(project_slug: str, question: str, *, dry_run: bool = False)
         else:
             out["reason"] = f"promote failed: {promo.get('error')}"
         return out
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         out["reason"] = f"error: {exc}"
         return out
 
 
 def list_cached(project_slug: str, *, limit: int = 200) -> list[dict]:
     """List cache rows (newest first) with a live schema-freshness flag.
-    Read-only. Fail-soft → []."""
+    Read-only. Fail-soft > []."""
     try:
         from sqlalchemy import text as _text
         from db.session import get_sql_engine
@@ -345,7 +345,7 @@ def list_cached(project_slug: str, *, limit: int = 200) -> list[dict]:
         with get_sql_engine().connect() as conn:
             rows = conn.execute(_text(
                 "SELECT id, question, hit_count, status, source_tables, schema_hash, "
-                "       promoted_by, confidence, created_at, last_served_at "
+                " promoted_by, confidence, created_at, last_served_at "
                 "FROM dash.dash_answer_cache WHERE project_slug = :s "
                 "AND status <> 'demoted' "
                 "ORDER BY created_at DESC LIMIT :l"
@@ -373,7 +373,7 @@ def list_cached(project_slug: str, *, limit: int = 200) -> list[dict]:
                 "schema_fresh": fresh,
             })
         return out
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("cache_curator.list_cached failed for %s: %s", project_slug, exc)
         return []
 
@@ -393,13 +393,13 @@ async def run_curator(
     try:
         from dash.learning.question_clusters import cluster_questions
         from dash.learning.schema_guard import sql_source_tables
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.warning("cache_curator: dependency import failed for %s: %s", project_slug, exc)
         return result
 
     try:
         clusters = cluster_questions(project_slug, days=days, min_count=min_count, limit=50)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.warning("cache_curator: cluster_questions failed for %s: %s", project_slug, exc)
         return result
 
@@ -437,7 +437,7 @@ async def run_curator(
                     "question": rep, "count": count,
                     "reason": one.get("reason") or "skipped",
                 })
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc: # noqa: BLE001
             logger.debug("cache_curator: cluster failed for %s: %s", project_slug, exc)
             try:
                 result["skipped"].append({
@@ -486,6 +486,6 @@ def curator_stats(project_slug: str) -> dict:
         if row:
             out["total_hit_count"] = int(row[0] or 0)
             out["total"] = int(row[1] or 0)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("cache_curator.curator_stats failed for %s: %s", project_slug, exc)
     return out

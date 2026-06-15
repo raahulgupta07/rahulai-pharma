@@ -1,4 +1,4 @@
-"""Markdown → python-pptx text runs helper.
+"""Markdown > python-pptx text runs helper.
 
 Parses a tiny subset of markdown (bold, italic, code) into a flat list of
 run-dicts and applies them to a python-pptx TextFrame so that the rendered
@@ -22,11 +22,11 @@ __all__ = ["parse_markdown", "apply_runs", "render_markdown_text"]
 # ---- Parser ---------------------------------------------------------------
 
 # Tokens (longest first for correct alternation):
-#   \\X   → escape (X is literal)
-#   **    → bold delim
-#   `     → code delim
-#   *     → italic delim (also _)
-#   _     → italic delim
+# \\X > escape (X is literal)
+# ** > bold delim
+# ` > code delim
+# * > italic delim (also _)
+# _ > italic delim
 _TOKEN_RE = re.compile(r"(\\.|\*\*|`|\*|_)")
 
 
@@ -34,10 +34,10 @@ def parse_markdown(text: str) -> List[dict]:
     """Parse a small subset of markdown to a flat list of run-dicts.
 
     Supports:
-      **bold**           → bold
-      *italic* / _italic_→ italic
-      `code`             → monospace
-      \\* \\_ \\`        → literal escape
+      **bold** > bold
+      *italic* / _italic_> italic
+      `code` > monospace
+      \\* \\_ \\` > literal escape
 
     Returns: ``[{"text": str, "bold": bool, "italic": bool, "code": bool}, ...]``
     """
@@ -76,7 +76,7 @@ def parse_markdown(text: str) -> List[dict]:
         tok = m.group(0)
         pos = m.end()
 
-        # Escape: \\X → literal X
+        # Escape: \\X > literal X
         if tok.startswith("\\") and len(tok) == 2:
             buf.append(tok[1])
             continue

@@ -6,13 +6,13 @@ API_STORE_SCOPE around the agent run. Data tools (`stock_check`,
 `find_substitutes`, `alternatives_for_indication`, raw-SQL guard) read it to
 enforce the three-tier access rule:
 
-  Tier 1 — own store  (row.site_code == scope.store_id) → full data (qty, cost)
-  Tier 2 — other store (row.site_code != scope.store_id) → product/availability
+  Tier 1 — own store (row.site_code == scope.store_id) > full data (qty, cost)
+  Tier 2 — other store (row.site_code != scope.store_id) > product/availability
            only; stock_qty + price/cost columns are stripped
-  Tier 3 — reference/global rows (no site_code)          → unrestricted
+  Tier 3 — reference/global rows (no site_code) > unrestricted
 
 scope.mode:
-  'store'  — enforce Tier-2 masking + disable raw SQL
+  'store' — enforce Tier-2 masking + disable raw SQL
   'global' — no mask (internal / super-admin keys, human UI sessions)
 
 Fail-soft: when unset (e.g. the human web UI, where scoping is handled by the
@@ -27,9 +27,9 @@ from typing import Optional, Tuple
 
 @dataclass(frozen=True)
 class StoreScope:
-    store_id: str                       # primary bound store (first of the set)
-    stores: Tuple[str, ...] = ()        # full owned-store SET (multi-outlet keys)
-    mode: str = "store"                 # 'store' | 'global'
+    store_id: str # primary bound store (first of the set)
+    stores: Tuple[str, ...] = () # full owned-store SET (multi-outlet keys)
+    mode: str = "store" # 'store' | 'global'
 
     @property
     def enforced(self) -> bool:
@@ -60,7 +60,7 @@ def is_store_locked() -> bool:
 def owns(site_code: str | None) -> bool:
     """True if the given row's site_code belongs to the bound store SET (Tier 1),
     OR no scope is enforced (human UI). A null/empty site_code = Tier-3 global
-    reference row → always visible (returns True)."""
+    reference row > always visible (returns True)."""
     s = current_scope()
     if not (s and s.enforced):
         return True

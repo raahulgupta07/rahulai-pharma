@@ -15,9 +15,9 @@ Usage (env must point at throwaway PG):
     # add --mock-llm to isolate code+SQL time from LLM time
 
 Modes:
-    --cold      fresh schema, real LLM (full baseline)            [default if no mode]
-    --warm      second run w/o reset (cache/skip measurement)
-    --mock-llm  monkeypatch training_llm_call -> canned JSON ($0)
+    --cold fresh schema, real LLM (full baseline) [default if no mode]
+    --warm second run w/o reset (cache/skip measurement)
+    --mock-llm monkeypatch training_llm_call -> canned JSON ($0)
 """
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ except Exception:
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scripts.profile import db_setup, instrument, report  # noqa: E402
+from scripts.profile import db_setup, instrument, report # noqa: E402
 
 
 def _run_migrations() -> None:
@@ -221,7 +221,7 @@ def main():
             mock=runs.get("mock"),
             meta={"slug": args.slug, "db": DB_URL, "rows": counts},
         )
-        print(f"[profile] report → {args.out}")
+        print(f"[profile] report > {args.out}")
     except Exception as e:
         print(f"[profile] markdown write failed: {e}")
 

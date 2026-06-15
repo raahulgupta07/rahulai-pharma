@@ -110,13 +110,13 @@ class DOCXSchemaValidator(BaseSchemaValidator):
                                     else repr(text)
                                 )
                                 errors.append(
-                                    f"  {xml_file.relative_to(self.unpacked_dir)}: "
+                                    f" {xml_file.relative_to(self.unpacked_dir)}: "
                                     f"Line {elem.sourceline}: w:t element with whitespace missing xml:space='preserve': {text_preview}"
                                 )
 
             except (lxml.etree.XMLSyntaxError, Exception) as e:
                 errors.append(
-                    f"  {xml_file.relative_to(self.unpacked_dir)}: Error: {e}"
+                    f" {xml_file.relative_to(self.unpacked_dir)}: Error: {e}"
                 )
 
         if errors:
@@ -159,13 +159,13 @@ class DOCXSchemaValidator(BaseSchemaValidator):
                             else repr(t_elem.text)
                         )
                         errors.append(
-                            f"  {xml_file.relative_to(self.unpacked_dir)}: "
+                            f" {xml_file.relative_to(self.unpacked_dir)}: "
                             f"Line {t_elem.sourceline}: <w:t> found within <w:del>: {text_preview}"
                         )
 
             except (lxml.etree.XMLSyntaxError, Exception) as e:
                 errors.append(
-                    f"  {xml_file.relative_to(self.unpacked_dir)}: Error: {e}"
+                    f" {xml_file.relative_to(self.unpacked_dir)}: Error: {e}"
                 )
 
         if errors:
@@ -249,13 +249,13 @@ class DOCXSchemaValidator(BaseSchemaValidator):
                         else repr(elem.text or "")
                     )
                     errors.append(
-                        f"  {xml_file.relative_to(self.unpacked_dir)}: "
+                        f" {xml_file.relative_to(self.unpacked_dir)}: "
                         f"Line {elem.sourceline}: <w:delText> within <w:ins>: {text_preview}"
                     )
 
             except (lxml.etree.XMLSyntaxError, Exception) as e:
                 errors.append(
-                    f"  {xml_file.relative_to(self.unpacked_dir)}: Error: {e}"
+                    f" {xml_file.relative_to(self.unpacked_dir)}: Error: {e}"
                 )
 
         if errors:
@@ -275,7 +275,7 @@ class DOCXSchemaValidator(BaseSchemaValidator):
 
         diff = new_count - original_count
         diff_str = f"+{diff}" if diff > 0 else str(diff)
-        print(f"\nParagraphs: {original_count} → {new_count} ({diff_str})")
+        print(f"\nParagraphs: {original_count} > {new_count} ({diff_str})")
 
     def _parse_id_value(self, val: str) -> int:
         """Parse an ID value that may be hex or decimal.
@@ -289,10 +289,10 @@ class DOCXSchemaValidator(BaseSchemaValidator):
         - Otherwise (e.g., long decimal string): treat as decimal
         """
         val_upper = val.upper()
-        # Contains A-F → definitely hex
+        # Contains A-F > definitely hex
         if any(c in val_upper for c in 'ABCDEF'):
             return int(val, 16)
-        # Exactly 8 hex digits (standard OOXML format) → treat as hex
+        # Exactly 8 hex digits (standard OOXML format) > treat as hex
         if len(val) == 8 and all(c in '0123456789' for c in val):
             return int(val, 16)
         # Otherwise treat as decimal (e.g., "1892495468")
@@ -312,7 +312,7 @@ class DOCXSchemaValidator(BaseSchemaValidator):
                     for attr, limit in checks:
                         if (val := elem.get(attr)) and self._parse_id_value(val) >= limit:
                             name = attr.split('}')[1]
-                            errors.append(f"  {xml_file.name}:{elem.sourceline}: {name}={val} >= {hex(limit)}")
+                            errors.append(f" {xml_file.name}:{elem.sourceline}: {name}={val} >= {hex(limit)}")
             except Exception:
                 pass
 
@@ -352,7 +352,7 @@ class DOCXSchemaValidator(BaseSchemaValidator):
                         if self._parse_id_value(durable_id) >= 0x7FFFFFFF:
                             new_id = f"{random.randint(1, 0x7FFFFFFE):08X}"
                             elem.setAttribute("w16cid:durableId", new_id)
-                            print(f"  Repaired: {xml_file.name}: durableId {durable_id} → {new_id}")
+                            print(f" Repaired: {xml_file.name}: durableId {durable_id} > {new_id}")
                             repairs += 1
                             modified = True
 

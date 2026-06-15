@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount } from 'svelte';
  import { page } from '$app/state';
  import { agentRecommendations } from '$lib/api';
@@ -44,7 +44,7 @@
       <div class="ar-muted">Loading…</div>
     {:else if notEnabled}
       <div class="ar-muted">My Agent is not enabled for this project.</div>
-      <a class="ar-link" href={settingsUrl}>Enable My Agent →</a>
+      <a class="ar-link" href={settingsUrl}>Enable My Agent <Icon name="arrow-right" size={16} /></a>
     {:else if error}
       <div class="ar-muted">Could not load suggestions.</div>
     {:else if recs.length === 0}
@@ -54,7 +54,7 @@
         <div class="ar-row">
           <span class="ar-num">{i + 1}</span>
           <span class="ar-text">{r}</span>
-          <span class="ar-arrow">→</span>
+          <span class="ar-arrow"><Icon name="arrow-right" size={16} /></span>
         </div>
       {/each}
     {/if}

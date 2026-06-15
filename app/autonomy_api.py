@@ -70,7 +70,7 @@ def _check_access(user: dict, slug: str):
 @router.get("/{slug}/autonomy/journal")
 def autonomy_journal(slug: str, request: Request, limit: int = 50):
     """Recent autonomy journal rows for the project, newest-first. Fail-soft:
-    missing table → {"journal": []}."""
+    missing table > {"journal": []}."""
     user = _get_user(request)
     _check_access(user, slug)
     try:
@@ -106,7 +106,7 @@ def autonomy_journal(slug: str, request: Request, limit: int = 50):
 @router.get("/{slug}/autonomy/state")
 def autonomy_state(slug: str, request: Request):
     """Current signal snapshot for the project. Fail-soft: missing table /
-    no row → {"signals": {}}."""
+    no row > {"signals": {}}."""
     user = _get_user(request)
     _check_access(user, slug)
     signals = {}

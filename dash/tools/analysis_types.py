@@ -151,7 +151,7 @@ def _delta_arrow(change_pct: float | None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 1. Comparator Analysis  (THE most important tool)
+# 1. Comparator Analysis (THE most important tool)
 # ---------------------------------------------------------------------------
 
 def comparator_analysis(question: str, project_slug: str) -> str:
@@ -199,14 +199,14 @@ def comparator_analysis(question: str, project_slug: str) -> str:
 
             sql = (
                 f"WITH current_p AS ("
-                f'  SELECT {group_clause} {metric_selects} FROM "{schema}"."{tbl}" '
-                f"  WHERE \"{dc}\" >= '{cs}' AND \"{dc}\" < '{ce}' {group_by} LIMIT 1000"
+                f' SELECT {group_clause} {metric_selects} FROM "{schema}"."{tbl}" '
+                f" WHERE \"{dc}\" >= '{cs}' AND \"{dc}\" < '{ce}' {group_by} LIMIT 1000"
                 f"), prev_p AS ("
-                f'  SELECT {group_clause} {metric_selects} FROM "{schema}"."{tbl}" '
-                f"  WHERE \"{dc}\" >= '{ps}' AND \"{dc}\" < '{pe}' {group_by} LIMIT 1000"
+                f' SELECT {group_clause} {metric_selects} FROM "{schema}"."{tbl}" '
+                f" WHERE \"{dc}\" >= '{ps}' AND \"{dc}\" < '{pe}' {group_by} LIMIT 1000"
                 f"), yoy_p AS ("
-                f'  SELECT {group_clause} {metric_selects} FROM "{schema}"."{tbl}" '
-                f"  WHERE \"{dc}\" >= '{yoy_cs}' AND \"{dc}\" < '{yoy_ce}' {group_by} LIMIT 1000"
+                f' SELECT {group_clause} {metric_selects} FROM "{schema}"."{tbl}" '
+                f" WHERE \"{dc}\" >= '{yoy_cs}' AND \"{dc}\" < '{yoy_ce}' {group_by} LIMIT 1000"
                 f") SELECT 'current' AS period, * FROM current_p "
                 f"UNION ALL SELECT 'previous' AS period, * FROM prev_p "
                 f"UNION ALL SELECT 'yoy' AS period, * FROM yoy_p "
@@ -841,9 +841,9 @@ def root_cause_analysis(question: str, project_slug: str) -> str:
                             f'GROUP BY "{next_dim}" ORDER BY val DESC LIMIT 5'
                         ), {"top_val": top_val})
                         if sub_rows:
-                            sections.append(f"\n  *Drill into `{dim}` = {top_val}:*")
+                            sections.append(f"\n *Drill into `{dim}` = {top_val}:*")
                             for sr in sub_rows:
-                                sections.append(f"  - {sr[next_dim]}: {_fmt(float(sr['val'] or 0))}")
+                                sections.append(f" - {sr[next_dim]}: {_fmt(float(sr['val'] or 0))}")
 
         return "\n".join(sections) if len(sections) > 1 else "No dimensional data for root cause analysis."
 
@@ -896,9 +896,9 @@ def prescriptive_analysis(question: str, project_slug: str) -> str:
                     f'GROUP BY "{d}" ORDER BY val ASC LIMIT 3'
                 ))
                 if top:
-                    summaries.append(f"  Top {d}: {json.dumps(top, default=str)}")
+                    summaries.append(f" Top {d}: {json.dumps(top, default=str)}")
                 if bot:
-                    summaries.append(f"  Bottom {d}: {json.dumps(bot, default=str)}")
+                    summaries.append(f" Bottom {d}: {json.dumps(bot, default=str)}")
 
         from dash.settings import training_llm_call
         prompt = (
@@ -1082,33 +1082,33 @@ def analyze(analysis_type: str, question: str, project_slug: str) -> str:
 
     Args:
         analysis_type: which analysis to run. One of:
-            - "diagnostic"   — WHY did a metric change? Decomposes the metric across
+            - "diagnostic" — WHY did a metric change? Decomposes the metric across
                                every dimension and ranks each value's contribution to
                                the total change (waterfall-style). Use for "why did X drop/rise".
-            - "comparative"  — period-over-period. Same metric for current vs prior period
+            - "comparative" — period-over-period. Same metric for current vs prior period
                                vs same period last year, with MoM Δ and YoY Δ arrows.
                                Use for "vs last month/quarter/year", "how did we do this period".
-            - "trend"        — time series with 3-period moving average + direction
+            - "trend" — time series with 3-period moving average + direction
                                (Upward/Downward/Flat). Use for "trend over time", "trajectory".
-            - "predictive"   — directional read of where a series is heading (proxy via trend).
+            - "predictive" — directional read of where a series is heading (proxy via trend).
                                For true statistical forecasting, defer to the Data Scientist
                                `predict` tool instead.
             - "prescriptive" — 5 numbered, quantified, prioritized recommendations
                                (LLM over the data). Use for "what should we do", "next steps".
-            - "anomaly"      — z-score outlier detection across numeric columns
+            - "anomaly" — z-score outlier detection across numeric columns
                                (|z| > 2.5). Use for "any outliers/spikes/unusual values".
-            - "root_cause"   — iterative drill-down: total → top dimension → sub-dimension
+            - "root_cause" — iterative drill-down: total > top dimension > sub-dimension
                                of the biggest driver. Use for "find the root cause", "drill into".
-            - "pareto"       — 80/20 concentration: sorts by impact, cumulative %, A/B/C zones,
+            - "pareto" — 80/20 concentration: sorts by impact, cumulative %, A/B/C zones,
                                counts how many items drive 80%. Use for "which few drive most".
-            - "scenario"     — what-if modeling with downside/base/upside projections +
+            - "scenario" — what-if modeling with downside/base/upside projections +
                                probability-weighted expected value. Use for "what if X drops 20%".
-            - "benchmark"    — each entity's average vs the group average, Above/On par/Below.
+            - "benchmark" — each entity's average vs the group average, Above/On par/Below.
                                Use for "which stores/reps are above/below average".
             - "descriptive" / "narrative" — McKinsey-style executive summary: headline,
                                key wins, key risks, recommended actions. Use for "summarize",
                                "executive narrative", "tell the story".
-            - "validation"   — data quality profile across tables: null %, distinct counts,
+            - "validation" — data quality profile across tables: null %, distinct counts,
                                duplicates, 0-100 health score. Use for "is this data clean",
                                "data quality", "can I trust these numbers".
         question: the user's natural-language question (drives period/metric detection).
@@ -1131,6 +1131,6 @@ def analyze(analysis_type: str, question: str, project_slug: str) -> str:
         )
     try:
         return fn(question, project_slug)
-    except Exception as e:  # fail-soft: never crash the agent turn
+    except Exception as e: # fail-soft: never crash the agent turn
         logger.exception("analyze dispatcher failed for type=%s", analysis_type)
         return f"Analysis '{analysis_type}' error: {e}"

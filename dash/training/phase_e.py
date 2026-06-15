@@ -39,14 +39,14 @@ _STATIC_PACK_ALIAS = {
 def _resolve_static_pack(vert: str):
     """Return (registry_key, bundle) for the detected vertical, or (None, None).
 
-    Resolution order: exact alias map → exact registry key → substring match
-    against registry keys (e.g. detected "pharmacy_network" → "pharma").
+    Resolution order: exact alias map > exact registry key > substring match
+    against registry keys (e.g. detected "pharmacy_network" > "pharma").
     Fail-soft: any import/lookup error yields (None, None) so the caller falls
     through to the LLM apply path.
     """
     try:
         from dash.verticals import get_vertical, list_verticals
-    except Exception as e:  # registry import problem — fall through to LLM
+    except Exception as e: # registry import problem — fall through to LLM
         logger.debug("phase_e._resolve_static_pack import failed: %s", e)
         return None, None
 
@@ -229,14 +229,14 @@ def run_phase_e(slug, runner, master_log=None, set_step=None) -> dict:
     out = {"detected": None, "confidence": 0.0, "applied": False, "skipped": False}
 
     # ── Step 23: detect vertical (direct call — output is needed downstream, so
-    #    it is NOT cached via the runner, whose cache-hit returns None). Cheap LITE.
+    # it is NOT cached via the runner, whose cache-hit returns None). Cheap LITE.
     _set("vertical_detect")
     try:
         from dash.learning.auto_configurator import classify_vertical
         detection = classify_vertical(slug)
     except Exception as e:
         logger.warning("phase_e: classify_vertical failed for %s: %s", slug, e)
-        _log(f"⚠ vertical detect skipped: {str(e)[:80]}")
+        _log(f" vertical detect skipped: {str(e)[:80]}")
         return out
 
     conf = float(detection.get("confidence", 0) or 0)
@@ -250,7 +250,7 @@ def run_phase_e(slug, runner, master_log=None, set_step=None) -> dict:
         return out
 
     # ── Step 28: apply the vertical pack — wrapped in the runner so an unchanged
-    #    (vertical, column-set) skips the whole ~60s apply on retrain.
+    # (vertical, column-set) skips the whole ~60s apply on retrain.
     _set("apply_template")
     cols = _all_column_names(slug)
 
@@ -275,9 +275,9 @@ def run_phase_e(slug, runner, master_log=None, set_step=None) -> dict:
         except Exception as e:
             # runner.run is itself fail-soft, but guard the outer call too.
             logger.warning("phase_e: static pack apply raised for %s: %s", slug, e)
-            _log(f"⚠ static {vert} pack failed ({str(e)[:60]}) — falling back to LLM")
+            _log(f" static {vert} pack failed ({str(e)[:60]}) — falling back to LLM")
             static_result = None
-            registry_key = None  # force LLM fallthrough below
+            registry_key = None # force LLM fallthrough below
 
         if registry_key is not None:
             if static_result is None:
@@ -290,7 +290,7 @@ def run_phase_e(slug, runner, master_log=None, set_step=None) -> dict:
                 out["applied"] = True
                 out["static"] = True
                 _log(
-                    f"✓ applied STATIC {vert} pack (no LLM): "
+                    f"OK applied STATIC {vert} pack (no LLM): "
                     f"{static_result.get('brain_seeded', 0)} brain · "
                     f"{static_result.get('workflows_seeded', 0)} workflows"
                 )
@@ -321,6 +321,6 @@ def run_phase_e(slug, runner, master_log=None, set_step=None) -> dict:
         ok_steps = sum(1 for s in result.get("applied_steps", []) if s.get("ok"))
         tot_steps = len(result.get("applied_steps", []))
         out["applied"] = True
-        _log(f"✓ auto-applied {vert} pack: {ok_steps}/{tot_steps} steps")
+        _log(f"OK auto-applied {vert} pack: {ok_steps}/{tot_steps} steps")
 
     return out

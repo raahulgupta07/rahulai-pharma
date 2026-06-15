@@ -1,18 +1,18 @@
 """GB-scale streaming ingest — psycopg3 COPY FROM STDIN.
 
-Replaces RAM-bound `pd.read_csv() → df.to_sql()` path for big CSV uploads.
+Replaces RAM-bound `pd.read_csv() > df.to_sql()` path for big CSV uploads.
 Streams source file in 64KB chunks straight to Postgres via COPY protocol.
 
 Capacity:
-  CSV     — UNLIMITED (streams disk → COPY, no RAM materialization)
-  Excel   — bounded by openpyxl read_only iter_rows (~10M rows / few GB)
+  CSV — UNLIMITED (streams disk > COPY, no RAM materialization)
+  Excel — bounded by openpyxl read_only iter_rows (~10M rows / few GB)
   Parquet — bounded by pyarrow row groups (~GB scale per group)
 
 What's NOT here (intentional — keep this module focused on RAW ingest):
   - Schema profiling (handled by app/upload.py:_sql_profile_columns AFTER ingest)
   - LLM enrichment (handled by training pipeline AFTER ingest)
   - Header detection / multi-table split / unpivot (handled by Excel pipeline)
-  - Column type coercion (Postgres COPY uses text → ALTER later if needed)
+  - Column type coercion (Postgres COPY uses text > ALTER later if needed)
 
 Public API:
   copy_csv_stream(file_path, schema, table, *, encoding='utf-8', delimiter=',',
@@ -102,15 +102,15 @@ def copy_csv_stream(
     progress_cb: Callable[[int, int], None] | None = None,
     chunk_bytes: int = 1024 * 1024,
 ) -> dict[str, Any]:
-    """Stream CSV → Postgres via COPY. Constant memory, GB-scale.
+    """Stream CSV > Postgres via COPY. Constant memory, GB-scale.
 
     Args:
-      file_path:   absolute path to CSV on disk
-      schema:      target schema (project slug, will be safe-ident'd)
-      table:       target table name
-      encoding:    file encoding (use chardet upstream if unknown)
-      delimiter:   CSV delimiter (',', '\\t', '|', etc)
-      has_header:  if True, first row becomes column names
+      file_path: absolute path to CSV on disk
+      schema: target schema (project slug, will be safe-ident'd)
+      table: target table name
+      encoding: file encoding (use chardet upstream if unknown)
+      delimiter: CSV delimiter (',', '\\t', '|', etc)
+      has_header: if True, first row becomes column names
       progress_cb: callback(rows_loaded, bytes_read) every ~10K rows
       chunk_bytes: read chunk size (default 64KB)
 
@@ -243,7 +243,7 @@ def stream_xlsx_to_postgres(
     batch_rows: int = 5000,
     progress_cb: Callable[[int, int], None] | None = None,
 ) -> dict[str, Any]:
-    """Stream Excel sheet → Postgres via openpyxl read_only + COPY.
+    """Stream Excel sheet > Postgres via openpyxl read_only + COPY.
 
     Capacity: ~10M rows / few GB (openpyxl read_only iter_rows).
     """
@@ -309,7 +309,7 @@ def stream_xlsx_to_postgres(
                 for row in row_iter:
                     if row is None:
                         continue
-                    # Normalize: None → empty, others → str
+                    # Normalize: None > empty, others > str
                     out = []
                     for cell in row:
                         if cell is None:
@@ -373,7 +373,7 @@ def _prepend_iter(first, rest):
 
 
 # ───────────────────────────────────────────────────────────────────────────
-# Parquet — pyarrow row groups → batched COPY
+# Parquet — pyarrow row groups > batched COPY
 # ───────────────────────────────────────────────────────────────────────────
 
 def stream_parquet_to_postgres(
@@ -383,7 +383,7 @@ def stream_parquet_to_postgres(
     *,
     progress_cb: Callable[[int, int], None] | None = None,
 ) -> dict[str, Any]:
-    """Stream Parquet → Postgres row-group by row-group."""
+    """Stream Parquet > Postgres row-group by row-group."""
     try:
         import pyarrow.parquet as pq
     except ImportError:

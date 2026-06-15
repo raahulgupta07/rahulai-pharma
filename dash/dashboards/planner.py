@@ -1,4 +1,4 @@
-"""Minimal LLM dashboard planner — signals + 1 LLM call → DashboardSpec."""
+"""Minimal LLM dashboard planner — signals + 1 LLM call > DashboardSpec."""
 from __future__ import annotations
 
 import json
@@ -193,7 +193,7 @@ Output ONLY a JSON object, no markdown fences, with EXACT fields:
 - filters (list of {{col, type in [daterange|multi|single], default}})
 - cells (list of {{id, type in [kpi|chart|table|insight], grid:[col,row,w,h] in 12-col system, title, config:{{}}}})
 
-Rules: Map each template slot to one cell, copying its grid array exactly. role=kpi→type=kpi, role=trend/mix→type=chart, role=table→type=table, role=alerts→type=insight, role=filters→type=table. You still pick chart types, SQL, and titles. No overlapping grids. No pie >7 slices.
+Rules: Map each template slot to one cell, copying its grid array exactly. role=kpi>type=kpi, role=trend/mix>type=chart, role=table>type=table, role=alerts>type=insight, role=filters>type=table. You still pick chart types, SQL, and titles. No overlapping grids. No pie >7 slices.
 
 CRITICAL OUTPUT RULES:
 - Output ONLY a single JSON object. No markdown fences, no preamble, no comments.

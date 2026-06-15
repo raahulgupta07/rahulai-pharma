@@ -37,9 +37,9 @@ Scoring criteria:
 1 = Failed: doesn't answer, errors, or completely wrong
 
 PENALTY rules (deduct 1 star each, floor at 1):
-- No brain/glossary/formula citation when question references domain terms → -1
-- No schema audit visible AND no specialist tool used → -1
-- Hallucinated numbers (figures not in response data) → -1
+- No brain/glossary/formula citation when question references domain terms > -1
+- No schema audit visible AND no specialist tool used > -1
+- Hallucinated numbers (figures not in response data) > -1
 
 Also categorize the question type.
 

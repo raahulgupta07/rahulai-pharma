@@ -1,340 +1,341 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
-  import KnowledgeGraph from '$lib/KnowledgeGraph.svelte';
-  import { page } from '$app/state';
-  import TrainingFlow from '$lib/TrainingFlow.svelte';
-  import BrainActivityBand from '$lib/brain/BrainActivityBand.svelte';
-  import LearningFeed from '$lib/brain/LearningFeed.svelte';
-  import { goto } from '$app/navigation';
-  import { base } from '$app/paths';
+  import Icon from '$lib/Icon.svelte';
+ import { onMount, onDestroy } from 'svelte';
+ import KnowledgeGraph from '$lib/KnowledgeGraph.svelte';
+ import { page } from '$app/state';
+ import TrainingFlow from '$lib/TrainingFlow.svelte';
+ import BrainActivityBand from '$lib/brain/BrainActivityBand.svelte';
+ import LearningFeed from '$lib/brain/LearningFeed.svelte';
+ import { goto } from '$app/navigation';
+ import { base } from '$app/paths';
 
-  const slug = $derived(page.params.slug || '');
+ const slug = $derived(page.params.slug || '');
 
-  let loading = $state(true);
-  let lastUpdate = $state<string>('');
-  let auto = $state(true);
-  let timer: any = null;
+ let loading = $state(true);
+ let lastUpdate = $state<string>('');
+ let auto = $state(true);
+ let timer: any = null;
 
-  // data buckets — each fail-soft
-  let health = $state<any>(null);
-  let daemons = $state<any>(null);
-  let ov = $state<any>(null);           // /overview (kpis, pharma, top_questions)
-  let ds = $state<any>(null);           // /datasource summary
-  let dq = $state<any>(null);           // /data-quality
-  let insights = $state<any[]>([]);
-  let tools = $state<any[]>([]);
-  let runs = $state<any[]>([]);
-  let log = $state<any[]>([]);
-  let gateway = $state<any>(null);
-  let chem = $state<any>(null);          // /chemist (clinical coverage)
-  let evalHealth = $state<any>(null);    // /eval-health (latest golden-eval run)
-  let summary = $state<any>(null);       // /dashboard-summary (per-tab chip counts + brain breakdown)
-  let agentsN = $state<number>(0);       // /agents length (team size)
-  let docsN = $state<number>(0);         // /docs length
-  let filesN = $state<number>(0);        // /knowledge-files length
+ // data buckets — each fail-soft
+ let health = $state<any>(null);
+ let daemons = $state<any>(null);
+ let ov = $state<any>(null); // /overview (kpis, pharma, top_questions)
+ let ds = $state<any>(null); // /datasource summary
+ let dq = $state<any>(null); // /data-quality
+ let insights = $state<any[]>([]);
+ let tools = $state<any[]>([]);
+ let runs = $state<any[]>([]);
+ let log = $state<any[]>([]);
+ let gateway = $state<any>(null);
+ let chem = $state<any>(null); // /chemist (clinical coverage)
+ let evalHealth = $state<any>(null); // /eval-health (latest golden-eval run)
+ let summary = $state<any>(null); // /dashboard-summary (per-tab chip counts + brain breakdown)
+ let agentsN = $state<number>(0); // /agents length (team size)
+ let docsN = $state<number>(0); // /docs length
+ let filesN = $state<number>(0); // /knowledge-files length
 
-  function _h(): Record<string, string> {
-    const t = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
-    return t ? { Authorization: `Bearer ${t}` } : {};
-  }
-  async function _j(url: string): Promise<any> {
-    try {
-      const r = await fetch(url, { headers: _h() });
-      if (!r.ok) return null;
-      return await r.json();
-    } catch { return null; }
-  }
+ function _h(): Record<string, string> {
+ const t = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
+ return t ? { Authorization: `Bearer ${t}` } : {};
+ }
+ async function _j(url: string): Promise<any> {
+ try {
+ const r = await fetch(url, { headers: _h() });
+ if (!r.ok) return null;
+ return await r.json();
+ } catch { return null; }
+ }
 
-  // Upload → jump to Workspace Data Source with the uploader open
-  function gotoUpload() { goto(`${base}/project/${slug}/settings#upload-new`); }
-  // Sync → rescan data-quality then refresh dashboard stats (no retrain)
-  let syncing = $state(false);
-  let syncMsg = $state('');
-  async function syncNow() {
-    if (syncing) return;
-    syncing = true; syncMsg = '';
-    try {
-      await fetch(`/api/projects/${slug}/data-quality/rescan`, { method: 'POST', headers: _h() });
-      await load();
-      syncMsg = 'synced';
-    } catch { syncMsg = 'sync failed'; }
-    finally { syncing = false; setTimeout(() => { syncMsg = ''; }, 4000); }
-  }
+ // Upload > jump to Workspace Data Source with the uploader open
+ function gotoUpload() { goto(`${base}/project/${slug}/settings#upload-new`); }
+ // Sync > rescan data-quality then refresh dashboard stats (no retrain)
+ let syncing = $state(false);
+ let syncMsg = $state('');
+ async function syncNow() {
+ if (syncing) return;
+ syncing = true; syncMsg = '';
+ try {
+ await fetch(`/api/projects/${slug}/data-quality/rescan`, { method: 'POST', headers: _h() });
+ await load();
+ syncMsg = 'synced';
+ } catch { syncMsg = 'sync failed'; }
+ finally { syncing = false; setTimeout(() => { syncMsg = ''; }, 4000); }
+ }
 
-  // ── DATA TABLES + TRAIN + AUTO-TRAIN ROBOT ──
-  let dsTables = $state<any[]>([]);
-  let tFilter = $state('');
-  let tSort = $state<'health' | 'rows' | 'name' | 'trained'>('rows');
-  let training = $state(false);
-  let trainingNames = $state<Record<string, boolean>>({});
-  let atStatus = $state<any>(null);
-  let _atPoll: any = null;
+ // ── DATA TABLES + TRAIN + AUTO-TRAIN ROBOT ──
+ let dsTables = $state<any[]>([]);
+ let tFilter = $state('');
+ let tSort = $state<'health' | 'rows' | 'name' | 'trained'>('rows');
+ let training = $state(false);
+ let trainingNames = $state<Record<string, boolean>>({});
+ let atStatus = $state<any>(null);
+ let _atPoll: any = null;
 
-  async function loadTables() {
-    const d = await _j(`/api/projects/${slug}/datasource?quality=true&preview=false`);
-    if (d?.tables) dsTables = d.tables;
-  }
-  async function loadAutoTrain() {
-    atStatus = await _j(`/api/projects/${slug}/auto-train/status`);
-    const live = !!atStatus?.is_training;
-    if (live && !_atPoll) { _atPoll = setInterval(loadAutoTrain, 5000); }
-    if (!live && _atPoll) { clearInterval(_atPoll); _atPoll = null; training = false; trainingNames = {}; loadTables(); load(); }
-  }
-  let trainErr = $state('');
-  async function trainTables(names: string[]) {
-    if (!names.length || training || atStatus?.is_training) return;
-    trainErr = '';
-    training = true;
-    for (const n of names) trainingNames[n] = true;
-    trainingNames = { ...trainingNames };
-    try {
-      const r = await fetch(`/api/projects/${slug}/retrain?force=1`, {
-        method: 'POST', headers: { ..._h(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ table_names: names, force: true }),
-      });
-      if (!r.ok) { training = false; trainingNames = {}; trainErr = `train failed (${r.status})`; return; }
-    } catch { training = false; trainingNames = {}; trainErr = 'unreachable — is the server up?'; return; }
-    setTimeout(loadAutoTrain, 1500);
-    if (!_atPoll) _atPoll = setInterval(loadAutoTrain, 5000);
-  }
-  function trainAll() { trainTables(dsTables.map((t) => t.name)); }
-  function openTable(name: string) { goto(`${base}/project/${slug}/settings#upload`); }
+ async function loadTables() {
+ const d = await _j(`/api/projects/${slug}/datasource?quality=true&preview=false`);
+ if (d?.tables) dsTables = d.tables;
+ }
+ async function loadAutoTrain() {
+ atStatus = await _j(`/api/projects/${slug}/auto-train/status`);
+ const live = !!atStatus?.is_training;
+ if (live && !_atPoll) { _atPoll = setInterval(loadAutoTrain, 5000); }
+ if (!live && _atPoll) { clearInterval(_atPoll); _atPoll = null; training = false; trainingNames = {}; loadTables(); load(); }
+ }
+ let trainErr = $state('');
+ async function trainTables(names: string[]) {
+ if (!names.length || training || atStatus?.is_training) return;
+ trainErr = '';
+ training = true;
+ for (const n of names) trainingNames[n] = true;
+ trainingNames = { ...trainingNames };
+ try {
+ const r = await fetch(`/api/projects/${slug}/retrain?force=1`, {
+ method: 'POST', headers: { ..._h(), 'Content-Type': 'application/json' },
+ body: JSON.stringify({ table_names: names, force: true }),
+ });
+ if (!r.ok) { training = false; trainingNames = {}; trainErr = `train failed (${r.status})`; return; }
+ } catch { training = false; trainingNames = {}; trainErr = 'unreachable — is the server up?'; return; }
+ setTimeout(loadAutoTrain, 1500);
+ if (!_atPoll) _atPoll = setInterval(loadAutoTrain, 5000);
+ }
+ function trainAll() { trainTables(dsTables.map((t) => t.name)); }
+ function openTable(name: string) { goto(`${base}/project/${slug}/settings#upload`); }
 
-  const tablesView = $derived.by(() => {
-    let ts = [...dsTables];
-    const f = tFilter.trim().toLowerCase();
-    if (f) ts = ts.filter((t) => (t.name || '').toLowerCase().includes(f));
-    ts.sort((a, b) => {
-      if (tSort === 'rows') return (b.rows || 0) - (a.rows || 0);
-      if (tSort === 'name') return (a.name || '').localeCompare(b.name || '');
-      if (tSort === 'trained') return (b.trained ? 1 : 0) - (a.trained ? 1 : 0);
-      return (a.quality?.score ?? 100) - (b.quality?.score ?? 100);
-    });
-    return ts;
-  });
-  const tablesRows = $derived(dsTables.reduce((s, t) => s + (t.rows || 0), 0));
+ const tablesView = $derived.by(() => {
+ let ts = [...dsTables];
+ const f = tFilter.trim().toLowerCase();
+ if (f) ts = ts.filter((t) => (t.name || '').toLowerCase().includes(f));
+ ts.sort((a, b) => {
+ if (tSort === 'rows') return (b.rows || 0) - (a.rows || 0);
+ if (tSort === 'name') return (a.name || '').localeCompare(b.name || '');
+ if (tSort === 'trained') return (b.trained ? 1 : 0) - (a.trained ? 1 : 0);
+ return (a.quality?.score ?? 100) - (b.quality?.score ?? 100);
+ });
+ return ts;
+ });
+ const tablesRows = $derived(dsTables.reduce((s, t) => s + (t.rows || 0), 0));
 
-  async function load() {
-    const s = slug;
-    const [h, dm, o, d, q, ins, th, tr, lg, gw, ch, eh] = await Promise.all([
-      _j(`/api/health`),
-      _j(`/api/health/daemons`),
-      _j(`/api/projects/${s}/overview`),
-      _j(`/api/projects/${s}/datasource?quality=false&preview=false`),
-      _j(`/api/projects/${s}/data-quality`),
-      _j(`/api/projects/${s}/insights`),
-      _j(`/api/projects/${s}/tool-health`),
-      _j(`/api/projects/${s}/training-runs`),
-      _j(`/api/projects/${s}/auto-train/log?limit=12`),
-      _j(`/api/auth/apigw-usage`),
-      _j(`/api/projects/${s}/chemist`),
-      _j(`/api/projects/${s}/eval-health`),
-    ]);
-    health = h; daemons = dm; ov = o; ds = d?.summary || null; dq = q; chem = ch; evalHealth = eh;
-    insights = Array.isArray(ins) ? ins : (ins?.insights || []);
-    tools = th?.scores || [];
-    runs = tr?.runs || [];
-    log = lg?.events || [];
-    gateway = gw;
-    // at-a-glance chip counts (one summary call + 3 light list calls)
-    const [sm, ag, dc, fl] = await Promise.all([
-      _j(`/api/projects/${s}/dashboard-summary`),
-      _j(`/api/projects/${s}/agents`),
-      _j(`/api/docs?project=${s}`),
-      _j(`/api/knowledge-files?project=${s}`),
-    ]);
-    summary = sm;
-    agentsN = ag?.agents?.length ?? 0;
-    docsN = dc?.docs?.length ?? 0;
-    filesN = fl?.files?.length ?? 0;
-    lastUpdate = new Date().toLocaleTimeString();
-    loading = false;
-    // background: full table list (w/ quality+trained) + auto-train robot status
-    loadTables();
-    loadAutoTrain();
-  }
+ async function load() {
+ const s = slug;
+ const [h, dm, o, d, q, ins, th, tr, lg, gw, ch, eh] = await Promise.all([
+ _j(`/api/health`),
+ _j(`/api/health/daemons`),
+ _j(`/api/projects/${s}/overview`),
+ _j(`/api/projects/${s}/datasource?quality=false&preview=false`),
+ _j(`/api/projects/${s}/data-quality`),
+ _j(`/api/projects/${s}/insights`),
+ _j(`/api/projects/${s}/tool-health`),
+ _j(`/api/projects/${s}/training-runs`),
+ _j(`/api/projects/${s}/auto-train/log?limit=12`),
+ _j(`/api/auth/apigw-usage`),
+ _j(`/api/projects/${s}/chemist`),
+ _j(`/api/projects/${s}/eval-health`),
+ ]);
+ health = h; daemons = dm; ov = o; ds = d?.summary || null; dq = q; chem = ch; evalHealth = eh;
+ insights = Array.isArray(ins) ? ins : (ins?.insights || []);
+ tools = th?.scores || [];
+ runs = tr?.runs || [];
+ log = lg?.events || [];
+ gateway = gw;
+ // at-a-glance chip counts (one summary call + 3 light list calls)
+ const [sm, ag, dc, fl] = await Promise.all([
+ _j(`/api/projects/${s}/dashboard-summary`),
+ _j(`/api/projects/${s}/agents`),
+ _j(`/api/docs?project=${s}`),
+ _j(`/api/knowledge-files?project=${s}`),
+ ]);
+ summary = sm;
+ agentsN = ag?.agents?.length ?? 0;
+ docsN = dc?.docs?.length ?? 0;
+ filesN = fl?.files?.length ?? 0;
+ lastUpdate = new Date().toLocaleTimeString();
+ loading = false;
+ // background: full table list (w/ quality+trained) + auto-train robot status
+ loadTables();
+ loadAutoTrain();
+ }
 
-  // ---- clinical golden eval (P3) ----
-  let evalRunning = $state(false);
-  async function runChemEval() {
-    if (evalRunning) return;
-    evalRunning = true;
-    try {
-      const r = await fetch(`/api/projects/${slug}/chemist/eval`, { method: 'POST', headers: _h() });
-      if (r.ok) {
-        const d = await r.json();
-        if (d?.ok && chem) chem = { ...chem, accuracy: { passed: d.passed, total: d.total, pct: d.pct, ran_at: new Date().toISOString() } };
-      }
-    } catch { /* fail-soft */ }
-    evalRunning = false;
-  }
+ // ---- clinical golden eval (P3) ----
+ let evalRunning = $state(false);
+ async function runChemEval() {
+ if (evalRunning) return;
+ evalRunning = true;
+ try {
+ const r = await fetch(`/api/projects/${slug}/chemist/eval`, { method: 'POST', headers: _h() });
+ if (r.ok) {
+ const d = await r.json();
+ if (d?.ok && chem) chem = { ...chem, accuracy: { passed: d.passed, total: d.total, pct: d.pct, ran_at: new Date().toISOString() } };
+ }
+ } catch { /* fail-soft */ }
+ evalRunning = false;
+ }
 
 
-  // Re-sync training status when the tab regains focus — a backgrounded tab's
-  // timers are throttled/paused by the browser, which left the pipeline frozen
-  // in a stale "training" state. On focus we re-fetch the real run status.
-  function _onFocus() { if (typeof document !== 'undefined' && !document.hidden) loadAutoTrain(); }
-  onMount(() => {
-    load();
-    timer = setInterval(() => { if (auto) load(); }, 30000);
-    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', _onFocus);
-    if (typeof window !== 'undefined') window.addEventListener('focus', _onFocus);
-  });
-  onDestroy(() => {
-    if (timer) clearInterval(timer);
-    if (_atPoll) clearInterval(_atPoll);
-    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', _onFocus);
-    if (typeof window !== 'undefined') window.removeEventListener('focus', _onFocus);
-  });
+ // Re-sync training status when the tab regains focus — a backgrounded tab's
+ // timers are throttled/paused by the browser, which left the pipeline frozen
+ // in a stale "training" state. On focus we re-fetch the real run status.
+ function _onFocus() { if (typeof document !== 'undefined' && !document.hidden) loadAutoTrain(); }
+ onMount(() => {
+ load();
+ timer = setInterval(() => { if (auto) load(); }, 30000);
+ if (typeof document !== 'undefined') document.addEventListener('visibilitychange', _onFocus);
+ if (typeof window !== 'undefined') window.addEventListener('focus', _onFocus);
+ });
+ onDestroy(() => {
+ if (timer) clearInterval(timer);
+ if (_atPoll) clearInterval(_atPoll);
+ if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', _onFocus);
+ if (typeof window !== 'undefined') window.removeEventListener('focus', _onFocus);
+ });
 
-  // ---- formatters ----
-  function fmtN(v: any): string {
-    const n = Number(v);
-    if (!isFinite(n)) return '—';
-    return n.toLocaleString();
-  }
-  function fmtMMK(v: any): string {
-    const n = Number(v);
-    if (!isFinite(n) || n === 0) return '0';
-    if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
-    if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
-    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
-    return String(Math.round(n));
-  }
-  function _parseUtc(s: string): number {
-    const norm = (s || '').replace(' ', 'T');
-    return new Date(norm + (/(Z|[+-]\d\d:?\d\d)$/.test(norm) ? '' : 'Z')).getTime();
-  }
-  function ago(ts: any): string {
-    if (!ts) return '';
-    const t = typeof ts === 'number' ? ts : _parseUtc(String(ts));
-    if (!isFinite(t)) return '';
-    const diff = Date.now() - t;
-    if (diff < 0) return 'now';
-    if (diff < 60000) return Math.floor(diff / 1000) + 's';
-    if (diff < 3600000) return Math.floor(diff / 60000) + 'm';
-    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h';
-    return Math.floor(diff / 86400000) + 'd';
-  }
-  function sevColor(s: string): string {
-    s = (s || '').toLowerCase();
-    if (s === 'high' || s === 'error' || s === 'critical') return '#c0392b';
-    if (s === 'medium' || s === 'warn' || s === 'warning') return '#a06000';
-    return 'var(--color-primary)';
-  }
-  function qScoreColor(n: number): string {
-    if (n >= 80) return 'var(--color-primary)';
-    if (n >= 60) return '#a06000';
-    return '#c0392b';
-  }
+ // ---- formatters ----
+ function fmtN(v: any): string {
+ const n = Number(v);
+ if (!isFinite(n)) return '—';
+ return n.toLocaleString();
+ }
+ function fmtMMK(v: any): string {
+ const n = Number(v);
+ if (!isFinite(n) || n === 0) return '0';
+ if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+ if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+ if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+ return String(Math.round(n));
+ }
+ function _parseUtc(s: string): number {
+ const norm = (s || '').replace(' ', 'T');
+ return new Date(norm + (/(Z|[+-]\d\d:?\d\d)$/.test(norm) ? '' : 'Z')).getTime();
+ }
+ function ago(ts: any): string {
+ if (!ts) return '';
+ const t = typeof ts === 'number' ? ts : _parseUtc(String(ts));
+ if (!isFinite(t)) return '';
+ const diff = Date.now() - t;
+ if (diff < 0) return 'now';
+ if (diff < 60000) return Math.floor(diff / 1000) + 's';
+ if (diff < 3600000) return Math.floor(diff / 60000) + 'm';
+ if (diff < 86400000) return Math.floor(diff / 3600000) + 'h';
+ return Math.floor(diff / 86400000) + 'd';
+ }
+ function sevColor(s: string): string {
+ s = (s || '').toLowerCase();
+ if (s === 'high' || s === 'error' || s === 'critical') return '#c0392b';
+ if (s === 'medium' || s === 'warn' || s === 'warning') return '#a06000';
+ return 'var(--color-primary)';
+ }
+ function qScoreColor(n: number): string {
+ if (n >= 80) return 'var(--color-primary)';
+ if (n >= 60) return '#a06000';
+ return '#c0392b';
+ }
 
-  const kpis = $derived(ov?.kpis || {});
-  const pharma = $derived(ov?.pharma || {});
+ const kpis = $derived(ov?.kpis || {});
+ const pharma = $derived(ov?.pharma || {});
 
-  // health rollups
-  const apiUp = $derived(!!(health && (health.ok || health.status === 'ok' || health.db === 'ok')));
-  const stale = $derived(!!health?.staleness_warning);
-  const imgAge = $derived(health?.image_age_hours);
-  const daemonList = $derived(daemons?.per_daemon_effective_on_this_worker || daemons?.per_daemon_env_enabled || null);
-  const daemonOn = $derived(daemonList ? Object.values(daemonList).filter(Boolean).length : null);
-  const daemonTot = $derived(daemonList ? Object.keys(daemonList).length : null);
+ // health rollups
+ const apiUp = $derived(!!(health && (health.ok || health.status === 'ok' || health.db === 'ok')));
+ const stale = $derived(!!health?.staleness_warning);
+ const imgAge = $derived(health?.image_age_hours);
+ const daemonList = $derived(daemons?.per_daemon_effective_on_this_worker || daemons?.per_daemon_env_enabled || null);
+ const daemonOn = $derived(daemonList ? Object.values(daemonList).filter(Boolean).length : null);
+ const daemonTot = $derived(daemonList ? Object.keys(daemonList).length : null);
 
-  // tools: top by calls
-  const topTools = $derived([...tools].sort((a, b) => (b.calls || 0) - (a.calls || 0)).slice(0, 5));
+ // tools: top by calls
+ const topTools = $derived([...tools].sort((a, b) => (b.calls || 0) - (a.calls || 0)).slice(0, 5));
 
-  async function dismissInsight(id: any) {
-    insights = insights.filter((x) => x.id !== id);
-    try { await fetch(`/api/projects/${slug}/insights/${id}/dismiss`, { method: 'POST', headers: _h() }); } catch {}
-  }
+ async function dismissInsight(id: any) {
+ insights = insights.filter((x) => x.id !== id);
+ try { await fetch(`/api/projects/${slug}/insights/${id}/dismiss`, { method: 'POST', headers: _h() }); } catch {}
+ }
 
-  // ---- at-a-glance chips: route to the matching Cockpit (settings) tab via #hash ----
-  // count-up action: animate a plain-integer text 0→n on mount (gimmick polish)
-  function countUp(node: HTMLElement) {
-    const raw = (node.textContent || '').trim();
-    if (!/^\d{1,6}$/.test(raw)) return;          // only pure integers
-    const target = parseInt(raw, 10);
-    if (target <= 1) return;
-    const dur = 650; const t0 = performance.now();
-    function step(t: number) {
-      const p = Math.min(1, (t - t0) / dur);
-      const e = 1 - Math.pow(1 - p, 3);           // easeOutCubic
-      node.textContent = String(Math.round(target * e));
-      if (p < 1) requestAnimationFrame(step); else node.textContent = raw;
-    }
-    requestAnimationFrame(step);
-  }
+ // ---- at-a-glance chips: route to the matching Cockpit (settings) tab via #hash ----
+ // count-up action: animate a plain-integer text 0>n on mount (gimmick polish)
+ function countUp(node: HTMLElement) {
+ const raw = (node.textContent || '').trim();
+ if (!/^\d{1,6}$/.test(raw)) return; // only pure integers
+ const target = parseInt(raw, 10);
+ if (target <= 1) return;
+ const dur = 650; const t0 = performance.now();
+ function step(t: number) {
+ const p = Math.min(1, (t - t0) / dur);
+ const e = 1 - Math.pow(1 - p, 3); // easeOutCubic
+ node.textContent = String(Math.round(target * e));
+ if (p < 1) requestAnimationFrame(step); else node.textContent = raw;
+ }
+ requestAnimationFrame(step);
+ }
 
-  // chip-glow: flag chips whose count rose since last refresh (gimmick polish)
-  let changed = $state<Set<string>>(new Set());
-  let _prev: Record<string, string> = {};
-  $effect(() => {
-    const next: Record<string, string> = {};
-    const grew = new Set<string>();
-    for (const g of chipGroups) for (const c of g.chips) {
-      next[c.k] = c.v;
-      const pv = parseInt(_prev[c.k] ?? '', 10), nv = parseInt(c.v ?? '', 10);
-      if (!isNaN(pv) && !isNaN(nv) && nv > pv) grew.add(c.k);
-    }
-    if (Object.keys(_prev).length && grew.size) {
-      changed = grew;
-      setTimeout(() => { changed = new Set(); }, 2200);
-    }
-    _prev = next;
-  });
+ // chip-glow: flag chips whose count rose since last refresh (gimmick polish)
+ let changed = $state<Set<string>>(new Set());
+ let _prev: Record<string, string> = {};
+ $effect(() => {
+ const next: Record<string, string> = {};
+ const grew = new Set<string>();
+ for (const g of chipGroups) for (const c of g.chips) {
+ next[c.k] = c.v;
+ const pv = parseInt(_prev[c.k] ?? '', 10), nv = parseInt(c.v ?? '', 10);
+ if (!isNaN(pv) && !isNaN(nv) && nv > pv) grew.add(c.k);
+ }
+ if (Object.keys(_prev).length && grew.size) {
+ changed = grew;
+ setTimeout(() => { changed = new Set(); }, 2200);
+ }
+ _prev = next;
+ });
 
-  function goTab(hash: string) {
-    if (hash === 'graph') { goto(`${base}/project/${slug}/graph`); return; }
-    if (hash === 'pipeline') { document.querySelector('.ov-tflow')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
-    goto(`${base}/project/${slug}/settings#${hash}`);
-  }
-  // chip groups — count resolved live from summary/ds/ov + the light list calls
-  const chipGroups = $derived([
-    { sect: 'WORKSPACE', chips: [
-      { k: 'Data Source', tab: 'upload',  v: ds ? fmtN(ds.tables) : '—',           s: ds ? fmtN(ds.rows ?? kpis.tables) + ' rows' : '' },
-      { k: 'Training',    tab: 'training', v: summary ? String(summary.training_runs) : '—', s: ds ? (ds.trained_tables + '/' + ds.tables + ' trained') : '' },
-      { k: 'Docs',        tab: 'docs',     v: String(docsN),                         s: 'documents' },
-      { k: 'Queries',     tab: 'queries',  v: summary ? String(summary.queries) : '—', s: 'saved' },
-      { k: 'Lineage',     tab: 'lineage',  v: summary ? String(summary.lineage) : '—', s: 'links' },
-      { k: 'Files',       tab: 'knowledge', v: String(filesN),                       s: 'knowledge' },
-    ]},
-    { sect: 'BRAIN', chips: [
-      { k: 'Rules',       tab: 'rules',           v: summary ? String(summary.brain?.rules ?? 0) : '—',       s: 'domain rules' },
-      { k: 'Graph',       tab: 'graph',           v: summary ? String(summary.triples) : '—',                 s: 'triples' },
-      { k: 'Schema',      tab: 'datasets',        v: summary ? String(summary.schema?.tables ?? 0) : '—',     s: (summary?.schema?.columns ?? 0) + ' cols' },
-    ]},
-    { sect: 'AGENTS', chips: [
-      { k: 'Agents',      tab: 'agents',    v: String(agentsN),                       s: 'in team' },
-      { k: 'Schedules',   tab: 'schedules', v: summary ? String(summary.schedules) : '—', s: 'scheduled' },
-      { k: 'Evals',       tab: 'evals',     v: summary ? String(summary.evals?.golden ?? 0) : '—', s: (summary?.evals?.score ?? 0) + '/5 · ' + (summary?.evals?.runs ?? 0) + ' runs' },
-    ]},
-    { sect: 'INTELLIGENCE', chips: [
-      { k: 'Learn',       tab: 'self-learn', v: summary ? String(summary.learn) : '—', s: 'self-learn runs' },
-      { k: 'Pipeline',    tab: 'pipeline',   v: '10', s: 'layers' },
-    ]},
-  ]);
-  // brain rich-card breakdown
-  const brainBars = $derived(summary?.brain ? [
-    { l: 'Definitions', v: summary.brain.definitions, c: '#c96342' },
-    { l: 'Glossary',    v: summary.brain.glossary,    c: '#0ca6b0' },
-    { l: 'KPI',         v: summary.brain.kpi,         c: '#d4930e' },
-    { l: 'Patterns',    v: summary.brain.patterns,    c: '#7c3aed' },
-    { l: 'Rules',       v: summary.brain.rules,       c: '#2d6a4f' },
-  ] : []);
-  const brainMax = $derived(Math.max(1, ...brainBars.map((b) => b.v || 0)));
+ function goTab(hash: string) {
+ if (hash === 'graph') { goto(`${base}/project/${slug}/graph`); return; }
+ if (hash === 'pipeline') { document.querySelector('.ov-tflow')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+ goto(`${base}/project/${slug}/settings#${hash}`);
+ }
+ // chip groups — count resolved live from summary/ds/ov + the light list calls
+ const chipGroups = $derived([
+ { sect: 'WORKSPACE', chips: [
+ { k: 'Data Source', tab: 'upload', v: ds ? fmtN(ds.tables) : '—', s: ds ? fmtN(ds.rows ?? kpis.tables) + ' rows' : '' },
+ { k: 'Training', tab: 'training', v: summary ? String(summary.training_runs) : '—', s: ds ? (ds.trained_tables + '/' + ds.tables + ' trained') : '' },
+ { k: 'Docs', tab: 'docs', v: String(docsN), s: 'documents' },
+ { k: 'Queries', tab: 'queries', v: summary ? String(summary.queries) : '—', s: 'saved' },
+ { k: 'Lineage', tab: 'lineage', v: summary ? String(summary.lineage) : '—', s: 'links' },
+ { k: 'Files', tab: 'knowledge', v: String(filesN), s: 'knowledge' },
+ ]},
+ { sect: 'BRAIN', chips: [
+ { k: 'Rules', tab: 'rules', v: summary ? String(summary.brain?.rules ?? 0) : '—', s: 'domain rules' },
+ { k: 'Graph', tab: 'graph', v: summary ? String(summary.triples) : '—', s: 'triples' },
+ { k: 'Schema', tab: 'datasets', v: summary ? String(summary.schema?.tables ?? 0) : '—', s: (summary?.schema?.columns ?? 0) + ' cols' },
+ ]},
+ { sect: 'AGENTS', chips: [
+ { k: 'Agents', tab: 'agents', v: String(agentsN), s: 'in team' },
+ { k: 'Schedules', tab: 'schedules', v: summary ? String(summary.schedules) : '—', s: 'scheduled' },
+ { k: 'Evals', tab: 'evals', v: summary ? String(summary.evals?.golden ?? 0) : '—', s: (summary?.evals?.score ?? 0) + '/5 · ' + (summary?.evals?.runs ?? 0) + ' runs' },
+ ]},
+ { sect: 'INTELLIGENCE', chips: [
+ { k: 'Learn', tab: 'self-learn', v: summary ? String(summary.learn) : '—', s: 'self-learn runs' },
+ { k: 'Pipeline', tab: 'pipeline', v: '10', s: 'layers' },
+ ]},
+ ]);
+ // brain rich-card breakdown
+ const brainBars = $derived(summary?.brain ? [
+ { l: 'Definitions', v: summary.brain.definitions, c: '#c96342' },
+ { l: 'Glossary', v: summary.brain.glossary, c: '#0ca6b0' },
+ { l: 'KPI', v: summary.brain.kpi, c: '#d4930e' },
+ { l: 'Patterns', v: summary.brain.patterns, c: '#7c3aed' },
+ { l: 'Rules', v: summary.brain.rules, c: '#2d6a4f' },
+ ] : []);
+ const brainMax = $derived(Math.max(1, ...brainBars.map((b) => b.v || 0)));
 
-  // mini-anatomy lobes (compact brain card). cx/cy/r in a 220x150 viewBox.
-  const brainLobes = $derived.by(() => {
-    const b = summary?.brain || {};
-    const L = [
-      { id: 'frontal',  name: 'Frontal',   v: (b.kpi || 0) + (b.rules || 0) + (b.patterns || 0), c: '#c2683f', cx: 72,  cy: 56,  r: 26, jump: 'rules' },
-      { id: 'parietal', name: 'Parietal',  v: (b.definitions || 0),                                c: '#4a7fa3', cx: 138, cy: 50,  r: 22, jump: 'brain-definitions' },
-      { id: 'temporal', name: 'Temporal',  v: (b.glossary || 0) + (b.total || 0),                  c: '#c2683f', cx: 90,  cy: 102, r: 29, jump: 'brain-glossary', hippo: true },
-      { id: 'occipital',name: 'Occipital', v: (b.graph || 0),                                      c: '#9b6bb0', cx: 156, cy: 96,  r: 24, jump: 'graph' },
-    ];
-    const max = Math.max(1, ...L.map((x) => x.v));
-    return L.map((x) => ({ ...x, hot: x.v >= max && x.v > 0 }));
-  });
-  const brainHealth = $derived(summary?.brain?.total ? Math.min(99, 40 + (summary.brain.total % 60)) : 0);
+ // mini-anatomy lobes (compact brain card). cx/cy/r in a 220x150 viewBox.
+ const brainLobes = $derived.by(() => {
+ const b = summary?.brain || {};
+ const L = [
+ { id: 'frontal', name: 'Frontal', v: (b.kpi || 0) + (b.rules || 0) + (b.patterns || 0), c: '#c2683f', cx: 72, cy: 56, r: 26, jump: 'rules' },
+ { id: 'parietal', name: 'Parietal', v: (b.definitions || 0), c: '#4a7fa3', cx: 138, cy: 50, r: 22, jump: 'brain-definitions' },
+ { id: 'temporal', name: 'Temporal', v: (b.glossary || 0) + (b.total || 0), c: '#c2683f', cx: 90, cy: 102, r: 29, jump: 'brain-glossary', hippo: true },
+ { id: 'occipital',name: 'Occipital', v: (b.graph || 0), c: '#9b6bb0', cx: 156, cy: 96, r: 24, jump: 'graph' },
+ ];
+ const max = Math.max(1, ...L.map((x) => x.v));
+ return L.map((x) => ({ ...x, hot: x.v >= max && x.v > 0 }));
+ });
+ const brainHealth = $derived(summary?.brain?.total ? Math.min(99, 40 + (summary.brain.total % 60)) : 0);
 </script>
 
 
@@ -347,11 +348,11 @@
     </div>
     <div class="ov-head-actions">
       <span class="ov-upd">{syncMsg ? syncMsg : (loading ? 'loading…' : (lastUpdate ? 'updated ' + lastUpdate : ''))}</span>
-      <button class="ov-btn ov-btn-up" onclick={gotoUpload}>⬆ Upload data</button>
-      <button class="ov-btn" onclick={syncNow} disabled={syncing}>{syncing ? '⟳ syncing…' : '🔄 Sync'}</button>
-      <button class="ov-btn" class:on={auto} onclick={() => (auto = !auto)}>{auto ? '⟳ auto 30s' : '⏸ paused'}</button>
-      <button class="ov-btn" onclick={() => load()}>↻ refresh</button>
-      <button class="ov-btn ov-btn-primary" onclick={() => goto(`${base}/project/${slug}`)}>Open chat →</button>
+      <button class="ov-btn ov-btn-up" onclick={gotoUpload}><Icon name="arrow-up" size={16} /> Upload data</button>
+      <button class="ov-btn" onclick={syncNow} disabled={syncing}>{syncing ? '&gt; syncing…' : ' Sync'}</button>
+      <button class="ov-btn" class:on={auto} onclick={() => (auto = !auto)}>{auto ? '&gt; auto 30s' : ' paused'}</button>
+      <button class="ov-btn" onclick={() => load()}><Icon name="refresh" size={16} /> refresh</button>
+      <button class="ov-btn ov-btn-primary" onclick={() => goto(`${base}/project/${slug}`)}>Open chat <Icon name="arrow-right" size={16} /></button>
     </div>
   </div>
 
@@ -380,7 +381,7 @@
     {/each}
   </div>
 
-  <!-- AT A GLANCE — per-tab summary chips (click → Cockpit tab) + Brain rich card -->
+  <!-- AT A GLANCE — per-tab summary chips (click -&gt; Cockpit tab) + Brain rich card -->
   <div class="ov-glance">
     <div class="ov-chips">
       {#each chipGroups as g}
@@ -398,7 +399,7 @@
     </div>
 
     <div class="ov-card ov-brain">
-      <div class="ov-card-h">🧠 BRAIN <span class="ov-brain-live"><span class="ov-brain-dot"></span>live · {summary?.brain?.total ?? 0}</span></div>
+      <div class="ov-card-h"><Icon name="brain" size={16} /> BRAIN <span class="ov-brain-live"><span class="ov-brain-dot"></span>live · {summary?.brain?.total ?? 0}</span></div>
       {#if summary?.brain}
         <button class="ov-mini" onclick={() => goTab('brain-cortex')} title="Open full Cortex">
           <svg viewBox="0 0 220 150" width="100%" height="150">
@@ -416,7 +417,7 @@
                     <animate attributeName="opacity" values="0.5;0" dur="2.2s" repeatCount="indefinite"/>
                   </circle>
                 {/if}
-                <text x={lo.cx} y={lo.cy + 3} text-anchor="middle" font-size="11" font-weight="800" fill="#fff" fill-opacity="0.9">{lo.v}{#if lo.hippo}⚡{/if}</text>
+                <text x={lo.cx} y={lo.cy + 3} text-anchor="middle" font-size="11" font-weight="800" fill="#fff" fill-opacity="0.9">{lo.v}{#if lo.hippo}<Icon name="zap" size={16} />{/if}</text>
               </g>
             {/each}
             <path d="M114,124 C108,136 92,142 80,146" stroke="var(--pw-accent,#c2683f)" stroke-width="1.6" fill="none" stroke-dasharray="3 3">
@@ -425,7 +426,7 @@
             <circle cx="80" cy="146" r="3" fill="var(--pw-accent,#c2683f)"><animate attributeName="opacity" values="1;0.3;1" dur="1.4s" repeatCount="indefinite"/></circle>
           </svg>
           <div class="ov-mini-foot">
-            <span>❤ {brainHealth}%</span><span>{summary.brain.total} mem</span><span>Open Cortex →</span>
+            <span><Icon name="heart" size={16} /> {brainHealth}%</span><span>{summary.brain.total} mem</span><span>Open Cortex <Icon name="arrow-right" size={16} /></span>
           </div>
         </button>
       {:else}
@@ -454,12 +455,12 @@
           <option value="trained">sort: trained</option>
           <option value="name">sort: name</option>
         </select>
-        <button class="ov-btn ov-btn-primary" disabled={training || atStatus?.is_training || !dsTables.length} onclick={trainAll}>{(training || atStatus?.is_training) ? '⟳ training…' : '↻ Train all'}</button>
+        <button class="ov-btn ov-btn-primary" disabled={training || atStatus?.is_training || !dsTables.length} onclick={trainAll}>{(training || atStatus?.is_training) ? '&gt; training…' : '&gt; Train all'}</button>
       </div>
     </div>
-    {#if trainErr}<div class="ov-empty" style="color:#c0392b">⚠ {trainErr}</div>{/if}
+    {#if trainErr}<div class="ov-empty" style="color:#c0392b"><Icon name="alert-triangle" size={16} /> {trainErr}</div>{/if}
     {#if !dsTables.length}
-      <div class="ov-empty">No data tables yet — <button class="ov-link" onclick={gotoUpload}>upload data →</button></div>
+      <div class="ov-empty">No data tables yet — <button class="ov-link" onclick={gotoUpload}>upload data <Icon name="arrow-right" size={16} /></button></div>
     {:else}
       <div class="ov-tab-grid ov-tab-grid-h">
         <span>TABLE</span><span class="ov-tab-r">ROWS</span><span class="ov-tab-r">COLS</span><span class="ov-tab-c">TRAINED</span><span class="ov-tab-c">HEALTH</span><span class="ov-tab-c">ACTION</span>
@@ -471,7 +472,7 @@
             <span class="ov-tab-name">{t.name}</span>
             <span class="ov-tab-r">{fmtN(t.rows)}</span>
             <span class="ov-tab-r ov-tab-dim">{t.cols ?? (t.columns?.length ?? '—')}</span>
-            <span class="ov-tab-c">{#if t.trained}<span class="ov-yes">✓</span>{:else}<span class="ov-no">○</span>{/if}</span>
+            <span class="ov-tab-c">{#if t.trained}<span class="ov-yes"><Icon name="check" size={16} /></span>{:else}<span class="ov-no">○</span>{/if}</span>
             <span class="ov-tab-c">{#if q != null}<span class="ov-hpill" class:hp-good={q >= 85} class:hp-mid={q >= 60 && q < 85} class:hp-bad={q < 60}>{q}</span>{:else}<span class="ov-tab-dim">—</span>{/if}</span>
             <span class="ov-tab-c">
               <button class="ov-tab-train" disabled={training || trainingNames[t.name]} onclick={(e) => { e.stopPropagation(); trainTables([t.name]); }}>{trainingNames[t.name] ? '…' : 'train'}</button>
@@ -490,7 +491,7 @@
         <div class="ov-r"><span class="dot" style="background:{apiUp ? 'var(--color-primary)' : '#c0392b'}"></span>API<span class="ov-r-x">{apiUp ? 'up' : 'down'}{imgAge != null ? ' · img ' + Number(imgAge).toFixed(1) + 'h' : ''}</span></div>
         <div class="ov-r"><span class="dot" style="background:{apiUp ? 'var(--color-primary)' : '#c0392b'}"></span>Database<span class="ov-r-x">pg18 + AGE</span></div>
         <div class="ov-r"><span class="dot" style="background:{daemonOn ? 'var(--color-primary)' : '#a06000'}"></span>Daemons<span class="ov-r-x">{daemonOn != null ? daemonOn + '/' + daemonTot + ' on' : 'n/a'}</span></div>
-        <div class="ov-r"><span class="dot" style="background:{stale ? '#a06000' : 'var(--color-primary)'}"></span>Freshness<span class="ov-r-x">{stale ? 'stale build' : '✓ fresh'}</span></div>
+        <div class="ov-r"><span class="dot" style="background:{stale ? '#a06000' : 'var(--color-primary)'}"></span>Freshness<span class="ov-r-x">{stale ? 'stale build' : 'OK fresh'}</span></div>
         <div class="ov-r"><span class="dot" style="background:var(--color-primary)"></span>Backup<span class="ov-r-x">{health?.last_backup ? ago(health.last_backup) + ' ago' : '—'}</span></div>
       </div>
     </div>
@@ -558,7 +559,7 @@
   <!-- PHARMA CHEMIST — clinical coverage + substitute web -->
   {#if chem?.ok}
     <div class="ov-card">
-      <div class="ov-card-h">🧪 PHARMA CHEMIST <span class="ov-card-hx">clinical brain</span></div>
+      <div class="ov-card-h"><Icon name="flask" size={16} /> PHARMA CHEMIST <span class="ov-card-hx">clinical brain</span></div>
       <div class="ov-chem-stats">
         <div class="ov-chem-stat"><div class="ov-chem-n">{fmtN(chem.total_skus)}</div><div class="ov-chem-l">SKUs</div></div>
         <div class="ov-chem-stat"><div class="ov-chem-n">{fmtN(chem.distinct_generics)}</div><div class="ov-chem-l">generics</div></div>
@@ -586,7 +587,7 @@
         </div>
         <button class="ov-chem-run" onclick={runChemEval} disabled={evalRunning}>{evalRunning ? 'running…' : 'Run eval'}</button>
       </div>
-      <div class="ov-chem-foot">Forward: drug→profile · Inverse: symptom→drug · substitutes by generic — every answer audited to source SKU</div>
+      <div class="ov-chem-foot">Forward: drug<Icon name="arrow-right" size={16} />profile · Inverse: symptom<Icon name="arrow-right" size={16} />drug · substitutes by generic — every answer audited to source SKU</div>
     </div>
   {/if}
 
@@ -595,7 +596,7 @@
   <div class="ov-kg-card">
     <div class="ov-kg-head">
       <div class="ov-kg-t">KNOWLEDGE GRAPH</div>
-      <div class="ov-kg-s">Drug web · brands · generics · categories · indications — hover/click to explore, ⛶ for full screen</div>
+      <div class="ov-kg-s">Drug web · brands · generics · categories · indications — hover/click to explore, [] for full screen</div>
     </div>
     <KnowledgeGraph {slug} embedded height="520px" />
   </div>
@@ -603,10 +604,10 @@
   <!-- BRAIN WIKI launcher -->
   <button class="ov-wiki-card" onclick={() => goto(`${base}/project/${slug}/wiki`)}>
     <div>
-      <div class="ov-wiki-t">📖 BRAIN WIKI</div>
+      <div class="ov-wiki-t"><Icon name="book" size={16} /> BRAIN WIKI</div>
       <div class="ov-wiki-s">Readable concept pages — glossary · formulas · KPIs · backlinks, auto-built from the agent's brain</div>
     </div>
-    <div class="ov-wiki-cta">Read →</div>
+    <div class="ov-wiki-cta">Read <Icon name="arrow-right" size={16} /></div>
   </button>
 
   <!-- INSIGHTS -->
@@ -637,7 +638,7 @@
           {#each runs.slice(0, 5) as r}
             <div class="ov-r">
               <span class="dot" style="background:{r.status === 'done' ? 'var(--color-primary)' : r.status === 'failed' ? '#c0392b' : '#a06000'}"></span>
-              <span class="ov-mono">{r.status === 'done' ? '✓' : r.status === 'failed' ? '✗' : '●'} {(r.tables || 'run').toString().slice(0, 22)}</span>
+              <span class="ov-mono">{r.status === 'done' ? 'OK' : r.status === 'failed' ? 'x' : '●'} {(r.tables || 'run').toString().slice(0, 22)}</span>
               <span class="ov-r-x">{ago(r.finished_at || r.started_at)} ago</span>
             </div>
           {/each}
@@ -695,164 +696,164 @@
 </div>
 
 <style>
-  .ov-root { max-width: none; margin: 0; padding: 20px 32px 80px; }
-  .ov-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
-  .ov-title { font-size: 22px; font-weight: 900; letter-spacing: -0.01em; color: var(--color-on-surface); }
-  .ov-sub { font-size: 11px; color: var(--color-on-surface-dim); margin-top: 2px; }
-  .ov-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .ov-upd { font-size: 10px; color: var(--color-on-surface-dim); margin-right: 4px; }
-  .ov-btn { font-size: 11px; padding: 5px 11px; border: 1px solid var(--pw-border, #e5ddcf); background: var(--color-surface); color: var(--color-on-surface); cursor: pointer; font-weight: 700; }
-  .ov-btn.on { border-color: var(--color-primary); color: var(--color-primary); }
-  .ov-btn-primary { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-  .ov-btn-up { border-color: var(--color-primary); color: var(--color-primary); }
-  .ov-btn-up:hover { background: var(--color-primary); color: #fff; }
-  .ov-btn:disabled { opacity: 0.55; cursor: default; }
-  .ov-loading { padding: 60px; text-align: center; color: var(--color-on-surface-dim); font-size: 13px; }
+ .ov-root { max-width: none; margin: 0; padding: 20px 32px 80px; }
+ .ov-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+ .ov-title { font-size: 22px; font-weight: 900; letter-spacing: -0.01em; color: var(--color-on-surface); }
+ .ov-sub { font-size: 11px; color: var(--color-on-surface-dim); margin-top: 2px; }
+ .ov-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+ .ov-upd { font-size: 10px; color: var(--color-on-surface-dim); margin-right: 4px; }
+ .ov-btn { font-size: 11px; padding: 5px 11px; border: 1px solid var(--pw-border, #e5ddcf); background: var(--color-surface); color: var(--color-on-surface); cursor: pointer; font-weight: 700; }
+ .ov-btn.on { border-color: var(--color-primary); color: var(--color-primary); }
+ .ov-btn-primary { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+ .ov-btn-up { border-color: var(--color-primary); color: var(--color-primary); }
+ .ov-btn-up:hover { background: var(--color-primary); color: #fff; }
+ .ov-btn:disabled { opacity: 0.55; cursor: default; }
+ .ov-loading { padding: 60px; text-align: center; color: var(--color-on-surface-dim); font-size: 13px; }
 
-  .ov-kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 14px; }
-  .ov-kpi { border: 1px solid var(--pw-border, #e5ddcf); background: var(--color-surface-bright, var(--color-surface)); padding: 12px 14px; }
-  .ov-kpi-l { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-on-surface-dim); }
-  .ov-kpi-v { font-size: 26px; font-weight: 900; color: var(--color-on-surface); line-height: 1.1; margin: 4px 0 2px; }
-  .ov-kpi-s { font-size: 10px; color: var(--color-on-surface-dim); }
+ .ov-kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 14px; }
+ .ov-kpi { border: 1px solid var(--pw-border, #e5ddcf); background: var(--color-surface-bright, var(--color-surface)); padding: 12px 14px; }
+ .ov-kpi-l { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-on-surface-dim); }
+ .ov-kpi-v { font-size: 26px; font-weight: 900; color: var(--color-on-surface); line-height: 1.1; margin: 4px 0 2px; }
+ .ov-kpi-s { font-size: 10px; color: var(--color-on-surface-dim); }
 
-  /* AT A GLANCE: chip grid (left) + brain rich card (right) */
-  .ov-glance { display: grid; grid-template-columns: 1fr 290px; gap: 12px; margin-bottom: 14px; align-items: start; }
-  .ov-chips { display: flex; flex-direction: column; gap: 7px; }
-  .ov-chip-sect { font-size: 9px; font-weight: 800; letter-spacing: 0.09em; color: var(--color-on-surface-dim); margin-top: 4px; }
-  .ov-chip-sect:first-child { margin-top: 0; }
-  .ov-chip-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; }
-  .ov-chip { text-align: left; border: 1px solid var(--pw-border, #e5ddcf); background: var(--pw-surface, #fff); padding: 9px 10px; cursor: pointer; transition: 0.15s; }
-  .ov-chip:hover { background: var(--pw-bg-alt, #f6f2ea); transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.07); }
-  .ov-chip-v { font-size: 19px; font-weight: 900; color: var(--color-on-surface); line-height: 1; font-variant-numeric: tabular-nums; }
-  .ov-chip-k { font-size: 10px; font-weight: 700; color: var(--color-on-surface); margin-top: 4px; }
-  .ov-chip-s { font-size: 8.5px; color: var(--color-on-surface-dim); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+ /* AT A GLANCE: chip grid (left) + brain rich card (right) */
+ .ov-glance { display: grid; grid-template-columns: 1fr 290px; gap: 12px; margin-bottom: 14px; align-items: start; }
+ .ov-chips { display: flex; flex-direction: column; gap: 7px; }
+ .ov-chip-sect { font-size: 9px; font-weight: 800; letter-spacing: 0.09em; color: var(--color-on-surface-dim); margin-top: 4px; }
+ .ov-chip-sect:first-child { margin-top: 0; }
+ .ov-chip-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; }
+ .ov-chip { text-align: left; border: 1px solid var(--pw-border, #e5ddcf); background: var(--pw-surface, #fff); padding: 9px 10px; cursor: pointer; transition: 0.15s; }
+ .ov-chip:hover { background: var(--pw-bg-alt, #f6f2ea); transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.07); }
+ .ov-chip-v { font-size: 19px; font-weight: 900; color: var(--color-on-surface); line-height: 1; font-variant-numeric: tabular-nums; }
+ .ov-chip-k { font-size: 10px; font-weight: 700; color: var(--color-on-surface); margin-top: 4px; }
+ .ov-chip-s { font-size: 8.5px; color: var(--color-on-surface-dim); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  .ov-brain { align-self: stretch; }
-  .ov-brain-tot { font-size: 9px; color: var(--pw-muted, #877f74); font-weight: 600; }
-  .ov-brain-bars { padding: 10px 12px; display: flex; flex-direction: column; gap: 9px; }
-  .ov-brain-row { display: grid; grid-template-columns: 64px 1fr 30px; gap: 8px; align-items: center; background: none; border: none; padding: 0; cursor: pointer; text-align: left; }
-  .ov-brain-row:hover .ov-brain-l { color: var(--pw-accent, #c96342); }
-  .ov-brain-l { font-size: 10px; font-weight: 700; color: var(--color-on-surface); }
-  .ov-brain-track { height: 8px; background: var(--pw-bg-alt, #f0ebe2); overflow: hidden; }
-  .ov-brain-fill { display: block; height: 100%; transition: width 0.5s; }
-  .ov-brain-n { font-size: 11px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; color: var(--color-on-surface); }
-  .ov-brain-empty { padding: 16px; font-size: 11px; color: var(--color-on-surface-dim); }
-  .ov-brain-live { font-size: 9px; color: var(--pw-muted, #877f74); font-weight: 700; display: inline-flex; align-items: center; gap: 5px; }
-  .ov-brain-dot { width: 6px; height: 6px; border-radius: 50%; background: #5a9367; animation: ovbp 1.6s infinite; }
-  @keyframes ovbp { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
-  .ov-mini { display: block; width: 100%; background: none; border: none; padding: 6px 8px 10px; cursor: pointer; }
-  .ov-mini:hover { background: rgba(194,104,63,0.03); }
-  .ov-mini-foot { display: flex; justify-content: space-between; font-size: 10px; font-weight: 700; color: var(--pw-muted, #877f74); padding: 2px 6px 0; }
-  .ov-mini-foot span:last-child { color: var(--pw-accent, #c2683f); }
-  .ov-lfeed { margin-top: 16px; }
-  .ov-glow { animation: ovglow 2.2s ease-out; }
-  @keyframes ovglow { 0% { box-shadow: 0 0 0 0 rgba(194,104,63,0.5); border-color: var(--pw-accent, #c2683f); } 100% { box-shadow: 0 0 0 8px rgba(194,104,63,0); } }
+ .ov-brain { align-self: stretch; }
+ .ov-brain-tot { font-size: 9px; color: var(--pw-muted, #877f74); font-weight: 600; }
+ .ov-brain-bars { padding: 10px 12px; display: flex; flex-direction: column; gap: 9px; }
+ .ov-brain-row { display: grid; grid-template-columns: 64px 1fr 30px; gap: 8px; align-items: center; background: none; border: none; padding: 0; cursor: pointer; text-align: left; }
+ .ov-brain-row:hover .ov-brain-l { color: var(--pw-accent, #c96342); }
+ .ov-brain-l { font-size: 10px; font-weight: 700; color: var(--color-on-surface); }
+ .ov-brain-track { height: 8px; background: var(--pw-bg-alt, #f0ebe2); overflow: hidden; }
+ .ov-brain-fill { display: block; height: 100%; transition: width 0.5s; }
+ .ov-brain-n { font-size: 11px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; color: var(--color-on-surface); }
+ .ov-brain-empty { padding: 16px; font-size: 11px; color: var(--color-on-surface-dim); }
+ .ov-brain-live { font-size: 9px; color: var(--pw-muted, #877f74); font-weight: 700; display: inline-flex; align-items: center; gap: 5px; }
+ .ov-brain-dot { width: 6px; height: 6px; border-radius: 50%; background: #5a9367; animation: ovbp 1.6s infinite; }
+ @keyframes ovbp { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+ .ov-mini { display: block; width: 100%; background: none; border: none; padding: 6px 8px 10px; cursor: pointer; }
+ .ov-mini:hover { background: rgba(194,104,63,0.03); }
+ .ov-mini-foot { display: flex; justify-content: space-between; font-size: 10px; font-weight: 700; color: var(--pw-muted, #877f74); padding: 2px 6px 0; }
+ .ov-mini-foot span:last-child { color: var(--pw-accent, #c2683f); }
+ .ov-lfeed { margin-top: 16px; }
+ .ov-glow { animation: ovglow 2.2s ease-out; }
+ @keyframes ovglow { 0% { box-shadow: 0 0 0 0 rgba(194,104,63,0.5); border-color: var(--pw-accent, #c2683f); } 100% { box-shadow: 0 0 0 8px rgba(194,104,63,0); } }
 
-  .ov-tflow { margin-bottom: 12px; }
-  .ov-tflow :global(.tf) { padding: 14px; }
+ .ov-tflow { margin-bottom: 12px; }
+ .ov-tflow :global(.tf) { padding: 14px; }
 
-  /* data tables card */
-  .ov-tables { margin-bottom: 12px; padding: 14px; }
-  .ov-tab-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
-  .ov-tab-tools { display: flex; align-items: center; gap: 8px; }
-  .ov-tab-filter { font-size: 11px; padding: 4px 9px; border: 1px solid var(--pw-border, #e5ddcf); background: var(--color-surface); color: var(--color-on-surface); width: 150px; }
-  .ov-tab-sort { font-size: 11px; padding: 4px 6px; border: 1px solid var(--pw-border, #e5ddcf); background: var(--color-surface); color: var(--color-on-surface); }
-  .ov-tab-grid { display: grid; grid-template-columns: 2fr 90px 64px 80px 80px 80px; align-items: center; gap: 8px; padding: 7px 8px; }
-  .ov-tab-grid-h { font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--pw-muted, #877f74); border-bottom: 1px solid var(--pw-border, #e5ddcf); }
-  .ov-tab-body { max-height: 360px; overflow-y: auto; }
-  .ov-tab-row { font-size: 12px; border-bottom: 1px solid var(--pw-border-soft, #eee6da); cursor: pointer; }
-  .ov-tab-row:hover { background: rgba(201, 99, 66, 0.05); }
-  .ov-tab-name { font-weight: 600; color: var(--color-on-surface); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ov-tab-r { text-align: right; font-variant-numeric: tabular-nums; }
-  .ov-tab-c { text-align: center; }
-  .ov-tab-dim { color: var(--pw-muted, #877f74); }
-  .ov-yes { color: #2d8a4e; font-weight: 700; }
-  .ov-no { color: var(--pw-muted, #b8ab98); }
-  .ov-hpill { display: inline-block; min-width: 26px; padding: 1px 6px; border-radius: 9px; font-size: 11px; font-weight: 700; }
-  .hp-good { background: rgba(45, 138, 78, 0.14); color: #2d8a4e; }
-  .hp-mid { background: rgba(204, 122, 0, 0.16); color: #b06c00; }
-  .hp-bad { background: rgba(201, 99, 66, 0.16); color: #c96342; }
-  .ov-tab-train { font-size: 10.5px; padding: 3px 10px; border: 1px solid var(--color-primary); background: transparent; color: var(--color-primary); cursor: pointer; font-weight: 700; }
-  .ov-tab-train:hover:not(:disabled) { background: var(--color-primary); color: #fff; }
-  .ov-tab-train:disabled { opacity: 0.5; cursor: default; }
-  .ov-link { background: none; border: none; color: var(--color-primary); cursor: pointer; font-weight: 700; font-size: 11px; text-decoration: underline; }
-  @media (max-width: 900px) {
-    .ov-glance { grid-template-columns: 1fr; }
-    .ov-chip-row { grid-template-columns: repeat(3, 1fr); }
-  }
-  .ov-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
-  .ov-card { border: 1px solid var(--pw-border, #e5ddcf); background: var(--pw-surface, #fff); padding: 0; overflow: hidden; }
-  .ov-card-h { background: var(--pw-bg-alt, #f6f2ea); color: var(--pw-accent, #c96342); border-bottom: 1px solid var(--pw-border, #e5ddcf); padding: 8px 14px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; }
-  .ov-card-hx { font-size: 9px; color: var(--pw-muted, #877f74); font-weight: 600; letter-spacing: 0.05em; }
+ /* data tables card */
+ .ov-tables { margin-bottom: 12px; padding: 14px; }
+ .ov-tab-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+ .ov-tab-tools { display: flex; align-items: center; gap: 8px; }
+ .ov-tab-filter { font-size: 11px; padding: 4px 9px; border: 1px solid var(--pw-border, #e5ddcf); background: var(--color-surface); color: var(--color-on-surface); width: 150px; }
+ .ov-tab-sort { font-size: 11px; padding: 4px 6px; border: 1px solid var(--pw-border, #e5ddcf); background: var(--color-surface); color: var(--color-on-surface); }
+ .ov-tab-grid { display: grid; grid-template-columns: 2fr 90px 64px 80px 80px 80px; align-items: center; gap: 8px; padding: 7px 8px; }
+ .ov-tab-grid-h { font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--pw-muted, #877f74); border-bottom: 1px solid var(--pw-border, #e5ddcf); }
+ .ov-tab-body { max-height: 360px; overflow-y: auto; }
+ .ov-tab-row { font-size: 12px; border-bottom: 1px solid var(--pw-border-soft, #eee6da); cursor: pointer; }
+ .ov-tab-row:hover { background: rgba(201, 99, 66, 0.05); }
+ .ov-tab-name { font-weight: 600; color: var(--color-on-surface); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ .ov-tab-r { text-align: right; font-variant-numeric: tabular-nums; }
+ .ov-tab-c { text-align: center; }
+ .ov-tab-dim { color: var(--pw-muted, #877f74); }
+ .ov-yes { color: #2d8a4e; font-weight: 700; }
+ .ov-no { color: var(--pw-muted, #b8ab98); }
+ .ov-hpill { display: inline-block; min-width: 26px; padding: 1px 6px; border-radius: 9px; font-size: 11px; font-weight: 700; }
+ .hp-good { background: rgba(45, 138, 78, 0.14); color: #2d8a4e; }
+ .hp-mid { background: rgba(204, 122, 0, 0.16); color: #b06c00; }
+ .hp-bad { background: rgba(201, 99, 66, 0.16); color: #c96342; }
+ .ov-tab-train { font-size: 10.5px; padding: 3px 10px; border: 1px solid var(--color-primary); background: transparent; color: var(--color-primary); cursor: pointer; font-weight: 700; }
+ .ov-tab-train:hover:not(:disabled) { background: var(--color-primary); color: #fff; }
+ .ov-tab-train:disabled { opacity: 0.5; cursor: default; }
+ .ov-link { background: none; border: none; color: var(--color-primary); cursor: pointer; font-weight: 700; font-size: 11px; text-decoration: underline; }
+ @media (max-width: 900px) {
+ .ov-glance { grid-template-columns: 1fr; }
+ .ov-chip-row { grid-template-columns: repeat(3, 1fr); }
+ }
+ .ov-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+ .ov-card { border: 1px solid var(--pw-border, #e5ddcf); background: var(--pw-surface, #fff); padding: 0; overflow: hidden; }
+ .ov-card-h { background: var(--pw-bg-alt, #f6f2ea); color: var(--pw-accent, #c96342); border-bottom: 1px solid var(--pw-border, #e5ddcf); padding: 8px 14px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; }
+ .ov-card-hx { font-size: 9px; color: var(--pw-muted, #877f74); font-weight: 600; letter-spacing: 0.05em; }
 
-  .ov-rows { padding: 10px 14px; display: flex; flex-direction: column; gap: 7px; }
-  .ov-r { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-on-surface); }
-  .ov-r-x { margin-left: auto; font-weight: 700; color: var(--color-on-surface); font-size: 12px; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
-  .warn { color: #a06000; font-weight: 900; }
-  .ov-mono { font-family: ui-monospace, monospace; font-size: 11.5px; }
-  .ov-q-rank { display: inline-flex; width: 16px; height: 16px; align-items: center; justify-content: center; background: var(--color-on-surface); color: var(--color-surface); font-size: 9px; font-weight: 900; flex-shrink: 0; }
+ .ov-rows { padding: 10px 14px; display: flex; flex-direction: column; gap: 7px; }
+ .ov-r { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-on-surface); }
+ .ov-r-x { margin-left: auto; font-weight: 700; color: var(--color-on-surface); font-size: 12px; }
+ .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+ .warn { color: #a06000; font-weight: 900; }
+ .ov-mono { font-family: ui-monospace, monospace; font-size: 11.5px; }
+ .ov-q-rank { display: inline-flex; width: 16px; height: 16px; align-items: center; justify-content: center; background: var(--color-on-surface); color: var(--color-surface); font-size: 9px; font-weight: 900; flex-shrink: 0; }
 
-  .ov-q-score { display: flex; align-items: center; gap: 10px; padding: 12px 14px 4px; }
-  .ov-bar { flex: 1; height: 10px; background: var(--color-surface); border: 1px solid var(--pw-border, #e5ddcf); overflow: hidden; }
-  .ov-bar-fill { height: 100%; }
-  .ov-q-num { font-size: 18px; font-weight: 900; }
+ .ov-q-score { display: flex; align-items: center; gap: 10px; padding: 12px 14px 4px; }
+ .ov-bar { flex: 1; height: 10px; background: var(--color-surface); border: 1px solid var(--pw-border, #e5ddcf); overflow: hidden; }
+ .ov-bar-fill { height: 100%; }
+ .ov-q-num { font-size: 18px; font-weight: 900; }
 
-  .ov-ins { padding: 6px 10px 10px; display: flex; flex-direction: column; }
-  .ov-ins-row { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-bottom: 1px solid var(--color-surface); font-size: 12px; }
-  .ov-ins-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-  .ov-ins-txt { flex: 1; color: var(--color-on-surface); }
-  .ov-ins-age { font-size: 10px; color: var(--color-on-surface-dim); }
-  .ov-x { background: none; border: none; cursor: pointer; color: var(--color-on-surface-dim); font-size: 16px; line-height: 1; padding: 0 4px; }
-  .ov-x:hover { color: #c0392b; }
+ .ov-ins { padding: 6px 10px 10px; display: flex; flex-direction: column; }
+ .ov-ins-row { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-bottom: 1px solid var(--color-surface); font-size: 12px; }
+ .ov-ins-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+ .ov-ins-txt { flex: 1; color: var(--color-on-surface); }
+ .ov-ins-age { font-size: 10px; color: var(--color-on-surface-dim); }
+ .ov-x { background: none; border: none; cursor: pointer; color: var(--color-on-surface-dim); font-size: 16px; line-height: 1; padding: 0 4px; }
+ .ov-x:hover { color: #c0392b; }
 
-  .ov-loglines { padding: 10px 14px; font-family: ui-monospace, monospace; font-size: 10.5px; max-height: 180px; overflow-y: auto; background: #1a1614; }
-  .ov-logline { color: #7c8; padding: 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .ov-logline span { color: #e8e3d6; }
+ .ov-loglines { padding: 10px 14px; font-family: ui-monospace, monospace; font-size: 10.5px; max-height: 180px; overflow-y: auto; background: #1a1614; }
+ .ov-logline { color: #7c8; padding: 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+ .ov-logline span { color: #e8e3d6; }
 
-  .ov-empty { padding: 24px 14px; text-align: center; color: var(--color-on-surface-dim); font-size: 11px; }
-  .ov-eval-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 4px 0 10px; background: var(--color-surface-variant, #eee); }
-  .ov-seg { height: 100%; transition: width .3s ease; }
-  .ov-seg.pass { background: var(--color-primary); }
-  .ov-seg.part { background: #a06000; }
-  .ov-seg.fail { background: #b3261e; }
+ .ov-empty { padding: 24px 14px; text-align: center; color: var(--color-on-surface-dim); font-size: 11px; }
+ .ov-eval-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 4px 0 10px; background: var(--color-surface-variant, #eee); }
+ .ov-seg { height: 100%; transition: width .3s ease; }
+ .ov-seg.pass { background: var(--color-primary); }
+ .ov-seg.part { background: #a06000; }
+ .ov-seg.fail { background: #b3261e; }
 
-  .ov-chem-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--color-on-surface); border-bottom: 1px solid var(--pw-border, #e5ddcf); }
-  .ov-chem-stat { background: var(--color-surface); padding: 12px 10px; text-align: center; }
-  .ov-chem-n { font-size: 20px; font-weight: 900; color: var(--color-on-surface); line-height: 1; }
-  .ov-chem-l { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-on-surface-dim); margin-top: 4px; }
-  .ov-chem-cov { padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; }
-  .ov-chem-row { display: flex; align-items: center; gap: 10px; font-size: 11.5px; }
-  .ov-chem-col { flex: 0 0 96px; text-transform: capitalize; color: var(--color-on-surface); }
-  .ov-chem-bar { flex: 1; height: 7px; background: var(--color-surface-dim, rgba(0,0,0,0.06)); border-radius: 4px; overflow: hidden; }
-  .ov-chem-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
-  .ov-chem-pct { flex: 0 0 40px; text-align: right; font-weight: 700; color: var(--color-on-surface-dim); font-size: 10.5px; }
-  .ov-chem-acc { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--pw-border, #e5ddcf); background: var(--color-surface-bright, var(--color-surface)); }
-  .ov-chem-acc-l { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-  .ov-chem-acc-t { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-on-surface-dim); font-weight: 700; }
-  .ov-chem-acc-n { font-size: 18px; font-weight: 900; }
-  .ov-chem-acc-s { font-size: 10.5px; color: var(--color-on-surface-dim); }
-  .ov-chem-run { background: var(--color-primary); color: #fff; border: none; font-size: 11px; font-weight: 700; padding: 6px 13px; cursor: pointer; }
-  .ov-chem-run:disabled { opacity: 0.5; cursor: default; }
-  .ov-chem-foot { padding: 0 14px 12px; font-size: 10px; color: var(--color-on-surface-dim); font-style: italic; }
+ .ov-chem-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--color-on-surface); border-bottom: 1px solid var(--pw-border, #e5ddcf); }
+ .ov-chem-stat { background: var(--color-surface); padding: 12px 10px; text-align: center; }
+ .ov-chem-n { font-size: 20px; font-weight: 900; color: var(--color-on-surface); line-height: 1; }
+ .ov-chem-l { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-on-surface-dim); margin-top: 4px; }
+ .ov-chem-cov { padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; }
+ .ov-chem-row { display: flex; align-items: center; gap: 10px; font-size: 11.5px; }
+ .ov-chem-col { flex: 0 0 96px; text-transform: capitalize; color: var(--color-on-surface); }
+ .ov-chem-bar { flex: 1; height: 7px; background: var(--color-surface-dim, rgba(0,0,0,0.06)); border-radius: 4px; overflow: hidden; }
+ .ov-chem-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
+ .ov-chem-pct { flex: 0 0 40px; text-align: right; font-weight: 700; color: var(--color-on-surface-dim); font-size: 10.5px; }
+ .ov-chem-acc { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--pw-border, #e5ddcf); background: var(--color-surface-bright, var(--color-surface)); }
+ .ov-chem-acc-l { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+ .ov-chem-acc-t { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-on-surface-dim); font-weight: 700; }
+ .ov-chem-acc-n { font-size: 18px; font-weight: 900; }
+ .ov-chem-acc-s { font-size: 10.5px; color: var(--color-on-surface-dim); }
+ .ov-chem-run { background: var(--color-primary); color: #fff; border: none; font-size: 11px; font-weight: 700; padding: 6px 13px; cursor: pointer; }
+ .ov-chem-run:disabled { opacity: 0.5; cursor: default; }
+ .ov-chem-foot { padding: 0 14px 12px; font-size: 10px; color: var(--color-on-surface-dim); font-style: italic; }
 
-  .ov-kg-card { width: 100%; margin-bottom: 12px; background: #16131a; border: 1px solid #3a3346; border-radius: 4px; overflow: hidden; }
-  .ov-kg-head { padding: 14px 18px 0; }
-  .ov-kg-t { font-size: 14px; font-weight: 900; letter-spacing: 0.05em; color: #fff; }
-  .ov-kg-s { font-size: 11px; color: #b6aecb; margin-top: 4px; }
+ .ov-kg-card { width: 100%; margin-bottom: 12px; background: #16131a; border: 1px solid #3a3346; border-radius: 4px; overflow: hidden; }
+ .ov-kg-head { padding: 14px 18px 0; }
+ .ov-kg-t { font-size: 14px; font-weight: 900; letter-spacing: 0.05em; color: #fff; }
+ .ov-kg-s { font-size: 11px; color: #b6aecb; margin-top: 4px; }
 
-  .ov-wiki-card { width: 100%; display: flex; align-items: center; gap: 16px; margin-bottom: 12px; padding: 16px 18px; background: var(--color-surface-bright, var(--color-surface)); border: 1px solid var(--pw-border, #e5ddcf); cursor: pointer; text-align: left; }
-  .ov-wiki-card:hover { border-color: var(--color-primary); }
-  .ov-wiki-t { font-size: 13px; font-weight: 900; letter-spacing: 0.04em; color: var(--color-on-surface); }
-  .ov-wiki-s { font-size: 11px; color: var(--color-on-surface-dim); margin-top: 3px; }
-  .ov-wiki-cta { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--color-primary); white-space: nowrap; }
+ .ov-wiki-card { width: 100%; display: flex; align-items: center; gap: 16px; margin-bottom: 12px; padding: 16px 18px; background: var(--color-surface-bright, var(--color-surface)); border: 1px solid var(--pw-border, #e5ddcf); cursor: pointer; text-align: left; }
+ .ov-wiki-card:hover { border-color: var(--color-primary); }
+ .ov-wiki-t { font-size: 13px; font-weight: 900; letter-spacing: 0.04em; color: var(--color-on-surface); }
+ .ov-wiki-s { font-size: 11px; color: var(--color-on-surface-dim); margin-top: 3px; }
+ .ov-wiki-cta { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--color-primary); white-space: nowrap; }
 
-  @media (max-width: 1000px) {
-    .ov-kpis { grid-template-columns: repeat(3, 1fr); }
-    .ov-grid2 { grid-template-columns: 1fr; }
-  }
-  @media (max-width: 560px) {
-    .ov-kpis { grid-template-columns: repeat(2, 1fr); }
-    .ov-root { padding: 16px 14px 60px; }
-  }
+ @media (max-width: 1000px) {
+ .ov-kpis { grid-template-columns: repeat(3, 1fr); }
+ .ov-grid2 { grid-template-columns: 1fr; }
+ }
+ @media (max-width: 560px) {
+ .ov-kpis { grid-template-columns: repeat(2, 1fr); }
+ .ov-root { padding: 16px 14px 60px; }
+ }
 </style>

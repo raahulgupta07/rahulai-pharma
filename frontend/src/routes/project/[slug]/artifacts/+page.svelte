@@ -1,151 +1,152 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { page } from '$app/stores';
-  import { goto } from '$app/navigation';
-  import { base } from '$app/paths';
-  import { confirmDelete } from '$lib/confirmDelete';
+  import Icon from '$lib/Icon.svelte';
+ import { onMount } from 'svelte';
+ import { page } from '$app/stores';
+ import { goto } from '$app/navigation';
+ import { base } from '$app/paths';
+ import { confirmDelete } from '$lib/confirmDelete';
 
-  const slug = $derived($page.params.slug);
+ const slug = $derived($page.params.slug);
 
-  let token = $state('');
-  let loading = $state(false);
-  let err = $state('');
+ let token = $state('');
+ let loading = $state(false);
+ let err = $state('');
 
-  // Filters
-  let runIdFilter = $state('');
-  let kindFilter = $state<'' | 'csv' | 'png' | 'json' | 'pdf' | 'md' | 'pptx' | 'xlsx' | 'docx' | 'svg' | 'html' | 'other'>('');
-  let limit = $state(50);
-  let offset = $state(0);
-  let total = $state(0);
+ // Filters
+ let runIdFilter = $state('');
+ let kindFilter = $state<'' | 'csv' | 'png' | 'json' | 'pdf' | 'md' | 'pptx' | 'xlsx' | 'docx' | 'svg' | 'html' | 'other'>('');
+ let limit = $state(50);
+ let offset = $state(0);
+ let total = $state(0);
 
-  let items = $state<any[]>([]);
+ let items = $state<any[]>([]);
 
-  function _h(): Record<string, string> {
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  }
+ function _h(): Record<string, string> {
+ return token ? { Authorization: `Bearer ${token}` } : {};
+ }
 
-  async function load() {
-    if (!slug) return;
-    loading = true; err = '';
-    try {
-      const params = new URLSearchParams({
-        project: slug,
-        limit: String(limit),
-        offset: String(offset),
-      });
-      if (runIdFilter.trim()) params.set('run_id', runIdFilter.trim());
-      if (kindFilter) params.set('kind', kindFilter);
-      const r = await fetch(`/api/artifacts/?${params}`, { headers: _h() });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.detail || d.error || 'load failed');
-      items = d.artifacts || [];
-      total = d.total ?? items.length;
-    } catch (e: any) {
-      err = e.message;
-      items = [];
-    } finally {
-      loading = false;
-    }
-  }
+ async function load() {
+ if (!slug) return;
+ loading = true; err = '';
+ try {
+ const params = new URLSearchParams({
+ project: slug,
+ limit: String(limit),
+ offset: String(offset),
+ });
+ if (runIdFilter.trim()) params.set('run_id', runIdFilter.trim());
+ if (kindFilter) params.set('kind', kindFilter);
+ const r = await fetch(`/api/artifacts/?${params}`, { headers: _h() });
+ const d = await r.json();
+ if (!r.ok) throw new Error(d.detail || d.error || 'load failed');
+ items = d.artifacts || [];
+ total = d.total ?? items.length;
+ } catch (e: any) {
+ err = e.message;
+ items = [];
+ } finally {
+ loading = false;
+ }
+ }
 
-  function applyFilters() {
-    offset = 0;
-    load();
-  }
+ function applyFilters() {
+ offset = 0;
+ load();
+ }
 
-  function nextPage() {
-    if (offset + limit < total) { offset += limit; load(); }
-  }
-  function prevPage() {
-    if (offset >= limit) { offset -= limit; load(); }
-  }
+ function nextPage() {
+ if (offset + limit < total) { offset += limit; load(); }
+ }
+ function prevPage() {
+ if (offset >= limit) { offset -= limit; load(); }
+ }
 
-  function download(a: any) {
-    const url = `/api/artifacts/${a.id}/download`;
-    const tk = token ? `Bearer ${token}` : '';
-    fetch(url, { headers: tk ? { Authorization: tk } : {} })
-      .then(r => r.blob().then(b => ({ b, name: a.filename })))
-      .then(({ b, name }) => {
-        const u = URL.createObjectURL(b);
-        const link = document.createElement('a');
-        link.href = u;
-        link.download = name;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(u);
-      })
-      .catch(e => { err = `download failed: ${e.message}`; });
-  }
+ function download(a: any) {
+ const url = `/api/artifacts/${a.id}/download`;
+ const tk = token ? `Bearer ${token}` : '';
+ fetch(url, { headers: tk ? { Authorization: tk } : {} })
+ .then(r => r.blob().then(b => ({ b, name: a.filename })))
+ .then(({ b, name }) => {
+ const u = URL.createObjectURL(b);
+ const link = document.createElement('a');
+ link.href = u;
+ link.download = name;
+ document.body.appendChild(link);
+ link.click();
+ link.remove();
+ URL.revokeObjectURL(u);
+ })
+ .catch(e => { err = `download failed: ${e.message}`; });
+ }
 
-  async function remove(a: any) {
-    if (!(await confirmDelete({ itemName: a.filename, itemType: 'artifact' }))) return;
-    try {
-      const r = await fetch(`/api/artifacts/${a.id}`, { method: 'DELETE', headers: _h() });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.detail || 'delete failed');
-      load();
-    } catch (e: any) {
-      err = e.message;
-    }
-  }
+ async function remove(a: any) {
+ if (!(await confirmDelete({ itemName: a.filename, itemType: 'artifact' }))) return;
+ try {
+ const r = await fetch(`/api/artifacts/${a.id}`, { method: 'DELETE', headers: _h() });
+ const d = await r.json();
+ if (!r.ok) throw new Error(d.detail || 'delete failed');
+ load();
+ } catch (e: any) {
+ err = e.message;
+ }
+ }
 
-  function fmtBytes(n: number | null | undefined): string {
-    if (!n && n !== 0) return '—';
-    if (n < 1024) return `${n} B`;
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-    return `${(n / 1024 / 1024).toFixed(2)} MB`;
-  }
+ function fmtBytes(n: number | null | undefined): string {
+ if (!n && n !== 0) return '—';
+ if (n < 1024) return `${n} B`;
+ if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+ return `${(n / 1024 / 1024).toFixed(2)} MB`;
+ }
 
-  function fmtDate(s: string | null | undefined): string {
-    if (!s) return '—';
-    try { return new Date(s).toLocaleString(); } catch { return String(s); }
-  }
+ function fmtDate(s: string | null | undefined): string {
+ if (!s) return '—';
+ try { return new Date(s).toLocaleString(); } catch { return String(s); }
+ }
 
-  // Lucide-style icon per kind (inline SVG, stroke-width 1.8)
-  function kindIcon(kind: string): string {
-    const k = (kind || '').toLowerCase();
-    if (['png', 'jpg', 'jpeg', 'svg'].includes(k)) {
-      return `<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>`;
-    }
-    if (k === 'csv' || k === 'xlsx') {
-      return `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/>`;
-    }
-    if (k === 'json') {
-      return `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M10 13a2 2 0 0 1-2 2"/><path d="M14 13a2 2 0 0 0 2 2"/>`;
-    }
-    if (k === 'pdf') {
-      return `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><text x="7" y="18" font-size="6" font-weight="700" stroke="none" fill="currentColor">PDF</text>`;
-    }
-    if (k === 'pptx') {
-      return `<rect x="3" y="4" width="18" height="13" rx="1"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>`;
-    }
-    if (k === 'docx' || k === 'md' || k === 'txt' || k === 'html') {
-      return `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>`;
-    }
-    return `<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>`;
-  }
+ // Lucide-style icon per kind (inline SVG, stroke-width 1.8)
+ function kindIcon(kind: string): string {
+ const k = (kind || '').toLowerCase();
+ if (['png', 'jpg', 'jpeg', 'svg'].includes(k)) {
+ return `<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>`;
+ }
+ if (k === 'csv' || k === 'xlsx') {
+ return `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/>`;
+ }
+ if (k === 'json') {
+ return `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M10 13a2 2 0 0 1-2 2"/><path d="M14 13a2 2 0 0 0 2 2"/>`;
+ }
+ if (k === 'pdf') {
+ return `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><text x="7" y="18" font-size="6" font-weight="700" stroke="none" fill="currentColor">PDF</text>`;
+ }
+ if (k === 'pptx') {
+ return `<rect x="3" y="4" width="18" height="13" rx="1"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>`;
+ }
+ if (k === 'docx' || k === 'md' || k === 'txt' || k === 'html') {
+ return `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>`;
+ }
+ return `<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>`;
+ }
 
-  const kindOptions = [
-    { v: '', label: 'All kinds' },
-    { v: 'csv', label: 'CSV' },
-    { v: 'png', label: 'Image' },
-    { v: 'json', label: 'JSON' },
-    { v: 'pdf', label: 'PDF' },
-    { v: 'md', label: 'Markdown' },
-    { v: 'pptx', label: 'PPTX' },
-    { v: 'xlsx', label: 'XLSX' },
-    { v: 'docx', label: 'DOCX' },
-    { v: 'svg', label: 'SVG' },
-    { v: 'html', label: 'HTML' },
-    { v: 'other', label: 'Other' },
-  ];
+ const kindOptions = [
+ { v: '', label: 'All kinds' },
+ { v: 'csv', label: 'CSV' },
+ { v: 'png', label: 'Image' },
+ { v: 'json', label: 'JSON' },
+ { v: 'pdf', label: 'PDF' },
+ { v: 'md', label: 'Markdown' },
+ { v: 'pptx', label: 'PPTX' },
+ { v: 'xlsx', label: 'XLSX' },
+ { v: 'docx', label: 'DOCX' },
+ { v: 'svg', label: 'SVG' },
+ { v: 'html', label: 'HTML' },
+ { v: 'other', label: 'Other' },
+ ];
 
-  onMount(async () => {
-    if (typeof localStorage !== 'undefined') token = localStorage.getItem('dash_token') || '';
-    if (!token) { goto(`${base}/login`); return; }
-    await load();
-  });
+ onMount(async () => {
+ if (typeof localStorage !== 'undefined') token = localStorage.getItem('dash_token') || '';
+ if (!token) { goto(`${base}/login`); return; }
+ await load();
+ });
 </script>
 
 <svelte:head><title>Artifacts · {slug}</title></svelte:head>
@@ -234,228 +235,228 @@
     </div>
 
     <footer class="art-pager">
-      <button class="art-btn art-btn-ghost" onclick={prevPage} disabled={offset === 0 || loading}>← Prev</button>
+      <button class="art-btn art-btn-ghost" onclick={prevPage} disabled={offset === 0 || loading}><Icon name="arrow-left" size={16} /> Prev</button>
       <span class="art-pager-info">
         {offset + 1}–{Math.min(offset + limit, total)} of {total}
       </span>
-      <button class="art-btn art-btn-ghost" onclick={nextPage} disabled={offset + limit >= total || loading}>Next →</button>
+      <button class="art-btn art-btn-ghost" onclick={nextPage} disabled={offset + limit >= total || loading}>Next <Icon name="arrow-right" size={16} /></button>
     </footer>
   {/if}
 </div>
 
 <style>
-  .art-page {
-    min-height: 100vh;
-    background: var(--pw-bg-alt, #f1ede4);
-    color: var(--pw-ink, #2c2a26);
-    padding: 28px 32px 80px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    max-width: 1400px;
-    margin: 0 auto;
-  }
+ .art-page {
+ min-height: 100vh;
+ background: var(--pw-bg-alt, #f1ede4);
+ color: var(--pw-ink, #2c2a26);
+ padding: 28px 32px 80px;
+ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+ max-width: 1400px;
+ margin: 0 auto;
+ }
 
-  .art-head {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    margin-bottom: 22px;
-  }
-  .art-head h1 {
-    font-family: Georgia, 'Times New Roman', serif;
-    font-size: 18px;
-    font-weight: 600;
-    margin: 0;
-    color: var(--pw-ink, #2c2a26);
-  }
-  .art-sub {
-    color: rgba(44, 42, 38, 0.55);
-    font-size: 11px;
-    margin-left: 4px;
-  }
-  .art-actions { margin-left: auto; }
-  .art-back {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px; height: 32px;
-    border-radius: var(--pw-radius-sm);
-    border: 1px solid rgba(44, 42, 38, 0.15);
-    background: #fff;
-    color: var(--pw-ink, #2c2a26);
-    text-decoration: none;
-  }
-  .art-back:hover { background: #fff; border-color: var(--pw-accent, #c96342); color: var(--pw-accent, #c96342); }
+ .art-head {
+ display: flex;
+ align-items: center;
+ gap: 14px;
+ margin-bottom: 22px;
+ }
+ .art-head h1 {
+ font-family: Georgia, 'Times New Roman', serif;
+ font-size: 18px;
+ font-weight: 600;
+ margin: 0;
+ color: var(--pw-ink, #2c2a26);
+ }
+ .art-sub {
+ color: rgba(44, 42, 38, 0.55);
+ font-size: 11px;
+ margin-left: 4px;
+ }
+ .art-actions { margin-left: auto; }
+ .art-back {
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ width: 32px; height: 32px;
+ border-radius: var(--pw-radius-sm);
+ border: 1px solid rgba(44, 42, 38, 0.15);
+ background: #fff;
+ color: var(--pw-ink, #2c2a26);
+ text-decoration: none;
+ }
+ .art-back:hover { background: #fff; border-color: var(--pw-accent, #c96342); color: var(--pw-accent, #c96342); }
 
-  .art-filters {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    margin-bottom: 18px;
-    flex-wrap: wrap;
-  }
-  .art-filters input, .art-filters select {
-    padding: 8px 12px;
-    border: 1px solid rgba(44, 42, 38, 0.15);
-    background: #fff;
-    color: var(--pw-ink, #2c2a26);
-    border-radius: var(--pw-radius-sm);
-    font-size: 13px;
-    font-family: inherit;
-  }
-  .art-filters input { min-width: 240px; }
-  .art-filters input:focus, .art-filters select:focus {
-    outline: none;
-    border-color: var(--pw-accent, #c96342);
-  }
+ .art-filters {
+ display: flex;
+ gap: 10px;
+ align-items: center;
+ margin-bottom: 18px;
+ flex-wrap: wrap;
+ }
+ .art-filters input, .art-filters select {
+ padding: 8px 12px;
+ border: 1px solid rgba(44, 42, 38, 0.15);
+ background: #fff;
+ color: var(--pw-ink, #2c2a26);
+ border-radius: var(--pw-radius-sm);
+ font-size: 13px;
+ font-family: inherit;
+ }
+ .art-filters input { min-width: 240px; }
+ .art-filters input:focus, .art-filters select:focus {
+ outline: none;
+ border-color: var(--pw-accent, #c96342);
+ }
 
-  .art-btn {
-    padding: 8px 14px;
-    border-radius: var(--pw-radius-sm);
-    border: 1px solid rgba(44, 42, 38, 0.15);
-    background: #fff;
-    color: var(--pw-ink, #2c2a26);
-    cursor: pointer;
-    font-size: 11px;
-    font-family: inherit;
-    font-weight: 500;
-    transition: all 0.15s;
-    display: inline-flex; align-items: center; gap: 6px;
-  }
-  .art-btn:hover:not(:disabled) {
-    border-color: var(--pw-accent, #c96342);
-    color: var(--pw-accent, #c96342);
-  }
-  .art-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .art-btn-primary {
-    background: var(--pw-accent, #c96342);
-    color: #fff;
-    border-color: var(--pw-accent, #c96342);
-  }
-  .art-btn-primary:hover:not(:disabled) {
-    background: #b85638;
-    color: #fff;
-    border-color: #b85638;
-  }
-  .art-btn-ghost {
-    background: transparent;
-  }
-  .art-btn-sm { padding: 5px 10px; font-size: 11px; }
+ .art-btn {
+ padding: 8px 14px;
+ border-radius: var(--pw-radius-sm);
+ border: 1px solid rgba(44, 42, 38, 0.15);
+ background: #fff;
+ color: var(--pw-ink, #2c2a26);
+ cursor: pointer;
+ font-size: 11px;
+ font-family: inherit;
+ font-weight: 500;
+ transition: all 0.15s;
+ display: inline-flex; align-items: center; gap: 6px;
+ }
+ .art-btn:hover:not(:disabled) {
+ border-color: var(--pw-accent, #c96342);
+ color: var(--pw-accent, #c96342);
+ }
+ .art-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+ .art-btn-primary {
+ background: var(--pw-accent, #c96342);
+ color: #fff;
+ border-color: var(--pw-accent, #c96342);
+ }
+ .art-btn-primary:hover:not(:disabled) {
+ background: #b85638;
+ color: #fff;
+ border-color: #b85638;
+ }
+ .art-btn-ghost {
+ background: transparent;
+ }
+ .art-btn-sm { padding: 5px 10px; font-size: 11px; }
 
-  .art-err {
-    background: #fff;
-    border: 1px solid #d9534f;
-    color: #d9534f;
-    padding: 10px 14px;
-    border-radius: var(--pw-radius-sm);
-    font-size: 11px;
-    margin-bottom: 14px;
-  }
+ .art-err {
+ background: #fff;
+ border: 1px solid #d9534f;
+ color: #d9534f;
+ padding: 10px 14px;
+ border-radius: var(--pw-radius-sm);
+ font-size: 11px;
+ margin-bottom: 14px;
+ }
 
-  .art-empty {
-    background: #fff;
-    border: 1px dashed rgba(44, 42, 38, 0.18);
-    padding: 60px 20px;
-    text-align: center;
-    border-radius: var(--pw-radius-sm);
-    color: rgba(44, 42, 38, 0.65);
-  }
-  .art-empty p { margin: 8px 0; }
+ .art-empty {
+ background: #fff;
+ border: 1px dashed rgba(44, 42, 38, 0.18);
+ padding: 60px 20px;
+ text-align: center;
+ border-radius: var(--pw-radius-sm);
+ color: rgba(44, 42, 38, 0.65);
+ }
+ .art-empty p { margin: 8px 0; }
 
-  .art-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 16px;
-  }
+ .art-grid {
+ display: grid;
+ grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+ gap: 16px;
+ }
 
-  .art-tile {
-    background: #fff;
-    border: 1px solid rgba(44, 42, 38, 0.1);
-    border-radius: var(--pw-radius-sm);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    transition: all 0.15s;
-  }
-  .art-tile:hover {
-    border-color: var(--pw-accent, #c96342);
-    transform: translateY(-2px);
-    box-shadow: 0 6px 18px rgba(44, 42, 38, 0.08);
-  }
+ .art-tile {
+ background: #fff;
+ border: 1px solid rgba(44, 42, 38, 0.1);
+ border-radius: var(--pw-radius-sm);
+ overflow: hidden;
+ display: flex;
+ flex-direction: column;
+ transition: all 0.15s;
+ }
+ .art-tile:hover {
+ border-color: var(--pw-accent, #c96342);
+ transform: translateY(-2px);
+ box-shadow: 0 6px 18px rgba(44, 42, 38, 0.08);
+ }
 
-  .art-thumb {
-    aspect-ratio: 4 / 3;
-    background: var(--pw-bg-alt, #f1ede4);
-    display: flex; align-items: center; justify-content: center;
-    overflow: hidden;
-    border-bottom: 1px solid rgba(44, 42, 38, 0.06);
-  }
-  .art-thumb img {
-    width: 100%; height: 100%; object-fit: cover;
-  }
-  .art-thumb-icon {
-    display: flex; flex-direction: column; align-items: center; gap: 8px;
-    color: rgba(44, 42, 38, 0.4);
-  }
-  .art-kind {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    color: var(--pw-accent, #c96342);
-    background: rgba(201, 99, 66, 0.08);
-    padding: 2px 8px;
-    border-radius: var(--pw-radius-sm);
-  }
+ .art-thumb {
+ aspect-ratio: 4 / 3;
+ background: var(--pw-bg-alt, #f1ede4);
+ display: flex; align-items: center; justify-content: center;
+ overflow: hidden;
+ border-bottom: 1px solid rgba(44, 42, 38, 0.06);
+ }
+ .art-thumb img {
+ width: 100%; height: 100%; object-fit: cover;
+ }
+ .art-thumb-icon {
+ display: flex; flex-direction: column; align-items: center; gap: 8px;
+ color: rgba(44, 42, 38, 0.4);
+ }
+ .art-kind {
+ font-size: 10px;
+ font-weight: 700;
+ letter-spacing: 0.08em;
+ color: var(--pw-accent, #c96342);
+ background: rgba(201, 99, 66, 0.08);
+ padding: 2px 8px;
+ border-radius: var(--pw-radius-sm);
+ }
 
-  .art-meta {
-    padding: 12px 14px 8px;
-    flex: 1;
-  }
-  .art-name {
-    font-size: 11px;
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-bottom: 6px;
-  }
-  .art-meta-row {
-    display: flex; gap: 6px; flex-wrap: wrap;
-    margin-bottom: 4px;
-  }
-  .art-chip {
-    font-size: 10px;
-    padding: 2px 7px;
-    background: var(--pw-bg-alt, #f1ede4);
-    border-radius: var(--pw-radius-sm);
-    color: rgba(44, 42, 38, 0.7);
-  }
-  .art-chip-run {
-    background: rgba(201, 99, 66, 0.08);
-    color: var(--pw-accent, #c96342);
-    font-weight: 600;
-    max-width: 140px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .art-date {
-    font-size: 11px;
-    color: rgba(44, 42, 38, 0.5);
-  }
+ .art-meta {
+ padding: 12px 14px 8px;
+ flex: 1;
+ }
+ .art-name {
+ font-size: 11px;
+ font-weight: 600;
+ white-space: nowrap;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ margin-bottom: 6px;
+ }
+ .art-meta-row {
+ display: flex; gap: 6px; flex-wrap: wrap;
+ margin-bottom: 4px;
+ }
+ .art-chip {
+ font-size: 10px;
+ padding: 2px 7px;
+ background: var(--pw-bg-alt, #f1ede4);
+ border-radius: var(--pw-radius-sm);
+ color: rgba(44, 42, 38, 0.7);
+ }
+ .art-chip-run {
+ background: rgba(201, 99, 66, 0.08);
+ color: var(--pw-accent, #c96342);
+ font-weight: 600;
+ max-width: 140px;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ white-space: nowrap;
+ }
+ .art-date {
+ font-size: 11px;
+ color: rgba(44, 42, 38, 0.5);
+ }
 
-  .art-tile-actions {
-    padding: 8px 14px 12px;
-    display: flex; gap: 6px;
-    border-top: 1px solid rgba(44, 42, 38, 0.05);
-  }
-  .art-tile-actions .art-btn:first-child { flex: 1; justify-content: center; }
+ .art-tile-actions {
+ padding: 8px 14px 12px;
+ display: flex; gap: 6px;
+ border-top: 1px solid rgba(44, 42, 38, 0.05);
+ }
+ .art-tile-actions .art-btn:first-child { flex: 1; justify-content: center; }
 
-  .art-pager {
-    display: flex; align-items: center; justify-content: center;
-    gap: 14px; margin-top: 24px;
-  }
-  .art-pager-info {
-    font-size: 11px;
-    color: rgba(44, 42, 38, 0.6);
-  }
+ .art-pager {
+ display: flex; align-items: center; justify-content: center;
+ gap: 14px; margin-top: 24px;
+ }
+ .art-pager-info {
+ font-size: 11px;
+ color: rgba(44, 42, 38, 0.6);
+ }
 </style>

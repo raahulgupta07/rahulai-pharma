@@ -34,7 +34,7 @@ _MODE_EXPLANATIONS: dict[str, dict[str, str]] = {
             "even when that would be helpful (e.g. 'where else is this drug sold?')."
         ),
         "example_in_practice": (
-            "Store A asks 'show me my stock' → sees only Store A rows. "
+            "Store A asks 'show me my stock' > sees only Store A rows. "
             "Store B's rows are completely hidden."
         ),
     },
@@ -83,7 +83,7 @@ _MODE_EXPLANATIONS: dict[str, dict[str, str]] = {
         ),
         "gotcha": (
             "Front-end code that always expects this column may break. Test the "
-            "widget after switching a column from 'shared' → 'hidden'."
+            "widget after switching a column from 'shared' > 'hidden'."
         ),
         "example_in_practice": (
             "Cost price column is hidden from store staff; only HQ sees it."
@@ -108,7 +108,7 @@ _MODE_EXPLANATIONS: dict[str, dict[str, str]] = {
             "a product is available."
         ),
         "example_in_practice": (
-            "Store A asks 'where is Paracetamol?' → sees own stock (24 units) "
+            "Store A asks 'where is Paracetamol?' > sees own stock (24 units) "
             "AND a list of other stores carrying it, with quantities shown "
             "as NULL."
         ),
@@ -192,7 +192,7 @@ def explain_apply_mode(mode: str) -> dict[str, str]:
 def apply_modes_legend() -> dict[str, dict[str, str]]:
     """Return both apply modes as a dict for frontend tooltip rendering."""
     return {
-        "merge":   explain_apply_mode("merge"),
+        "merge": explain_apply_mode("merge"),
         "replace": explain_apply_mode("replace"),
     }
 
@@ -202,21 +202,21 @@ def apply_modes_legend() -> dict[str, dict[str, str]]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _CLAIM_KEY_HINTS: dict[str, str] = {
-    "site_code":   "which store",
-    "store_code":  "which store",
-    "store_id":    "which store",
-    "shop_code":   "which shop",
+    "site_code": "which store",
+    "store_code": "which store",
+    "store_id": "which store",
+    "shop_code": "which shop",
     "branch_code": "which branch",
-    "branch_id":   "which branch",
-    "outlet_id":   "which outlet",
-    "tenant_id":   "which tenant",
-    "company_id":  "which company",
-    "region":      "which region",
+    "branch_id": "which branch",
+    "outlet_id": "which outlet",
+    "tenant_id": "which tenant",
+    "company_id": "which company",
+    "region": "which region",
     "region_code": "which region",
-    "city_code":   "which city",
-    "user_id":     "which user",
+    "city_code": "which city",
+    "user_id": "which user",
     "customer_id": "which customer",
-    "role":        "what role the caller has (e.g. staff, manager, hq)",
+    "role": "what role the caller has (e.g. staff, manager, hq)",
 }
 
 
@@ -225,7 +225,7 @@ def explain_claim(claim: dict[str, Any]) -> str:
 
     Example:
         {key:'site_code', type:'string', required:True}
-        → "Identifies which store the user belongs to. Each request must
+        > "Identifies which store the user belongs to. Each request must
            include this value, or the request is rejected."
     """
     claim = claim or {}
@@ -334,7 +334,7 @@ def explain_policy(policy: dict[str, Any]) -> dict[str, str]:
         )
         if kind == "qty":
             out["example"] = (
-                f"Store A asks 'where is Paracetamol?' → sees own stock (e.g. 24 units) "
+                f"Store A asks 'where is Paracetamol?' > sees own stock (e.g. 24 units) "
                 "AND a list of other stores carrying it (qty shown as NULL)."
             )
         elif kind == "money":
@@ -362,7 +362,7 @@ def explain_policy(policy: dict[str, Any]) -> dict[str, str]:
         out["who_sees"] = f"{scope.capitalize()} sees only their own rows."
         out["who_doesnt"] = "Everyone else sees nothing from those rows — they appear to not exist."
         out["example"] = (
-            f"Store A queries `{table}` → only Store A rows return. "
+            f"Store A queries `{table}` > only Store A rows return. "
             "Store B rows are invisible, as if they were never inserted."
         )
         out["risk_if_wrong"] = (
@@ -491,7 +491,7 @@ def suggest_table_rename(
         best_score = 0.0
         for cand in present_all:
             if cand.lower() == req.lower():
-                continue  # already-matched would not be in `missing`
+                continue # already-matched would not be in `missing`
             score = _jaccard(req, cand)
             # Boost: candidate contains required name as a substring (e.g. "balance_stock_07052026" contains "balance_stock")
             if req.lower() in cand.lower():
@@ -501,8 +501,8 @@ def suggest_table_rename(
                 best_name = cand
         if best_name and best_score >= min_confidence:
             suggestions.append({
-                "required":   req,
-                "suggested":  best_name,
+                "required": req,
+                "suggested": best_name,
                 "confidence": round(best_score, 2),
             })
     return suggestions
@@ -531,11 +531,11 @@ def explain_required_tables(
 
     if n_missing == 0:
         return {
-            "status":            "ok",
-            "message":           "All required tables are present.",
+            "status": "ok",
+            "message": "All required tables are present.",
             "impact_if_missing": "",
-            "what_to_do":        "You can apply the blueprint as-is.",
-            "suggestions":       [],
+            "what_to_do": "You can apply the blueprint as-is.",
+            "suggestions": [],
         }
 
     if n_present == 0:
@@ -570,11 +570,11 @@ def explain_required_tables(
         )
 
     return {
-        "status":            status,
-        "message":           msg,
+        "status": status,
+        "message": msg,
         "impact_if_missing": impact,
-        "what_to_do":        what_to_do,
-        "suggestions":       suggestions,
+        "what_to_do": what_to_do,
+        "suggestions": suggestions,
     }
 
 
@@ -701,11 +701,11 @@ def explain_blueprint_summary(bp: dict[str, Any]) -> dict[str, Any]:
 
     tmpl = _INDUSTRY_TEMPLATES.get(industry, _GENERIC_TEMPLATE)
     out = {
-        "what_it_does":              tmpl["what_it_does"],
-        "who_uses_it":               tmpl["who_uses_it"],
-        "before_after":              tmpl["before_after"],
+        "what_it_does": tmpl["what_it_does"],
+        "who_uses_it": tmpl["who_uses_it"],
+        "before_after": tmpl["before_after"],
         "common_questions_answered": list(tmpl["common_questions_answered"]),
-        "tagline":                   _tagline(industry, name),
+        "tagline": _tagline(industry, name),
     }
     return out
 
@@ -760,14 +760,14 @@ def explain_skipped(skipped: list[dict]) -> list[dict[str, Any]]:
         else:
             impact = "This policy is skipped; the column is not protected."
         out.append({
-            "policy":      p,
-            "reason":      reason,
+            "policy": p,
+            "reason": reason,
             "explanation": (
                 f"Skipped because: {reason}. "
                 f"For column `{p.get('table')}.{p.get('column')}` in mode "
                 f"'{p.get('mode')}'."
             ),
-            "impact":      impact,
+            "impact": impact,
         })
     return out
 
@@ -835,20 +835,20 @@ def build_example_walkthrough(bp: dict[str, Any]) -> list[dict[str, str]]:
 
     return [
         {
-            "scene":  "1. CUSTOMER ASKS",
-            "actor":  "End user (authenticated with their scope claim)",
+            "scene": "1. CUSTOMER ASKS",
+            "actor": "End user (authenticated with their scope claim)",
             "action": q,
             "result": "Question lands on the agent with the caller's claim attached.",
         },
         {
-            "scene":  "2. AGENT RUNS SQL",
-            "actor":  "Agent (with this blueprint applied)",
+            "scene": "2. AGENT RUNS SQL",
+            "actor": "Agent (with this blueprint applied)",
             "action": f"Agent issues SQL across all rows; the policy rewriter injects `{scope_claim}` filters and masks protected columns.",
             "result": "Query returns full network rows, but values from other scopes are NULL or hidden.",
         },
         {
-            "scene":  "3. USER SEES RESULT",
-            "actor":  "End user",
+            "scene": "3. USER SEES RESULT",
+            "actor": "End user",
             "action": "Result is rendered in the widget.",
             "result": result,
         },
@@ -862,19 +862,19 @@ def build_blueprint_display(bp: dict[str, Any]) -> dict[str, Any]:
     """
     bp = bp or {}
     return {
-        "summary":            explain_blueprint_summary(bp),
-        "mode_legend":        mode_legend(),
-        "apply_modes":        apply_modes_legend(),
-        "claims_explained":   explain_claims(bp.get("claims") or []),
+        "summary": explain_blueprint_summary(bp),
+        "mode_legend": mode_legend(),
+        "apply_modes": apply_modes_legend(),
+        "claims_explained": explain_claims(bp.get("claims") or []),
         "policies_explained": explain_policies(bp.get("policies") or []),
         "example_walkthrough": build_example_walkthrough(bp),
         # Extra context fields surfaced from SYSTEM_BLUEPRINTS metadata
         # (injected by the API layer; passed through if present on bp)
-        "tagline":            bp.get("tagline"),
-        "who_is_this_for":    list(bp.get("who_is_this_for") or []),
-        "common_pitfalls":    list(bp.get("common_pitfalls") or []),
-        "next_steps":         list(bp.get("next_steps") or []),
-        "faq":                list(bp.get("faq") or []),
+        "tagline": bp.get("tagline"),
+        "who_is_this_for": list(bp.get("who_is_this_for") or []),
+        "common_pitfalls": list(bp.get("common_pitfalls") or []),
+        "next_steps": list(bp.get("next_steps") or []),
+        "faq": list(bp.get("faq") or []),
     }
 
 

@@ -20,8 +20,8 @@ from dash.utils.column_metadata import is_lineage_column
 
 log = logging.getLogger(__name__)
 
-_CACHE: dict[tuple, tuple[float, dict]] = {}  # (slug, table) → (expires_at, metadata)
-_TTL_S = 300.0  # 5 min
+_CACHE: dict[tuple, tuple[float, dict]] = {} # (slug, table) > (expires_at, metadata)
+_TTL_S = 300.0 # 5 min
 
 
 def get_column_metadata(conn, slug: str, table: str) -> dict[str, dict]:

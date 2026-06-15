@@ -190,7 +190,7 @@ def list_traces(
                 "slowest": slowest,
             },
         }
-    except Exception as e:  # missing table / DB hiccup → fail-soft empty
+    except Exception as e: # missing table / DB hiccup > fail-soft empty
         logger.warning("traces query failed: %s", e)
         out = dict(empty)
         out["error"] = str(e)
@@ -313,7 +313,7 @@ def context_health(request: Request, days: int = 7):
             "runs": int(row[2] or 0),
             "capped_count": int(row[3] or 0),
         }
-    except Exception as e:  # missing table/cols → fail-soft zeros
+    except Exception as e: # missing table/cols > fail-soft zeros
         logger.warning("context-health query failed: %s", e)
         out = dict(zeros)
         out["error"] = str(e)

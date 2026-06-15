@@ -5,8 +5,8 @@ Mirrors dash/cron/ops_anomaly_scan.py: env-gate, tunable interval,
 worker-rank gated by app/main.py master gate.
 
 Tunables:
-  SUPPLY_SCORE_DAEMON_DISABLED=1 → skip
-  SUPPLY_SCORE_INTERVAL_SECONDS  → default 86400 (24h), floor 3600
+  SUPPLY_SCORE_DAEMON_DISABLED=1 > skip
+  SUPPLY_SCORE_INTERVAL_SECONDS > default 86400 (24h), floor 3600
 """
 from __future__ import annotations
 
@@ -19,11 +19,11 @@ logger = logging.getLogger(__name__)
 
 try:
     from dash.obs.trace import trace_span
-except Exception:  # noqa: BLE001
+except Exception: # noqa: BLE001
     from contextlib import contextmanager as _cm
 
     @_cm
-    def trace_span(*_a, **_k):  # type: ignore
+    def trace_span(*_a, **_k): # type: ignore
         yield None
 
 
@@ -93,7 +93,7 @@ async def run_once() -> dict[str, Any]:
     for sid in ids:
         try:
             r = await asyncio.to_thread(score_supplier, sid)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e: # noqa: BLE001
             logger.exception("supply_score: supplier crashed sid=%s", sid)
             out["errors"].append({"supplier_id": sid, "error": str(e)})
             continue

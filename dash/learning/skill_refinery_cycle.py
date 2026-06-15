@@ -25,11 +25,11 @@ SCORE_THRESHOLD = 60.0
 SHADOW_THRESHOLD = 60
 MAX_PATCHES_PER_DAY = 5
 COOLDOWN_DAYS = 7
-MIN_CALLS = 3  # require minimum invocations before patching
+MIN_CALLS = 3 # require minimum invocations before patching
 
 # Phase 8 — A/B revert
 AB_AGING_HOURS = 24
-AB_REGRESSION_THRESHOLD = 10.0  # revert if score_after < score_before - 10
+AB_REGRESSION_THRESHOLD = 10.0 # revert if score_after < score_before - 10
 
 
 def _engine():
@@ -62,7 +62,7 @@ def _in_cooldown(slug: str, tool_name: str) -> bool:
         row = conn.execute(text(
             "SELECT 1 FROM public.dash_tool_patches "
             "WHERE tool_name = :t AND project_slug = :s "
-            "  AND created_at >= NOW() - INTERVAL ':d days'".replace(":d", str(int(COOLDOWN_DAYS))) +
+            " AND created_at >= NOW() - INTERVAL ':d days'".replace(":d", str(int(COOLDOWN_DAYS))) +
             " LIMIT 1"
         ), {"t": tool_name, "s": slug}).first()
     return bool(row)
@@ -76,7 +76,7 @@ def _candidate_tools(slug: str) -> list[dict]:
             "SELECT tool_name, score, success_rate, calls, fails, latency_p50_ms, last_error "
             "FROM public.dash_tool_scores "
             "WHERE (project_slug = :s OR project_slug IS NULL) "
-            "  AND score < :th AND calls >= :min "
+            " AND score < :th AND calls >= :min "
             "ORDER BY score ASC"
         ), {"s": slug, "th": SCORE_THRESHOLD, "min": MIN_CALLS}).mappings().all()
     return [dict(r) for r in rows]
@@ -111,7 +111,7 @@ def _active_description(slug: str, tool_name: str) -> str:
         r = conn.execute(text(
             "SELECT new_description FROM public.dash_tool_patches "
             "WHERE tool_name = :t AND (project_slug = :s OR project_slug IS NULL) "
-            "  AND applied = TRUE AND reverted = FALSE "
+            " AND applied = TRUE AND reverted = FALSE "
             "ORDER BY version DESC LIMIT 1"
         ), {"t": tool_name, "s": slug}).first()
     return (r[0] if r else "") or ""
@@ -201,7 +201,7 @@ def run_for_project(slug: str) -> dict[str, Any]:
                     })
                     continue
         except Exception as _ge:
-            # Gate error → log + continue (don't block patch on gate bug)
+            # Gate error > log + continue (don't block patch on gate bug)
             summary["errors"].append(f"constraint_gate {tool_name}: {str(_ge)[:200]}")
 
         # Shadow validate immediately.
@@ -244,7 +244,7 @@ def run_for_project(slug: str) -> dict[str, Any]:
                 conn.execute(text(
                     "UPDATE public.dash_tool_patches SET applied = FALSE "
                     "WHERE tool_name = :t AND (project_slug IS NOT DISTINCT FROM :s) "
-                    "  AND id <> :id"
+                    " AND id <> :id"
                 ), {"t": tool_name, "s": slug, "id": patch_id})
 
         summary["drafted"] += 1
@@ -308,9 +308,9 @@ def ab_revert_check() -> dict:
             "SELECT id, tool_name, project_slug, score_before "
             "FROM public.dash_tool_patches "
             "WHERE applied = TRUE AND reverted = FALSE "
-            "  AND score_after IS NULL "
-            "  AND applied_at IS NOT NULL "
-            "  AND applied_at <= NOW() - INTERVAL ':h hours'".replace(":h", str(int(AB_AGING_HOURS)))
+            " AND score_after IS NULL "
+            " AND applied_at IS NOT NULL "
+            " AND applied_at <= NOW() - INTERVAL ':h hours'".replace(":h", str(int(AB_AGING_HOURS)))
         )).mappings().all()
     rows = [dict(r) for r in rows]
 
@@ -376,10 +376,10 @@ def ab_revert_check() -> dict:
 # judge score, and inverse latency. Low-scoring skills with sufficient sample
 # size get drafted patches via the LLM-drafter pathway (or stub-logged).
 
-DASH_SKILL_SCORE_THRESHOLD = 60.0       # below this → draft a patch candidate
-DASH_SKILL_MIN_RUNS = 5                 # need at least N runs to avoid noise
+DASH_SKILL_SCORE_THRESHOLD = 60.0 # below this > draft a patch candidate
+DASH_SKILL_MIN_RUNS = 5 # need at least N runs to avoid noise
 DASH_SKILL_ROLLING_DAYS = 7
-DASH_SKILL_LATENCY_NORM_MS = 60000      # 60s → normalized latency of 1.0
+DASH_SKILL_LATENCY_NORM_MS = 60000 # 60s > normalized latency of 1.0
 
 
 def _normalize_latency(mean_latency_ms: float) -> float:
@@ -421,8 +421,8 @@ def _draft_patch_for_skill(skill_id: str, context: dict | None = None) -> dict:
 
 
 # ── Dashboard-skill LLM patch drafter ─────────────────────────────────
-DASH_SKILL_PATCH_CAP_PER_DAY = 5          # max draft patches per cycle (global cap)
-DASH_SKILL_PATCH_COOLDOWN_DAYS = 7        # per-skill cooldown
+DASH_SKILL_PATCH_CAP_PER_DAY = 5 # max draft patches per cycle (global cap)
+DASH_SKILL_PATCH_COOLDOWN_DAYS = 7 # per-skill cooldown
 
 
 def _first_object(text_blob: str) -> dict | None:
@@ -485,7 +485,7 @@ def _dashboard_skill_in_cooldown(skill_id: str) -> bool:
             row = conn.execute(text(
                 "SELECT 1 FROM public.dash_tool_patches "
                 "WHERE tool_name = :s "
-                "  AND created_at >= NOW() - INTERVAL '"
+                " AND created_at >= NOW() - INTERVAL '"
                 + str(int(DASH_SKILL_PATCH_COOLDOWN_DAYS)) + " days' "
                 "LIMIT 1"
             ), {"s": skill_id}).first()
@@ -503,7 +503,7 @@ def _dashboard_patches_today_count() -> int:
             n = conn.execute(text(
                 "SELECT COUNT(*) FROM public.dash_tool_patches "
                 "WHERE created_at >= NOW() - INTERVAL '1 day' "
-                "  AND tool_name LIKE 'skl_%'"
+                " AND tool_name LIKE 'skl_%'"
             )).scalar()
         return int(n or 0)
     except Exception:
@@ -517,11 +517,11 @@ def _load_failing_runs(skill_id: str, limit: int = 5) -> list[dict]:
         with eng.connect() as conn:
             rows = conn.execute(text(
                 "SELECT panel_count, verified_cell_count, judge_score, "
-                "       stage, ran_at, latency_ms "
+                " stage, ran_at, latency_ms "
                 "FROM public.dash_dashboard_skill_runs "
                 "WHERE skill_id = :s "
-                "  AND (judge_score < 70 "
-                "       OR verified_cell_count < (COALESCE(panel_count,0) * 0.5)) "
+                " AND (judge_score < 70 "
+                " OR verified_cell_count < (COALESCE(panel_count,0) * 0.5)) "
                 "ORDER BY ran_at DESC LIMIT :n"
             ), {"s": skill_id, "n": int(limit)}).mappings().all()
         return [dict(r) for r in rows]
@@ -572,8 +572,8 @@ def _persist_dashboard_skill_patch(
                 " default_args, reason, failure_samples, "
                 " source, applied) "
                 "VALUES (:t, NULL, :v, :old, :new, "
-                "        CAST(:args AS jsonb), :reason, CAST(:fails AS jsonb), "
-                "        'auto', FALSE) "
+                " CAST(:args AS jsonb), :reason, CAST(:fails AS jsonb), "
+                " 'auto', FALSE) "
                 "RETURNING id"
             ), {
                 "t": skill_id,
@@ -643,9 +643,9 @@ def _draft_patch_for_dashboard_skill(skill_id: str, context: dict) -> dict | Non
         f"Propose a REVISED instructions text that addresses the failure patterns. Keep the "
         f"same output schema and tone. Output STRICT JSON ONLY:\n"
         '{\n'
-        '  "revised_instructions": "...",\n'
-        '  "rationale": "1-2 sentences on what changed and why",\n'
-        '  "expected_improvement": "what failure mode this fixes"\n'
+        ' "revised_instructions": "...",\n'
+        ' "rationale": "1-2 sentences on what changed and why",\n'
+        ' "expected_improvement": "what failure mode this fixes"\n'
         '}\n'
     )
 
@@ -690,7 +690,7 @@ def _draft_patch_for_dashboard_skill(skill_id: str, context: dict) -> dict | Non
         logger.debug("constraint gate skipped for %s: %s", skill_id, _ge)
 
     # 6. Persist
-    current_version = _next_dashboard_skill_version(skill_id) - 1  # patch we're about to write is current+1
+    current_version = _next_dashboard_skill_version(skill_id) - 1 # patch we're about to write is current+1
     patch_id = _persist_dashboard_skill_patch(
         skill_id=skill_id,
         proposed_instructions=revised,
@@ -753,11 +753,11 @@ def apply_dashboard_skill_patch(patch_id: int) -> dict:
         from dash.agents.skill_refiner import shadow_validate as _sv
         verdict = _sv(
             skill_id,
-            "",                       # old_desc (n/a for skills)
+            "", # old_desc (n/a for skills)
             new_instructions,
-            {},                       # default_args
-            [],                       # failures (already considered in drafting)
-            [],                       # successes
+            {}, # default_args
+            [], # failures (already considered in drafting)
+            [], # successes
         )
         shadow_pass = int(verdict.get("pass_rate") or 0) if isinstance(verdict, dict) else None
         if shadow_pass is not None and shadow_pass < 60:
@@ -785,7 +785,7 @@ def apply_dashboard_skill_patch(patch_id: int) -> dict:
             conn.execute(text(
                 "UPDATE public.dash_tool_patches "
                 "SET applied = TRUE, applied_at = NOW(), "
-                "    shadow_pass_rate = :sp "
+                " shadow_pass_rate = :sp "
                 "WHERE id = :id"
             ), {"id": int(patch_id), "sp": shadow_pass})
     except Exception as e:
@@ -812,11 +812,11 @@ def score_dashboard_skills() -> list[dict]:
         with eng.connect() as conn:
             rows = conn.execute(text(
                 "SELECT skill_id, "
-                "       COUNT(*)                       AS runs, "
-                "       AVG(NULLIF(panel_count,0))     AS mean_panels, "
-                "       AVG(verified_cell_count)       AS mean_verified, "
-                "       AVG(judge_score)               AS mean_judge, "
-                "       AVG(latency_ms)                AS mean_latency_ms "
+                " COUNT(*) AS runs, "
+                " AVG(NULLIF(panel_count,0)) AS mean_panels, "
+                " AVG(verified_cell_count) AS mean_verified, "
+                " AVG(judge_score) AS mean_judge, "
+                " AVG(latency_ms) AS mean_latency_ms "
                 "FROM public.dash_dashboard_skill_runs "
                 "WHERE ran_at >= NOW() - INTERVAL ':d days'".replace(":d", str(int(DASH_SKILL_ROLLING_DAYS))) +
                 " GROUP BY skill_id"

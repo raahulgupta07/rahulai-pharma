@@ -17,8 +17,8 @@ Wired into `app/main.py` after CORS + AuthMiddleware. Whitelisted paths
 (`/api/health`, `/metrics`, `/health`) are skipped unconditionally.
 
 Env overrides (optional):
-- `RATE_LIMIT_DISABLED=1` → bypass all limiting
-- `RATE_LIMIT_DEFAULT=120/minute` → default route limit
+- `RATE_LIMIT_DISABLED=1` > bypass all limiting
+- `RATE_LIMIT_DEFAULT=120/minute` > default route limit
 - `RATE_LIMIT_CHAT=60/minute`
 - `RATE_LIMIT_UPLOAD=10/minute`
 - `RATE_LIMIT_TRAINING=20/minute`
@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _parse_limit(spec: str) -> tuple[int, int]:
-    """Parse '60/minute' → (60, 60). Supports 'N/(second|minute|hour|day)'."""
+    """Parse '60/minute' > (60, 60). Supports 'N/(second|minute|hour|day)'."""
     m = re.match(r"^\s*(\d+)\s*/\s*(second|minute|hour|day)\s*$", spec, re.I)
     if not m:
         # safe default — 60/min
@@ -56,7 +56,7 @@ def _parse_limit(spec: str) -> tuple[int, int]:
     return n, window
 
 
-# Path-pattern → limit spec (FIRST MATCH WINS — order matters)
+# Path-pattern > limit spec (FIRST MATCH WINS — order matters)
 # Whitelist paths are checked separately and bypass entirely.
 _DEFAULT_LIMITS: list[tuple[re.Pattern[str], str]] = [
     # Uploads — strictest (10/min)
@@ -149,8 +149,8 @@ _COUNTER = _SlidingWindowCounter()
 
 _ORG_BUCKETS: dict[str, deque[float]] = defaultdict(deque)
 _ORG_LOCK = Lock()
-_ORG_LAST_USED: dict[str, float] = {}  # last-touched timestamp for GC
-_ORG_GC_INTERVAL_S = 300.0  # drop bucket if empty for 5 min
+_ORG_LAST_USED: dict[str, float] = {} # last-touched timestamp for GC
+_ORG_GC_INTERVAL_S = 300.0 # drop bucket if empty for 5 min
 _ORG_GC_LAST_RUN = [0.0]
 
 
@@ -192,8 +192,8 @@ def _get_project_slug_for_embed(embed_id: str) -> str | None:
             return cached[0]
     try:
         # Lazy imports — keep middleware import-light.
-        from sqlalchemy import text  # type: ignore
-        from dash.embed import _get_engine  # type: ignore
+        from sqlalchemy import text # type: ignore
+        from dash.embed import _get_engine # type: ignore
 
         eng = _get_engine()
         with eng.connect() as conn:
@@ -236,8 +236,8 @@ def _project_slug_from_session_token(token: str | None) -> str | None:
     if not token:
         return None
     try:
-        from sqlalchemy import text  # type: ignore
-        from dash.embed import _get_engine  # type: ignore
+        from sqlalchemy import text # type: ignore
+        from dash.embed import _get_engine # type: ignore
 
         eng = _get_engine()
         with eng.connect() as conn:
@@ -259,7 +259,7 @@ def _project_slug_from_session_token(token: str | None) -> str | None:
 def _gc_org_buckets(now: float) -> None:
     """Drop empty org buckets that haven't been touched in _ORG_GC_INTERVAL_S."""
     if now - _ORG_GC_LAST_RUN[0] < 60.0:
-        return  # at most once per minute
+        return # at most once per minute
     _ORG_GC_LAST_RUN[0] = now
     cutoff = now - _ORG_GC_INTERVAL_S
     with _ORG_LOCK:
@@ -283,13 +283,13 @@ def _get_redis_rl():
         return _redis_rl
     _redis_rl_init = True
     try:
-        import redis as _redis  # type: ignore
+        import redis as _redis # type: ignore
         url = os.getenv("REDIS_URL", "redis://dash-redis:6379")
         c = _redis.Redis.from_url(url, socket_connect_timeout=0.3, socket_timeout=0.3)
         c.ping()
         _redis_rl = c
     except Exception:
-        _redis_rl = None  # Redis down/absent → in-memory fallback
+        _redis_rl = None # Redis down/absent > in-memory fallback
     return _redis_rl
 
 
@@ -310,7 +310,7 @@ def _redis_fixed_window(key: str, limit: int, window_s: int) -> tuple[bool, int,
             return False, 0, retry
         return True, max(0, limit - int(n)), 0.0
     except Exception:
-        return None  # transient Redis error → fall back
+        return None # transient Redis error > fall back
 
 
 def _check_org_limit(project_slug: str) -> tuple[bool, int, float]:
@@ -400,7 +400,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     before identity resolution.
     """
 
-    async def dispatch(self, request: Request, call_next):  # type: ignore[no-untyped-def]
+    async def dispatch(self, request: Request, call_next): # type: ignore[no-untyped-def]
         # Master bypass
         if os.environ.get("RATE_LIMIT_DISABLED", "").lower() in ("1", "true", "yes", "on"):
             return await call_next(request)

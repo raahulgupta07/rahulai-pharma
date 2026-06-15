@@ -1,4 +1,4 @@
-"""Slide-builder tools — Dash skills layer for chat → presentation.
+"""Slide-builder tools — Dash skills layer for chat > presentation.
 
 Six tools exposed to Layer 14 skills (skl_pptx_builder / slide_editor /
 slide_narrator). Fuses three OSS patterns:
@@ -37,7 +37,7 @@ def _get_engine():
         return get_sql_engine()
     except Exception:
         try:
-            from db import get_sql_engine  # type: ignore
+            from db import get_sql_engine # type: ignore
             return get_sql_engine()
         except Exception:
             return None
@@ -72,7 +72,7 @@ def extract_chat_data(session_id: int, limit: int = 20) -> Dict[str, Any]:
         logger.warning("extract_chat_data query failed: %s", e)
         return {"ok": False, "error": str(e), "messages": []}
 
-    messages = [dict(r) for r in rows[::-1]]  # chronological
+    messages = [dict(r) for r in rows[::-1]] # chronological
 
     # Mine [CHART:title] + [DATA:rows] markers
     tables_seen: List[str] = []
@@ -93,7 +93,7 @@ def extract_chat_data(session_id: int, limit: int = 20) -> Dict[str, Any]:
 
 # ── Tool 2: build_slides_from_md ────────────────────────────────────────
 def _parse_outline_md(outline_md: str) -> List[Dict[str, Any]]:
-    """Parse pptx-from-layouts markdown syntax → slide spec JSON list.
+    """Parse pptx-from-layouts markdown syntax > slide spec JSON list.
 
     Format:
         # Action title sentence
@@ -157,7 +157,7 @@ def _parse_outline_md(outline_md: str) -> List[Dict[str, Any]]:
 
 
 def _visual_to_layout(visual: str) -> str:
-    """Map pptx-from-layouts visual type → Dash existing layout key."""
+    """Map pptx-from-layouts visual type > Dash existing layout key."""
     v = visual.lower()
     if v.startswith("kpi"):
         return "kpi"
@@ -183,7 +183,7 @@ def build_slides_from_md(
     theme: Optional[str] = None,
     template_id: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Parse markdown outline → slide specs → render pptx → save row → return pres_id.
+    """Parse markdown outline > slide specs > render pptx > save row > return pres_id.
 
     Reuses Dash's existing render helpers from app/export.py (DESIGN_THEMES,
     _build_pptx_bytes via export_saved_pptx code-path). Saves to
@@ -301,7 +301,7 @@ def _save_presentation_row(
 
 # ── Tool 3: profile_template ────────────────────────────────────────────
 def profile_template(template_path: str) -> Dict[str, Any]:
-    """Read uploaded .pptx → extract slide masters + placeholders + colors.
+    """Read uploaded .pptx > extract slide masters + placeholders + colors.
 
     Port of pptx-from-layouts profile.py pattern. Output JSON drives
     placeholder-aware rendering for tenant corp templates.
@@ -413,7 +413,7 @@ def patch_slide(
 
 # ── Tool 5: visual_qa_slides ────────────────────────────────────────────
 def visual_qa_slides(pres_id: int) -> Dict[str, Any]:
-    """Render pres to .pptx bytes → call existing _visual_qa_slides() vision pass.
+    """Render pres to .pptx bytes > call existing _visual_qa_slides() vision pass.
 
     Returns list of issues [{slide_idx, issue, severity}]. Wraps existing
     app/export.py helper so we don't duplicate the vision call logic.

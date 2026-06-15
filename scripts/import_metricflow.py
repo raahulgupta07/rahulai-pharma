@@ -8,7 +8,7 @@ Examples:
     # Dry-run: print translated MDL dict as YAML, don't touch DB
     python scripts/import_metricflow.py --project proj_demo --path ./metricflow/ --dry-run
 
-    # Real install (calls install_metricflow → install_mdl)
+    # Real install (calls install_metricflow > install_mdl)
     python scripts/import_metricflow.py --project proj_demo --path ./metricflow/
 
 Exit code 0 on success, 1 on any errors (loader warnings, install failures).
@@ -28,12 +28,12 @@ _REPO = _HERE.parent
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
-import yaml  # noqa: E402
+import yaml # noqa: E402
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="Import dbt MetricFlow YAML → Dash MDL pack",
+        description="Import dbt MetricFlow YAML > Dash MDL pack",
     )
     ap.add_argument("--project", required=True,
                     help="Dash project slug (e.g. proj_demo_pharmacy)")
@@ -72,40 +72,40 @@ def main() -> int:
         print(out)
         print("\n# ─── Summary ───")
         print(f"# semantic_models loaded : {len(mf.get('semantic_models') or [])}")
-        print(f"# metrics loaded         : {len(mf.get('metrics') or [])}")
-        print(f"# MDL models             : {len(pack.get('models') or [])}")
-        print(f"# metric_definitions     : {len(pack.get('metric_definitions') or [])}")
-        print(f"# warnings               : {len(warnings)}")
+        print(f"# metrics loaded : {len(mf.get('metrics') or [])}")
+        print(f"# MDL models : {len(pack.get('models') or [])}")
+        print(f"# metric_definitions : {len(pack.get('metric_definitions') or [])}")
+        print(f"# warnings : {len(warnings)}")
         for w in warnings:
-            print(f"#   - {w}")
-        print(f"# skipped                : {len(skipped)}")
+            print(f"# - {w}")
+        print(f"# skipped : {len(skipped)}")
         for s in skipped:
-            print(f"#   - {s.get('name')}: {s.get('reason')}")
+            print(f"# - {s.get('name')}: {s.get('reason')}")
         return 0 if not skipped else 1
 
     # Real install
     result = install_metricflow(args.project, args.path)
 
     print("─── Import Summary ───")
-    print(f"project           : {args.project}")
-    print(f"path              : {args.path}")
-    print(f"ok                : {result.get('ok')}")
-    print(f"models_imported   : {result.get('models_imported', 0)}")
-    print(f"metrics_imported  : {result.get('metrics_imported', 0)}")
+    print(f"project : {args.project}")
+    print(f"path : {args.path}")
+    print(f"ok : {result.get('ok')}")
+    print(f"models_imported : {result.get('models_imported', 0)}")
+    print(f"metrics_imported : {result.get('metrics_imported', 0)}")
     skipped = result.get("skipped") or []
     warnings = result.get("warnings") or []
-    print(f"warnings          : {len(warnings)}")
+    print(f"warnings : {len(warnings)}")
     for w in warnings:
-        print(f"  - {w}")
-    print(f"skipped           : {len(skipped)}")
+        print(f" - {w}")
+    print(f"skipped : {len(skipped)}")
     for s in skipped:
         if isinstance(s, dict):
-            print(f"  - {s.get('name')}: {s.get('reason')}")
+            print(f" - {s.get('name')}: {s.get('reason')}")
         else:
-            print(f"  - {s}")
+            print(f" - {s}")
     install_result = result.get("install_result") or {}
     if install_result.get("error"):
-        print(f"install error     : {install_result.get('error')}")
+        print(f"install error : {install_result.get('error')}")
 
     has_errors = (
         not result.get("ok")

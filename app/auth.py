@@ -5,10 +5,10 @@ Authentication API
 Simple token-based auth. Users table + tokens table in public schema.
 
 Endpoints:
-    POST /api/auth/register  — create user
-    POST /api/auth/login     — returns token
-    GET  /api/auth/check     — validate token
-    POST /api/auth/logout    — invalidate token
+    POST /api/auth/register — create user
+    POST /api/auth/login — returns token
+    GET /api/auth/check — validate token
+    POST /api/auth/logout — invalidate token
 """
 
 import hashlib
@@ -39,15 +39,15 @@ router = APIRouter(prefix="/api/auth", tags=["Auth"])
 _engine = _sa_create_engine(db_url, poolclass=NullPool)
 _token_cache: dict[str, dict] = {}
 _token_cache_lock = threading.Lock()
-_TOKEN_CACHE_MAX = 5000  # Cap to prevent unbounded growth
+_TOKEN_CACHE_MAX = 5000 # Cap to prevent unbounded growth
 # Per-worker cache is NOT shared across gunicorn workers, so a logout (which
 # deletes the DB row on whatever worker handled it) would not take effect on the
 # other workers until the 7-day token expiry. Re-validate against the DB after
 # this many seconds so revocation/logout propagates everywhere within the window.
-_TOKEN_CACHE_FRESH_TTL = 60  # seconds
+_TOKEN_CACHE_FRESH_TTL = 60 # seconds
 import re as _re_auth
 
-TOKEN_EXPIRY = 86400 * 7  # 7 days
+TOKEN_EXPIRY = 86400 * 7 # 7 days
 
 # Super admin username from env — this user can manage all users and see all data
 SUPER_ADMIN = os.getenv("SUPER_ADMIN", "admin")
@@ -91,7 +91,7 @@ def _bootstrap_tables():
 
     `CREATE TABLE IF NOT EXISTS` is NOT concurrency-safe: parallel DDL from
     multiple gunicorn workers on a fresh DB throws "tuple concurrently
-    updated" / "relation already exists" and aborts the whole bootstrap txn →
+    updated" / "relation already exists" and aborts the whole bootstrap txn >
     partial or empty schema (the root cause of UndefinedTable errors on a clean
     cloud install). We take pg_advisory_lock(72157424) on a DIRECT
     (pgbouncer-bypassing) connection so the first worker builds the schema while
@@ -641,19 +641,19 @@ def _bootstrap_tables_locked():
             conn.rollback()
         conn.commit()
     # API gateway store-scoping (Phase 0): bind a key to one store + a scope mode.
-    #   site_code  — staff/service branch (already queried by the chat SHOP CONTEXT)
-    #   store_id   — store the API key is bound to (defaults to site_code if unset)
-    #   scope_mode — 'store' (Tier-1 own / Tier-2 masked others) | 'global' (no mask)
+    # site_code — staff/service branch (already queried by the chat SHOP CONTEXT)
+    # store_id — store the API key is bound to (defaults to site_code if unset)
+    # scope_mode — 'store' (Tier-1 own / Tier-2 masked others) | 'global' (no mask)
     # Own connection + commit so a rollback elsewhere in bootstrap can't discard them.
     try:
         with _engine.connect() as _sc_conn:
             for _col, _ddl in (
-                ("site_code",  "ALTER TABLE public.dash_users ADD COLUMN IF NOT EXISTS site_code TEXT"),
-                ("store_id",   "ALTER TABLE public.dash_users ADD COLUMN IF NOT EXISTS store_id TEXT"),
-                ("store_ids",  "ALTER TABLE public.dash_users ADD COLUMN IF NOT EXISTS store_ids TEXT"),
+                ("site_code", "ALTER TABLE public.dash_users ADD COLUMN IF NOT EXISTS site_code TEXT"),
+                ("store_id", "ALTER TABLE public.dash_users ADD COLUMN IF NOT EXISTS store_id TEXT"),
+                ("store_ids", "ALTER TABLE public.dash_users ADD COLUMN IF NOT EXISTS store_ids TEXT"),
                 ("scope_mode", "ALTER TABLE public.dash_users ADD COLUMN IF NOT EXISTS scope_mode TEXT DEFAULT 'global'"),
                 # Access tier: 'user' (default) | 'admin' (day-to-day ops). super = SUPER_ADMIN username.
-                ("role",       "ALTER TABLE public.dash_users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user'"),
+                ("role", "ALTER TABLE public.dash_users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user'"),
             ):
                 try:
                     _sc_conn.execute(text(_ddl))
@@ -663,7 +663,7 @@ def _bootstrap_tables_locked():
     except Exception:
         logger.exception("auth: store-scope columns bootstrap failed")
     try:
-        # Lazy import — avoid circular dep with dash.policy.loader → app.auth.
+        # Lazy import — avoid circular dep with dash.policy.loader > app.auth.
         from dash.policy.loader import _ensure_visibility_policy_table
         _ensure_visibility_policy_table()
     except Exception:
@@ -679,7 +679,7 @@ def _create_default_admin():
     the project role, which derives from is_super/is_admin, which derives from this
     account being role='super' — so if the seed isn't privileged, the buttons vanish.
 
-    - Account missing       -> create with env password + role='super'.
+    - Account missing -> create with env password + role='super'.
     - Account exists, role<super -> promote to 'super' (heals an old 'user'-role seed).
     - Password is only (re)set on create. To force-resync it from env on an existing
       account (e.g. operator forgot it), set SUPER_ADMIN_RESET_PASS=1 — otherwise a
@@ -772,7 +772,7 @@ def validate_token(token: str) -> Optional[dict]:
                     info["is_admin"] = info.get("is_super", False)
                 return info
             else:
-                # Expired OR stale → drop and re-check DB (so a logout/revoke on
+                # Expired OR stale > drop and re-check DB (so a logout/revoke on
                 # another worker is honored within _TOKEN_CACHE_FRESH_TTL).
                 del _token_cache[token]
 
@@ -793,7 +793,7 @@ def validate_token(token: str) -> Optional[dict]:
                 _is_admin = _is_super or (row[3] == "admin")
                 # Store binding for web sessions — lets resolve_api_scope() lock a
                 # shop-staff (scope_mode='store') web login to its branch, the same
-                # way API/embed keys are scoped. Admins are scope_mode='global' → no-op.
+                # way API/embed keys are scoped. Admins are scope_mode='global' > no-op.
                 info = {"user_id": row[0], "username": row[1], "expiry": row[2], "is_super": _is_super, "is_admin": _is_admin,
                         "site_code": row[4], "store_id": row[5], "scope_mode": row[6], "store_ids": row[7],
                         "aad_groups": _extract_aad_groups(token), "cached_at": time.time()}
@@ -956,7 +956,7 @@ def check_project_permission(user: dict, slug: str, required_role: str = "viewer
         # project (single-tenant admin tool) — not only the one account whose
         # username matches the SUPER_ADMIN env. Without the is_super check, a
         # second super-admin (e.g. 'admin') got no access to the locked project
-        # → /api/projects/{slug} 403 → Workspace stuck "loading", Upload/Force-
+        # > /api/projects/{slug} 403 > Workspace stuck "loading", Upload/Force-
         # Train-All hidden (canEdit derives from this role).
         if row[1] == user["user_id"] or user.get("username") == SUPER_ADMIN \
                 or user.get("is_super") or user.get("is_super_admin"):
@@ -1065,7 +1065,7 @@ def register(req: RegisterRequest):
 def login(req: LoginRequest, request: Request = None):
     """Login and get a token."""
     # Brute-force throttle: cap login attempts per client IP via the global Redis
-    # fixed-window (shared across all workers). 20 / 5 min. Redis down → fail-open
+    # fixed-window (shared across all workers). 20 / 5 min. Redis down > fail-open
     # (don't lock out legit users), but the cap closes online password guessing.
     try:
         _ip = (request.client.host if (request and request.client) else "unknown")
@@ -1088,7 +1088,7 @@ def login(req: LoginRequest, request: Request = None):
             ), {"u": req.username}).fetchone()
 
             if not row or not _verify_password(req.password, row[2]):
-                # Security telemetry — failed login (Usage › Security panel).
+                # Security telemetry — failed login (Usage > Security panel).
                 try:
                     conn.execute(text(
                         "INSERT INTO public.dash_security_events "
@@ -1201,9 +1201,9 @@ def seed_scopes(req: ScopeSeedRequest, request: Request):
 
 
 # ── RBAC surface access (super-admin configurable) ──────────────────────────
-# Role → which surfaces are visible. Super admin is ALWAYS full. The "admin" and
+# Role > which surfaces are visible. Super admin is ALWAYS full. The "admin" and
 # "user" rows are read from the `rbac_surface_access` admin setting (super-editable
-# in Command Center → Admin Settings). Enforced both in nav (hide) and here (403).
+# in Command Center > Admin Settings). Enforced both in nav (hide) and here (403).
 # 7 surfaces. admin_console = Command Center governance; users_access = Users &
 # Access; usage_cost = Usage & Cost; workspace = project settings; integration =
 # API Gateway + Embed. Defaults: admin = everything EXCEPT admin_console; user =
@@ -1211,24 +1211,24 @@ def seed_scopes(req: ScopeSeedRequest, request: Request):
 _SURFACES = ("dashboard", "chat", "workspace", "integration", "admin_console", "users_access", "usage_cost")
 _ALL_SURFACES = {s: True for s in _SURFACES}
 _SURFACE_DEFAULTS = {
-    "admin": {"dashboard": True, "chat": True, "workspace": True, "integration": True, "admin_console": False, "users_access": True,  "usage_cost": True},
-    "user":  {"dashboard": True, "chat": True, "workspace": False, "integration": False, "admin_console": False, "users_access": False, "usage_cost": False},
+    "admin": {"dashboard": True, "chat": True, "workspace": True, "integration": True, "admin_console": False, "users_access": True, "usage_cost": True},
+    "user": {"dashboard": True, "chat": True, "workspace": False, "integration": False, "admin_console": False, "users_access": False, "usage_cost": False},
 }
 
 
 def surfaces_for(user: Optional[dict]) -> dict:
-    """Resolve the surface-visibility map for a user. Super → all true.
+    """Resolve the surface-visibility map for a user. Super > all true.
     Fail-soft: any error falls back to role defaults."""
     if not user:
         return {s: False for s in _SURFACES}
     if user.get("is_super"):
         return dict(_ALL_SURFACES)
     # Single-tenant access policy:
-    #   • admin (is_admin)  → the work surfaces (dashboard, chat, workspace,
-    #     integration) + governance (users_access, usage_cost); admin_console per
-    #     the admin default. This is who uploads + trains.
-    #   • plain user        → CHAT ONLY. No dashboard, workspace, integration, or
-    #     any admin surface. (super already returned all-true above.)
+    # • admin (is_admin) > the work surfaces (dashboard, chat, workspace,
+    # integration) + governance (users_access, usage_cost); admin_console per
+    # the admin default. This is who uploads + trains.
+    # • plain user > CHAT ONLY. No dashboard, workspace, integration, or
+    # any admin surface. (super already returned all-true above.)
     try:
         from dash.single_agent import is_single_agent
         if is_single_agent():
@@ -1240,7 +1240,7 @@ def surfaces_for(user: Optional[dict]) -> dict:
                 for s in ("admin_console", "users_access", "usage_cost"):
                     base[s] = bool(dflt_admin.get(s, False))
             else:
-                base["chat"] = True  # plain user: chat and nothing else
+                base["chat"] = True # plain user: chat and nothing else
             return base
     except Exception:
         pass
@@ -1292,7 +1292,7 @@ def _guard_admin_target(request: Request, target_username: str):
     act on the super admin or on any admin-tier account. Super admin can do anything."""
     actor = get_current_user(request)
     if actor and actor.get("is_super"):
-        return  # super can touch anyone
+        return # super can touch anyone
     if target_username == SUPER_ADMIN:
         raise HTTPException(403, "Only the super admin can manage the super admin account")
     try:
@@ -1626,7 +1626,7 @@ def delete_user(username: str, request: Request):
             # Drop user schema. SANITIZE the username before interpolating it into
             # DDL — it is a request path param and the app DB role is superuser, so
             # an unescaped `"` could break out and DROP an arbitrary schema (e.g.
-            # citypharma → total data loss). Whitelist [a-z0-9_] only.
+            # citypharma > total data loss). Whitelist [a-z0-9_] only.
             _safe_user = _re_auth.sub(r"[^a-z0-9_]", "_", username.lower())[:63]
             schema_name = f"user_{_safe_user}"
             conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE'))
@@ -1719,9 +1719,9 @@ def regenerate_api_key(request: Request):
 
 class ServiceKeyMintRequest(BaseModel):
     service_account_name: str
-    store_id: Optional[str] = None          # single-outlet (back-compat)
-    store_ids: Optional[list[str]] = None   # multi-outlet SET (preferred)
-    scope_mode: str = "store"  # 'store' (tier-scoped) | 'global' (no mask)
+    store_id: Optional[str] = None # single-outlet (back-compat)
+    store_ids: Optional[list[str]] = None # multi-outlet SET (preferred)
+    scope_mode: str = "store" # 'store' (tier-scoped) | 'global' (no mask)
 
 
 class ServiceKeyRevokeRequest(BaseModel):
@@ -1788,7 +1788,7 @@ def mint_service_key(req: ServiceKeyMintRequest, request: Request):
                 conn.execute(text(
                     "UPDATE public.dash_users "
                     "SET api_key = :k, store_id = :sid, site_code = :sid, "
-                    "    store_ids = :sids, scope_mode = :sm "
+                    " store_ids = :sids, scope_mode = :sm "
                     "WHERE username = :u"
                 ), {"k": key, "sid": primary, "sids": ids_csv, "sm": scope_mode, "u": username})
                 sa_id = existing[0]
@@ -1846,7 +1846,7 @@ def mint_service_key(req: ServiceKeyMintRequest, request: Request):
         "store_id": primary,
         "store_ids": ids,
         "scope_mode": scope_mode,
-        "api_key": key,  # plaintext — shown ONCE
+        "api_key": key, # plaintext — shown ONCE
     }
 
 
@@ -2091,7 +2091,7 @@ def apigw_provision_list(request: Request):
             by_outlet: dict[str, dict] = {}
             for a in accts:
                 uname = a[0] or ""
-                name = uname[4:] if uname.startswith("svc:") else uname  # outlet-<code>
+                name = uname[4:] if uname.startswith("svc:") else uname # outlet-<code>
                 code = name[len("outlet-"):] if name.startswith("outlet-") else ""
                 if code:
                     by_outlet[code] = {"name": name, "active": bool(a[4]), "scope_mode": a[3]}
@@ -2137,9 +2137,9 @@ def apigw_provision_auto(request: Request):
 
 
 class ApigwProvisionRequest(BaseModel):
-    outlets: Optional[list[str]] = None   # specific outlets; None/empty = all missing
+    outlets: Optional[list[str]] = None # specific outlets; None/empty = all missing
     all_missing: bool = False
-    rotate: bool = False                  # re-mint even if already keyed
+    rotate: bool = False # re-mint even if already keyed
 
 
 @router.post("/apigw-provision")
@@ -2159,11 +2159,11 @@ def apigw_provision(req: ApigwProvisionRequest, request: Request):
             # decide target set
             want = [x.strip() for x in (req.outlets or []) if x and x.strip()]
             if not want:
-                want = list(outlets)  # all
+                want = list(outlets) # all
             targets = []
             for o in want:
                 if o not in outlets:
-                    continue  # only provision real outlets
+                    continue # only provision real outlets
                 if req.rotate or not existing.get(o, False):
                     targets.append(o)
             for o in targets:
@@ -2409,7 +2409,7 @@ def apigw_usage(request: Request, days: int = 7):
 
             daily_rows = conn.execute(text(
                 "SELECT to_char(date_trunc('day', ts), 'YYYY-MM-DD') AS d, "
-                "       COUNT(*) AS calls, COALESCE(SUM(total_tokens), 0) AS tokens "
+                " COUNT(*) AS calls, COALESCE(SUM(total_tokens), 0) AS tokens "
                 "FROM public.dash_apigw_usage "
                 "WHERE ts > now() - (:days || ' days')::interval "
                 "GROUP BY date_trunc('day', ts) "
@@ -2422,8 +2422,8 @@ def apigw_usage(request: Request, days: int = 7):
 
             key_rows = conn.execute(text(
                 "SELECT service_account, store_id, scope_mode, "
-                "       COUNT(*) AS calls, COALESCE(SUM(total_tokens), 0) AS tokens, "
-                "       MAX(ts) AS last_ts "
+                " COUNT(*) AS calls, COALESCE(SUM(total_tokens), 0) AS tokens, "
+                " MAX(ts) AS last_ts "
                 "FROM public.dash_apigw_usage "
                 "WHERE ts > now() - (:days || ' days')::interval "
                 "GROUP BY service_account, store_id, scope_mode "

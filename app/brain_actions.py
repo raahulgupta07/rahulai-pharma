@@ -5,9 +5,9 @@ Brain sharing actions
 Promote / Pull / Resolve between the AGENT side and the COMPANY side of the
 single Brain.
 
-POST /api/brain/promote   {category, name, agent_id}     agent value → company
-POST /api/brain/pull      {category, name, company_id}   company value → agent
-POST /api/brain/resolve   {category, name, agent_id, company_id, winner}
+POST /api/brain/promote {category, name, agent_id} agent value > company
+POST /api/brain/pull {category, name, company_id} company value > agent
+POST /api/brain/resolve {category, name, agent_id, company_id, winner}
                                                          winner copies to loser
 
 Company-side writes go through dash_company_brain and are version-audited via
@@ -76,7 +76,7 @@ class ResolveBody(BaseModel):
     name: str
     agent_id: int | None = None
     company_id: int | None = None
-    winner: str  # 'agent' | 'company'
+    winner: str # 'agent' | 'company'
     project_slug: str = LOCKED_SLUG
 
 
@@ -115,7 +115,7 @@ def _snapshot(conn, brain_id: int, change_type: str, user_id, reason: str) -> No
     try:
         from app.brain_versions import snapshot_version
         snapshot_version(conn, brain_id, change_type, user_id, reason)
-    except Exception as e:  # noqa: BLE001 — audit must never block the action
+    except Exception as e: # noqa: BLE001 — audit must never block the action
         logger.warning("brain_actions snapshot failed (%s): %s", change_type, e)
 
 
@@ -144,7 +144,7 @@ def _upsert_company(conn, category: str, name: str, value: str, slug: str, user_
             ),
             {"v": value, "id": bid},
         )
-        _snapshot(conn, bid, "update", user_id, f"promote agent→company ({category})")
+        _snapshot(conn, bid, "update", user_id, f"promote agent>company ({category})")
         return bid
 
     bid = conn.execute(
@@ -159,7 +159,7 @@ def _upsert_company(conn, category: str, name: str, value: str, slug: str, user_
         ),
         {"c": company_cat, "n": name, "v": value, "slug": slug, "uid": user_id},
     ).scalar_one()
-    _snapshot(conn, bid, "create", user_id, f"promote agent→company ({category})")
+    _snapshot(conn, bid, "create", user_id, f"promote agent>company ({category})")
     return bid
 
 

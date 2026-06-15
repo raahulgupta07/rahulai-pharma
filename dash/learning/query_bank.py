@@ -3,7 +3,7 @@
 Two reuse modes over public.dash_query_patterns (embeddings in
 dash.dash_vectors namespace='qbank'):
 
-  • recall_similar()  — Mode 2 (LLM-driven): return the top-K proven/candidate
+  • recall_similar() — Mode 2 (LLM-driven): return the top-K proven/candidate
     SQL for similar past questions as a HINT. The agent adapts + runs it. The
     LLM stays in control — no hardcoded SQL, graceful when the bank is empty.
 
@@ -50,10 +50,10 @@ def _vec_literal(emb: list[float]) -> str:
 # questions (e.g. 30 outlets asking the same thing at once) to ONE embed API
 # call instead of N — the embed round-trip was the remaining serial cost on the
 # Mode-1 bypass once team-build was removed.
-#   L1 = per-worker dict (fastest, but each of the N gunicorn workers warms
-#        independently → N cold embeds before fully warm).
-#   L2 = Redis (cross-worker) → the FIRST worker to embed a question warms it
-#        for ALL workers. Fail-soft: Redis down → L1-only, never breaks serve.
+# L1 = per-worker dict (fastest, but each of the N gunicorn workers warms
+# independently > N cold embeds before fully warm).
+# L2 = Redis (cross-worker) > the FIRST worker to embed a question warms it
+# for ALL workers. Fail-soft: Redis down > L1-only, never breaks serve.
 # Keyed on the normalized question (+ embedding model, so a model swap can't
 # serve stale vectors).
 _EMB_CACHE: dict[str, tuple[float, list[float]]] = {}
@@ -72,13 +72,13 @@ def _get_emb_redis():
         return _emb_redis
     _emb_redis_tried = True
     try:
-        import redis  # type: ignore
+        import redis # type: ignore
         url = os.getenv("REDIS_URL", "redis://dash-redis:6379")
         c = redis.Redis.from_url(url, decode_responses=True,
                                  socket_connect_timeout=2, socket_timeout=2)
         c.ping()
         _emb_redis = c
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("query_bank emb redis unavailable (%s) — L1-only", exc)
         _emb_redis = None
     return _emb_redis
@@ -95,14 +95,14 @@ def _emb_key(question: str) -> str:
 
 
 def _l1_put(key: str, emb: list[float]) -> None:
-    if len(_EMB_CACHE) >= _EMB_MAX:  # cheap bound — evict oldest ~half
+    if len(_EMB_CACHE) >= _EMB_MAX: # cheap bound — evict oldest ~half
         for k in sorted(_EMB_CACHE, key=lambda k: _EMB_CACHE[k][0])[: _EMB_MAX // 2]:
             _EMB_CACHE.pop(k, None)
     _EMB_CACHE[key] = (time.time(), emb)
 
 
 async def _embed_cached(question: str) -> list[float]:
-    """Embed with a two-level (in-proc + Redis) TTL cache. Fail-soft → []."""
+    """Embed with a two-level (in-proc + Redis) TTL cache. Fail-soft > []."""
     key = _emb_key(question)
     now = time.time()
     # L1
@@ -122,7 +122,7 @@ async def _embed_cached(question: str) -> list[float]:
                     return emb
         except Exception:
             pass
-    # Miss → embed once, write both levels.
+    # Miss > embed once, write both levels.
     from dash.tools.embeddings_helper import embed_text
     emb = await embed_text(question)
     if emb:
@@ -175,11 +175,11 @@ async def _nn(project_slug: str, question: str, limit: int, statuses: tuple[str,
     with get_sql_engine().connect() as conn:
         rows = conn.execute(_text(
             "SELECT p.id, p.question, p.sql, p.status, p.uses, p.schema_hash, "
-            "       p.tables_used, 1 - (v.embedding <=> CAST(:v AS vector)) AS sim "
+            " p.tables_used, 1 - (v.embedding <=> CAST(:v AS vector)) AS sim "
             "FROM dash.dash_vectors v "
             "JOIN public.dash_query_patterns p ON p.id = v.source_id::int "
             "WHERE v.project_slug = :s AND v.namespace = :ns "
-            f"  AND p.status IN ({placeholders}) "
+            f" AND p.status IN ({placeholders}) "
             "ORDER BY v.embedding <=> CAST(:v AS vector) LIMIT :k"
         ), {"s": project_slug, "ns": _NAMESPACE, "v": vec, "k": limit}).fetchall()
     return rows
@@ -195,7 +195,7 @@ async def recall_similar(project_slug: str, question: str, limit: int = 3) -> li
         return []
     try:
         rows = await _nn(project_slug, q, max(limit * 3, 6), ("proven", "candidate"))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("recall_similar nn failed for %s: %s", project_slug, exc)
         return []
     floor = _recall_sim()
@@ -205,7 +205,7 @@ async def recall_similar(project_slug: str, question: str, limit: int = 3) -> li
         if sim < floor:
             continue
         ok = _schema_ok(project_slug, r[5], r[6])
-        if ok is False:  # stored SQL no longer matches live schema — skip
+        if ok is False: # stored SQL no longer matches live schema — skip
             continue
         out.append({"id": int(r[0]), "question": r[1], "sql": r[2],
                     "status": r[3], "uses": int(r[4] or 0), "sim": round(sim, 3)})
@@ -225,7 +225,7 @@ def recall_similar_sync(project_slug: str, question: str, limit: int = 3) -> lis
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
             return ex.submit(_run).result(timeout=8)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("recall_similar_sync failed: %s", exc)
         return []
 
@@ -233,7 +233,7 @@ def recall_similar_sync(project_slug: str, question: str, limit: int = 3) -> lis
 # ── Mode 1 — bypass serve (exact hit, zero LLM) ──────────────────────────────
 
 def try_query_bank_serve(project_slug: str, question: str) -> dict | None:
-    """Exact-enough hit (sim >= serve, proven, schema-ok) → re-run SQL live +
+    """Exact-enough hit (sim >= serve, proven, schema-ok) > re-run SQL live +
     render an AnswerCard. ZERO LLM. None on miss/drift/disabled. Sync wrapper
     around the async NN (runs its own loop — call from the sync serve path)."""
     if os.getenv("QUERY_BANK_BYPASS_DISABLED", "0") in ("1", "true", "True", "yes"):
@@ -250,7 +250,7 @@ def try_query_bank_serve(project_slug: str, question: str) -> dict | None:
             return asyncio.run(_nn(project_slug, q, 1, ("proven",)))
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
             rows = _ex.submit(_run).result(timeout=8)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("query_bank serve nn failed for %s: %s", project_slug, exc)
         return None
     if not rows:
@@ -264,7 +264,7 @@ def try_query_bank_serve(project_slug: str, question: str) -> dict | None:
     sql = (r[2] or "").strip()
     if not sql:
         return None
-    # Re-run the stored SQL LIVE → fresh numbers.
+    # Re-run the stored SQL LIVE > fresh numbers.
     try:
         t0 = time.monotonic()
         from dash.learning import verified_reward as _vr
@@ -299,6 +299,6 @@ def try_query_bank_serve(project_slug: str, question: str) -> dict | None:
             "row_count": run.get("row_count") or len(rows_out), "elapsed_ms": elapsed,
             "pattern_id": int(r[0]), "matched_q": r[1], "sim": round(sim, 3),
         }
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("query_bank serve exec failed for %s: %s", project_slug, exc)
         return None

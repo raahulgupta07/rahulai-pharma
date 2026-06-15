@@ -1,22 +1,22 @@
 """Build a dashboard spec from a workflow run's step results.
 
 Each step result maps to a panel:
-  - single numeric value → KPI panel
-  - rows == 1, multi col → KPI cluster (one per numeric col)
-  - has date/categorical + numeric col → chart panel (uses step.chart spec if set)
-  - many rows, multi col → table panel
-  - narrative only → insight panel
+  - single numeric value > KPI panel
+  - rows == 1, multi col > KPI cluster (one per numeric col)
+  - has date/categorical + numeric col > chart panel (uses step.chart spec if set)
+  - many rows, multi col > table panel
+  - narrative only > insight panel
 
 The spec is shaped to mirror the DeepDashSpec-ish JSONB stored in
 `public.dash_dashboards_v2.spec`. Source flagged 'workflow' so the
 frontend can render the workflow-build badge.
 
 Incremental build flow (Task #7):
-  - ensure_dashboard_skeleton(run_id, wf, eng) → creates empty dashboard
+  - ensure_dashboard_skeleton(run_id, wf, eng) > creates empty dashboard
     immediately at run start (status='building', panels=[], panels_count=0)
-  - upsert_panel(run_id, step_result, eng) → appends one panel per step
+  - upsert_panel(run_id, step_result, eng) > appends one panel per step
     completion; bumps panels_count + last_panel_at
-  - build_dashboard_from_run(run_id, wf, results, eng) → finalises:
+  - build_dashboard_from_run(run_id, wf, results, eng) > finalises:
     sets status='done', picks layout, bumps spec_version
 """
 from __future__ import annotations
@@ -67,7 +67,7 @@ def _classify_columns(rows: list[dict]) -> tuple[list[str], list[str], list[str]
 
 
 def _panel_from_step(step_res: dict, idx: int) -> dict | None:
-    """Map one step result → panel dict (returns None if nothing to render)."""
+    """Map one step result > panel dict (returns None if nothing to render)."""
     rows = step_res.get("rows") or []
     row_count = step_res.get("row_count") or len(rows)
     title = str(step_res.get("title") or step_res.get("question") or f"Step {idx + 1}")
@@ -107,7 +107,7 @@ def _panel_from_step(step_res: dict, idx: int) -> dict | None:
             "sources": [],
         }
 
-    # KPI cluster: 1 row × N numerics → first one used as primary KPI panel
+    # KPI cluster: 1 row × N numerics > first one used as primary KPI panel
     if row_count == 1 and len(numeric) >= 2:
         col = numeric[0]
         val = rows[0].get(col)
@@ -225,7 +225,7 @@ def ensure_dashboard_skeleton(run_id: str, workflow: dict, engine) -> str:
                 "spec": json.dumps(spec, default=str),
                 "lbl": label,
             })
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.exception("from_workflow: skeleton failed for %s: %s", dashboard_id, e)
         raise
 
@@ -263,17 +263,17 @@ def upsert_panel(run_id: str, step_result: dict, engine) -> int:
             res = cn.execute(_t(
                 "UPDATE public.dash_dashboards_v2 SET spec = "
                 "jsonb_set("
-                "  jsonb_set("
-                "    jsonb_set("
-                "      spec,"
-                "      '{panels}',"
-                "      COALESCE(spec->'panels', '[]'::jsonb) || CAST(:panel AS JSONB)"
-                "    ),"
-                "    '{panels_count}',"
-                "    to_jsonb(jsonb_array_length(COALESCE(spec->'panels', '[]'::jsonb)) + 1)"
-                "  ),"
-                "  '{last_panel_at}',"
-                "  to_jsonb(NOW()::text)"
+                " jsonb_set("
+                " jsonb_set("
+                " spec,"
+                " '{panels}',"
+                " COALESCE(spec->'panels', '[]'::jsonb) || CAST(:panel AS JSONB)"
+                " ),"
+                " '{panels_count}',"
+                " to_jsonb(jsonb_array_length(COALESCE(spec->'panels', '[]'::jsonb)) + 1)"
+                " ),"
+                " '{last_panel_at}',"
+                " to_jsonb(NOW()::text)"
                 ") "
                 "WHERE id=:did "
                 "RETURNING jsonb_array_length(spec->'panels')"
@@ -282,7 +282,7 @@ def upsert_panel(run_id: str, step_result: dict, engine) -> int:
                 "panel": json.dumps(panel, default=str),
             }).first()
             return int(res[0]) if res else current_count + 1
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.exception("from_workflow: upsert_panel failed for %s: %s", dashboard_id, e)
         raise
 
@@ -296,13 +296,13 @@ def _pick_layout(panels: list[dict]) -> str:
     insight_count = sum(1 for t in types if t == "insight")
     n = len(panels)
 
-    # Mostly narrative → narrative layout
+    # Mostly narrative > narrative layout
     if insight_count >= n / 2:
         return "narrative"
-    # Few panels, heavy KPI → executive
+    # Few panels, heavy KPI > executive
     if n <= 4 and kpi_count >= n / 2:
         return "executive"
-    # Lots of similar panels → comparison
+    # Lots of similar panels > comparison
     if n >= 6 and len(set(types)) <= 2:
         return "comparison"
     return "operational"
@@ -353,19 +353,19 @@ def build_dashboard_from_run(run_id: str, workflow: dict, results: list[dict],
                 cn.execute(_t(
                     "UPDATE public.dash_dashboards_v2 SET spec = "
                     "jsonb_set("
-                    "  jsonb_set("
-                    "    jsonb_set(spec, '{status}', to_jsonb('done'::text)),"
-                    "    '{layout}', to_jsonb(CAST(:layout AS text))"
-                    "  ),"
-                    "  '{spec_version}',"
-                    "  to_jsonb(COALESCE((spec->>'spec_version')::int, 1) + 1)"
+                    " jsonb_set("
+                    " jsonb_set(spec, '{status}', to_jsonb('done'::text)),"
+                    " '{layout}', to_jsonb(CAST(:layout AS text))"
+                    " ),"
+                    " '{spec_version}',"
+                    " to_jsonb(COALESCE((spec->>'spec_version')::int, 1) + 1)"
                     ") "
                     "WHERE id=:id"
                 ), {"id": dashboard_id, "layout": layout})
             logger.info("from_workflow: finalised %s (panels=%d, layout=%s)",
                         dashboard_id, len(panels or []), layout)
             return dashboard_id
-        except Exception as e:  # noqa: BLE001
+        except Exception as e: # noqa: BLE001
             logger.exception("from_workflow: finalise failed for %s: %s", dashboard_id, e)
             return None
 
@@ -382,7 +382,7 @@ def build_dashboard_from_run(run_id: str, workflow: dict, results: list[dict],
             p = _panel_from_step(res, i)
             if p:
                 panels.append(p)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e: # noqa: BLE001
             logger.exception("from_workflow: panel build failed step=%d: %s", i, e)
 
     if not panels:
@@ -426,7 +426,7 @@ def build_dashboard_from_run(run_id: str, workflow: dict, results: list[dict],
                 "spec": json.dumps(spec, default=str),
                 "lbl": label,
             })
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.exception("from_workflow: persist failed for %s: %s", dashboard_id, e)
         return None
 

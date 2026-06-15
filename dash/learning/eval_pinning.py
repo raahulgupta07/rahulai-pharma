@@ -19,7 +19,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-REGRESSION_THRESHOLD = 0.15  # 15% drop vs trailing avg → alert
+REGRESSION_THRESHOLD = 0.15 # 15% drop vs trailing avg > alert
 TRAILING_WINDOW = 5
 
 
@@ -45,14 +45,14 @@ def _trailing_avg(project_slug: Optional[str]) -> float:
         with get_sql_engine().connect() as conn:
             row = conn.execute(text(
                 "SELECT AVG(CASE WHEN hypotheses_formed > 0 "
-                "  THEN (hypotheses_verified::float / hypotheses_formed) "
-                "         - 0.1 * (hypotheses_failed::float / hypotheses_formed) "
-                "  ELSE NULL END) "
+                " THEN (hypotheses_verified::float / hypotheses_formed) "
+                " - 0.1 * (hypotheses_failed::float / hypotheses_formed) "
+                " ELSE NULL END) "
                 "FROM (SELECT hypotheses_formed, hypotheses_verified, hypotheses_failed "
-                "      FROM public.dash_self_learning_runs "
-                "      WHERE project_slug IS NOT DISTINCT FROM :s "
-                "        AND status = 'completed' "
-                "      ORDER BY started_at DESC LIMIT :n) t"
+                " FROM public.dash_self_learning_runs "
+                " WHERE project_slug IS NOT DISTINCT FROM :s "
+                " AND status = 'completed' "
+                " ORDER BY started_at DESC LIMIT :n) t"
             ), {"s": project_slug, "n": TRAILING_WINDOW}).fetchone()
             return float(row[0]) if row and row[0] is not None else 0.0
     except Exception as e:

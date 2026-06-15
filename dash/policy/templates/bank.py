@@ -2,7 +2,7 @@ TEMPLATE = {
     "label": "Bank",
     "description": "Multi-branch bank — heavy hide+mask on all financial and PII fields",
     "scope_keyword": "branch",
-    "icon": "🏦",
+    "icon": "",
     "policy": {
         "version": 1,
         "private": {"fields": {}},

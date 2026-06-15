@@ -13,7 +13,7 @@ Public API:
     get_run_status(run_id) -> dict
     create_training_run(slug, n_tables) -> int
     cancel_run(run_id) -> int
-    run_worker_loop() -> None        # blocking, called from app lifespan
+    run_worker_loop() -> None # blocking, called from app lifespan
     _dispatch_job(job) -> tuple[bool, dict|None, str|None]
 
 Tables: public.dash_training_jobs (migration 170), public.dash_training_runs
@@ -22,7 +22,7 @@ Tables: public.dash_training_jobs (migration 170), public.dash_training_runs
 Redis: dash:training:queue (LIST, LPUSH new / RPOP claim).
        dash:training:project_lock:{slug} (5min TTL string lock).
 
-Kill switch: TRAINING_QUEUE_DISABLED=1 → worker loop exits, enqueue still
+Kill switch: TRAINING_QUEUE_DISABLED=1 > worker loop exits, enqueue still
 inserts rows but returns count so callers can detect.
 
 PgBouncer rules: CAST(:p AS jsonb) not :p::jsonb. get_write_engine() for
@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 _REDIS_KEY = "dash:training:queue"
 _LOCK_KEY_FMT = "dash:training:project_lock:{slug}"
-_LOCK_TTL_S = 300  # 5 min — covers a long single-table profile run
+_LOCK_TTL_S = 300 # 5 min — covers a long single-table profile run
 _JOB_TIMEOUT_S = 300
 _DEFAULT_STEPS = ["profile_v2"]
 
@@ -64,7 +64,7 @@ def _get_redis():
     if _redis_client is not None:
         return _redis_client
     try:
-        import redis  # type: ignore
+        import redis # type: ignore
         url = os.getenv("REDIS_URL", "redis://dash-redis:6379")
         _redis_client = redis.from_url(url, socket_timeout=2, socket_connect_timeout=2)
         # ping to confirm
@@ -172,7 +172,7 @@ def _fetch_job(job_id: int) -> dict | None:
 
 
 def claim_next_job(worker_id: str) -> dict | None:
-    """RPOP from Redis. Atomic UPDATE status='queued'→'running'.
+    """RPOP from Redis. Atomic UPDATE status='queued'>'running'.
     Per-project lock check: if another job for same slug is running, re-queue
     the claim (LPUSH back) and return None to skip this tick.
     Returns full job dict or None.
@@ -368,12 +368,12 @@ def cancel_run(run_id: int) -> int:
 
 
 # --------------------------------------------------------------------------
-# Dispatch (route job_type → handler)
+# Dispatch (route job_type > handler)
 # --------------------------------------------------------------------------
 def _dispatch_job(job: dict) -> tuple[bool, dict | None, str | None]:
     """Route by payload['steps']. Returns (ok, result_dict, error_str).
 
-    profile_v2 → calls dash.training.profile_v2.profile_table_v2.
+    profile_v2 > calls dash.training.profile_v2.profile_table_v2.
     """
     slug = job.get("project_slug") or ""
     table = job.get("table_name") or ""
@@ -421,7 +421,7 @@ def _clear_timeout():
 
 
 def run_worker_loop() -> None:
-    """Forever loop: claim job → dispatch → complete. Sleep 1s when idle.
+    """Forever loop: claim job > dispatch > complete. Sleep 1s when idle.
 
     Disabled when TRAINING_QUEUE_DISABLED=1.
     Per-job SIGALRM timeout of _JOB_TIMEOUT_S seconds.

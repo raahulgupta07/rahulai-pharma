@@ -1,507 +1,508 @@
 <script lang="ts">
-  import { onMount, onDestroy, tick } from 'svelte';
+  import Icon from '$lib/Icon.svelte';
+ import { onMount, onDestroy, tick } from 'svelte';
 
-  // Single-tenant locked slug (matches RobotPanel precedent).
-  let { slug = 'citypharma' }: { slug?: string } = $props();
+ // Single-tenant locked slug (matches RobotPanel precedent).
+ let { slug = 'citypharma' }: { slug?: string } = $props();
 
-  let open = $state(false);
-  let atStatus = $state<any>(null);
-  let training = $state(false);
-  let logs = $state<{ i: number; ts: string; msg: string; table?: string; tsabs?: number }[]>([]);
-  let logCursor = $state(-1);
-  let _poll: any = null;
-  let _pollMs = 0;
-  let _logPoll: any = null;
-  let _prevLive = false;
-  let _userClosed = false;
-  let consoleEl: HTMLDivElement | null = $state(null);
+ let open = $state(false);
+ let atStatus = $state<any>(null);
+ let training = $state(false);
+ let logs = $state<{ i: number; ts: string; msg: string; table?: string; tsabs?: number }[]>([]);
+ let logCursor = $state(-1);
+ let _poll: any = null;
+ let _pollMs = 0;
+ let _logPoll: any = null;
+ let _prevLive = false;
+ let _userClosed = false;
+ let consoleEl: HTMLDivElement | null = $state(null);
 
-  function _h(): Record<string, string> {
-    const t = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
-    return t ? { Authorization: `Bearer ${t}` } : {};
-  }
-  async function _j(url: string): Promise<any> {
-    try { const r = await fetch(url, { headers: _h() }); return r.ok ? await r.json() : null; } catch { return null; }
-  }
+ function _h(): Record<string, string> {
+ const t = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
+ return t ? { Authorization: `Bearer ${t}` } : {};
+ }
+ async function _j(url: string): Promise<any> {
+ try { const r = await fetch(url, { headers: _h() }); return r.ok ? await r.json() : null; } catch { return null; }
+ }
 
-  async function streamLogs() {
-    const d = await _j(`/api/projects/${slug}/auto-train/log?since=${logCursor}&limit=200`);
-    const ev = (d?.events || []) as { i: number; ts: string; msg: string; table?: string; tsabs?: number }[];
-    const fresh = ev.filter((e) => e.i > logCursor);
-    if (fresh.length) {
-      logs = [...logs, ...fresh].slice(-400);
-      logCursor = fresh[fresh.length - 1].i;
-      await tick();
-      if (consoleTab === 'log' && consoleEl) consoleEl.scrollTop = consoleEl.scrollHeight;
-    }
-  }
+ async function streamLogs() {
+ const d = await _j(`/api/projects/${slug}/auto-train/log?since=${logCursor}&limit=200`);
+ const ev = (d?.events || []) as { i: number; ts: string; msg: string; table?: string; tsabs?: number }[];
+ const fresh = ev.filter((e) => e.i > logCursor);
+ if (fresh.length) {
+ logs = [...logs, ...fresh].slice(-400);
+ logCursor = fresh[fresh.length - 1].i;
+ await tick();
+ if (consoleTab === 'log' && consoleEl) consoleEl.scrollTop = consoleEl.scrollHeight;
+ }
+ }
 
-  // ── timestamp helpers (real local date + time off the absolute epoch) ──
-  function _epoch(l: any): number {
-    let e = Number(l?.tsabs) || 0;
-    if (e > 1e12) e = e / 1000; // tolerate ms epochs
-    return e;
-  }
-  function fmtClock(l: any): string {
-    const e = _epoch(l);
-    if (e > 0) return new Date(e * 1000).toLocaleTimeString([], { hour12: false });
-    return l?.ts || '';
-  }
-  function fmtFull(l: any): string {
-    const e = _epoch(l);
-    if (e > 0) return new Date(e * 1000).toLocaleString([], { hour12: false });
-    return l?.ts || '';
-  }
-  function dayLabel(epochSec: number): string {
-    return new Date(epochSec * 1000).toLocaleDateString([], {
-      weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
-    });
-  }
+ // ── timestamp helpers (real local date + time off the absolute epoch) ──
+ function _epoch(l: any): number {
+ let e = Number(l?.tsabs) || 0;
+ if (e > 1e12) e = e / 1000; // tolerate ms epochs
+ return e;
+ }
+ function fmtClock(l: any): string {
+ const e = _epoch(l);
+ if (e > 0) return new Date(e * 1000).toLocaleTimeString([], { hour12: false });
+ return l?.ts || '';
+ }
+ function fmtFull(l: any): string {
+ const e = _epoch(l);
+ if (e > 0) return new Date(e * 1000).toLocaleString([], { hour12: false });
+ return l?.ts || '';
+ }
+ function dayLabel(epochSec: number): string {
+ return new Date(epochSec * 1000).toLocaleDateString([], {
+ weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
+ });
+ }
 
-  // Live log annotated with day-divider rows when the calendar date changes.
-  const liveRows = $derived.by(() => {
-    const out: any[] = [];
-    let lastDay = '';
-    for (const l of logs) {
-      const e = _epoch(l);
-      const dk = e > 0 ? new Date(e * 1000).toDateString() : '';
-      if (dk && dk !== lastDay) {
-        out.push({ _day: true, key: 'd' + l.i, label: dayLabel(e) });
-        lastDay = dk;
-      }
-      out.push({ _day: false, key: l.i, l });
-    }
-    return out;
-  });
+ // Live log annotated with day-divider rows when the calendar date changes.
+ const liveRows = $derived.by(() => {
+ const out: any[] = [];
+ let lastDay = '';
+ for (const l of logs) {
+ const e = _epoch(l);
+ const dk = e > 0 ? new Date(e * 1000).toDateString() : '';
+ if (dk && dk !== lastDay) {
+ out.push({ _day: true, key: 'd' + l.i, label: dayLabel(e) });
+ lastDay = dk;
+ }
+ out.push({ _day: false, key: l.i, l });
+ }
+ return out;
+ });
 
-  // ── HISTORY tab: full retained log, grouped by local date → run ──
-  let history = $state<any[]>([]);
-  let historyLoading = $state(false);
-  async function loadHistory() {
-    historyLoading = true;
-    const d = await _j(`/api/projects/${slug}/auto-train/log-history?runs=50`);
-    history = (d?.runs || []) as any[];
-    historyLoading = false;
-  }
-  const historyDays = $derived.by(() => {
-    const days = new Map<string, any>();
-    for (const run of history) {
-      for (const ev of (run.events || [])) {
-        let e = Number(ev.tsabs) || 0;
-        if (e > 1e12) e = e / 1000;
-        const eff = e > 0 ? e : (Number(run.started_epoch) || 0);
-        if (!eff) continue;
-        const dk = new Date(eff * 1000).toDateString();
-        if (!days.has(dk)) days.set(dk, { label: dayLabel(eff), epoch: eff, runs: new Map() });
-        const day = days.get(dk);
-        if (eff > day.epoch) day.epoch = eff;
-        if (!day.runs.has(run.run_id)) day.runs.set(run.run_id, { run_id: run.run_id, status: run.status, lines: [] });
-        day.runs.get(run.run_id).lines.push({ ...ev, tsabs: e });
-      }
-    }
-    const arr = [...days.values()].sort((a, b) => b.epoch - a.epoch);
-    for (const day of arr) day.runList = [...day.runs.values()].sort((a: any, b: any) => b.run_id - a.run_id);
-    return arr;
-  });
+ // ── HISTORY tab: full retained log, grouped by local date > run ──
+ let history = $state<any[]>([]);
+ let historyLoading = $state(false);
+ async function loadHistory() {
+ historyLoading = true;
+ const d = await _j(`/api/projects/${slug}/auto-train/log-history?runs=50`);
+ history = (d?.runs || []) as any[];
+ historyLoading = false;
+ }
+ const historyDays = $derived.by(() => {
+ const days = new Map<string, any>();
+ for (const run of history) {
+ for (const ev of (run.events || [])) {
+ let e = Number(ev.tsabs) || 0;
+ if (e > 1e12) e = e / 1000;
+ const eff = e > 0 ? e : (Number(run.started_epoch) || 0);
+ if (!eff) continue;
+ const dk = new Date(eff * 1000).toDateString();
+ if (!days.has(dk)) days.set(dk, { label: dayLabel(eff), epoch: eff, runs: new Map() });
+ const day = days.get(dk);
+ if (eff > day.epoch) day.epoch = eff;
+ if (!day.runs.has(run.run_id)) day.runs.set(run.run_id, { run_id: run.run_id, status: run.status, lines: [] });
+ day.runs.get(run.run_id).lines.push({ ...ev, tsabs: e });
+ }
+ }
+ const arr = [...days.values()].sort((a, b) => b.epoch - a.epoch);
+ for (const day of arr) day.runList = [...day.runs.values()].sort((a: any, b: any) => b.run_id - a.run_id);
+ return arr;
+ });
 
-  // Always pin the live log to the latest line — on new lines AND on tab switch.
-  $effect(() => {
-    logs.length; // track
-    if (consoleTab === 'log' && consoleEl) consoleEl.scrollTop = consoleEl.scrollHeight;
-  });
+ // Always pin the live log to the latest line — on new lines AND on tab switch.
+ $effect(() => {
+ logs.length; // track
+ if (consoleTab === 'log' && consoleEl) consoleEl.scrollTop = consoleEl.scrollHeight;
+ });
 
-  // Autonomy journal (heartbeat T3 intents + budget events). Read-only tab.
-  let consoleTab = $state<'log' | 'history' | 'autonomy'>('log');
-  let autonomy = $state<{ id: number; ts: string; tier: string; signal: string; action: string; tokens: number }[]>([]);
-  async function loadAutonomy() {
-    const d = await _j(`/api/projects/${slug}/autonomy/journal?limit=50`);
-    autonomy = (d?.journal || []) as typeof autonomy;
-  }
+ // Autonomy journal (heartbeat T3 intents + budget events). Read-only tab.
+ let consoleTab = $state<'log' | 'history' | 'autonomy'>('log');
+ let autonomy = $state<{ id: number; ts: string; tier: string; signal: string; action: string; tokens: number }[]>([]);
+ async function loadAutonomy() {
+ const d = await _j(`/api/projects/${slug}/autonomy/journal?limit=50`);
+ autonomy = (d?.journal || []) as typeof autonomy;
+ }
 
-  let trainErr = $state('');
-  // Adaptive heartbeat — fast while training, slow while idle. Always runs so a
-  // backgrounded tab self-heals on the next tick (no more frozen "training" state).
-  function schedulePoll(live: boolean) {
-    const ms = live ? 6000 : 20000;
-    if (_poll && _pollMs === ms) return;
-    if (_poll) clearInterval(_poll);
-    _pollMs = ms;
-    _poll = setInterval(loadStatus, ms);
-  }
+ let trainErr = $state('');
+ // Adaptive heartbeat — fast while training, slow while idle. Always runs so a
+ // backgrounded tab self-heals on the next tick (no more frozen "training" state).
+ function schedulePoll(live: boolean) {
+ const ms = live ? 6000 : 20000;
+ if (_poll && _pollMs === ms) return;
+ if (_poll) clearInterval(_poll);
+ _pollMs = ms;
+ _poll = setInterval(loadStatus, ms);
+ }
 
-  async function loadStatus() {
-    atStatus = await _j(`/api/projects/${slug}/auto-train/status`);
-    const live = !!atStatus?.is_training;
-    // self-heal: backend is the source of truth — never let the local flag stick.
-    if (!live) training = false;
-    if (live) {
-      if (!_logPoll) _logPoll = setInterval(streamLogs, 3000);
-      streamLogs();
-      // auto-expand on training start (unless the user explicitly closed it this run)
-      if (!_prevLive && !open && !_userClosed) open = true;
-    } else {
-      _userClosed = false;
-      if (_logPoll && !open) { clearInterval(_logPoll); _logPoll = null; }
-    }
-    // ── state-change reactions (track transitions across polls) ──
-    reactToTransition(live);
-    _prevLive = live;
-    schedulePoll(live);
-  }
+ async function loadStatus() {
+ atStatus = await _j(`/api/projects/${slug}/auto-train/status`);
+ const live = !!atStatus?.is_training;
+ // self-heal: backend is the source of truth — never let the local flag stick.
+ if (!live) training = false;
+ if (live) {
+ if (!_logPoll) _logPoll = setInterval(streamLogs, 3000);
+ streamLogs();
+ // auto-expand on training start (unless the user explicitly closed it this run)
+ if (!_prevLive && !open && !_userClosed) open = true;
+ } else {
+ _userClosed = false;
+ if (_logPoll && !open) { clearInterval(_logPoll); _logPoll = null; }
+ }
+ // ── state-change reactions (track transitions across polls) ──
+ reactToTransition(live);
+ _prevLive = live;
+ schedulePoll(live);
+ }
 
-  async function trainNow() {
-    if (training || atStatus?.is_training) return;
-    trainErr = '';
-    training = true;
-    const d = await _j(`/api/projects/${slug}/datasource?quality=false&preview=false`);
-    const names = (d?.tables || []).map((t: any) => t.name);
-    if (!names.length) { training = false; trainErr = 'no tables to train'; return; }
-    if (!open) open = true;
-    try {
-      const r = await fetch(`/api/projects/${slug}/retrain?force=1`, {
-        method: 'POST', headers: { ..._h(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ table_names: names, force: true }),
-      });
-      if (!r.ok) { training = false; trainErr = `start failed (${r.status})`; }
-    } catch { training = false; trainErr = 'unreachable'; }
-    setTimeout(loadStatus, 1200);
-    if (!_logPoll) _logPoll = setInterval(streamLogs, 3000);
-  }
+ async function trainNow() {
+ if (training || atStatus?.is_training) return;
+ trainErr = '';
+ training = true;
+ const d = await _j(`/api/projects/${slug}/datasource?quality=false&preview=false`);
+ const names = (d?.tables || []).map((t: any) => t.name);
+ if (!names.length) { training = false; trainErr = 'no tables to train'; return; }
+ if (!open) open = true;
+ try {
+ const r = await fetch(`/api/projects/${slug}/retrain?force=1`, {
+ method: 'POST', headers: { ..._h(), 'Content-Type': 'application/json' },
+ body: JSON.stringify({ table_names: names, force: true }),
+ });
+ if (!r.ok) { training = false; trainErr = `start failed (${r.status})`; }
+ } catch { training = false; trainErr = 'unreachable'; }
+ setTimeout(loadStatus, 1200);
+ if (!_logPoll) _logPoll = setInterval(streamLogs, 3000);
+ }
 
-  function toggleOpen() {
-    open = !open;
-    if (open) { streamLogs(); }
-    else { _userClosed = !!atStatus?.is_training; if (_logPoll && !atStatus?.is_training) { clearInterval(_logPoll); _logPoll = null; } }
-  }
+ function toggleOpen() {
+ open = !open;
+ if (open) { streamLogs(); }
+ else { _userClosed = !!atStatus?.is_training; if (_logPoll && !atStatus?.is_training) { clearInterval(_logPoll); _logPoll = null; } }
+ }
 
-  function rel(ts: string): string {
-    try {
-      const t = new Date((ts || '').replace(' ', 'T') + (/(Z|[+-]\d\d:?\d\d)$/.test(ts) ? '' : 'Z')).getTime();
-      const s = Math.max(0, Math.round((Date.now() - t) / 1000));
-      if (s < 60) return s + 's ago';
-      if (s < 3600) return Math.round(s / 60) + 'm ago';
-      if (s < 86400) return Math.round(s / 3600) + 'h ago';
-      return Math.round(s / 86400) + 'd ago';
-    } catch { return ''; }
-  }
+ function rel(ts: string): string {
+ try {
+ const t = new Date((ts || '').replace(' ', 'T') + (/(Z|[+-]\d\d:?\d\d)$/.test(ts) ? '' : 'Z')).getTime();
+ const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+ if (s < 60) return s + 's ago';
+ if (s < 3600) return Math.round(s / 60) + 'm ago';
+ if (s < 86400) return Math.round(s / 3600) + 'h ago';
+ return Math.round(s / 86400) + 'd ago';
+ } catch { return ''; }
+ }
 
-  const status = $derived(
-    (training || atStatus?.is_training) ? 'training'
-      : atStatus?.daemon?.enabled === false ? 'disabled'
-      : 'watching'
-  );
-  const lastTrained = $derived.by(() => { const r = atStatus?.recent_runs?.[0]; return r?.finished_at ? rel(r.finished_at) : ''; });
-  // live elapsed for the "what it's doing" callout
-  let nowTs = $state(Date.now());
-  const liveElapsed = $derived.by(() => {
-    const s = atStatus?.active_run?.started_at;
-    if (!s) return '';
-    try {
-      const t = new Date(s.replace(' ', 'T') + (/(Z|[+-]\d\d:?\d\d)$/.test(s) ? '' : 'Z')).getTime();
-      const sec = Math.max(0, Math.round((nowTs - t) / 1000));
-      const m = Math.floor(sec / 60), x = sec % 60;
-      return m ? `${m}m ${x}s` : `${x}s`;
-    } catch { return ''; }
-  });
-  // ── Rich callout catalog: friendly, varied "thinking" lines by state + the
-  //    live action (current_step). Rotates so it never feels canned. ──
-  // Map a raw pipeline step → a human line. First substring match wins.
-  const STEP_MSG: [string, string][] = [
-    ['infer_schema', 'Reading your columns 🔍'],
-    ['profile', 'Reading your columns 🔍'],
-    ['drift', 'Checking what changed since last time'],
-    ['dedup', 'Tidying duplicate rows 🧹'],
-    ['qa_generation', 'Writing practice questions ❓'],
-    ['qa', 'Writing practice questions ❓'],
-    ['relationship', 'Connecting the tables 🔗'],
-    ['domain_knowledge', 'Learning pharma terms 💊'],
-    ['glossary', 'Learning pharma terms 💊'],
-    ['persona', 'Shaping my personality 🎭'],
-    ['synthesis', 'Tying insights together'],
-    ['semantic_layer', 'Building summary views ◆'],
-    ['matview', 'Building summary views ◆'],
-    ['knowledge_graph', 'Mapping the drug network 🕸️'],
-    ['vector_backfill', 'Memorizing with embeddings 🧠'],
-    ['embed', 'Memorizing with embeddings 🧠'],
-    ['index', 'Filing everything away 🗂️'],
-    ['finaliz', 'Filing everything away 🗂️ (almost done)'],
-    ['scope', 'Setting my boundaries 🛡️'],
-    ['codex', 'Polishing query logic'],
-    ['eval', 'Grading myself ✅'],
-  ];
-  function stepMessage(step: string): string {
-    const s = (step || '').toLowerCase();
-    for (const [k, m] of STEP_MSG) if (s.includes(k)) return m;
-    return '';
-  }
-  const IDLE_MSGS = ['Watching for new data…', 'All trained — standing by 🫡', 'Ask me anything 💬', "I'll ping you when data changes"];
-  const TRAIN_MSGS = ['Learning your catalog 📚', 'Crunching the data…', 'Training in progress ⚡'];
-  const DONE_MSGS = ['Done! Fresh knowledge loaded 🚀', 'All caught up ✓', 'Ready — ask me something 🎉'];
-  const ERR_MSGS = ['Hit a snag — training failed ⚠', "Couldn't finish · tap for details"];
-  const PAUSE_MSGS = ['Auto-train off — Zzz 😴', 'Sleeping · train manually anytime'];
-  // rotation index — changes ~every 12s (nowTs ticks each second)
-  const rot = $derived(Math.floor(nowTs / 12000));
-  const pickRot = (arr: string[]) => arr[((rot % arr.length) + arr.length) % arr.length];
+ const status = $derived(
+ (training || atStatus?.is_training) ? 'training'
+ : atStatus?.daemon?.enabled === false ? 'disabled'
+ : 'watching'
+ );
+ const lastTrained = $derived.by(() => { const r = atStatus?.recent_runs?.[0]; return r?.finished_at ? rel(r.finished_at) : ''; });
+ // live elapsed for the "what it's doing" callout
+ let nowTs = $state(Date.now());
+ const liveElapsed = $derived.by(() => {
+ const s = atStatus?.active_run?.started_at;
+ if (!s) return '';
+ try {
+ const t = new Date(s.replace(' ', 'T') + (/(Z|[+-]\d\d:?\d\d)$/.test(s) ? '' : 'Z')).getTime();
+ const sec = Math.max(0, Math.round((nowTs - t) / 1000));
+ const m = Math.floor(sec / 60), x = sec % 60;
+ return m ? `${m}m ${x}s` : `${x}s`;
+ } catch { return ''; }
+ });
+ // ── Rich callout catalog: friendly, varied "thinking" lines by state + the
+ // live action (current_step). Rotates so it never feels canned. ──
+ // Map a raw pipeline step > a human line. First substring match wins.
+ const STEP_MSG: [string, string][] = [
+ ['infer_schema', 'Reading your columns '],
+ ['profile', 'Reading your columns '],
+ ['drift', 'Checking what changed since last time'],
+ ['dedup', 'Tidying duplicate rows '],
+ ['qa_generation', 'Writing practice questions '],
+ ['qa', 'Writing practice questions '],
+ ['relationship', 'Connecting the tables '],
+ ['domain_knowledge', 'Learning pharma terms '],
+ ['glossary', 'Learning pharma terms '],
+ ['persona', 'Shaping my personality '],
+ ['synthesis', 'Tying insights together'],
+ ['semantic_layer', 'Building summary views ◆'],
+ ['matview', 'Building summary views ◆'],
+ ['knowledge_graph', 'Mapping the drug network '],
+ ['vector_backfill', 'Memorizing with embeddings '],
+ ['embed', 'Memorizing with embeddings '],
+ ['index', 'Filing everything away '],
+ ['finaliz', 'Filing everything away (almost done)'],
+ ['scope', 'Setting my boundaries '],
+ ['codex', 'Polishing query logic'],
+ ['eval', 'Grading myself '],
+ ];
+ function stepMessage(step: string): string {
+ const s = (step || '').toLowerCase();
+ for (const [k, m] of STEP_MSG) if (s.includes(k)) return m;
+ return '';
+ }
+ const IDLE_MSGS = ['Watching for new data…', 'All trained — standing by ', 'Ask me anything ', "I'll ping you when data changes"];
+ const TRAIN_MSGS = ['Learning your catalog ', 'Crunching the data…', 'Training in progress '];
+ const DONE_MSGS = ['Done! Fresh knowledge loaded ', 'All caught up OK', 'Ready — ask me something '];
+ const ERR_MSGS = ['Hit a snag — training failed ', "Couldn't finish · tap for details"];
+ const PAUSE_MSGS = ['Auto-train off — Zzz ', 'Sleeping · train manually anytime'];
+ // rotation index — changes ~every 12s (nowTs ticks each second)
+ const rot = $derived(Math.floor(nowTs / 12000));
+ const pickRot = (arr: string[]) => arr[((rot % arr.length) + arr.length) % arr.length];
 
-  let pokeMsg = $state('');  // transient playful line (hover / poke)
+ let pokeMsg = $state(''); // transient playful line (hover / poke)
 
-  // one-line callout next to the bubble. Priority: poke > done > error >
-  // training(step) > paused > idle.
-  const callout = $derived.by(() => {
-    if (pokeMsg) return pokeMsg;
-    if (celebrate) return pickRot(DONE_MSGS);
-    if (isError) return pickRot(ERR_MSGS);
-    if (isTrainingNow) {
-      const step = atStatus?.current_step || atStatus?.active_run?.current_step || '';
-      const base = stepMessage(step) || pickRot(TRAIN_MSGS);
-      return liveElapsed ? `${base} · ${liveElapsed}` : base;
-    }
-    if (isPaused) return pickRot(PAUSE_MSGS);
-    const lr = lastRun;
-    if (lr?.finished_at && lr.status === 'done') {
-      // alternate between idle chatter and a concrete "trained when"
-      return (rot % 2 === 0) ? `Last trained ${rel(lr.finished_at)}` : pickRot(IDLE_MSGS);
-    }
-    return pickRot(IDLE_MSGS);
-  });
-  const autoOn = $derived(atStatus?.daemon?.enabled !== false);
-  const runMeta = $derived.by(() => {
-    const st = atStatus?.is_training ? 'running' : (atStatus?.recent_runs?.[0]?.status || 'idle');
-    const id = atStatus?.active_run?.id ?? atStatus?.recent_runs?.[0]?.id;
-    return { st, id };
-  });
+ // one-line callout next to the bubble. Priority: poke > done > error >
+ // training(step) > paused > idle.
+ const callout = $derived.by(() => {
+ if (pokeMsg) return pokeMsg;
+ if (celebrate) return pickRot(DONE_MSGS);
+ if (isError) return pickRot(ERR_MSGS);
+ if (isTrainingNow) {
+ const step = atStatus?.current_step || atStatus?.active_run?.current_step || '';
+ const base = stepMessage(step) || pickRot(TRAIN_MSGS);
+ return liveElapsed ? `${base} · ${liveElapsed}` : base;
+ }
+ if (isPaused) return pickRot(PAUSE_MSGS);
+ const lr = lastRun;
+ if (lr?.finished_at && lr.status === 'done') {
+ // alternate between idle chatter and a concrete "trained when"
+ return (rot % 2 === 0) ? `Last trained ${rel(lr.finished_at)}` : pickRot(IDLE_MSGS);
+ }
+ return pickRot(IDLE_MSGS);
+ });
+ const autoOn = $derived(atStatus?.daemon?.enabled !== false);
+ const runMeta = $derived.by(() => {
+ const st = atStatus?.is_training ? 'running' : (atStatus?.recent_runs?.[0]?.status || 'idle');
+ const id = atStatus?.active_run?.id ?? atStatus?.recent_runs?.[0]?.id;
+ return { st, id };
+ });
 
-  // ── NEW: defensive task + attention derivation (older payloads lack these) ──
-  const lastRun = $derived.by(() => atStatus?.last_run || atStatus?.recent_runs?.[0] || null);
-  const isTrainingNow = $derived(training || !!atStatus?.is_training);
-  const task = $derived.by(() => {
-    const t = atStatus?.task;
-    if (typeof t === 'string' && t) return t;
-    // fallback when backend hasn't shipped `task` yet
-    if (isTrainingNow) return 'training';
-    if (atStatus?.daemon?.enabled === false) return 'paused';
-    return 'idle';
-  });
-  // ── Sticky-badge fix (#7c): the ⚠ glyph + "1" badge used to latch on the last
-  // failed run FOREVER, even hours later while idle, so the robot looked broken
-  // when nothing was wrong. Now the alert clears when (a) the user dismisses it,
-  // (b) a NEWER run lands (dismissal auto-resets so a fresh failure re-alerts),
-  // or (c) the failure is older than ERR_TTL_H hours and nothing is training.
-  const ERR_TTL_H = 6;
-  let errDismissed = $state(false);
-  let _lastSeenRunId: number | undefined = $state(undefined);
-  $effect(() => {
-    const id = lastRun?.id;
-    if (id !== undefined && id !== _lastSeenRunId) { _lastSeenRunId = id; errDismissed = false; }
-  });
-  const errStale = $derived.by(() => {
-    if (!lastRun?.finished_at) return false;
-    const ageH = (Date.now() - new Date(lastRun.finished_at).getTime()) / 3.6e6;
-    return ageH > ERR_TTL_H;
-  });
-  const showErr = $derived((lastRun?.status === 'failed') && !errDismissed && !errStale && !isTrainingNow);
-  const attention = $derived.by(() => {
-    const a = atStatus?.attention;
-    if (typeof a === 'number' && !errDismissed && !errStale) return a;
-    return showErr ? 1 : 0;
-  });
-  const isError = $derived(showErr || task === 'error');
-  const isPaused = $derived(!isTrainingNow && atStatus?.daemon?.enabled === false);
+ // ── NEW: defensive task + attention derivation (older payloads lack these) ──
+ const lastRun = $derived.by(() => atStatus?.last_run || atStatus?.recent_runs?.[0] || null);
+ const isTrainingNow = $derived(training || !!atStatus?.is_training);
+ const task = $derived.by(() => {
+ const t = atStatus?.task;
+ if (typeof t === 'string' && t) return t;
+ // fallback when backend hasn't shipped `task` yet
+ if (isTrainingNow) return 'training';
+ if (atStatus?.daemon?.enabled === false) return 'paused';
+ return 'idle';
+ });
+ // ── Sticky-badge fix (#7c): the glyph + "1" badge used to latch on the last
+ // failed run FOREVER, even hours later while idle, so the robot looked broken
+ // when nothing was wrong. Now the alert clears when (a) the user dismisses it,
+ // (b) a NEWER run lands (dismissal auto-resets so a fresh failure re-alerts),
+ // or (c) the failure is older than ERR_TTL_H hours and nothing is training.
+ const ERR_TTL_H = 6;
+ let errDismissed = $state(false);
+ let _lastSeenRunId: number | undefined = $state(undefined);
+ $effect(() => {
+ const id = lastRun?.id;
+ if (id !== undefined && id !== _lastSeenRunId) { _lastSeenRunId = id; errDismissed = false; }
+ });
+ const errStale = $derived.by(() => {
+ if (!lastRun?.finished_at) return false;
+ const ageH = (Date.now() - new Date(lastRun.finished_at).getTime()) / 3.6e6;
+ return ageH > ERR_TTL_H;
+ });
+ const showErr = $derived((lastRun?.status === 'failed') && !errDismissed && !errStale && !isTrainingNow);
+ const attention = $derived.by(() => {
+ const a = atStatus?.attention;
+ if (typeof a === 'number' && !errDismissed && !errStale) return a;
+ return showErr ? 1 : 0;
+ });
+ const isError = $derived(showErr || task === 'error');
+ const isPaused = $derived(!isTrainingNow && atStatus?.daemon?.enabled === false);
 
-  // antenna / dot color reflects character mood
-  const dotColor = $derived(
-    isError ? '#e05a4a'
-      : isTrainingNow ? '#c96342'
-      : isPaused ? '#c8c0b4'
-      : '#0ecad4'
-  );
+ // antenna / dot color reflects character mood
+ const dotColor = $derived(
+ isError ? '#e05a4a'
+ : isTrainingNow ? '#c96342'
+ : isPaused ? '#c8c0b4'
+ : '#0ecad4'
+ );
 
-  function lineClass(msg: string): string {
-    const m = (msg || '').toLowerCase();
-    if (/✓|complete|trained|done|success/.test(msg) || /complete|success/.test(m)) return 'l-ok';
-    if (/✗|error|fail|crash|abort/.test(msg) || /error|fail/.test(m)) return 'l-err';
-    if (/🧹|purge|skip|warn|orphan/.test(msg) || /purge|skip|warn/.test(m)) return 'l-warn';
-    return 'l-dim';
-  }
+ function lineClass(msg: string): string {
+ const m = (msg || '').toLowerCase();
+ if (/OK|complete|trained|done|success/.test(msg) || /complete|success/.test(m)) return 'l-ok';
+ if (/x|error|fail|crash|abort/.test(msg) || /error|fail/.test(m)) return 'l-err';
+ if (/|purge|skip|warn|orphan/.test(msg) || /purge|skip|warn/.test(m)) return 'l-warn';
+ return 'l-dim';
+ }
 
-  // ════════════════════════════════════════════════════════════════════
-  //  CHARACTER STATE (animations, blink, look-around, celebration, callout)
-  // ════════════════════════════════════════════════════════════════════
-  let blinking = $state(false);     // eyes → thin lines briefly
-  let lookDir = $state(0);          // -1 left, 0 center, +1 right (pupil shift)
-  let celebrate = $state(false);    // one-shot DONE burst
-  let poke = $state(false);         // click wiggle
-  let calloutShow = $state(false);  // smart auto-show callout pill
+ // ════════════════════════════════════════════════════════════════════
+ // CHARACTER STATE (animations, blink, look-around, celebration, callout)
+ // ════════════════════════════════════════════════════════════════════
+ let blinking = $state(false); // eyes > thin lines briefly
+ let lookDir = $state(0); // -1 left, 0 center, +1 right (pupil shift)
+ let celebrate = $state(false); // one-shot DONE burst
+ let poke = $state(false); // click wiggle
+ let calloutShow = $state(false); // smart auto-show callout pill
 
-  let _blinkT: any = null;
-  let _lookT: any = null;
-  let _celebT: any = null;
-  let _calloutT: any = null;
-  let _pokeT: any = null;
+ let _blinkT: any = null;
+ let _lookT: any = null;
+ let _celebT: any = null;
+ let _calloutT: any = null;
+ let _pokeT: any = null;
 
-  // confetti dots for the celebration burst (fixed seed of offsets)
-  const confetti = [
-    { x: -18, c: '#c96342', d: 0 },
-    { x: -8, c: '#0ecad4', d: 80 },
-    { x: 2, c: '#e0a82e', d: 40 },
-    { x: 12, c: '#4ec77a', d: 120 },
-    { x: 20, c: '#c96342', d: 60 },
-  ];
+ // confetti dots for the celebration burst (fixed seed of offsets)
+ const confetti = [
+ { x: -18, c: '#c96342', d: 0 },
+ { x: -8, c: '#0ecad4', d: 80 },
+ { x: 2, c: '#e0a82e', d: 40 },
+ { x: 12, c: '#4ec77a', d: 120 },
+ { x: 20, c: '#c96342', d: 60 },
+ ];
 
-  function scheduleBlink() {
-    if (_blinkT) clearTimeout(_blinkT);
-    const next = 4000 + Math.random() * 2500; // every ~4-6.5s
-    _blinkT = setTimeout(() => {
-      blinking = true;
-      setTimeout(() => { blinking = false; scheduleBlink(); }, 150);
-    }, next);
-  }
-  function scheduleLook() {
-    if (_lookT) clearTimeout(_lookT);
-    const next = 6000 + Math.random() * 4000; // every ~6-10s
-    _lookT = setTimeout(() => {
-      lookDir = Math.random() < 0.5 ? -1 : 1;
-      setTimeout(() => { lookDir = 0; scheduleLook(); }, 900);
-    }, next);
-  }
+ function scheduleBlink() {
+ if (_blinkT) clearTimeout(_blinkT);
+ const next = 4000 + Math.random() * 2500; // every ~4-6.5s
+ _blinkT = setTimeout(() => {
+ blinking = true;
+ setTimeout(() => { blinking = false; scheduleBlink(); }, 150);
+ }, next);
+ }
+ function scheduleLook() {
+ if (_lookT) clearTimeout(_lookT);
+ const next = 6000 + Math.random() * 4000; // every ~6-10s
+ _lookT = setTimeout(() => {
+ lookDir = Math.random() < 0.5 ? -1 : 1;
+ setTimeout(() => { lookDir = 0; scheduleLook(); }, 900);
+ }, next);
+ }
 
-  // Show callout on any meaningful state change; auto-hide ~6s when idle,
-  // keep persistently visible WHILE training.
-  function flashCallout(persist: boolean) {
-    calloutShow = true;
-    if (_calloutT) { clearTimeout(_calloutT); _calloutT = null; }
-    if (!persist) _calloutT = setTimeout(() => { calloutShow = false; }, 6000);
-  }
+ // Show callout on any meaningful state change; auto-hide ~6s when idle,
+ // keep persistently visible WHILE training.
+ function flashCallout(persist: boolean) {
+ calloutShow = true;
+ if (_calloutT) { clearTimeout(_calloutT); _calloutT = null; }
+ if (!persist) _calloutT = setTimeout(() => { calloutShow = false; }, 6000);
+ }
 
-  // Detect training→idle / error transitions across polls.
-  function reactToTransition(live: boolean) {
-    // training just STARTED
-    if (!_prevLive && live) {
-      flashCallout(true);
-    }
-    // training just ENDED
-    if (_prevLive && !live) {
-      const st = lastRun?.status;
-      if (st === 'done') {
-        celebrate = true;
-        if (_celebT) clearTimeout(_celebT);
-        _celebT = setTimeout(() => { celebrate = false; }, 3000);
-      }
-      flashCallout(false); // auto-hide ~6s after settling
-    }
-    // keep the pill up the whole time we're training
-    if (live && !calloutShow) flashCallout(true);
-    // surface errors as a (non-persistent) callout too
-    if (!live && lastRun?.status === 'failed' && !calloutShow) flashCallout(false);
-  }
+ // Detect training>idle / error transitions across polls.
+ function reactToTransition(live: boolean) {
+ // training just STARTED
+ if (!_prevLive && live) {
+ flashCallout(true);
+ }
+ // training just ENDED
+ if (_prevLive && !live) {
+ const st = lastRun?.status;
+ if (st === 'done') {
+ celebrate = true;
+ if (_celebT) clearTimeout(_celebT);
+ _celebT = setTimeout(() => { celebrate = false; }, 3000);
+ }
+ flashCallout(false); // auto-hide ~6s after settling
+ }
+ // keep the pill up the whole time we're training
+ if (live && !calloutShow) flashCallout(true);
+ // surface errors as a (non-persistent) callout too
+ if (!live && lastRun?.status === 'failed' && !calloutShow) flashCallout(false);
+ }
 
-  // Playful wave line on hover — transient (doesn't fight the real callout).
-  let _hoverT: any = null;
-  function hoverWave() {
-    if (open) return;
-    pokeMsg = isTrainingNow ? 'Working… but hi 😄' : (['👋 hey!', 'Boop! 😄', 'Yes? Tap me 🤖'][rot % 3]);
-    calloutShow = true;
-    if (_hoverT) clearTimeout(_hoverT);
-    _hoverT = setTimeout(() => { pokeMsg = ''; if (!isTrainingNow) calloutShow = false; }, 1800);
-  }
+ // Playful wave line on hover — transient (doesn't fight the real callout).
+ let _hoverT: any = null;
+ function hoverWave() {
+ if (open) return;
+ pokeMsg = isTrainingNow ? 'Working… but hi ' : ([' hey!', 'Boop! ', 'Yes? Tap me '][rot % 3]);
+ calloutShow = true;
+ if (_hoverT) clearTimeout(_hoverT);
+ _hoverT = setTimeout(() => { pokeMsg = ''; if (!isTrainingNow) calloutShow = false; }, 1800);
+ }
 
-  // POKE on click — quick wiggle before opening the console.
-  function pokeAndToggle() {
-    poke = true;
-    if (_pokeT) clearTimeout(_pokeT);
-    _pokeT = setTimeout(() => { poke = false; }, 380);
-    toggleOpen();
-  }
+ // POKE on click — quick wiggle before opening the console.
+ function pokeAndToggle() {
+ poke = true;
+ if (_pokeT) clearTimeout(_pokeT);
+ _pokeT = setTimeout(() => { poke = false; }, 380);
+ toggleOpen();
+ }
 
-  // ════════════════════════════════════════════════════════════════════
-  //  DRAG TO REPOSITION (persist in localStorage; distinguish from click)
-  // ════════════════════════════════════════════════════════════════════
-  let pos = $state<{ right: number; bottom: number }>({ right: 20, bottom: 20 });
-  let dragging = false;
-  let _dragMoved = false;
-  let _startX = 0, _startY = 0, _startRight = 0, _startBottom = 0;
-  const DRAG_THRESH = 5; // px before it counts as a drag (not a click)
+ // ════════════════════════════════════════════════════════════════════
+ // DRAG TO REPOSITION (persist in localStorage; distinguish from click)
+ // ════════════════════════════════════════════════════════════════════
+ let pos = $state<{ right: number; bottom: number }>({ right: 20, bottom: 20 });
+ let dragging = false;
+ let _dragMoved = false;
+ let _startX = 0, _startY = 0, _startRight = 0, _startBottom = 0;
+ const DRAG_THRESH = 5; // px before it counts as a drag (not a click)
 
-  function loadPos() {
-    try {
-      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('fr_pos') : null;
-      if (raw) {
-        const p = JSON.parse(raw);
-        if (typeof p.right === 'number' && typeof p.bottom === 'number') pos = clampPos(p.right, p.bottom);
-      }
-    } catch { /* ignore */ }
-  }
-  function clampPos(right: number, bottom: number) {
-    const W = typeof window !== 'undefined' ? window.innerWidth : 1200;
-    const H = typeof window !== 'undefined' ? window.innerHeight : 800;
-    const margin = 4, sz = 120; // keep the character on-screen
-    return {
-      right: Math.max(margin, Math.min(right, W - sz)),
-      bottom: Math.max(margin, Math.min(bottom, H - sz)),
-    };
-  }
-  function onPointerDown(e: PointerEvent) {
-    // left button only; don't hijack the console popover
-    if (e.button !== 0) return;
-    dragging = true;
-    _dragMoved = false;
-    _startX = e.clientX; _startY = e.clientY;
-    _startRight = pos.right; _startBottom = pos.bottom;
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
-  }
-  function onPointerMove(e: PointerEvent) {
-    if (!dragging) return;
-    const dx = e.clientX - _startX;
-    const dy = e.clientY - _startY;
-    if (!_dragMoved && Math.hypot(dx, dy) < DRAG_THRESH) return;
-    _dragMoved = true;
-    pos = clampPos(_startRight - dx, _startBottom - dy);
-  }
-  function onPointerUp(e: PointerEvent) {
-    window.removeEventListener('pointermove', onPointerMove);
-    window.removeEventListener('pointerup', onPointerUp);
-    const wasDrag = _dragMoved;
-    dragging = false;
-    if (wasDrag) {
-      try { localStorage.setItem('fr_pos', JSON.stringify(pos)); } catch { /* ignore */ }
-    } else {
-      // treated as a click → poke + open console
-      pokeAndToggle();
-    }
-  }
-  function onResize() { pos = clampPos(pos.right, pos.bottom); }
+ function loadPos() {
+ try {
+ const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('fr_pos') : null;
+ if (raw) {
+ const p = JSON.parse(raw);
+ if (typeof p.right === 'number' && typeof p.bottom === 'number') pos = clampPos(p.right, p.bottom);
+ }
+ } catch { /* ignore */ }
+ }
+ function clampPos(right: number, bottom: number) {
+ const W = typeof window !== 'undefined' ? window.innerWidth : 1200;
+ const H = typeof window !== 'undefined' ? window.innerHeight : 800;
+ const margin = 4, sz = 120; // keep the character on-screen
+ return {
+ right: Math.max(margin, Math.min(right, W - sz)),
+ bottom: Math.max(margin, Math.min(bottom, H - sz)),
+ };
+ }
+ function onPointerDown(e: PointerEvent) {
+ // left button only; don't hijack the console popover
+ if (e.button !== 0) return;
+ dragging = true;
+ _dragMoved = false;
+ _startX = e.clientX; _startY = e.clientY;
+ _startRight = pos.right; _startBottom = pos.bottom;
+ window.addEventListener('pointermove', onPointerMove);
+ window.addEventListener('pointerup', onPointerUp);
+ }
+ function onPointerMove(e: PointerEvent) {
+ if (!dragging) return;
+ const dx = e.clientX - _startX;
+ const dy = e.clientY - _startY;
+ if (!_dragMoved && Math.hypot(dx, dy) < DRAG_THRESH) return;
+ _dragMoved = true;
+ pos = clampPos(_startRight - dx, _startBottom - dy);
+ }
+ function onPointerUp(e: PointerEvent) {
+ window.removeEventListener('pointermove', onPointerMove);
+ window.removeEventListener('pointerup', onPointerUp);
+ const wasDrag = _dragMoved;
+ dragging = false;
+ if (wasDrag) {
+ try { localStorage.setItem('fr_pos', JSON.stringify(pos)); } catch { /* ignore */ }
+ } else {
+ // treated as a click > poke + open console
+ pokeAndToggle();
+ }
+ }
+ function onResize() { pos = clampPos(pos.right, pos.bottom); }
 
-  function _onVis() { if (typeof document !== 'undefined' && !document.hidden) loadStatus(); }
-  let _tick: any = null;
-  onMount(() => {
-    loadPos();
-    loadStatus();
-    schedulePoll(false);
-    scheduleBlink();
-    scheduleLook();
-    _tick = setInterval(() => { nowTs = Date.now(); }, 1000); // live elapsed clock
-    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', _onVis);
-    if (typeof window !== 'undefined') { window.addEventListener('focus', _onVis); window.addEventListener('resize', onResize); }
-  });
-  onDestroy(() => {
-    if (_poll) clearInterval(_poll);
-    if (_logPoll) clearInterval(_logPoll);
-    if (_tick) clearInterval(_tick);
-    if (_blinkT) clearTimeout(_blinkT);
-    if (_lookT) clearTimeout(_lookT);
-    if (_celebT) clearTimeout(_celebT);
-    if (_calloutT) clearTimeout(_calloutT);
-    if (_pokeT) clearTimeout(_pokeT);
-    if (_hoverT) clearTimeout(_hoverT);
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-      window.removeEventListener('resize', onResize);
-    }
-    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', _onVis);
-    if (typeof window !== 'undefined') window.removeEventListener('focus', _onVis);
-  });
+ function _onVis() { if (typeof document !== 'undefined' && !document.hidden) loadStatus(); }
+ let _tick: any = null;
+ onMount(() => {
+ loadPos();
+ loadStatus();
+ schedulePoll(false);
+ scheduleBlink();
+ scheduleLook();
+ _tick = setInterval(() => { nowTs = Date.now(); }, 1000); // live elapsed clock
+ if (typeof document !== 'undefined') document.addEventListener('visibilitychange', _onVis);
+ if (typeof window !== 'undefined') { window.addEventListener('focus', _onVis); window.addEventListener('resize', onResize); }
+ });
+ onDestroy(() => {
+ if (_poll) clearInterval(_poll);
+ if (_logPoll) clearInterval(_logPoll);
+ if (_tick) clearInterval(_tick);
+ if (_blinkT) clearTimeout(_blinkT);
+ if (_lookT) clearTimeout(_lookT);
+ if (_celebT) clearTimeout(_celebT);
+ if (_calloutT) clearTimeout(_calloutT);
+ if (_pokeT) clearTimeout(_pokeT);
+ if (_hoverT) clearTimeout(_hoverT);
+ if (typeof window !== 'undefined') {
+ window.removeEventListener('pointermove', onPointerMove);
+ window.removeEventListener('pointerup', onPointerUp);
+ window.removeEventListener('resize', onResize);
+ }
+ if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', _onVis);
+ if (typeof window !== 'undefined') window.removeEventListener('focus', _onVis);
+ });
 </script>
 
 <div class="fr-wrap" style="right:{pos.right}px; bottom:{pos.bottom}px;">
@@ -519,9 +520,9 @@
         <span class="fr-badge b-{status}"><span class="fr-bdot" style="background:{dotColor}"></span>{status === 'training' ? 'TRAINING' : status === 'disabled' ? 'PAUSED' : 'WATCHING'}</span>
         {#if lastTrained}<span class="fr-last">· last train {lastTrained}</span>{/if}
         <span class="fr-sp"></span>
-        <span class="fr-auto" class:fr-auto-off={!autoOn} title="auto-train daemon">⚡ auto {autoOn ? 'on' : 'off'}</span>
-        <button class="fr-train" disabled={training || atStatus?.is_training} onclick={trainNow}>{(training || atStatus?.is_training) ? '⟳' : '▶ train'}</button>
-        <button class="fr-close" onclick={toggleOpen} aria-label="close">✕</button>
+        <span class="fr-auto" class:fr-auto-off={!autoOn} title="auto-train daemon"><Icon name="zap" size={16} /> auto {autoOn ? 'on' : 'off'}</span>
+        <button class="fr-train" disabled={training || atStatus?.is_training} onclick={trainNow}>{(training || atStatus?.is_training) ? '&gt;' : ' train'}</button>
+        <button class="fr-close" onclick={toggleOpen} aria-label="close"><Icon name="x" size={16} /></button>
       </div>
 
       <!-- log meta strip + tab toggle -->
@@ -535,11 +536,11 @@
           <span class="fr-meta-st st-{runMeta.st}">● {runMeta.st}</span>
         {/if}
       </div>
-      {#if trainErr && consoleTab === 'log'}<div class="fr-trainerr">⚠ {trainErr}</div>{/if}
+      {#if trainErr && consoleTab === 'log'}<div class="fr-trainerr"><Icon name="alert-triangle" size={16} /> {trainErr}</div>{/if}
       {#if !isTrainingNow && consoleTab === 'log' && lastRun?.status === 'failed' && (lastRun?.error || lastRun?.current_step)}
         <div class="fr-trainerr" title="Why the last run failed">
-          <span>⚠ last run failed: {lastRun.error || lastRun.current_step}</span>
-          <button class="fr-errx" onclick={() => (errDismissed = true)} title="Dismiss — clears the ⚠ badge until the next run" aria-label="dismiss">✕</button>
+          <span><Icon name="alert-triangle" size={16} /> last run failed: {lastRun.error || lastRun.current_step}</span>
+          <button class="fr-errx" onclick={() => (errDismissed = true)} title="Dismiss — clears the  badge until the next run" aria-label="dismiss"><Icon name="x" size={16} /></button>
         </div>
       {/if}
 
@@ -628,11 +629,11 @@
             <span class="fr-conf" style="left:calc(50% + {c.x}px); background:{c.c}; animation-delay:{c.d}ms;"></span>
           {/each}
         </div>
-        <span class="fr-check">✓</span>
+        <span class="fr-check">OK</span>
       {/if}
 
       <!-- error / paused floating glyphs -->
-      {#if isError}<span class="fr-warn">⚠</span>{/if}
+      {#if isError}<span class="fr-warn"></span>{/if}
       {#if isPaused}<span class="fr-zzz">Zzz</span>{/if}
 
       <svg viewBox="0 0 64 78" width="60" height="73" class="fr-svg" class:fr-tint-err={isError}>
@@ -728,135 +729,135 @@
 </div>
 
 <style>
-  .fr-wrap { position: fixed; z-index: 9000; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; font-family: var(--pw-font-body, system-ui); }
+ .fr-wrap { position: fixed; z-index: 9000; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; font-family: var(--pw-font-body, system-ui); }
 
-  /* ── bare animated character ── */
-  .fr-char { position: relative; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
-  .fr-char.fr-dragging { cursor: grabbing; }
-  .fr-inner { position: relative; display: flex; align-items: center; justify-content: center; transition: filter 0.2s; }
-  .fr-svg { display: block; overflow: visible; filter: drop-shadow(0 3px 5px rgba(0,0,0,0.28)); }
-  .fr-svg.fr-tint-err { filter: drop-shadow(0 3px 5px rgba(0,0,0,0.28)) hue-rotate(-25deg) saturate(1.3); }
+ /* ── bare animated character ── */
+ .fr-char { position: relative; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+ .fr-char.fr-dragging { cursor: grabbing; }
+ .fr-inner { position: relative; display: flex; align-items: center; justify-content: center; transition: filter 0.2s; }
+ .fr-svg { display: block; overflow: visible; filter: drop-shadow(0 3px 5px rgba(0,0,0,0.28)); }
+ .fr-svg.fr-tint-err { filter: drop-shadow(0 3px 5px rgba(0,0,0,0.28)) hue-rotate(-25deg) saturate(1.3); }
 
-  /* ground shadow ellipse */
-  .fr-shadow { position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%); width: 38px; height: 8px; border-radius: 50%; background: rgba(20,15,12,0.32); filter: blur(3px); z-index: -1; }
-  .fr-bob .fr-shadow { animation: fr-shadow-bob 3s ease-in-out infinite; }
+ /* ground shadow ellipse */
+ .fr-shadow { position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%); width: 38px; height: 8px; border-radius: 50%; background: rgba(20,15,12,0.32); filter: blur(3px); z-index: -1; }
+ .fr-bob .fr-shadow { animation: fr-shadow-bob 3s ease-in-out infinite; }
 
-  /* idle bob (applied to inner so it never fights the drag transform on .fr-char) */
-  .fr-bob { animation: fr-bob 3s ease-in-out infinite; }
-  .fr-bob-fast { animation: fr-bob 1.1s ease-in-out infinite; }
-  .fr-paused { animation: fr-bob 5s ease-in-out infinite; }
-  .fr-celebrate { animation: fr-celebrate 0.6s ease-in-out 2; }
-  .fr-poke { animation: fr-poke 0.38s ease; }
+ /* idle bob (applied to inner so it never fights the drag transform on .fr-char) */
+ .fr-bob { animation: fr-bob 3s ease-in-out infinite; }
+ .fr-bob-fast { animation: fr-bob 1.1s ease-in-out infinite; }
+ .fr-paused { animation: fr-bob 5s ease-in-out infinite; }
+ .fr-celebrate { animation: fr-celebrate 0.6s ease-in-out 2; }
+ .fr-poke { animation: fr-poke 0.38s ease; }
 
-  /* antenna tip pulse */
-  .fr-antdot { animation: fr-pulse 1.6s ease-in-out infinite; }
-  .fr-antdot-fast { animation: fr-pulse 0.7s ease-in-out infinite; }
+ /* antenna tip pulse */
+ .fr-antdot { animation: fr-pulse 1.6s ease-in-out infinite; }
+ .fr-antdot-fast { animation: fr-pulse 0.7s ease-in-out infinite; }
 
-  /* pupil look-around shift is via x attr + this smooths it */
-  .fr-pupil { transition: cx 0.45s ease; }
+ /* pupil look-around shift is via x attr + this smooths it */
+ .fr-pupil { transition: cx 0.45s ease; }
 
-  /* training accessories */
-  .fr-ring { animation: fr-spin 1.4s linear infinite; transform-origin: 32px 34px; }
-  .fr-gear { animation: fr-spin 2.2s linear infinite; transform-box: fill-box; transform-origin: center; }
-  .fr-hat { transform-origin: 32px 16px; animation: fr-hat-pop 0.35s ease; }
-  .fr-orbit { animation: fr-spin 3s linear infinite; transform-origin: 32px 14px; }
-  .fr-prop-mag { animation: fr-mag 2.4s ease-in-out infinite; transform-origin: 49px 16px; }
-  .fr-prop-clip { animation: fr-bob 2.5s ease-in-out infinite; }
-  .fr-sweat { animation: fr-sweat 1.8s ease-in-out infinite; }
+ /* training accessories */
+ .fr-ring { animation: fr-spin 1.4s linear infinite; transform-origin: 32px 34px; }
+ .fr-gear { animation: fr-spin 2.2s linear infinite; transform-box: fill-box; transform-origin: center; }
+ .fr-hat { transform-origin: 32px 16px; animation: fr-hat-pop 0.35s ease; }
+ .fr-orbit { animation: fr-spin 3s linear infinite; transform-origin: 32px 14px; }
+ .fr-prop-mag { animation: fr-mag 2.4s ease-in-out infinite; transform-origin: 49px 16px; }
+ .fr-prop-clip { animation: fr-bob 2.5s ease-in-out infinite; }
+ .fr-sweat { animation: fr-sweat 1.8s ease-in-out infinite; }
 
-  /* F3 notification badge */
-  .fr-attn { position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; padding: 0 3px; border-radius: 9px; background: #e05a4a; color: #fff; font-size: 10px; font-weight: 800; line-height: 16px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.35); z-index: 4; animation: fr-pulse 1.4s ease-in-out infinite; }
+ /* F3 notification badge */
+ .fr-attn { position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; padding: 0 3px; border-radius: 9px; background: #e05a4a; color: #fff; font-size: 10px; font-weight: 800; line-height: 16px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.35); z-index: 4; animation: fr-pulse 1.4s ease-in-out infinite; }
 
-  /* celebration */
-  .fr-confetti { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
-  .fr-conf { position: absolute; top: 26px; width: 5px; height: 5px; border-radius: 50%; animation: fr-confetti 0.9s ease-out forwards; }
-  .fr-check { position: absolute; top: -6px; left: 50%; transform: translateX(-50%); color: #4ec77a; font-weight: 900; font-size: 18px; text-shadow: 0 1px 2px rgba(0,0,0,0.25); animation: fr-checkflash 0.9s ease-out; z-index: 3; }
+ /* celebration */
+ .fr-confetti { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+ .fr-conf { position: absolute; top: 26px; width: 5px; height: 5px; border-radius: 50%; animation: fr-confetti 0.9s ease-out forwards; }
+ .fr-check { position: absolute; top: -6px; left: 50%; transform: translateX(-50%); color: #4ec77a; font-weight: 900; font-size: 18px; text-shadow: 0 1px 2px rgba(0,0,0,0.25); animation: fr-checkflash 0.9s ease-out; z-index: 3; }
 
-  /* error / paused glyphs */
-  .fr-warn { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); color: #e0a82e; font-size: 16px; animation: fr-float 1.6s ease-in-out infinite; z-index: 3; }
-  .fr-error { animation: fr-shake 0.5s ease-in-out, fr-bob 4s ease-in-out 0.5s infinite; }
-  .fr-zzz { position: absolute; top: -10px; right: 6px; color: #9aa0a6; font-size: 13px; font-weight: 700; font-style: italic; animation: fr-zzz 2.6s ease-in-out infinite; z-index: 3; }
+ /* error / paused glyphs */
+ .fr-warn { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); color: #e0a82e; font-size: 16px; animation: fr-float 1.6s ease-in-out infinite; z-index: 3; }
+ .fr-error { animation: fr-shake 0.5s ease-in-out, fr-bob 4s ease-in-out 0.5s infinite; }
+ .fr-zzz { position: absolute; top: -10px; right: 6px; color: #9aa0a6; font-size: 13px; font-weight: 700; font-style: italic; animation: fr-zzz 2.6s ease-in-out infinite; z-index: 3; }
 
-  /* ── always-on callout pill — "what the robot is doing" ── */
-  .fr-callout { display: inline-flex; align-items: center; gap: 7px; max-width: 320px; padding: 7px 12px 7px 10px; border-radius: 16px; background: #fff; border: 1px solid var(--pw-border, #ece6d9); box-shadow: 0 3px 14px rgba(0,0,0,0.12); cursor: pointer; font-family: var(--pw-font-body, system-ui); transition: transform 0.15s, box-shadow 0.15s; animation: fr-rise 0.16s ease; }
-  .fr-callout:hover { transform: translateY(-1px); box-shadow: 0 5px 18px rgba(201,99,66,0.22); }
-  .fr-callout.co-training { border-color: #c96342; }
-  .co-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .co-pulse { animation: fr-pulse 1s ease-in-out infinite; }
-  .co-lbl { font-size: 11px; font-weight: 800; letter-spacing: 0.02em; color: var(--pw-ink, #3a352c); flex-shrink: 0; }
-  .co-txt { font-size: 11px; color: var(--pw-muted, #8a8275); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .fr-trainerr { display: flex; align-items: flex-start; gap: 8px; padding: 5px 11px; font-size: 10.5px; color: #ff8b7e; background: #1a1622; border-bottom: 1px solid #2c2638; }
-  .fr-trainerr > span { flex: 1; min-width: 0; }
-  .fr-errx { flex: none; background: none; border: none; color: #ff8b7e; opacity: 0.6; cursor: pointer; font-size: 11px; line-height: 1; padding: 1px 3px; border-radius: var(--pw-radius-sm, 6px); }
-  .fr-errx:hover { opacity: 1; background: rgba(255,139,126,0.15); }
+ /* ── always-on callout pill — "what the robot is doing" ── */
+ .fr-callout { display: inline-flex; align-items: center; gap: 7px; max-width: 320px; padding: 7px 12px 7px 10px; border-radius: 16px; background: #fff; border: 1px solid var(--pw-border, #ece6d9); box-shadow: 0 3px 14px rgba(0,0,0,0.12); cursor: pointer; font-family: var(--pw-font-body, system-ui); transition: transform 0.15s, box-shadow 0.15s; animation: fr-rise 0.16s ease; }
+ .fr-callout:hover { transform: translateY(-1px); box-shadow: 0 5px 18px rgba(201,99,66,0.22); }
+ .fr-callout.co-training { border-color: #c96342; }
+ .co-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+ .co-pulse { animation: fr-pulse 1s ease-in-out infinite; }
+ .co-lbl { font-size: 11px; font-weight: 800; letter-spacing: 0.02em; color: var(--pw-ink, #3a352c); flex-shrink: 0; }
+ .co-txt { font-size: 11px; color: var(--pw-muted, #8a8275); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+ .fr-trainerr { display: flex; align-items: flex-start; gap: 8px; padding: 5px 11px; font-size: 10.5px; color: #ff8b7e; background: #1a1622; border-bottom: 1px solid #2c2638; }
+ .fr-trainerr > span { flex: 1; min-width: 0; }
+ .fr-errx { flex: none; background: none; border: none; color: #ff8b7e; opacity: 0.6; cursor: pointer; font-size: 11px; line-height: 1; padding: 1px 3px; border-radius: var(--pw-radius-sm, 6px); }
+ .fr-errx:hover { opacity: 1; background: rgba(255,139,126,0.15); }
 
-  /* expanded console popover */
-  .fr-pop { width: 440px; max-width: calc(100vw - 36px); background: #1d1926; border: 1px solid #3a3346; border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.4); overflow: hidden; animation: fr-rise 0.16s ease; }
+ /* expanded console popover */
+ .fr-pop { width: 440px; max-width: calc(100vw - 36px); background: #1d1926; border: 1px solid #3a3346; border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.4); overflow: hidden; animation: fr-rise 0.16s ease; }
 
-  .fr-head { display: flex; align-items: center; gap: 7px; padding: 9px 10px; background: #221d2e; border-bottom: 1px solid #3a3346; }
-  .fr-mini { display: block; flex-shrink: 0; }
-  .fr-eye-on { animation: fr-pulse 1.4s ease-in-out infinite; }
-  .fr-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 800; letter-spacing: 0.06em; color: #e8e2f0; }
-  .fr-bdot { width: 7px; height: 7px; border-radius: 50%; }
-  .b-training .fr-bdot { animation: fr-pulse 1s ease-in-out infinite; }
-  .fr-last { font-size: 10.5px; color: #9890a8; white-space: nowrap; }
-  .fr-sp { flex: 1; }
-  .fr-auto { font-size: 10px; font-weight: 700; color: #0ecad4; white-space: nowrap; }
-  .fr-auto-off { color: #8a8398; }
-  .fr-train { font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 6px; border: 1px solid #c96342; background: #c96342; color: #fff; cursor: pointer; white-space: nowrap; }
-  .fr-train:hover:not(:disabled) { background: #d97a5e; }
-  .fr-train:disabled { opacity: 0.55; cursor: default; }
-  .fr-close { width: 20px; height: 20px; border-radius: 50%; border: none; background: rgba(255,255,255,0.08); color: #b8b0c8; cursor: pointer; font-size: 10px; line-height: 1; display: flex; align-items: center; justify-content: center; }
-  .fr-close:hover { background: rgba(201,99,66,0.3); color: #fff; }
+ .fr-head { display: flex; align-items: center; gap: 7px; padding: 9px 10px; background: #221d2e; border-bottom: 1px solid #3a3346; }
+ .fr-mini { display: block; flex-shrink: 0; }
+ .fr-eye-on { animation: fr-pulse 1.4s ease-in-out infinite; }
+ .fr-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 800; letter-spacing: 0.06em; color: #e8e2f0; }
+ .fr-bdot { width: 7px; height: 7px; border-radius: 50%; }
+ .b-training .fr-bdot { animation: fr-pulse 1s ease-in-out infinite; }
+ .fr-last { font-size: 10.5px; color: #9890a8; white-space: nowrap; }
+ .fr-sp { flex: 1; }
+ .fr-auto { font-size: 10px; font-weight: 700; color: #0ecad4; white-space: nowrap; }
+ .fr-auto-off { color: #8a8398; }
+ .fr-train { font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 6px; border: 1px solid #c96342; background: #c96342; color: #fff; cursor: pointer; white-space: nowrap; }
+ .fr-train:hover:not(:disabled) { background: #d97a5e; }
+ .fr-train:disabled { opacity: 0.55; cursor: default; }
+ .fr-close { width: 20px; height: 20px; border-radius: 50%; border: none; background: rgba(255,255,255,0.08); color: #b8b0c8; cursor: pointer; font-size: 10px; line-height: 1; display: flex; align-items: center; justify-content: center; }
+ .fr-close:hover { background: rgba(201,99,66,0.3); color: #fff; }
 
-  .fr-meta { padding: 5px 11px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; color: #8a8398; background: #1a1622; border-bottom: 1px solid #2c2638; display: flex; align-items: center; gap: 6px; }
-  .fr-meta-st { margin-left: auto; font-size: 9.5px; }
-  .fr-tab { background: none; border: none; padding: 0; font: inherit; letter-spacing: 0.05em; color: #6b6478; cursor: pointer; }
-  .fr-tab:hover { color: #b8b0c6; }
-  .fr-tab-on { color: #c96342; }
-  .st-running { color: #c96342; }
-  .st-done { color: #4ec77a; }
-  .st-error, .st-failed { color: #e05a4a; }
-  .st-idle { color: #6b6478; }
+ .fr-meta { padding: 5px 11px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; color: #8a8398; background: #1a1622; border-bottom: 1px solid #2c2638; display: flex; align-items: center; gap: 6px; }
+ .fr-meta-st { margin-left: auto; font-size: 9.5px; }
+ .fr-tab { background: none; border: none; padding: 0; font: inherit; letter-spacing: 0.05em; color: #6b6478; cursor: pointer; }
+ .fr-tab:hover { color: #b8b0c6; }
+ .fr-tab-on { color: #c96342; }
+ .st-running { color: #c96342; }
+ .st-done { color: #4ec77a; }
+ .st-error, .st-failed { color: #e05a4a; }
+ .st-idle { color: #6b6478; }
 
-  .fr-console { height: 300px; max-height: 50vh; overflow-y: auto; padding: 9px 11px; background: #16131a; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; line-height: 1.55; }
-  .fr-console::-webkit-scrollbar { width: 6px; }
-  .fr-console::-webkit-scrollbar-thumb { background: #3a3346; border-radius: 3px; }
-  .fr-log { white-space: pre-wrap; word-break: break-word; color: #e8e2f2; }
-  .fr-ts { color: #5d566e; margin-right: 6px; }
-  .l-ok { color: #6fe09a; }
-  .l-err { color: #ff8b7e; }
-  .l-warn { color: #e6b35c; }
-  .l-dim { color: #b3aac6; }
-  .fr-log-empty { color: #6b6478; font-style: italic; font-size: 11px; padding: 6px 0; }
-  .fr-day { position: sticky; top: -9px; z-index: 1; margin: 8px 0 4px; padding: 3px 0; text-align: center; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; color: #c9a6f0; background: #16131a; border-top: 1px dashed #2c2638; border-bottom: 1px dashed #2c2638; }
-  .fr-runhdr { margin: 5px 0 2px; font-size: 10.5px; font-weight: 700; color: #7fb0ff; }
-  .fr-cursor { color: #c96342; animation: fr-blink 1s steps(2) infinite; }
+ .fr-console { height: 300px; max-height: 50vh; overflow-y: auto; padding: 9px 11px; background: #16131a; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; line-height: 1.55; }
+ .fr-console::-webkit-scrollbar { width: 6px; }
+ .fr-console::-webkit-scrollbar-thumb { background: #3a3346; border-radius: 3px; }
+ .fr-log { white-space: pre-wrap; word-break: break-word; color: #e8e2f2; }
+ .fr-ts { color: #5d566e; margin-right: 6px; }
+ .l-ok { color: #6fe09a; }
+ .l-err { color: #ff8b7e; }
+ .l-warn { color: #e6b35c; }
+ .l-dim { color: #b3aac6; }
+ .fr-log-empty { color: #6b6478; font-style: italic; font-size: 11px; padding: 6px 0; }
+ .fr-day { position: sticky; top: -9px; z-index: 1; margin: 8px 0 4px; padding: 3px 0; text-align: center; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; color: #c9a6f0; background: #16131a; border-top: 1px dashed #2c2638; border-bottom: 1px dashed #2c2638; }
+ .fr-runhdr { margin: 5px 0 2px; font-size: 10.5px; font-weight: 700; color: #7fb0ff; }
+ .fr-cursor { color: #c96342; animation: fr-blink 1s steps(2) infinite; }
 
-  @keyframes fr-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes fr-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
-  @keyframes fr-shadow-bob { 0%,100% { transform: translateX(-50%) scaleX(1); opacity: 0.32; } 50% { transform: translateX(-50%) scaleX(0.82); opacity: 0.2; } }
-  @keyframes fr-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
-  @keyframes fr-blink { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
-  @keyframes fr-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-  @keyframes fr-celebrate { 0%,100% { transform: translateY(0); } 30% { transform: translateY(-10px); } 60% { transform: translateY(-3px); } }
-  @keyframes fr-poke { 0% { transform: translateY(0) rotate(0); } 30% { transform: translateY(-6px) rotate(-6deg); } 60% { transform: translateY(-2px) rotate(5deg); } 100% { transform: translateY(0) rotate(0); } }
-  @keyframes fr-shake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-3px); } 40% { transform: translateX(3px); } 60% { transform: translateX(-2px); } 80% { transform: translateX(2px); } }
-  @keyframes fr-confetti { 0% { transform: translateY(0) scale(1); opacity: 1; } 100% { transform: translateY(-34px) scale(0.5); opacity: 0; } }
-  @keyframes fr-checkflash { 0% { transform: translateX(-50%) scale(0.4); opacity: 0; } 30% { transform: translateX(-50%) scale(1.2); opacity: 1; } 100% { transform: translateX(-50%) scale(1); opacity: 0; } }
-  @keyframes fr-float { 0%,100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-4px); } }
-  @keyframes fr-zzz { 0% { transform: translateY(0); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateY(-12px); opacity: 0; } }
-  @keyframes fr-hat-pop { 0% { transform: translateY(-8px) scale(0.7); opacity: 0; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
-  @keyframes fr-mag { 0%,100% { transform: translate(0,0) rotate(0); } 50% { transform: translate(-2px,2px) rotate(-8deg); } }
-  @keyframes fr-sweat { 0% { transform: translateY(0); opacity: 0; } 30% { opacity: 0.9; } 100% { transform: translateY(8px); opacity: 0; } }
+ @keyframes fr-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+ @keyframes fr-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+ @keyframes fr-shadow-bob { 0%,100% { transform: translateX(-50%) scaleX(1); opacity: 0.32; } 50% { transform: translateX(-50%) scaleX(0.82); opacity: 0.2; } }
+ @keyframes fr-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+ @keyframes fr-blink { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
+ @keyframes fr-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+ @keyframes fr-celebrate { 0%,100% { transform: translateY(0); } 30% { transform: translateY(-10px); } 60% { transform: translateY(-3px); } }
+ @keyframes fr-poke { 0% { transform: translateY(0) rotate(0); } 30% { transform: translateY(-6px) rotate(-6deg); } 60% { transform: translateY(-2px) rotate(5deg); } 100% { transform: translateY(0) rotate(0); } }
+ @keyframes fr-shake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-3px); } 40% { transform: translateX(3px); } 60% { transform: translateX(-2px); } 80% { transform: translateX(2px); } }
+ @keyframes fr-confetti { 0% { transform: translateY(0) scale(1); opacity: 1; } 100% { transform: translateY(-34px) scale(0.5); opacity: 0; } }
+ @keyframes fr-checkflash { 0% { transform: translateX(-50%) scale(0.4); opacity: 0; } 30% { transform: translateX(-50%) scale(1.2); opacity: 1; } 100% { transform: translateX(-50%) scale(1); opacity: 0; } }
+ @keyframes fr-float { 0%,100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-4px); } }
+ @keyframes fr-zzz { 0% { transform: translateY(0); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateY(-12px); opacity: 0; } }
+ @keyframes fr-hat-pop { 0% { transform: translateY(-8px) scale(0.7); opacity: 0; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
+ @keyframes fr-mag { 0%,100% { transform: translate(0,0) rotate(0); } 50% { transform: translate(-2px,2px) rotate(-8deg); } }
+ @keyframes fr-sweat { 0% { transform: translateY(0); opacity: 0; } 30% { opacity: 0.9; } 100% { transform: translateY(8px); opacity: 0; } }
 
-  @media (prefers-reduced-motion: reduce) {
-    .fr-bob, .fr-bob-fast, .fr-paused, .fr-celebrate, .fr-poke, .fr-error,
-    .fr-antdot, .fr-antdot-fast, .fr-ring, .fr-gear, .fr-orbit, .fr-prop-mag,
-    .fr-sweat, .fr-attn, .fr-shadow, .fr-warn, .fr-zzz { animation: none !important; }
-  }
+ @media (prefers-reduced-motion: reduce) {
+ .fr-bob, .fr-bob-fast, .fr-paused, .fr-celebrate, .fr-poke, .fr-error,
+ .fr-antdot, .fr-antdot-fast, .fr-ring, .fr-gear, .fr-orbit, .fr-prop-mag,
+ .fr-sweat, .fr-attn, .fr-shadow, .fr-warn, .fr-zzz { animation: none !important; }
+ }
 
-  @media (max-width: 640px) {
-    .fr-svg { width: 52px; height: 64px; }
-  }
+ @media (max-width: 640px) {
+ .fr-svg { width: 52px; height: 64px; }
+ }
 </style>

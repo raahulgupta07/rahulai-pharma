@@ -4,15 +4,15 @@ The Engineer (an Agno agent) PROPOSES materialized views over the trained
 tables; it never executes DDL. Everything dangerous lives here, in trusted
 Python:
 
-  validate_matview_spec()  — the whitelist gate. Rejects anything that is not a
+  validate_matview_spec() — the whitelist gate. Rejects anything that is not a
                              pure, single-statement SELECT over the project's
                              own schema. This is the ENTIRE safety story for
                              LLM-authored SQL; treat it adversarially.
-  build_ddl()              — assembles the CREATE MATERIALIZED VIEW + index
+  build_ddl() — assembles the CREATE MATERIALIZED VIEW + index
                              statements from validated, structured fields. The
                              LLM's free text is only ever the SELECT body, which
                              validate_matview_spec() has already vetted.
-  apply_semantic_layer()   — runs the validated DDL inside one txn on the
+  apply_semantic_layer() — runs the validated DDL inside one txn on the
                              non-superuser app role with a statement timeout,
                              then registers the matview in dash_table_metadata.
 
@@ -28,10 +28,10 @@ from dataclasses import dataclass, field
 
 
 # ── Limits ──────────────────────────────────────────────────────────────────
-MAX_SELECT_LEN = 8000            # a matview SELECT longer than this is suspect
+MAX_SELECT_LEN = 8000 # a matview SELECT longer than this is suspect
 MAX_NAME_LEN = 48
-MAX_MATVIEWS = 5                 # cap per training run (cost + blast radius)
-STATEMENT_TIMEOUT_MS = 30000     # same guard as relationship verify
+MAX_MATVIEWS = 5 # cap per training run (cost + blast radius)
+STATEMENT_TIMEOUT_MS = 30000 # same guard as relationship verify
 
 # Identifier: lowercase, starts with a letter, snake_case only.
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -66,7 +66,7 @@ class MatviewSpec:
     is whitelist-validated before any DDL is built."""
     name: str
     select_sql: str
-    unique_index: str                       # cols for the REFRESH-CONCURRENTLY unique idx
+    unique_index: str # cols for the REFRESH-CONCURRENTLY unique idx
     purpose: str = ""
     grain: str = ""
     extra_indexes: list[str] = field(default_factory=list)
@@ -143,7 +143,7 @@ def validate_matview_spec(spec: MatviewSpec, base_tables: set[str],
     # is a real schema-looking token other than the project schema. Aliases are
     # short and local; to stay safe we require qualified refs use the project
     # schema explicitly and forbid every other dotted schema we know about
-    # (handled above). Bare unqualified names resolve via search_path → project.
+    # (handled above). Bare unqualified names resolve via search_path > project.
 
     # ── indexes ──
     uidx = (spec.unique_index or "").strip().lower()
@@ -197,8 +197,8 @@ def apply_semantic_layer(slug, specs, base_tables, db_url, schema="citypharma",
     """Validate, dry-run, and create each proposed matview. Returns a list of
     per-spec result dicts. Never raises — a bad spec is skipped + logged.
 
-    For each spec, in order: whitelist → EXPLAIN the SELECT (server-side
-    dry-run) → DROP+CREATE+index inside ONE txn with statement timeout →
+    For each spec, in order: whitelist > EXPLAIN the SELECT (server-side
+    dry-run) > DROP+CREATE+index inside ONE txn with statement timeout >
     register in dash_table_metadata. Caps at MAX_MATVIEWS.
     """
     from sqlalchemy import text
@@ -215,7 +215,7 @@ def apply_semantic_layer(slug, specs, base_tables, db_url, schema="citypharma",
             validate_matview_spec(spec, set(base_tables), schema=schema)
         except MatviewRejected as e:
             rec["error"] = f"rejected: {e}"
-            log(f"  ✗ {name}: {e}")
+            log(f" x {name}: {e}")
             results.append(rec)
             continue
         # 2) server-side dry-run — EXPLAIN never executes the body
@@ -226,7 +226,7 @@ def apply_semantic_layer(slug, specs, base_tables, db_url, schema="citypharma",
                 c.execute(text(f"EXPLAIN {select_sql}"))
         except Exception as e:
             rec["error"] = f"explain failed: {str(e)[:160]}"
-            log(f"  ✗ {name}: explain failed — {str(e)[:120]}")
+            log(f" x {name}: explain failed — {str(e)[:120]}")
             results.append(rec)
             continue
         # 3) create inside one txn
@@ -237,10 +237,10 @@ def apply_semantic_layer(slug, specs, base_tables, db_url, schema="citypharma",
                 for s in stmts:
                     c.execute(text(s))
             rec["ok"] = True
-            log(f"  ✓ {name} created")
+            log(f" OK {name} created")
         except Exception as e:
             rec["error"] = f"create failed: {str(e)[:160]}"
-            log(f"  ✗ {name}: create failed — {str(e)[:120]}")
+            log(f" x {name}: create failed — {str(e)[:120]}")
             results.append(rec)
             continue
         # 4) register in dash_table_metadata (idempotent)
@@ -260,7 +260,7 @@ def apply_semantic_layer(slug, specs, base_tables, db_url, schema="citypharma",
                                   updated_at = NOW()
                 """), {"s": slug, "t": name, "m": json.dumps(meta)})
         except Exception as e:
-            log(f"  · {name}: metadata register skipped — {str(e)[:100]}")
+            log(f" · {name}: metadata register skipped — {str(e)[:100]}")
         results.append(rec)
     return results
 
@@ -305,7 +305,7 @@ def refresh_semantic_layer(slug, db_url, schema="citypharma", log=lambda m: None
                 except Exception:
                     c.execute(text(f'REFRESH MATERIALIZED VIEW {schema}."{name}"'))
             refreshed += 1
-            log(f"  ↻ {name} refreshed")
+            log(f" > {name} refreshed")
         except Exception as e:
-            log(f"  ✗ {name}: refresh failed — {str(e)[:100]}")
+            log(f" x {name}: refresh failed — {str(e)[:100]}")
     return refreshed

@@ -36,20 +36,20 @@ router = APIRouter(prefix="/api/projects", tags=["Projects"])
 # Observability tracing (fail-soft; no-op if unavailable or TRACING_DISABLED).
 try:
     from dash.obs.trace import start_trace, trace_span, record_cost, end_trace
-except Exception:  # noqa: BLE001
+except Exception: # noqa: BLE001
     from contextlib import contextmanager as _cm
 
-    def start_trace(*_a, **_k):  # type: ignore
+    def start_trace(*_a, **_k): # type: ignore
         return ""
 
-    def record_cost(*_a, **_k):  # type: ignore
+    def record_cost(*_a, **_k): # type: ignore
         return None
 
-    def end_trace(*_a, **_k):  # type: ignore
+    def end_trace(*_a, **_k): # type: ignore
         return None
 
     @_cm
-    def trace_span(*_a, **_k):  # type: ignore
+    def trace_span(*_a, **_k): # type: ignore
         yield None
 
 _engine = _sa_create_engine(db_url, poolclass=NullPool)
@@ -83,7 +83,7 @@ _training_pairs_lock = threading.Lock()
 
 
 def _load_training_pairs(project_slug: str):
-    """Return (pairs, df, n) for a project's trained Q→SQL files, cached by the
+    """Return (pairs, df, n) for a project's trained Q>SQL files, cached by the
     training dir's (file, mtime) signature. Empty (([], {}, 0)) when none."""
     from dash.paths import KNOWLEDGE_DIR
     import json as _json
@@ -122,7 +122,7 @@ def _load_training_pairs(project_slug: str):
 
 
 def _rank_training_qa(project_slug: str, question: str, k: int = 3) -> str:
-    """Rank this project's trained Q→SQL pairs by relevance to `question` and
+    """Rank this project's trained Q>SQL pairs by relevance to `question` and
     return a compact 'RELEVANT PROVEN QUERIES' block of the top-k matches.
 
     Lexical relevance (rare-term-weighted token overlap) — $0, no latency, no
@@ -150,7 +150,7 @@ def _rank_training_qa(project_slug: str, question: str, k: int = 3) -> str:
     top = scored[:k]
     lines = ["## RELEVANT PROVEN QUERIES (matched to your question — reuse this SQL, re-execute for fresh numbers)"]
     for _sc, q, sql, ans in top:
-        lines.append(f"- Q: {q}\n  SQL: {sql[:600]}" + (f"\n  Note: {ans[:200]}" if ans else ""))
+        lines.append(f"- Q: {q}\n SQL: {sql[:600]}" + (f"\n Note: {ans[:200]}" if ans else ""))
     return "\n".join(lines)
 
 
@@ -169,22 +169,22 @@ def _dedupe_greeting(text: str) -> str:
     try:
         original = text
         # ── 1. Collapse consecutive duplicate segments (split on sentence/para
-        #       boundaries; only dedupe long-ish segments to stay conservative).
+        # boundaries; only dedupe long-ish segments to stay conservative).
         segments = re.split(r"(?<=[.?!])\s+|\n+", text)
         out: list[str] = []
         prev_norm = None
         for seg in segments:
             norm = seg.strip().lower()
             if norm and len(norm) >= 40 and norm == prev_norm:
-                continue  # skip back-to-back duplicate
+                continue # skip back-to-back duplicate
             out.append(seg)
             if norm:
                 prev_norm = norm
         text = " ".join(s for s in out if s).strip() or original
 
         # ── 2. Strip a leading persona-greeting block if real content follows.
-        #       Greeting heuristic: starts with "I'm "/"I am " + mentions
-        #       "assistant" before its first "?".
+        # Greeting heuristic: starts with "I'm "/"I am " + mentions
+        # "assistant" before its first "?".
         m = re.match(r"\s*(I'm|I am)\b.{0,400}?\?", text, re.IGNORECASE | re.DOTALL)
         if m:
             head = m.group(0)
@@ -405,9 +405,9 @@ def _trace_from_stored_run(parent_run: dict, children: list[dict]) -> list[dict]
     restored after a page refresh matches what the user saw live.
 
     Items are emitted in chronological order:
-      - reasoning step (think/analyze/reason tool, or reasoning_content) →
+      - reasoning step (think/analyze/reason tool, or reasoning_content) >
         {"kind":"step","id","title","text","agent_name"}
-      - tool call → {"kind":"tool","id","name","args","result","status":"done",
+      - tool call > {"kind":"tool","id","name","args","result","status":"done",
         "cost"?,"model"?,"duration"?,"agent_name"}
 
     Fail-soft: any parse error on a single item is skipped; a fully unparseable
@@ -535,7 +535,7 @@ def _usage_from_stored_run(parent_run: dict, children: list[dict]) -> dict | Non
 def project_sessions(slug: str, request: Request, limit: int = 40):
     """List the user's recent chat sessions for this project (robot CHAT tab).
     Lightweight: id + first message + timestamps; turns load lazily per session
-    via the /messages route. Fail-soft → {sessions: []} on any error."""
+    via the /messages route. Fail-soft > {sessions: []} on any error."""
     user = _get_user(request)
     get_project(slug, request)
     out: list[dict] = []
@@ -543,8 +543,8 @@ def project_sessions(slug: str, request: Request, limit: int = 40):
         with _engine.connect() as conn:
             rows = conn.execute(text(
                 "SELECT session_id, first_message, "
-                "       EXTRACT(EPOCH FROM created_at)::bigint, "
-                "       EXTRACT(EPOCH FROM updated_at)::bigint "
+                " EXTRACT(EPOCH FROM created_at)::bigint, "
+                " EXTRACT(EPOCH FROM updated_at)::bigint "
                 "FROM public.dash_chat_sessions "
                 "WHERE user_id = :uid "
                 "ORDER BY updated_at DESC NULLS LAST LIMIT :lim"
@@ -880,7 +880,7 @@ def ensure_locked_project() -> None:
     project — the only INSERT path is create_project(), which guard_no_project_management
     blocks in single-agent mode. With no row in public.dash_projects, EVERY access
     check fails before the super-admin branch (check_project_permission returns None
-    when the project row is missing) → GET /projects/{slug} 404, datasource 403 →
+    when the project row is missing) > GET /projects/{slug} 404, datasource 403 >
     Workspace stuck "loading…", Upload/Force-Train hidden even for the super-admin.
 
     This seeds the row (owner = the SUPER_ADMIN env account) + its schema, idempotently,
@@ -983,7 +983,7 @@ async def project_chat(slug: str, request: Request):
 
     # Store-scope a web shop-staff session (scope_mode='store') for the whole
     # request: fast-paths + team build (drops writable Engineer, strips raw SQL) +
-    # streaming generator all read API_STORE_SCOPE. Admins are 'global' → no-op.
+    # streaming generator all read API_STORE_SCOPE. Admins are 'global' > no-op.
     # Request-isolated contextvar, so no reset needed.
     try:
         from app.auth import resolve_api_scope as _ras
@@ -998,9 +998,9 @@ async def project_chat(slug: str, request: Request):
     message = form.get("message", "")
     stream = str(form.get("stream", "true")).lower() == "true"
     session_id = form.get("session_id")
-    reasoning = form.get("reasoning", "auto")  # "auto" | "fast" | "deep"
-    analysis_type = form.get("analysis_type", "auto")  # "auto" | "descriptive" | etc.
-    # OKF opt-in lane (default off → identical to today).
+    reasoning = form.get("reasoning", "auto") # "auto" | "fast" | "deep"
+    analysis_type = form.get("analysis_type", "auto") # "auto" | "descriptive" | etc.
+    # OKF opt-in lane (default off > identical to today).
     try:
         from dash.tools.semantic_search import set_okf_lane
         set_okf_lane(str(form.get("use_okf", "")).lower() in ("1", "true", "yes", "on"))
@@ -1008,8 +1008,8 @@ async def project_chat(slug: str, request: Request):
         pass
     # Composer model picker (Claude-Code style): model_pref overrides the router's
     # auto choice; effort maps to the reasoning/thinking mode.
-    model_pref = (form.get("model_pref") or "auto").strip().lower()  # auto|lite|mid|deep
-    effort = (form.get("effort") or "").strip().lower()              # low|medium|high|max
+    model_pref = (form.get("model_pref") or "auto").strip().lower() # auto|lite|mid|deep
+    effort = (form.get("effort") or "").strip().lower() # low|medium|high|max
     if effort:
         reasoning = {"low": "fast", "medium": "auto", "high": "deep", "max": "deep"}.get(effort, reasoning)
 
@@ -1025,7 +1025,7 @@ async def project_chat(slug: str, request: Request):
         pass
 
     # Expose session_id + project_slug to tool hooks for auto-link writes
-    # (chat → cites → table, chat → uses → skill). Fail-soft.
+    # (chat > cites > table, chat > uses > skill). Fail-soft.
     try:
         from dash.links_ctx import CUR_SESSION_ID, CUR_PROJECT_SLUG
         if session_id:
@@ -1053,7 +1053,7 @@ async def project_chat(slug: str, request: Request):
     # spin up the whole agent on noise. Conservative by design — must NOT block
     # legitimate short messages: Burmese text (unicode), "hi"/"ok"/"fever", or
     # any message with >=2 alpha chars passes. Returns the SAME shape as the
-    # TRIVIAL short-circuit (stream → RouterDecision-less SSE; non-stream → dict).
+    # TRIVIAL short-circuit (stream > RouterDecision-less SSE; non-stream > dict).
     try:
         _ng = (message or "").strip()
         # Known short greeting/ack tokens that are legit even at <=2 chars.
@@ -1069,10 +1069,10 @@ async def project_chat(slug: str, request: Request):
         _is_nonsense = False
         if _ng:
             if len(_alpha) == 0:
-                # No letter at all → ".", "??", "123" alone, pure symbols.
+                # No letter at all > ".", "??", "123" alone, pure symbols.
                 _is_nonsense = True
             elif len(_alnum) < 2:
-                # After stripping non-alphanumerics, <2 chars remain → "v", "x.".
+                # After stripping non-alphanumerics, <2 chars remain > "v", "x.".
                 _is_nonsense = True
             else:
                 # Single short token (<=2 chars) that isn't a known word/greeting.
@@ -1135,7 +1135,7 @@ async def project_chat(slug: str, request: Request):
         pass
 
     # Phase 1 bilingual: set the reply-language contract from the user's script
-    # BEFORE the team is built/cached. Burmese unicode block (U+1000–U+109F) ⇒ 'my'.
+    # BEFORE the team is built/cached. Burmese unicode block (U+1000–U+109F) > 'my'.
     # build_analyst_instructions appends the Burmese override and dash.team caches
     # the MY team separately. Must run before create_project_team below.
     try:
@@ -1156,7 +1156,7 @@ async def project_chat(slug: str, request: Request):
             trigger_kind="chat",
             user_attrs={"last_user_message": message[:8000]},
         ))
-        _rc_cm.__enter__()  # held for endpoint duration; not strict but safe
+        _rc_cm.__enter__() # held for endpoint duration; not strict but safe
     except Exception:
         pass
 
@@ -1172,7 +1172,7 @@ async def project_chat(slug: str, request: Request):
     # ── Issue #3 — RLS context wiring for internal chat ──────────────────
     # Pull user's active scope from dash_user_scopes (if any) and set both
     # ContextVars (skill_refinery) AND PG session attrs for any tool that
-    # opens a connection downstream. Fail-soft: no scope → empty dict.
+    # opens a connection downstream. Fail-soft: no scope > empty dict.
     try:
         _user_attrs: dict = {}
         _uid = user.get("user_id") if user else None
@@ -1233,7 +1233,7 @@ async def project_chat(slug: str, request: Request):
         # short + pronoun = almost certainly a follow-up
         if _wc <= 12 and _has_pronoun:
             _skip_scope_gate = True
-        # OR session has any prior assistant message → follow-up context exists
+        # OR session has any prior assistant message > follow-up context exists
         elif session_id:
             try:
                 from db import get_sql_engine as _gse_fu
@@ -1245,7 +1245,7 @@ async def project_chat(slug: str, request: Request):
                         " LIMIT 1"
                     ), {"sid": session_id}).fetchone() is not None
                 if _has_prior and _wc <= 20:
-                    # Short follow-up after at least one prior turn → trust context
+                    # Short follow-up after at least one prior turn > trust context
                     _skip_scope_gate = True
             except Exception:
                 pass
@@ -1299,7 +1299,7 @@ async def project_chat(slug: str, request: Request):
     else:
         context_msg = _apply_reasoning_mode(message, reasoning, analysis_type)
 
-    # Per-message retrieval: rank trained Q→SQL pairs by relevance to THIS question
+    # Per-message retrieval: rank trained Q>SQL pairs by relevance to THIS question
     # and prepend the best matches so short prompts hit the right proven SQL.
     # (Session-level instructions can't rank against the live question — Issue: CRM
     # feedback 2026-05-21, "only works with long prompts".)
@@ -1325,7 +1325,7 @@ async def project_chat(slug: str, request: Request):
             _ids_csv = (_srow[1] if _srow and len(_srow) > 1 else "") or ""
             _scope_mode = (_srow[2] if _srow and len(_srow) > 2 else "") or "store"
             _stores = [x.strip() for x in _ids_csv.split(",") if x.strip()]
-            # scope_mode='global' = platform owner / analyst → NO branch lock, sees ALL shops.
+            # scope_mode='global' = platform owner / analyst > NO branch lock, sees ALL shops.
             # Only real store logins (scope_mode='store') get the SHOP CONTEXT branch filter.
             # (API-gateway / embed store keys are scoped via API_STORE_SCOPE, a separate path.)
             if _scope_mode == "global":
@@ -1392,7 +1392,7 @@ async def project_chat(slug: str, request: Request):
             except Exception:
                 pass
 
-    # TRIVIAL tier → short-circuit ONLY on Auto. A manual model pick means the
+    # TRIVIAL tier > short-circuit ONLY on Auto. A manual model pick means the
     # user wants a real answer even to smalltalk, so respect it and run the team.
     if _router_decision and _router_decision.get("short_circuit") and model_pref in ("", "auto"):
         _reply = _router_decision.get("reply") or "Hi! Ask me about your data."
@@ -1572,11 +1572,11 @@ async def project_chat(slug: str, request: Request):
                     f"Matched proven question: _{_src_q[:120]}_."
                 )
                 _parts.append(f"[NARRATION: {_fallback_nar}]")
-            _parts.append(f"[KPI:{_fmt}|Result 🟢|—]")
+            _parts.append(f"[KPI:{_fmt}|Result |—]")
             if _ms_rowcount:
-                _parts.append(f"[KPI:{_ms_rowcount:,}|Rows returned 🟢|—]")
+                _parts.append(f"[KPI:{_ms_rowcount:,}|Rows returned |—]")
             if _ms_elapsed:
-                _parts.append(f"[KPI:{_ms_elapsed}ms|Cached lookup 🟢|deterministic]")
+                _parts.append(f"[KPI:{_ms_elapsed}ms|Cached lookup |deterministic]")
             if _rec_tag:
                 _parts.append(_rec_tag)
             _parts.append(
@@ -1617,14 +1617,14 @@ async def project_chat(slug: str, request: Request):
             _bg_executor.submit(_ms_bg, message, _answer, slug, session_id or "")
 
             # Synthetic trace events so the UI surfaces the cached path:
-            #   - ReasoningStep → trace card "Used cached verified metric"
-            #   - ToolCall (started+completed, run_sql_query) → SQL tab + tool count
+            # - ReasoningStep > trace card "Used cached verified metric"
+            # - ToolCall (started+completed, run_sql_query) > SQL tab + tool count
             _ms_sql = (_ms.get("sql") or "").strip()
             _tc_id = f"metric_tool_{session_id or 'ms'}"
             _trace_payload = {
                 "id": f"metric_{session_id or 'ms'}",
                 "title": "Used cached verified metric",
-                "content": (f"Matched pinned Q→SQL pair (score={float(_ms.get('score') or 0.0):.2f}). "
+                "content": (f"Matched pinned Q>SQL pair (score={float(_ms.get('score') or 0.0):.2f}). "
                             f"Source question: {_src_q[:160]}. "
                             f"Computed deterministically — 0 LLM tokens."),
                 "agent": "metric_engine",
@@ -1698,7 +1698,7 @@ async def project_chat(slug: str, request: Request):
                                                "rows": _ms_rows, "columns": _ms_cols}}]}
 
     # Continuous query learning (P4, Mode 1 BYPASS): exact-enough hit on a PROVEN
-    # learned query → re-run its SQL live (fresh numbers) + render in code. ZERO
+    # learned query > re-run its SQL live (fresh numbers) + render in code. ZERO
     # LLM. Only fires for verbatim-ish repeats of a verified question; everything
     # else falls through to recall-hint (P2) + the agent. Gated, auto-only.
     if model_pref in ("", "auto"):
@@ -1779,7 +1779,7 @@ async def project_chat(slug: str, request: Request):
             if _qr_hits:
                 _qr_block = "\n## SIMILAR PROVEN QUERIES (reuse/adapt these — they are verified)\n"
                 for _qr_h in _qr_hits:
-                    _qr_block += f"- Q: {_qr_h.get('question','')}\n  SQL: {_qr_h.get('sql','')}\n"
+                    _qr_block += f"- Q: {_qr_h.get('question','')}\n SQL: {_qr_h.get('sql','')}\n"
                 context_msg = _qr_block + "\n\n" + context_msg
     except Exception:
         pass
@@ -1810,14 +1810,14 @@ async def project_chat(slug: str, request: Request):
     # for THIS message so LOOKUP runs cheap and AGENTIC runs deep. temperature
     # stays pinned at 0.1 (determinism rule). Mutates the cached team in place
     # and is re-set on every message, so no stale-model carryover. Kill switch:
-    # COMPLEXITY_ROUTER_ENFORCE=0. Fail-soft → keep the team's default model.
+    # COMPLEXITY_ROUTER_ENFORCE=0. Fail-soft > keep the team's default model.
     try:
         import os as _os_rt
         _enforce_id = _effective_model or (_router_decision and _router_decision.get("model"))
         if (_enforce_id
                 and _os_rt.getenv("COMPLEXITY_ROUTER_ENFORCE", "1").strip().lower() not in ("0", "false", "no", "off")):
             from agno.models.openrouter import OpenRouter as _OpenRouter
-            # Effort → real model thinking. OpenRouter reasoning_effort: low|medium|high
+            # Effort > real model thinking. OpenRouter reasoning_effort: low|medium|high
             # (max maps to high). Setting it also makes the model stream its reasoning,
             # which the UI surfaces as a live thinking trace.
             # Floor reasoning_effort at "low" so the model always streams a
@@ -1990,7 +1990,7 @@ async def project_chat(slug: str, request: Request):
                 _logger.debug(f"dream_poignancy_hook failed for {slug}: {e}")
 
             # 10. maybe_learn (Build A — teach-by-chat). If the user message was an
-            # explicit "remember …" / correction, distil ONE durable fact → pending
+            # explicit "remember …" / correction, distil ONE durable fact > pending
             # memory (Intern Rule: admin approves before it reaches chat). The gate
             # is a zero-cost regex, so normal questions are a no-op here.
             try:
@@ -2039,18 +2039,18 @@ async def project_chat(slug: str, request: Request):
             _sql_errors: list[str] = []
             _tables_hit: set[str] = set()
             # Running token totals for the per-chat cost-ledger row (written once
-            # at stream end → powers Admin → Cost Analytics / dash_llm_costs).
+            # at stream end > powers Admin > Cost Analytics / dash_llm_costs).
             _usage_in_total = 0
             _usage_out_total = 0
             _usage_model: str | None = None
-            # Heavy tiers run multi-step tool chains → give them a longer cap.
+            # Heavy tiers run multi-step tool chains > give them a longer cap.
             _tier_now = (_router_decision or {}).get("tier")
             _stream_cap = 480 if _tier_now in ("AGENTIC", "REASONING") else 300
             if _router_decision:
                 yield f"event: RouterDecision\ndata: {_json.dumps(_router_decision, default=str)}\n\n"
             # ── Context-exhaustion guard: trim stale tool-result content from
             # the agent's conversation history before the run. Behind env flag
-            # (CONTEXT_GUARDS_DISABLED) + fail-open: any error → history untouched.
+            # (CONTEXT_GUARDS_DISABLED) + fail-open: any error > history untouched.
             try:
                 from dash.guards.context import trim_stale_tool_results as _trim
                 _msgs = None
@@ -2136,7 +2136,7 @@ async def project_chat(slug: str, request: Request):
                             "ToolCallStarted", "ToolCallCompleted",
                             "TeamToolCallStarted", "TeamToolCallCompleted",
                         ):
-                            # think/analyze/reason → ReasoningStep (cleaner trace)
+                            # think/analyze/reason > ReasoningStep (cleaner trace)
                             rstep = _reasoning_step_from_tool(data, _agent_name)
                             if rstep is not None:
                                 yield f"event: ReasoningStep\ndata: {_json.dumps(rstep, default=str)}\n\n"
@@ -2211,7 +2211,7 @@ async def project_chat(slug: str, request: Request):
                             tokens=int(_usage_in_total) + int(_usage_out_total),
                             model=(_usage_model or _cm2),
                         )
-                    except Exception:  # noqa: BLE001
+                    except Exception: # noqa: BLE001
                         pass
             except Exception as e:
                 import logging
@@ -2240,7 +2240,7 @@ async def project_chat(slug: str, request: Request):
                         "event: TeachLearned\ndata: "
                         + _json.dumps({
                             "status": "pending",
-                            "note": "📝 Noted — saved to your review queue (pending approval).",
+                            "note": " Noted — saved to your review queue (pending approval).",
                         })
                         + "\n\n"
                     )
@@ -2249,8 +2249,8 @@ async def project_chat(slug: str, request: Request):
             if answer:
                 _run_background_tasks(message, answer)
 
-            # ── Per-chat cost ledger row → public.dash_llm_costs (powers
-            # Admin → Cost Analytics). One row per chat turn. Fail-soft.
+            # ── Per-chat cost ledger row > public.dash_llm_costs (powers
+            # Admin > Cost Analytics). One row per chat turn. Fail-soft.
             if _usage_in_total or _usage_out_total:
                 try:
                     from dash.settings import _compute_cost as _cc, CHAT_MODEL as _cm
@@ -2294,7 +2294,7 @@ async def project_chat(slug: str, request: Request):
             # Close the root chat trace (fires on normal end + client disconnect).
             try:
                 end_trace("error" if _trace_err else "done", _trace_err)
-            except Exception:  # noqa: BLE001
+            except Exception: # noqa: BLE001
                 pass
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -2329,7 +2329,7 @@ async def project_chat(slug: str, request: Request):
             logging.exception("Chat error")
             try:
                 end_trace("error", str(e))
-            except Exception:  # noqa: BLE001
+            except Exception: # noqa: BLE001
                 pass
             return {"content": "An error occurred while processing your request", "session_id": session_id}
 
@@ -2497,7 +2497,7 @@ def get_project(slug: str, request: Request):
     if not perm:
         raise HTTPException(403, "No access to this project")
 
-    user_role = perm["role"]  # "owner", "viewer", "editor", or "admin"
+    user_role = perm["role"] # "owner", "viewer", "editor", or "admin"
 
     return {
         "id": row[0], "slug": row[1], "name": row[2],
@@ -2926,7 +2926,7 @@ def project_chats(slug: str, request: Request, limit: int = 5):
         with _engine.connect() as conn:
             rows = conn.execute(text(
                 "SELECT c.session_id, c.first_message, c.updated_at, "
-                "       (SELECT AVG(q.score) FROM public.dash_quality_scores q WHERE q.session_id = c.session_id) AS avg_score "
+                " (SELECT AVG(q.score) FROM public.dash_quality_scores q WHERE q.session_id = c.session_id) AS avg_score "
                 "FROM public.dash_chat_sessions c "
                 "WHERE c.project_slug=:s "
                 "ORDER BY c.updated_at DESC LIMIT :l"
@@ -3322,8 +3322,8 @@ def project_cost_summary(slug: str, request: Request):
                 paused_until = r[1].isoformat() if r[1] and hasattr(r[1], "isoformat") else (str(r[1]) if r[1] else None)
             r2 = conn.execute(text(
                 "SELECT "
-                "  COALESCE(SUM(CASE WHEN ts >= DATE_TRUNC('day',   NOW() AT TIME ZONE 'UTC') THEN cost_usd ELSE 0 END), 0), "
-                "  COALESCE(SUM(CASE WHEN ts >= DATE_TRUNC('month', NOW() AT TIME ZONE 'UTC') THEN cost_usd ELSE 0 END), 0)  "
+                " COALESCE(SUM(CASE WHEN ts >= DATE_TRUNC('day', NOW() AT TIME ZONE 'UTC') THEN cost_usd ELSE 0 END), 0), "
+                " COALESCE(SUM(CASE WHEN ts >= DATE_TRUNC('month', NOW() AT TIME ZONE 'UTC') THEN cost_usd ELSE 0 END), 0) "
                 "FROM public.dash_llm_costs WHERE project_slug = :s"
             ), {"s": slug}).fetchone()
             if r2:
@@ -3332,8 +3332,8 @@ def project_cost_summary(slug: str, request: Request):
             # Fold in legacy self-learning runs so existing data still counts.
             r3 = conn.execute(text(
                 "SELECT "
-                "  COALESCE(SUM(CASE WHEN started_at >= DATE_TRUNC('day',   NOW() AT TIME ZONE 'UTC') THEN cost_usd ELSE 0 END), 0), "
-                "  COALESCE(SUM(CASE WHEN started_at >= DATE_TRUNC('month', NOW() AT TIME ZONE 'UTC') THEN cost_usd ELSE 0 END), 0)  "
+                " COALESCE(SUM(CASE WHEN started_at >= DATE_TRUNC('day', NOW() AT TIME ZONE 'UTC') THEN cost_usd ELSE 0 END), 0), "
+                " COALESCE(SUM(CASE WHEN started_at >= DATE_TRUNC('month', NOW() AT TIME ZONE 'UTC') THEN cost_usd ELSE 0 END), 0) "
                 "FROM public.dash_self_learning_runs WHERE project_slug = :s"
             ), {"s": slug}).fetchone()
             if r3:
@@ -3416,11 +3416,11 @@ def project_drift_events(
     params: dict[str, Any] = {"slug": slug, "n": limit}
     sql = (
         "SELECT e.id, e.detected_at, e.source_id, "
-        "       COALESCE(s.site_name, s.source_type, ''),"
-        "       e.table_name, e.drift_type, e.severity, "
-        "       e.details, e.status, e.column_name "
-        "  FROM public.dash_drift_events e "
-        "  LEFT JOIN public.dash_data_sources s ON s.id = e.source_id "
+        " COALESCE(s.site_name, s.source_type, ''),"
+        " e.table_name, e.drift_type, e.severity, "
+        " e.details, e.status, e.column_name "
+        " FROM public.dash_drift_events e "
+        " LEFT JOIN public.dash_data_sources s ON s.id = e.source_id "
         " WHERE e.project_slug = :slug "
     )
     if source_id is not None:
@@ -3456,7 +3456,7 @@ def project_drift_events(
                     # Synthesize one from common keys
                     bits = []
                     if "before" in details and "after" in details:
-                        bits.append(f"{details.get('before')} → {details.get('after')}")
+                        bits.append(f"{details.get('before')} > {details.get('after')}")
                     if "delta_pct" in details:
                         bits.append(f"Δ {details.get('delta_pct')}%")
                     if "added" in details:
@@ -3709,7 +3709,7 @@ async def apply_vertical(slug: str, request: Request):
             _bootstrap_tpl()
         except Exception:
             pass
-        template_name = source_tag  # e.g. "vertical_pharma"
+        template_name = source_tag # e.g. "vertical_pharma"
         with _engine.begin() as conn:
             for wf in workflows:
                 wf_name = (wf.get("name") or "").strip()
@@ -3789,7 +3789,7 @@ def _dream_poignancy_hook(
     _log = _logging.getLogger(__name__)
     has_error = not bool(answer) or "An error occurred" in (answer or "")
     try:
-        from dash.learning.dream_poignancy import capture_turn  # type: ignore
+        from dash.learning.dream_poignancy import capture_turn # type: ignore
         try:
             capture_turn(
                 session_id=session_id or "",
@@ -3800,7 +3800,7 @@ def _dream_poignancy_hook(
                 response_summary=(answer or "")[:1000],
                 tools_used=tools_used or [],
                 succeeded=not has_error,
-                judge_score=None,   # filled later by judge bg agent
+                judge_score=None, # filled later by judge bg agent
                 user_reaction=None, # filled later
             )
         except Exception as e:
@@ -3809,16 +3809,16 @@ def _dream_poignancy_hook(
         # dream_poignancy module not yet shipped — silently skip.
         return
 
-    # Session poignancy Σ check → enqueue dream_lite minion at threshold.
+    # Session poignancy Σ check > enqueue dream_lite minion at threshold.
     try:
-        from dash.learning.dream_poignancy import session_poignancy_sum  # type: ignore
+        from dash.learning.dream_poignancy import session_poignancy_sum # type: ignore
         try:
             total = session_poignancy_sum(session_id) if session_id else 0
         except Exception:
             total = 0
         if total and float(total) >= 30:
             try:
-                from dash.minions import queue as _q  # type: ignore
+                from dash.minions import queue as _q # type: ignore
                 _q.enqueue(
                     project=slug,
                     kind="dream_lite",

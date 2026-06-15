@@ -1,16 +1,16 @@
 """Shareable read-only conversation links — FEATURE E.
 
 Three endpoints:
-  POST /api/projects/{slug}/chats/{session_id}/share         (auth) — create a
+  POST /api/projects/{slug}/chats/{session_id}/share (auth) — create a
         public token + frozen snapshot of the conversation (+ optional lineage).
-  GET  /api/s/{token}                                         (NO AUTH) — return
+  GET /api/s/{token} (NO AUTH) — return
         the snapshot if the token is live (exists, not revoked, not expired).
         Must be added to AuthMiddleware SKIP_PREFIXES ("/api/s").
-  POST /api/projects/{slug}/chats/{session_id}/share/revoke  (auth) — revoke.
+  POST /api/projects/{slug}/chats/{session_id}/share/revoke (auth) — revoke.
 
 Reads the REAL conversation store:
-  - public.dash_chat_sessions  → ownership guard (session_id + user_id)
-  - ai.agno_sessions.runs       → the JSONB list of runs that holds the messages
+  - public.dash_chat_sessions > ownership guard (session_id + user_id)
+  - ai.agno_sessions.runs > the JSONB list of runs that holds the messages
     (mirrors app/projects.py::project_session_messages).
 
 Engine rules (CLAUDE.md):
@@ -56,7 +56,7 @@ def _load_messages(conn, session_id: str) -> tuple[list[dict], str | None]:
     """Reconstruct user/assistant messages from ai.agno_sessions.runs.
 
     Mirrors the parent-run walk in app/projects.py::project_session_messages.
-    Returns (messages, title). Fail-soft → ([], None) on any error.
+    Returns (messages, title). Fail-soft > ([], None) on any error.
     """
     messages: list[dict] = []
     title: str | None = None
@@ -94,7 +94,7 @@ def _load_lineage(conn, slug: str) -> dict:
     """Best-effort data lineage for the project — datasets + ingest batches.
 
     Reads from public.dash_ingest_contracts + public.dash_ingest_batches when
-    present. Fail-soft → {"datasets": [], "batches": []}.
+    present. Fail-soft > {"datasets": [], "batches": []}.
     """
     lineage = {"datasets": [], "batches": []}
     try:
@@ -172,7 +172,7 @@ async def create_share(slug: str, session_id: str, request: Request):
         "session_id": session_id,
         "title": title or "Shared conversation",
         "messages": messages,
-        "created_at": None,  # filled by created_at column; mirrored below for viewer
+        "created_at": None, # filled by created_at column; mirrored below for viewer
     }
     if include_lineage and lineage is not None:
         snapshot["lineage"] = lineage

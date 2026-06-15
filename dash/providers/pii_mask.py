@@ -5,17 +5,17 @@ a list of column names from the result set, returns a transformed copy with
 PII values masked according to each column's masking_recommended hint.
 
 Strategies:
-- hash:        sha256 hex prefix (first 12 chars) — irreversible, idempotent
-- redact:      "***REDACTED***"
-- mask_email:  show first char + '***' + domain
-- mask_phone:  show last 4 digits, mask rest
-- generalize:  for quasi-PII like ZIP — keep first 3 digits
-- truncate:    keep first 2 chars
+- hash: sha256 hex prefix (first 12 chars) — irreversible, idempotent
+- redact: "***REDACTED***"
+- mask_email: show first char + '***' + domain
+- mask_phone: show last 4 digits, mask rest
+- generalize: for quasi-PII like ZIP — keep first 3 digits
+- truncate: keep first 2 chars
 
 Action modes (per source config):
-- "flag" (default):     warn but don't mask
-- "mask":                actively mask before returning
-- "block":               refuse the query if any selected col is PII
+- "flag" (default): warn but don't mask
+- "mask": actively mask before returning
+- "block": refuse the query if any selected col is PII
 """
 from __future__ import annotations
 
@@ -83,7 +83,7 @@ def get_pii_columns(project_slug: str, source_id: int) -> dict[str, dict]:
     qualified column names (see `apply_masking_to_rows`).
 
     Example: same `email` column in [orders, leads] with strategies
-    [hash, redact] → masking_recommended="redact" (rank 90 > 80).
+    [hash, redact] > masking_recommended="redact" (rank 90 > 80).
     """
     data = _load_classification(project_slug, source_id)
     out: dict[str, dict] = {}
@@ -171,8 +171,8 @@ def apply_masking_to_rows(
     {pii_columns_present: [...], cells_masked: int, action: str, blocked: bool}.
 
     Modes:
-        flag  — return rows unchanged but include pii cols in audit
-        mask  — replace PII cell values with masked output
+        flag — return rows unchanged but include pii cols in audit
+        mask — replace PII cell values with masked output
         block — return empty rows + audit.blocked=True
 
     qualified_columns (optional): list parallel to `columns` of "table.col"
@@ -247,9 +247,9 @@ def extract_qualified_cols_from_sql(sql: str, dialect: str = "postgresql") -> li
     qualified as "table.col" when an alias prefix is present.
 
     Examples:
-        'SELECT t.email, t.id FROM orders t'  → ['orders.email', 'orders.id']
-        'SELECT email, id FROM orders'         → ['email', 'id']
-        'SELECT u.email AS e FROM users u'     → ['users.email']
+        'SELECT t.email, t.id FROM orders t' > ['orders.email', 'orders.id']
+        'SELECT email, id FROM orders' > ['email', 'id']
+        'SELECT u.email AS e FROM users u' > ['users.email']
 
     Returns [] on parse failure (caller should fall back to bare names).
 

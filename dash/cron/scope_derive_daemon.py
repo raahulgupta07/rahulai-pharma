@@ -6,7 +6,7 @@ gets a scope auto-derived via `dash.scope_deriver.derive_scope()` and persisted.
 Why:
   Scope guardrail blocks off-topic answers per project. Empty scope = both
   the pre-flight LITE classifier and the instruction-level hard rule are
-  no-ops → agent answers from world knowledge → leak of generic/wrong info.
+  no-ops > agent answers from world knowledge > leak of generic/wrong info.
 
   TRAIN ALL runs `scope_derivation` step automatically for newly trained
   projects. Older projects (trained before that step landed) OR projects
@@ -43,7 +43,7 @@ except Exception:
     def trace_span(*args, **kwargs):
         yield
 
-DEFAULT_INTERVAL_SECONDS = 86400  # 24h
+DEFAULT_INTERVAL_SECONDS = 86400 # 24h
 
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -129,12 +129,12 @@ def run_cycle() -> dict[str, Any]:
         if res.get("ok"):
             derived += 1
             logger.info(
-                "scope_derive: %s ✓ topics=%d denied=%d",
+                "scope_derive: %s OK topics=%d denied=%d",
                 slug, res.get("topics_count", 0), res.get("denied_count", 0),
             )
         else:
             failed += 1
-            logger.warning("scope_derive: %s ✗ %s", slug, res.get("error"))
+            logger.warning("scope_derive: %s x %s", slug, res.get("error"))
 
     return {
         "checked": len(slugs),

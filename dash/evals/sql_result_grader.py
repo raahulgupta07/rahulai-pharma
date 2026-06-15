@@ -4,10 +4,10 @@ Executes both generated_sql + expected_sql against the eval engine and
 compares result frames. LLM-as-judge scores the variance and reasoning.
 
 Public API:
-    exec_sql(engine, sql, timeout=30)          -> pd.DataFrame
-    compare_frames(gen_df, expected_df, ...)   -> dict
+    exec_sql(engine, sql, timeout=30) -> pd.DataFrame
+    compare_frames(gen_df, expected_df, ...) -> dict
     judge_sql_pair(gen_sql, expected_sql, ...) -> dict
-    grade_case(case_row, engine)               -> dict (full eval record)
+    grade_case(case_row, engine) -> dict (full eval record)
 """
 from __future__ import annotations
 
@@ -259,7 +259,7 @@ def _generate_sql_from_prompt(case_row: Dict[str, Any]) -> str:
     """Use the case's hint or LLM to produce a candidate generated_sql.
 
     Order: prefer pre-supplied `generated_sql_hint` (e.g. for deterministic
-    testing) → otherwise LLM. Returns '' if no SQL could be produced.
+    testing) > otherwise LLM. Returns '' if no SQL could be produced.
     """
     hint = (case_row.get("generated_sql_hint") or "").strip()
     if hint:

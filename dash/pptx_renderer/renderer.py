@@ -5,7 +5,7 @@ without invoking the Node sidecar/subprocess. Callers opt in via the
 ``PPTX_ENGINE=native`` env switch in ``dash.tools.render_pptxgenjs``.
 
 Slide geometry mirrors ``dash/render_js/build.js``:
-    SLIDE_W = 10.0 in   SLIDE_H = 5.625 in   (16:9)
+    SLIDE_W = 10.0 in SLIDE_H = 5.625 in (16:9)
 """
 from __future__ import annotations
 
@@ -40,9 +40,9 @@ def _new_presentation(theme: Any) -> Presentation:
 
     # apply_theme is owned by the themes agent; we just call it.
     try:
-        from dash.pptx_renderer.themes import apply_theme  # type: ignore
+        from dash.pptx_renderer.themes import apply_theme # type: ignore
         apply_theme(prs, theme)
-    except Exception as e:  # pragma: no cover - defensive
+    except Exception as e: # pragma: no cover - defensive
         log.warning("apply_theme failed (continuing without theme cascade): %s", e)
 
     return prs
@@ -60,29 +60,29 @@ def _blank_layout(prs: Presentation) -> Any:
 
 
 def _render_verified_badge(slide: Any) -> None:
-    """Draw a small coral ✓ verified badge in the bottom-right corner.
+    """Draw a small coral OK verified badge in the bottom-right corner.
 
     Phase 2 — truth-grounded slides. Coral #c96342, 9pt, sits just above the
     footer baseline so it doesn't collide with brand / page-number.
     """
     try:
-        from dash.pptx_renderer.layouts._common import add_text_box, hex_to_rgbcolor  # type: ignore
+        from dash.pptx_renderer.layouts._common import add_text_box, hex_to_rgbcolor # type: ignore
         # Bottom-right, just above the standard footer (which lives at y=5.30).
         add_text_box(
             slide,
             7.4, 5.05, 2.45, 0.22,
-            "✓ verified vs pinned metric",
+            "OK verified vs pinned metric",
             font="Calibri", size=9,
             color=hex_to_rgbcolor("c96342"),
             bold=True, align="right",
         )
-    except Exception as e:  # pragma: no cover - never break a render
+    except Exception as e: # pragma: no cover - never break a render
         log.warning("verified badge render failed: %s", e)
 
 
 def _render_slides(prs: Presentation, spec: Dict[str, Any], theme: Any) -> None:
     """Iterate spec['slides'] and delegate each to layouts.render_layout."""
-    from dash.pptx_renderer.layouts import render_layout  # type: ignore
+    from dash.pptx_renderer.layouts import render_layout # type: ignore
 
     slides = spec.get("slides") or []
     if not isinstance(slides, list):
@@ -109,7 +109,7 @@ def _render_slides(prs: Presentation, spec: Dict[str, Any], theme: Any) -> None:
 
 
 def _resolve_theme(theme_name: str) -> Any:
-    from dash.pptx_renderer.themes import get_theme  # type: ignore
+    from dash.pptx_renderer.themes import get_theme # type: ignore
     return get_theme(theme_name)
 
 

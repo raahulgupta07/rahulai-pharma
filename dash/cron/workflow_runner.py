@@ -28,11 +28,11 @@ logger = logging.getLogger(__name__)
 # Observability tracing — fail-soft no-op if unavailable.
 try:
     from dash.obs.trace import trace_span
-except Exception:  # noqa: BLE001
+except Exception: # noqa: BLE001
     from contextlib import contextmanager as _cm
 
     @_cm
-    def trace_span(*_a, **_k):  # type: ignore
+    def trace_span(*_a, **_k): # type: ignore
         yield None
 
 # SQL-VALIDATED: central validator + schema-hint helpers. Fail-soft on import:
@@ -40,8 +40,8 @@ except Exception:  # noqa: BLE001
 # rather than break the cron daemon.
 try:
     from dash.tools.sql_validator import validate_and_fix as _sql_validate_and_fix
-except Exception as _e:  # noqa: BLE001
-    _sql_validate_and_fix = None  # type: ignore[assignment]
+except Exception as _e: # noqa: BLE001
+    _sql_validate_and_fix = None # type: ignore[assignment]
     logger.warning("workflow_runner: sql_validator unavailable, validation will be skipped: %s", _e)
 
 try:
@@ -49,9 +49,9 @@ try:
         _postgres_sql_rules as _pg_sql_rules,
         get_schema_hint as _get_schema_hint,
     )
-except Exception as _e:  # noqa: BLE001
-    _pg_sql_rules = None  # type: ignore[assignment]
-    _get_schema_hint = None  # type: ignore[assignment]
+except Exception as _e: # noqa: BLE001
+    _pg_sql_rules = None # type: ignore[assignment]
+    _get_schema_hint = None # type: ignore[assignment]
     logger.warning("workflow_runner: llm_sql_helper unavailable, prompt enrichment skipped: %s", _e)
 
 
@@ -109,7 +109,7 @@ def _llm_generate_sql(project_slug: str, question: str, workflow_name: str) -> s
         for tbl, col, dt in rows:
             tables.setdefault(tbl, []).append(f"{col} ({dt})")
         schema_blob = "\n".join(
-            f"  {t}: {', '.join(cs[:25])}" for t, cs in list(tables.items())[:30]
+            f" {t}: {', '.join(cs[:25])}" for t, cs in list(tables.items())[:30]
         )
         # SQL-VALIDATED: inject central Postgres rules + project schema hint at
         # the top of the prompt so the LLM produces dialect-correct, schema-aware
@@ -120,14 +120,14 @@ def _llm_generate_sql(project_slug: str, question: str, workflow_name: str) -> s
                 rules = _pg_sql_rules() or ""
                 if rules:
                     prompt_parts.append(rules)
-            except Exception as _e:  # noqa: BLE001
+            except Exception as _e: # noqa: BLE001
                 logger.warning("workflow_runner: _postgres_sql_rules() failed slug=%s: %s", project_slug, _e)
         if _get_schema_hint is not None:
             try:
                 hint = _get_schema_hint(project_slug) or ""
                 if hint:
                     prompt_parts.append(hint)
-            except Exception as _e:  # noqa: BLE001
+            except Exception as _e: # noqa: BLE001
                 logger.warning("workflow_runner: get_schema_hint failed slug=%s: %s", project_slug, _e)
         prompt_parts.append(
             f"You are a Postgres SQL author. Workflow: {workflow_name}\n"
@@ -158,7 +158,7 @@ def _llm_generate_sql(project_slug: str, question: str, workflow_name: str) -> s
         if _sql_validate_and_fix is not None:
             try:
                 v = _sql_validate_and_fix(sql, project_slug, strict=True)
-            except Exception as _e:  # noqa: BLE001
+            except Exception as _e: # noqa: BLE001
                 logger.warning(
                     "workflow_runner: sql_validator raised slug=%s: %s; using unvalidated SQL",
                     project_slug, _e,
@@ -185,7 +185,7 @@ def _llm_generate_sql(project_slug: str, question: str, workflow_name: str) -> s
                 project_slug,
             )
             return sql
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.warning("llm_generate_sql failed slug=%s: %s", project_slug, e)
         return ""
 
@@ -196,7 +196,7 @@ def _exec_sql_step(project_slug: str, sql: str) -> dict:
     t0 = time.time()
     try:
         from dash.tools.metric_compiler import resolve_engine
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         return {"ok": False, "error": f"engine import failed: {e}", "ms": 0}
 
     try:
@@ -216,7 +216,7 @@ def _exec_sql_step(project_slug: str, sql: str) -> dict:
             rows = [dict(r._mapping) for r in res.fetchall()]
         ms = int((time.time() - t0) * 1000)
         return {"ok": True, "rows": rows, "columns": cols, "row_count": len(rows), "ms": ms}
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         ms = int((time.time() - t0) * 1000)
         return {"ok": False, "error": str(e)[:500], "ms": ms}
 
@@ -260,7 +260,7 @@ def _run_one_step(wf: dict, step: dict, run_id: str, step_index: int) -> dict:
                     return out
                 out["sql"] = sql
                 out["sql_source"] = "llm"
-        except Exception as _e:  # noqa: BLE001
+        except Exception as _e: # noqa: BLE001
             out["sql_gen_error"] = str(_e)[:200]
 
     sql_res = _exec_sql_step(project_slug, sql) if sql else {"ok": False, "error": "no sql"}
@@ -280,11 +280,11 @@ def _run_one_step(wf: dict, step: dict, run_id: str, step_index: int) -> dict:
             fn = _ANALYZE_ROUTES.get(str(analysis_type).lower())
             if fn is not None:
                 try:
-                    narrative = fn(question, project_slug)  # legacy fn signature
+                    narrative = fn(question, project_slug) # legacy fn signature
                 except TypeError:
                     narrative = analyze(str(analysis_type), question, project_slug)
                 out["narrative"] = str(narrative or "")[:4000]
-        except Exception as _e:  # noqa: BLE001
+        except Exception as _e: # noqa: BLE001
             out["narrative_error"] = str(_e)[:200]
 
     # Visualizer (always attempt, fail-soft)
@@ -301,7 +301,7 @@ def _run_one_step(wf: dict, step: dict, run_id: str, step_index: int) -> dict:
                     chart_type = (spec or {}).get("type") or (spec or {}).get("chart_type")
                 except Exception:
                     out["chart_raw"] = inner[:4000]
-        except Exception as _e:  # noqa: BLE001
+        except Exception as _e: # noqa: BLE001
             out["chart_error"] = str(_e)[:200]
 
     # Emit trace span (best effort)
@@ -349,7 +349,7 @@ def _load_workflow(wf_id: int) -> dict | None:
                           "question": wf.get("name") or "Workflow result"}]
             wf["steps"] = steps
             return wf
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.warning("workflow_runner: load_workflow %s failed: %s", wf_id, e)
         return None
     finally:
@@ -360,19 +360,19 @@ def _load_workflow(wf_id: int) -> dict | None:
 
 
 def _claim_one(run_id: str) -> dict | None:
-    """Atomic claim: queued → running. Returns dict if won, None if lost."""
+    """Atomic claim: queued > running. Returns dict if won, None if lost."""
     eng = _engine()
     try:
         from sqlalchemy import text as _t
         with eng.begin() as cn:
             row = cn.execute(_t(
                 "UPDATE dash.dash_workflow_run_history "
-                "   SET status='running', started_at=NOW() "
+                " SET status='running', started_at=NOW() "
                 " WHERE run_id=:rid AND status='queued' "
                 " RETURNING workflow_id, project_slug, owner_user_id, enqueued_at"
             ), {"rid": run_id}).mappings().first()
             return dict(row) if row else None
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.exception("workflow_runner: claim %s failed: %s", run_id, e)
         return None
     finally:
@@ -389,7 +389,7 @@ def _select_queued(limit: int = CLAIM_BATCH) -> list[str]:
                 "WHERE status='queued' ORDER BY enqueued_at ASC LIMIT :lim"
             ), {"lim": limit}).fetchall()
             return [r[0] for r in rows]
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.exception("workflow_runner: select_queued failed: %s", e)
         return []
     finally:
@@ -413,9 +413,9 @@ def _finish_run(run_id: str, status: str, dashboard_id: str | None,
             if out_json is None:
                 cn.execute(_t(
                     "UPDATE dash.dash_workflow_run_history "
-                    "   SET status=:st, finished_at=NOW(), duration_ms=:dur, "
-                    "       dashboard_id=:did, error=:err, "
-                    "       steps_completed=:sc, steps_total=:stt "
+                    " SET status=:st, finished_at=NOW(), duration_ms=:dur, "
+                    " dashboard_id=:did, error=:err, "
+                    " steps_completed=:sc, steps_total=:stt "
                     " WHERE run_id=:rid"
                 ), {
                     "st": status, "dur": duration_ms, "did": dashboard_id,
@@ -425,9 +425,9 @@ def _finish_run(run_id: str, status: str, dashboard_id: str | None,
             else:
                 cn.execute(_t(
                     "UPDATE dash.dash_workflow_run_history "
-                    "   SET status=:st, finished_at=NOW(), duration_ms=:dur, "
-                    "       dashboard_id=:did, output=CAST(:out AS jsonb), "
-                    "       error=:err, steps_completed=:sc, steps_total=:stt "
+                    " SET status=:st, finished_at=NOW(), duration_ms=:dur, "
+                    " dashboard_id=:did, output=CAST(:out AS jsonb), "
+                    " error=:err, steps_completed=:sc, steps_total=:stt "
                     " WHERE run_id=:rid"
                 ), {
                     "st": status, "dur": duration_ms, "did": dashboard_id,
@@ -435,7 +435,7 @@ def _finish_run(run_id: str, status: str, dashboard_id: str | None,
                     "sc": steps_completed, "stt": steps_total,
                     "rid": run_id,
                 })
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.exception("workflow_runner: finish %s failed: %s", run_id, e)
     finally:
         eng.dispose()
@@ -464,7 +464,7 @@ def _process_run(run_id: str) -> dict:
         notify_workflow_started(
             owner_user_id=claim.get("owner_user_id") or 0,
             workflow_name=wf.get("name") or f"workflow #{wf_id}",
-            run_id=run_id,  # type: ignore[arg-type]
+            run_id=run_id, # type: ignore[arg-type]
             source=claim.get("source") or "manual",
         )
     except Exception:
@@ -517,7 +517,7 @@ def _process_run(run_id: str) -> dict:
                             "workflow_runner: upsert_panel failed run=%s step=%d",
                             run_id, i,
                         )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e: # noqa: BLE001
             results.append({"step_index": i, "ok": False, "error": str(e)[:500]})
 
     dashboard_id: str | None = None
@@ -534,7 +534,7 @@ def _process_run(run_id: str) -> dict:
                 error = "dashboard build returned no id"
         else:
             error = "all steps failed"
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.exception("workflow_runner: dashboard build failed run=%s: %s", run_id, e)
         error = f"dashboard build failed: {e}"[:500]
 
@@ -553,7 +553,7 @@ def _process_run(run_id: str) -> dict:
             notify_workflow_done(
                 owner_user_id=claim.get("owner_user_id") or 0,
                 workflow_name=wf.get("name") or f"workflow #{wf_id}",
-                run_id=run_id,  # type: ignore[arg-type]
+                run_id=run_id, # type: ignore[arg-type]
                 dashboard_id=dashboard_id,
                 duration_s=duration_ms / 1000.0,
                 project_slug=project_slug,
@@ -563,7 +563,7 @@ def _process_run(run_id: str) -> dict:
             notify_workflow_failed(
                 owner_user_id=claim.get("owner_user_id") or 0,
                 workflow_name=wf.get("name") or f"workflow #{wf_id}",
-                run_id=run_id,  # type: ignore[arg-type]
+                run_id=run_id, # type: ignore[arg-type]
                 error_msg=error or "unknown",
             )
     except Exception:
@@ -603,11 +603,11 @@ def reap_orphans(stale_minutes: int = 10) -> dict:
         with eng.begin() as cn:
             res = cn.execute(_t(
                 "UPDATE dash.dash_workflow_run_history "
-                "   SET status='failed', "
-                "       finished_at=COALESCE(finished_at, NOW()), "
-                "       error=COALESCE(error, 'orphaned (daemon outage or worker crash)') "
+                " SET status='failed', "
+                " finished_at=COALESCE(finished_at, NOW()), "
+                " error=COALESCE(error, 'orphaned (daemon outage or worker crash)') "
                 " WHERE status='running' "
-                "   AND started_at < NOW() - make_interval(mins => :m) "
+                " AND started_at < NOW() - make_interval(mins => :m) "
                 " RETURNING run_id"
             ), {"m": stale_minutes})
             reaped = [r[0] for r in res.fetchall()]

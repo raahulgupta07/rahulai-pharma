@@ -14,11 +14,11 @@ and emits one new artefact:
 The five detectors:
 
     1. ``StatisticalFingerprint`` — pure-stats heuristics from profile JSON.
-    2. ``RegexClassifier``        — pattern matching on top sample values.
-    3. ``NameClassifier``         — vocabulary lookup on column name.
-    4. ``LLMTyper``               — batched LLM call (optional; skipped if
+    2. ``RegexClassifier`` — pattern matching on top sample values.
+    3. ``NameClassifier`` — vocabulary lookup on column name.
+    4. ``LLMTyper`` — batched LLM call (optional; skipped if
                                     no callable supplied).
-    5. ``EmbeddingMatcher``       — cosine similarity vs. Brain seed
+    5. ``EmbeddingMatcher`` — cosine similarity vs. Brain seed
                                     columns (optional).
 
 Each detector emits one or more :class:`Signal` objects. The fusion step
@@ -59,10 +59,10 @@ logger = logging.getLogger(__name__)
 class Signal:
     """One detector's per-column verdict."""
 
-    detector: str  # 'stats' | 'regex' | 'name' | 'llm' | 'embedding'
-    role: str      # 'id' | 'measure' | 'dimension' | 'temporal' | 'pii' | 'attribute' | 'unknown'
-    semantic: str  # specific tag like 'email', 'currency_usd', 'geo_region'
-    confidence: float  # 0..1
+    detector: str # 'stats' | 'regex' | 'name' | 'llm' | 'embedding'
+    role: str # 'id' | 'measure' | 'dimension' | 'temporal' | 'pii' | 'attribute' | 'unknown'
+    semantic: str # specific tag like 'email', 'currency_usd', 'geo_region'
+    confidence: float # 0..1
     evidence: dict = field(default_factory=dict)
 
 
@@ -72,12 +72,12 @@ class ColumnClassification:
 
     table: str
     col: str
-    type: str  # raw SQL type
-    role: str  # fused
-    semantic: str  # fused
+    type: str # raw SQL type
+    role: str # fused
+    semantic: str # fused
     pii: bool
-    pii_class: Optional[str] = None  # 'direct' | 'quasi' | None
-    cardinality: str = "unknown"  # 'unique' | 'near_unique' | 'low' | 'high'
+    pii_class: Optional[str] = None # 'direct' | 'quasi' | None
+    cardinality: str = "unknown" # 'unique' | 'near_unique' | 'low' | 'high'
     ndv_estimated: int = 0
     null_pct: float = 0.0
     is_dimension: bool = False
@@ -85,7 +85,7 @@ class ColumnClassification:
     is_id: bool = False
     is_temporal: bool = False
     fk_candidate_for: Optional[str] = None
-    value_distribution: str = "unknown"  # 'normal'|'long_tail'|'bimodal'|'monotonic'|'unknown'
+    value_distribution: str = "unknown" # 'normal'|'long_tail'|'bimodal'|'monotonic'|'unknown'
     masking_recommended: Optional[str] = None
     confidence_overall: float = 0.0
     signals: list[Signal] = field(default_factory=list)
@@ -296,7 +296,7 @@ class StatisticalFingerprint:
                 evidence=evidence,
             )
 
-        # Text-ish: low cardinality → dimension, very high → free text attribute
+        # Text-ish: low cardinality > dimension, very high > free text attribute
         if cardinality in ("low",):
             return Signal(
                 detector="stats",
@@ -343,7 +343,7 @@ class RegexClassifier:
         for pat, semantic, pii, conf in REGEX_PATTERNS:
             try:
                 self._compiled.append((re.compile(pat), semantic, pii, conf))
-            except re.error as exc:  # pragma: no cover - bad pattern
+            except re.error as exc: # pragma: no cover - bad pattern
                 logger.warning("Skipping invalid regex %r: %s", pat, exc)
 
     def classify(self, col_name: str, sample_values: list[str]) -> Signal:
@@ -424,7 +424,7 @@ class LLMTyper:
         prompt = self._build_prompt(table, cols_with_profiles)
         try:
             raw = self.llm_call(prompt, task="extraction")
-        except Exception as exc:  # pragma: no cover - depends on caller
+        except Exception as exc: # pragma: no cover - depends on caller
             logger.warning("LLM typer failed for table %s: %s", table, exc)
             return []
 
@@ -530,7 +530,7 @@ class EmbeddingMatcher:
             text = entry.get("name", "") + " " + " ".join(entry.get("samples", []))
             try:
                 vec = self.embed(text)
-            except Exception as exc:  # pragma: no cover
+            except Exception as exc: # pragma: no cover
                 logger.warning("Brain embedding failed for %s: %s", entry.get("name"), exc)
                 continue
             if vec:
@@ -555,7 +555,7 @@ class EmbeddingMatcher:
         try:
             text = (col_name or "") + " " + " ".join((sample_values or [])[:5])
             qvec = self.embed(text)
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc: # pragma: no cover
             logger.warning("Embedding failed for column %s: %s", col_name, exc)
             return Signal(detector="embedding", role="unknown", semantic="", confidence=0.0)
         if not qvec:
@@ -582,7 +582,7 @@ class EmbeddingMatcher:
 
 
 # ---------------------------------------------------------------------------
-# Semantic → role mapping (regex output → role)
+# Semantic > role mapping (regex output > role)
 # ---------------------------------------------------------------------------
 
 
@@ -853,19 +853,19 @@ def classify_table(
         signals: list[Signal] = []
         try:
             signals.append(stats_d.classify(col_name, col_type, col_profile))
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc: # pragma: no cover
             logger.warning("stats detector failed on %s.%s: %s", table_name, col_name, exc)
         try:
             signals.append(name_d.classify(col_name))
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc: # pragma: no cover
             logger.warning("name detector failed on %s.%s: %s", table_name, col_name, exc)
         try:
             signals.append(regex_d.classify(col_name, samples))
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc: # pragma: no cover
             logger.warning("regex detector failed on %s.%s: %s", table_name, col_name, exc)
         try:
             signals.append(embed_d.classify(col_name, samples))
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc: # pragma: no cover
             logger.warning("embedding detector failed on %s.%s: %s", table_name, col_name, exc)
 
         signals = [s for s in signals if s is not None]
@@ -898,7 +898,7 @@ def classify_table(
                     name = sig.evidence.get("col")
                     if name and name in per_col_signals:
                         per_col_signals[name].append(sig)
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc: # pragma: no cover
             logger.warning("LLM batch failed for table %s: %s", table_name, exc)
 
     # Fuse
@@ -975,7 +975,7 @@ def _read_json(path: Path) -> Any:
     except json.JSONDecodeError as exc:
         logger.warning("Corrupt JSON at %s: %s", path, exc)
         return None
-    except OSError as exc:  # pragma: no cover
+    except OSError as exc: # pragma: no cover
         logger.warning("I/O error reading %s: %s", path, exc)
         return None
 
@@ -1031,7 +1031,7 @@ def classify_source(
     try:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(out, indent=2, default=str))
-    except OSError as exc:  # pragma: no cover
+    except OSError as exc: # pragma: no cover
         logger.error("Failed to write %s: %s", out_path, exc)
         raise
     return out_path

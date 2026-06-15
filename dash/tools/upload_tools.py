@@ -161,7 +161,7 @@ def build_vision_tools() -> list:
 
     @tool(name="classify_image", description="Classify what type of image this is: document, chart, diagram, photo, certificate. Returns type.")
     def classify_image(file_path: str) -> str:
-        # Try OCR first — if lots of text → document/certificate
+        # Try OCR first — if lots of text > document/certificate
         try:
             import pytesseract
             from PIL import Image

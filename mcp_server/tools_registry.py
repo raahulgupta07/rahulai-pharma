@@ -8,7 +8,7 @@ Each entry is a dict::
         "description": "...",
         "inputSchema": {... JSON Schema for params ...},
         "handler": callable(user_dict, **params) -> dict,
-        "requires": "viewer" | "editor" | "admin" | None,   # project role
+        "requires": "viewer" | "editor" | "admin" | None, # project role
     }
 
 The handler signature is::
@@ -48,7 +48,7 @@ def _safe_error(exc: Exception) -> dict[str, Any]:
 
 
 def _get_ro_engine(slug: str):
-    from db.session import get_project_readonly_engine  # type: ignore
+    from db.session import get_project_readonly_engine # type: ignore
 
     return get_project_readonly_engine(slug)
 
@@ -96,11 +96,11 @@ def _tool_recall(user: dict, project_slug: str, q: str, top_k: int = 8) -> dict:
         return {"ok": False, "error": "forbidden"}
 
     try:
-        from app.recall_api import recall_unified  # type: ignore
+        from app.recall_api import recall_unified # type: ignore
     except Exception:
         # Fallback: semantic_search if the dedicated module isn't around
         try:
-            from dash.tools.semantic_search import search_all  # type: ignore
+            from dash.tools.semantic_search import search_all # type: ignore
 
             hits = search_all(query=q, project_slug=project_slug, top_k=int(top_k))
             return {"ok": True, "results": hits[: int(top_k)]}
@@ -124,7 +124,7 @@ def _tool_apply_skill(user: dict, project_slug: str, skill_id: str,
         return {"ok": False, "error": "forbidden (editor role required)"}
 
     try:
-        from dash.tools.apply_skill import apply_skill  # type: ignore
+        from dash.tools.apply_skill import apply_skill # type: ignore
 
         return {"ok": True, "result": apply_skill(
             skill_id=skill_id,
@@ -146,7 +146,7 @@ def _tool_search_brain(user: dict, query: str, scope: str = "global",
         return {"ok": False, "error": "forbidden"}
 
     try:
-        from app.brain import search_brain_entries  # type: ignore
+        from app.brain import search_brain_entries # type: ignore
 
         hits = search_brain_entries(
             query=query,
@@ -162,7 +162,7 @@ def _tool_search_brain(user: dict, query: str, scope: str = "global",
             from sqlalchemy import create_engine, text
             from sqlalchemy.pool import NullPool
 
-            from db import db_url  # type: ignore
+            from db import db_url # type: ignore
 
             eng = create_engine(db_url, poolclass=NullPool)
             with eng.connect() as conn:
@@ -200,7 +200,7 @@ def _tool_list_projects(user: dict) -> dict:
         from sqlalchemy import create_engine, text
         from sqlalchemy.pool import NullPool
 
-        from db import db_url  # type: ignore
+        from db import db_url # type: ignore
 
         eng = create_engine(db_url, poolclass=NullPool)
         try:
@@ -246,7 +246,7 @@ def _tool_get_project_detail(user: dict, slug: str) -> dict:
         from sqlalchemy import create_engine, text
         from sqlalchemy.pool import NullPool
 
-        from db import db_url  # type: ignore
+        from db import db_url # type: ignore
 
         eng = create_engine(db_url, poolclass=NullPool)
         try:
@@ -305,7 +305,7 @@ def _tool_list_skills(user: dict, project_slug: str) -> dict:
         from sqlalchemy import create_engine, text
         from sqlalchemy.pool import NullPool
 
-        from db import db_url  # type: ignore
+        from db import db_url # type: ignore
 
         eng = create_engine(db_url, poolclass=NullPool)
         try:
@@ -356,7 +356,7 @@ def _tool_investment_committee_run(
 
     # Soft-import the investment pack.
     try:
-        from dash.verticals.investment.teams.committee import (  # type: ignore
+        from dash.verticals.investment.teams.committee import ( # type: ignore
             run_committee,
         )
     except Exception:
@@ -441,7 +441,7 @@ def _tool_apply_skill_by_query(user: dict, project_slug: str, skill_query: str) 
     try:
         from sqlalchemy import text as _text
 
-        from db.session import get_sql_engine  # type: ignore
+        from db.session import get_sql_engine # type: ignore
 
         with get_sql_engine().connect() as conn:
             row = conn.execute(_text(
@@ -452,7 +452,7 @@ def _tool_apply_skill_by_query(user: dict, project_slug: str, skill_query: str) 
             ), {"p": project_slug, "q": f"%{skill_query}%"}).fetchone()
         if not row:
             return {"ok": False, "error": f"no active skill matched: {skill_query}"}
-        from dash.tools.apply_skill import apply_skill as _apply_skill  # type: ignore
+        from dash.tools.apply_skill import apply_skill as _apply_skill # type: ignore
 
         out = _apply_skill(skill_id=int(row[0]), params={})
         import json as _json
@@ -473,7 +473,7 @@ def _tool_run_metric(user: dict, project_slug: str, metric_name: str,
     if not can_access_project(user, project_slug, "viewer"):
         return {"ok": False, "error": "forbidden"}
     try:
-        from dash.tools.metric_compiler import (  # type: ignore
+        from dash.tools.metric_compiler import ( # type: ignore
             load_definition,
             run_metric as _run_metric,
         )
@@ -501,7 +501,7 @@ def _tool_deep_research(user: dict, project_slug: str, question: str) -> dict:
     if not can_access_project(user, project_slug, "editor"):
         return {"ok": False, "error": "forbidden (editor role required)"}
     try:
-        from dash.tools.deep_research import DeepResearch  # type: ignore
+        from dash.tools.deep_research import DeepResearch # type: ignore
 
         out = DeepResearch(project_slug=project_slug).run(question, project_slug)
         if not isinstance(out, dict):
@@ -525,7 +525,7 @@ def _tool_list_dashboards(user: dict, project_slug: str) -> dict:
         from sqlalchemy import create_engine, text
         from sqlalchemy.pool import NullPool
 
-        from db import db_url  # type: ignore
+        from db import db_url # type: ignore
 
         eng = create_engine(db_url, poolclass=NullPool)
         try:
@@ -732,9 +732,9 @@ REGISTRY: list[dict[str, Any]] = [
     {
         "name": "dash_deep_research",
         "description": (
-            "Run the 9-stage Deep Research pipeline (scope → hypothesis → "
-            "plan SQL → parallel exec → evidence ranking → synthesis → "
-            "cross-check → recommendation → render). PDF bytes stripped "
+            "Run the 9-stage Deep Research pipeline (scope > hypothesis > "
+            "plan SQL > parallel exec > evidence ranking > synthesis > "
+            "cross-check > recommendation > render). PDF bytes stripped "
             "from response; pdf_url returned when persisted."
         ),
         "inputSchema": {

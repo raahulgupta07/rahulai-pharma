@@ -94,11 +94,11 @@ def stock_check(query: str = "", site_code: str = "", limit: int = 15) -> dict:
                 # Tier-1 stock = SUM across ALL owned outlets (ANY of the set).
                 cur.execute(
                     f"""SELECT art_key,
-                               MAX(brand)        AS brand,
-                               MAX(generic)      AS generic,
-                               MAX(category)     AS category,
+                               MAX(brand) AS brand,
+                               MAX(generic) AS generic,
+                               MAX(category) AS category,
                                COALESCE(SUM(stock_qty) FILTER (WHERE site_code = ANY(%s)),0) AS your_qty,
-                               COALESCE(MAX(cost)  FILTER (WHERE site_code = ANY(%s)),0)      AS cost
+                               COALESCE(MAX(cost) FILTER (WHERE site_code = ANY(%s)),0) AS cost
                         FROM {FLAT}
                         WHERE brand ILIKE %s OR generic ILIKE %s
                         GROUP BY art_key
@@ -108,11 +108,11 @@ def stock_check(query: str = "", site_code: str = "", limit: int = 15) -> dict:
             elif site_code:
                 cur.execute(
                     f"""SELECT art_key,
-                               MAX(brand)    AS brand,
-                               MAX(generic)  AS generic,
+                               MAX(brand) AS brand,
+                               MAX(generic) AS generic,
                                MAX(category) AS category,
                                COALESCE(SUM(stock_qty) FILTER (WHERE site_code = %s),0) AS your_qty,
-                               COALESCE(MAX(cost)  FILTER (WHERE site_code = %s),0)      AS cost
+                               COALESCE(MAX(cost) FILTER (WHERE site_code = %s),0) AS cost
                         FROM {FLAT}
                         WHERE brand ILIKE %s OR generic ILIKE %s
                         GROUP BY art_key
@@ -123,11 +123,11 @@ def stock_check(query: str = "", site_code: str = "", limit: int = 15) -> dict:
             else:
                 cur.execute(
                     f"""SELECT art_key,
-                               MAX(brand)    AS brand,
-                               MAX(generic)  AS generic,
+                               MAX(brand) AS brand,
+                               MAX(generic) AS generic,
                                MAX(category) AS category,
                                COALESCE(SUM(stock_qty),0) AS your_qty,
-                               COALESCE(MAX(cost),0)      AS cost
+                               COALESCE(MAX(cost),0) AS cost
                         FROM {FLAT}
                         WHERE brand ILIKE %s OR generic ILIKE %s
                         GROUP BY art_key
@@ -170,8 +170,8 @@ def stock_check(query: str = "", site_code: str = "", limit: int = 15) -> dict:
                     return art_key
 
             # other branches holding each matched article (top few), from shop_flat
-            other = {}      # Tier-2 / availability hint for un-owned outlets
-            owned_bd = {}   # per-owned-outlet breakdown (Tier-1), multi-outlet keys
+            other = {} # Tier-2 / availability hint for un-owned outlets
+            owned_bd = {} # per-owned-outlet breakdown (Tier-1), multi-outlet keys
             if art_keys:
                 if _locked:
                     # Tier-1 per-outlet breakdown across the owned set
@@ -207,7 +207,7 @@ def stock_check(query: str = "", site_code: str = "", limit: int = 15) -> dict:
 
             # link_status per matched art_key — so a catalog_only item (in catalog,
             # 0 stock chain-wide) is framed honestly, not as "out of stock". NULL/
-            # missing (pre-build rows) → 'both' (fail-soft). Whole-chain catalog
+            # missing (pre-build rows) > 'both' (fail-soft). Whole-chain catalog
             # presence, so this is NOT site-scoped.
             link_status = {}
             if art_keys:
@@ -275,11 +275,11 @@ def store_stock_summary(
     store key can NEVER aggregate another branch. The bound site is passed as a
     parameterized `WHERE b.site_code = %s` on every query.
 
-    group_by: "" → overall totals (total_stock_qty, unique_articles,
+    group_by: "" > overall totals (total_stock_qty, unique_articles,
                    total_inventory_value) for the branch.
-              "category" → per-category SUM(stock_qty) + article COUNT, top `limit`.
+              "category" > per-category SUM(stock_qty) + article COUNT, top `limit`.
     category: filter to one category (ILIKE) — returns that category's totals.
-    low_stock_threshold: >0 → list articles with 0 < stock_qty <= threshold
+    low_stock_threshold: >0 > list articles with 0 < stock_qty <= threshold
                          (brand + qty), up to `limit`.
     limit: cap on rows returned for the grouped / low-stock lists.
 
@@ -292,7 +292,7 @@ def store_stock_summary(
     # all stores (site filter omitted) or the caller-supplied `category`.
     _locked = is_store_locked()
     allowed = bound_stores() if _locked else []
-    site_code = ",".join(allowed) if _locked else ""  # display label only
+    site_code = ",".join(allowed) if _locked else "" # display label only
     FLAT = f'"{SCHEMA}".shop_flat'
     try:
         c, cur = _conn()

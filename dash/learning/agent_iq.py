@@ -6,7 +6,7 @@ dash_self_learning_runs.metadata under key 'agent_iq'.
 Score formula:
     iq = log10(1 + active_memories) * avg_conf * kg_density * persona_richness * 100
 
-Range: 0 (just-born project) → ~500-1000 (well-trained, weeks of self-learning).
+Range: 0 (just-born project) > ~500-1000 (well-trained, weeks of self-learning).
 """
 from __future__ import annotations
 import json
@@ -52,8 +52,8 @@ def compute(project_slug: Optional[str], dash_engine=None) -> IQSnapshot:
                 "SELECT COUNT(*) AS n, COALESCE(AVG(confidence_score), 0.5) AS conf "
                 "FROM public.dash_memories "
                 "WHERE (archived IS NULL OR archived = FALSE) "
-                "  AND COALESCE(confidence_score, 0.5) >= 0.3 "
-                "  AND (project_slug = :s OR (:s IS NULL AND project_slug IS NULL))"
+                " AND COALESCE(confidence_score, 0.5) >= 0.3 "
+                " AND (project_slug = :s OR (:s IS NULL AND project_slug IS NULL))"
             ), {"s": project_slug}).fetchone()
             if r:
                 snap.active_memories = int(r[0] or 0)
@@ -62,15 +62,15 @@ def compute(project_slug: Optional[str], dash_engine=None) -> IQSnapshot:
             # 2. KG density: distinct entities / threshold
             r2 = conn.execute(text(
                 "WITH ent AS ("
-                "  SELECT DISTINCT subject AS e FROM public.dash_knowledge_triples "
-                "  WHERE project_slug = :s OR (:s IS NULL AND project_slug IS NULL) "
-                "  UNION "
-                "  SELECT DISTINCT object AS e FROM public.dash_knowledge_triples "
-                "  WHERE project_slug = :s OR (:s IS NULL AND project_slug IS NULL) "
+                " SELECT DISTINCT subject AS e FROM public.dash_knowledge_triples "
+                " WHERE project_slug = :s OR (:s IS NULL AND project_slug IS NULL) "
+                " UNION "
+                " SELECT DISTINCT object AS e FROM public.dash_knowledge_triples "
+                " WHERE project_slug = :s OR (:s IS NULL AND project_slug IS NULL) "
                 ") SELECT COUNT(*) FROM ent"
             ), {"s": project_slug}).fetchone()
             entity_count = int((r2 or [0])[0] or 0)
-            snap.kg_density = min(1.0, entity_count / 200.0)  # 200 entities = max density
+            snap.kg_density = min(1.0, entity_count / 200.0) # 200 entities = max density
 
             # 3. Persona richness
             r3 = conn.execute(text(
@@ -136,8 +136,8 @@ def history(project_slug: Optional[str], days: int = 30,
                 "SELECT cycle_num, started_at, metadata "
                 "FROM public.dash_self_learning_runs "
                 "WHERE (project_slug = :s OR (:s IS NULL AND project_slug IS NULL)) "
-                "  AND started_at > NOW() - (:d * INTERVAL '1 day') "
-                "  AND status = 'completed' "
+                " AND started_at > NOW() - (:d * INTERVAL '1 day') "
+                " AND status = 'completed' "
                 "ORDER BY started_at ASC"
             ), {"s": project_slug, "d": days}).fetchall()
         out = []

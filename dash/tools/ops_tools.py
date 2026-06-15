@@ -336,7 +336,7 @@ def propose_value_play(portco_id: str, focus: Optional[str] = None,
             f"({var_f:+.1f}%) for {period}. Drive a {play_type} initiative "
             f"to close the gap."
         )
-        target_delta = -var_f  # close the gap
+        target_delta = -var_f # close the gap
 
         with _write_engine().begin() as cx:
             r = cx.execute(text("""
@@ -690,8 +690,8 @@ def create_ops_tools(project_slug: str, user_id: Optional[int] = None):
         return json.dumps(r, default=str)
 
     @tool(name="update_initiative",
-          description="Move an initiative through proposed → approved → "
-          "in_progress → done/cancelled. Auto-stamps updated_at. "
+          description="Move an initiative through proposed > approved > "
+          "in_progress > done/cancelled. Auto-stamps updated_at. "
           "Args: initiative_id, status, notes (optional appended), owner, "
           "due_date.")
     def _update(initiative_id: str, status: str = "", notes: str = "",

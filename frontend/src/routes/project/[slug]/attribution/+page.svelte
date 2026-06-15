@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount, onDestroy } from 'svelte';
  import { page } from '$app/stores';
  import { goto } from '$app/navigation';
@@ -180,7 +180,7 @@
 <main style="padding: 16px; font-family: monospace; color: #1a1a1a; background: #fafaf5; min-height: 100vh;">
   <header style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
     <div>
-      <a href={`${base}/project/${slug}/settings`} style="color:#525252;text-decoration:none;font-size:11px;">← BACK</a>
+      <a href={`${base}/project/${slug}/settings`} style="color:#525252;text-decoration:none;font-size:11px;"><Icon name="arrow-left" size={16} /> BACK</a>
       <h1 style="font-size:14px;font-weight:900;margin:6px 0 2px 0;"><Icon name="target" size={14} /> ATTRIBUTION · {slug}</h1>
       <div style="font-size:10px;color:#525252;">Multi-Touch Attribution dashboard</div>
     </div>
@@ -295,7 +295,7 @@
           {/each}
         </tbody>
       </table>
-      <div style="font-size: 11px;color:#525252;margin-top:6px;">Highlighted column = active model. High disagreement → model choice changes the answer.</div>
+      <div style="font-size: 11px;color:#525252;margin-top:6px;">Highlighted column = active model. High disagreement <Icon name="arrow-right" size={16} /> model choice changes the answer.</div>
     {/if}
   </section>
 

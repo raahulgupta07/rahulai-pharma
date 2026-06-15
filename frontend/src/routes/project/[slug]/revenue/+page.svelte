@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount, onDestroy } from 'svelte';
  import { page } from '$app/stores';
  import { base } from '$app/paths';
@@ -118,7 +118,7 @@
  });
  const d = await r.json();
  if (!r.ok) throw new Error(d.detail || 'snapshot failed');
- snapshotMsg = `Snapshot saved · ${d.period_start} → ${d.period_end}`;
+ snapshotMsg = `Snapshot saved · ${d.period_start} > ${d.period_end}`;
  await loadAll();
  } catch (e: any) {
  snapshotMsg = `ERROR: ${e.message}`;
@@ -290,8 +290,8 @@
       <div class="sub">MRR · ARR · Retention · Cohorts · {slug}</div>
     </div>
     <div class="actions">
-      <a class="btn-ghost" href={`${base}/project/${slug}/settings`}>← back to settings</a>
-      <button class="btn-ghost" onclick={() => loadAll()} disabled={loading}>↻ REFRESH</button>
+      <a class="btn-ghost" href={`${base}/project/${slug}/settings`}><Icon name="arrow-left" size={16} /> back to settings</a>
+      <button class="btn-ghost" onclick={() => loadAll()} disabled={loading}><Icon name="refresh" size={16} /> REFRESH</button>
       <button class="btn-primary" onclick={snapshotNow} disabled={snapshotting || !schemaInfo?.found}>
         {snapshotting ? '...' : ' SNAPSHOT NOW'}
       </button>
@@ -316,7 +316,7 @@
           {#each schemaInfo.suggestions as s}<li>{s}</li>{/each}
         </ul>
       {/if}
-      <a class="btn-primary" href={`${base}/project/${slug}/settings`}>→ APPLY SAAS TEMPLATE</a>
+      <a class="btn-primary" href={`${base}/project/${slug}/settings`}><Icon name="arrow-right" size={16} /> APPLY SAAS TEMPLATE</a>
     </div>
   {:else}
     {#if snapshotMsg}
@@ -338,7 +338,7 @@
         <button class="btn-ghost" onclick={() => loadAll()} disabled={!customStart || !customEnd}>APPLY</button>
       {/if}
       {#if breakdown?.ok}
-        <span class="period-meta">{breakdown.period_start} → {breakdown.period_end}</span>
+        <span class="period-meta">{breakdown.period_start} <Icon name="arrow-right" size={16} /> {breakdown.period_end}</span>
       {/if}
       {#if lastFetched}
         <span class="period-meta">· refreshed {lastFetched.toLocaleTimeString()}</span>
@@ -386,7 +386,7 @@
 
     <!-- Waterfall -->
     <section class="card">
-      <h2>MRR MOVEMENT — {breakdown?.period_start || ''} → {breakdown?.period_end || ''}</h2>
+      <h2>MRR MOVEMENT — {breakdown?.period_start || ''} <Icon name="arrow-right" size={16} /> {breakdown?.period_end || ''}</h2>
       <div class="chart" bind:this={waterfallEl}></div>
       {#if breakdown?.ok}
         <div class="legend">

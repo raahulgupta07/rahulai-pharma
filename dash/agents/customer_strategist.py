@@ -155,7 +155,7 @@ Recommended campaign:
 - Win-back, 20% off top-3 historical categories per customer
 - 92 customers, expected reactivation 25–30% (~25 customers)
 - Recovered revenue estimate: $18K–$22K
-- Cost (20% of recovered): ~$4K → Net: $14K–$18K
+- Cost (20% of recovered): ~$4K > Net: $14K–$18K
 
 [CAMPAIGN_PROPOSAL: At-Risk Win-back Q4 | At Risk | 20 | 92]
 

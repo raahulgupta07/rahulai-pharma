@@ -211,6 +211,6 @@ export function actionIcon(type: string): string {
  case 'create_campaign': return '';
  case 'train_model': return '';
  case 'drill_down': return '⤵';
- default: return '▶';
+ default: return '';
  }
 }

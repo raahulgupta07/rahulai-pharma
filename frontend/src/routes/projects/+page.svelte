@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount } from 'svelte';
  import { goto } from '$app/navigation';
  import { base } from '$app/paths';
@@ -225,7 +225,7 @@
  fd.append('file', selectedFile);
  let upOk = false;
  if (isData) {
- // Staged pipeline: stage → auto-promote (validated, governed, one canonical table).
+ // Staged pipeline: stage > auto-promote (validated, governed, one canonical table).
  const sres = await fetch(`/api/upload/stage?project=${data.slug}`, { method: 'POST', body: fd, headers: _h() });
  if (sres.ok) {
  const sd = await sres.json();
@@ -409,7 +409,7 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             </span>
             <span class="proj-chat-label">Open chat</span>
-            <span class="proj-chat-arrow">→</span>
+            <span class="proj-chat-arrow"><Icon name="arrow-right" size={16} /></span>
           </button>
 
           {#if menuOpen === p.slug}
@@ -428,10 +428,10 @@
                 <span class="proj-menu-icon">⊞</span>{dupBusy[p.slug] ? 'Duplicating…' : 'Duplicate'}
               </button>
               <button class="proj-menu-item" onclick={() => { exportProject(p); menuOpen = null; }}>
-                <span class="proj-menu-icon">↓</span>Export
+                <span class="proj-menu-icon"><Icon name="arrow-down" size={16} /></span>Export
               </button>
               <button class="proj-menu-item" onclick={() => { openShare(p.slug); menuOpen = null; }}>
-                <span class="proj-menu-icon">↗</span>Share
+                <span class="proj-menu-icon"><Icon name="trending-up" size={16} /></span>Share
               </button>
               <div class="proj-menu-sep"></div>
               <button class="proj-menu-item" onclick={() => { archiveProject(p); menuOpen = null; }}>
@@ -505,7 +505,7 @@
           {/each}
           {#if createResult}
             <a href="{base}/project/{createResult.slug}/settings" class="proj-cta proj-cta-block" style="text-decoration: none; text-align: center; margin-top: 10px; display: block;">
-              Upload data & configure →
+              Upload data & configure <Icon name="arrow-right" size={16} />
             </a>
           {/if}
         </div>

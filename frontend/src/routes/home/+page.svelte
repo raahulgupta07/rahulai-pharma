@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount, onDestroy } from 'svelte';
  import { goto } from '$app/navigation';
  import { brand } from '$lib/stores/branding';
@@ -185,7 +185,7 @@
                 <div class="home-card-icon">{(p.agent_name || 'A').charAt(0).toUpperCase()}</div>
                 <div class="home-card-title">
                   <h3>
-                    {#if p.is_favorite}<span class="home-star-inline" title="Starred">★</span>{/if}
+                    {#if p.is_favorite}<span class="home-star-inline" title="Starred">*</span>{/if}
                     {p.agent_name}
                   </h3>
                   <p class="home-card-cat">General · {p.tables || 0} tables</p>
@@ -218,7 +218,7 @@
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                 </span>
                 <span class="home-chat-label">Open chat</span>
-                <span class="home-chat-arrow">→</span>
+                <span class="home-chat-arrow"><Icon name="arrow-right" size={16} /></span>
               </button>
             </div>
           {/each}

@@ -8,7 +8,7 @@ from dash.learning.query_capture import shadow_match
 
 SLUG = "citypharma"
 
-# Paraphrases spanning close → far of the seeded base questions, so the logged
+# Paraphrases spanning close > far of the seeded base questions, so the logged
 # sims cover the 0.80–0.99 band where the threshold decision lives.
 PARAPHRASES = [
     # category count

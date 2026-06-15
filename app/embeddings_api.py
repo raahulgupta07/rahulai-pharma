@@ -1,11 +1,11 @@
 """Embeddings API — OpenAI-compatible embeddings + per-project vector search/ingest.
 
 Endpoints:
-- POST /v1/embeddings                                  OpenAI-compat embedding
-- POST /api/projects/{slug}/vectors/search             semantic / hybrid search
-- POST /api/projects/{slug}/vectors/ingest             bulk upsert (sha256 dedup)
-- GET  /api/projects/{slug}/vectors/list               paginated browse
-- DELETE /api/projects/{slug}/vectors/{source_id}      single delete
+- POST /v1/embeddings OpenAI-compat embedding
+- POST /api/projects/{slug}/vectors/search semantic / hybrid search
+- POST /api/projects/{slug}/vectors/ingest bulk upsert (sha256 dedup)
+- GET /api/projects/{slug}/vectors/list paginated browse
+- DELETE /api/projects/{slug}/vectors/{source_id} single delete
 
 Bearer token auth (re-uses app.auth.get_current_user).
 Vectors stored in `dash_vectors`. Audit rows go to `dash_vector_audit`.
@@ -51,7 +51,7 @@ def _check(user: dict, slug: str, role: str = "viewer") -> None:
 async def _embed_batch(texts: list[str], model: str | None = None) -> tuple[list[list[float]], int]:
     """Lazy import. Returns (vectors, prompt_tokens). embed_batch is async."""
     try:
-        from dash.tools.embeddings_helper import embed_batch  # type: ignore
+        from dash.tools.embeddings_helper import embed_batch # type: ignore
     except Exception as e:
         logger.error("embeddings_helper missing: %s", e)
         raise HTTPException(503, f"embeddings backend unavailable: {e}")
@@ -67,7 +67,7 @@ async def _embed_batch(texts: list[str], model: str | None = None) -> tuple[list
 
 def _vec_to_pg(v: list[float]) -> str:
     try:
-        from dash.tools.embeddings_helper import vec_to_pg  # type: ignore
+        from dash.tools.embeddings_helper import vec_to_pg # type: ignore
         return vec_to_pg(v)
     except Exception:
         return "[" + ",".join(f"{float(x):.6f}" for x in v) + "]"
@@ -94,7 +94,7 @@ def _write_engine():
 def _audit(conn, slug: str, user_id: int | None, action: str, details: dict | None = None) -> None:
     """Best-effort audit row. Runs in its OWN transaction so a failure can never
     poison the caller's write transaction (a failed statement aborts the whole
-    PG txn → the final COMMIT silently rolls back the real inserts).
+    PG txn > the final COMMIT silently rolls back the real inserts).
     Real schema: (project_slug, op, query, scope_attrs, rows_returned, latency_ms, ts).
     """
     from sqlalchemy import text as _t
@@ -167,7 +167,7 @@ async def openai_embeddings(request: Request):
             _log_input = _os.getenv("EMBED_LOG_INPUT", "0").lower() in ("1", "true", "yes", "on")
         if _log_input:
             _first = texts[0] if texts else ""
-            _prev = (_first[:280] + (f"  …(+{len(texts)-1} more)" if len(texts) > 1 else "")) if _first else None
+            _prev = (_first[:280] + (f" …(+{len(texts)-1} more)" if len(texts) > 1 else "")) if _first else None
         _log_usage(user, real_model or "text-embedding-3-small",
                    int(prompt_tokens or 0), 0, streamed=False,
                    request_type="embedding", input_preview=_prev)
@@ -208,7 +208,7 @@ async def vector_search(slug: str, request: Request):
     # Hybrid path — delegate to hybrid_search if available
     if hybrid:
         try:
-            from dash.tools.hybrid_search import hybrid_search  # type: ignore
+            from dash.tools.hybrid_search import hybrid_search # type: ignore
             results = hybrid_search(
                 project_slug=slug,
                 query=query,

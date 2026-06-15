@@ -1,5 +1,5 @@
 """AI deck stylist — inspects a dashboard spec, returns theme + palette
-overrides + narrative tone for the dashboard→deck pipeline.
+overrides + narrative tone for the dashboard>deck pipeline.
 
 Stage 1: deterministic profile extraction (free, ~1ms).
 Stage 2: LITE_MODEL agent (≤1.5s, ~$0.0008) picks theme + accent.
@@ -64,20 +64,20 @@ def ensure_contrast(fg_hex: str, bg_hex: str, min_ratio: float = 4.5) -> str:
         return fg_hex
     return pick_readable_text(bg_hex)
 
-# Domain keyword → preferred theme (deterministic fallback)
+# Domain keyword > preferred theme (deterministic fallback)
 _DOMAIN_THEMES: dict[str, list[str]] = {
-    "coral_energy":      ["campaign", "marketing", "retail", "ecommerce", "promo", "crm", "engagement"],
-    "teal_trust":        ["finance", "fp&a", "treasury", "banking", "loan", "credit", "accounting", "investment"],
-    "forest_moss":       ["healthcare", "clinical", "pharma", "pharmacy", "patient", "hospital", "wellness"],
-    "cherry_bold":       ["risk", "alert", "compliance", "fraud", "incident", "violation", "breach", "critical"],
+    "coral_energy": ["campaign", "marketing", "retail", "ecommerce", "promo", "crm", "engagement"],
+    "teal_trust": ["finance", "fp&a", "treasury", "banking", "loan", "credit", "accounting", "investment"],
+    "forest_moss": ["healthcare", "clinical", "pharma", "pharmacy", "patient", "hospital", "wellness"],
+    "cherry_bold": ["risk", "alert", "compliance", "fraud", "incident", "violation", "breach", "critical"],
     "midnight_executive": ["executive", "board", "investor", "qbr", "summary", "strategic", "roadmap"],
-    "charcoal_minimal":  ["ops", "operational", "supply", "logistics", "warehouse", "throughput", "manufacturing"],
-    "berry_cream":       ["consumer", "lifestyle", "brand", "loyalty", "hotel", "hospitality"],
-    "ocean_gradient":    ["ocean", "sustainability", "esg", "environment", "water"],
+    "charcoal_minimal": ["ops", "operational", "supply", "logistics", "warehouse", "throughput", "manufacturing"],
+    "berry_cream": ["consumer", "lifestyle", "brand", "loyalty", "hotel", "hospitality"],
+    "ocean_gradient": ["ocean", "sustainability", "esg", "environment", "water"],
 }
 
 _MOOD_LEXICON = {
-    "alert":    ["issue", "lack", "fluctuat", "drop", "below", "gap", "risk", "failed",
+    "alert": ["issue", "lack", "fluctuat", "drop", "below", "gap", "risk", "failed",
                  "incorrect", "missing", "decline", "deteriorat", "concern", "violation"],
     "positive": ["growth", "exceed", "drove", "achiev", "lifted", "surpass", "improved",
                  "best", "leading", "win", "uplift", "gain"],
@@ -184,21 +184,21 @@ DASHBOARD PROFILE:
 - Title: {profile['title']}
 - Audience: {profile['audience']}
 - Persona: {profile['persona']}
-- Mood: {profile['mood']}  (alert=urgent issues, positive=growth wins, neutral=facts)
+- Mood: {profile['mood']} (alert=urgent issues, positive=growth wins, neutral=facts)
 - Domain hint: {profile['domain_guess']}
 - Panels: {profile['panel_count']} — chart types: {", ".join(profile['chart_types'][:6])}
 - Snippets:
-{chr(10).join("  - " + s for s in profile['panel_snippets'][:6])}
+{chr(10).join(" - " + s for s in profile['panel_snippets'][:6])}
 
 AVAILABLE THEMES (pick exactly one):
-- coral_energy:      warm cream + coral — retail, marketing, campaigns
+- coral_energy: warm cream + coral — retail, marketing, campaigns
 - midnight_executive: dark + teal — board, investor, executive
-- forest_moss:       muted green — healthcare, pharma, wellness, sustainability
-- ocean_gradient:    light blue — ESG, environment, calm topics
-- charcoal_minimal:  grayscale — ops, supply chain, precision
-- teal_trust:        teal — finance, banking, FP&A, trust
-- berry_cream:       pink + cream — consumer, lifestyle, brand
-- cherry_bold:       red on white — risk, alert, compliance, urgency
+- forest_moss: muted green — healthcare, pharma, wellness, sustainability
+- ocean_gradient: light blue — ESG, environment, calm topics
+- charcoal_minimal: grayscale — ops, supply chain, precision
+- teal_trust: teal — finance, banking, FP&A, trust
+- berry_cream: pink + cream — consumer, lifestyle, brand
+- cherry_bold: red on white — risk, alert, compliance, urgency
 
 Output ONLY valid JSON in this exact shape (no fences, no preamble):
 {{
@@ -214,8 +214,8 @@ Output ONLY valid JSON in this exact shape (no fences, no preamble):
 
 CONTRAST RULES (CRITICAL):
 - card_value_hex AND card_label_hex MUST be readable on card_bg_hex (WCAG ≥ 4.5:1)
-- DARK card_bg (luminance <0.4) → use WHITE or near-white text (#FFFFFF, #F5F2EC)
-- LIGHT card_bg (luminance >0.6) → use DARK text (#1A1614, #2C2A26)
+- DARK card_bg (luminance <0.4) > use WHITE or near-white text (#FFFFFF, #F5F2EC)
+- LIGHT card_bg (luminance >0.6) > use DARK text (#1A1614, #2C2A26)
 - NEVER red text on dark blue, NEVER yellow on white
 - chart_palette: 5 distinct hues that work on a CREAM or WHITE chart background
 """
@@ -295,7 +295,7 @@ CONTRAST RULES (CRITICAL):
 
 
 def choose_style(spec: dict, panels: list[dict]) -> dict:
-    """Full pipeline: profile → LLM → fallback.
+    """Full pipeline: profile > LLM > fallback.
 
     Returns DeckStyle dict:
         {theme_name, accent_hex, palette_hex, narrative_tone, reasoning,
@@ -319,7 +319,7 @@ def choose_style(spec: dict, panels: list[dict]) -> dict:
             "narrative_tone": "alert" if profile["mood"] == "alert" else "executive",
             "reasoning": (
                 f"Fallback (no LLM): domain keyword '{profile['domain_keyword']}' "
-                f"→ {theme}; mood {profile['mood']}"
+                f"> {theme}; mood {profile['mood']}"
             ),
             "source": "fallback",
         }

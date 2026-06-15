@@ -13,8 +13,8 @@ exact definitions still arrive via the shipped Definitions.xlsx auto-pin path
 (`_autoload_definitions`) or the Definitions tab.
 
 Wiring:
-  - `looks_like_crm(slug)`  → detect a CRM-shaped schema.
-  - `seed_crm_starter(slug)` → resolve columns + upsert the universal metrics.
+  - `looks_like_crm(slug)` > detect a CRM-shaped schema.
+  - `seed_crm_starter(slug)` > resolve columns + upsert the universal metrics.
 Called fail-soft from the train pipeline (auto) and a manual endpoint.
 """
 from __future__ import annotations
@@ -23,11 +23,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# ── logical column → candidate real names (case-insensitive, first match wins) ──
+# ── logical column > candidate real names (case-insensitive, first match wins) ──
 _ALIASES: dict[str, list[str]] = {
     "outcome": [
         "call_outcome", "outcome", "call_result", "result", "disposition",
-        "related_channel_response__channel_type",  # demo fallthrough not used as outcome; kept low
+        "related_channel_response__channel_type", # demo fallthrough not used as outcome; kept low
     ],
     "channel": [
         "channel", "channel_name", "channel_type", "source", "medium",
@@ -47,18 +47,18 @@ _V_UNCONTACTABLE = "Uncontactable"
 def _resolve_cols(slug: str):
     """Return (schema, crm_tables, colmap) or (schema, [], {}) when not CRM.
 
-    colmap maps logical name → actual column present in the CRM tables.
+    colmap maps logical name > actual column present in the CRM tables.
     crm_tables = tables in the project schema that carry an outcome-like column
     OR whose name looks like crm/call/lead.
     """
-    from sqlalchemy import inspect as _sa_inspect  # type: ignore[import]
-    from dash.tools.metric_compiler import resolve_engine  # type: ignore[import]
+    from sqlalchemy import inspect as _sa_inspect # type: ignore[import]
+    from dash.tools.metric_compiler import resolve_engine # type: ignore[import]
 
     engine, schema = resolve_engine(slug)
     insp = _sa_inspect(engine)
     try:
         tables = insp.get_table_names(schema=schema)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.debug("crm_starter: list tables failed for %s: %s", slug, e)
         return schema, [], {}
 
@@ -68,7 +68,7 @@ def _resolve_cols(slug: str):
     for t in tables:
         try:
             cols = {c["name"].lower() for c in insp.get_columns(t, schema=schema)}
-        except Exception:  # noqa: BLE001
+        except Exception: # noqa: BLE001
             cols = set()
         table_cols[t] = cols
         union_cols |= cols
@@ -109,11 +109,11 @@ def _resolve_cols(slug: str):
 
 def looks_like_crm(slug: str) -> bool:
     """True if the project's schema looks like a CRM (has an outcome-like column
-    or crm/call/lead-named tables). Fail-soft → False."""
+    or crm/call/lead-named tables). Fail-soft > False."""
     try:
         _schema, crm_tables, colmap = _resolve_cols(slug)
         return bool(crm_tables) and (colmap.get("outcome") is not None or len(crm_tables) > 0)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.debug("crm_starter.looks_like_crm failed for %s: %s", slug, e)
         return False
 
@@ -133,7 +133,7 @@ def _build_specs(crm_tables: list[str], cm: dict) -> list[dict]:
             "source_glob": None, "source_tables": src,
             "filters": [], "denom_filters": [], "group_dims": group_dims,
             "default_group": [], "trim_values": True,
-            "status": "suggested",  # best-guess vocab — owner confirms
+            "status": "suggested", # best-guess vocab — owner confirms
         }
         s.update(extra)
         return s
@@ -219,12 +219,12 @@ def preview_crm_starter(slug: str) -> dict:
         # Which already exist (so the UI can mark them).
         existing: set[str] = set()
         try:
-            from dash.tools.metric_compiler import list_definitions  # type: ignore[import]
+            from dash.tools.metric_compiler import list_definitions # type: ignore[import]
             for d in (list_definitions(slug) or []):
                 n = d.get("name") if isinstance(d, dict) else None
                 if n:
                     existing.add(n)
-        except Exception:  # noqa: BLE001
+        except Exception: # noqa: BLE001
             pass
         candidates = [{
             "name": s["name"],
@@ -236,7 +236,7 @@ def preview_crm_starter(slug: str) -> dict:
         } for s in specs]
         return {"ok": True, "project_slug": slug, "candidates": candidates,
                 "columns": colmap, "tables": sorted(crm_tables)}
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.warning("crm_starter.preview failed for %s: %s", slug, e)
         return {"ok": False, "project_slug": slug, "candidates": [], "error": str(e)}
 
@@ -261,17 +261,17 @@ def seed_crm_starter(slug: str, only: list[str] | None = None) -> dict:
             return {"ok": False, "project_slug": slug, "seeded": [],
                     "skipped_reason": "no_resolvable_metrics"}
 
-        from dash.tools.metric_compiler import save_definition  # type: ignore[import]
+        from dash.tools.metric_compiler import save_definition # type: ignore[import]
         seeded: list[str] = []
         for spec in specs:
             try:
                 save_definition(slug, spec, user="seed_crm_starter")
                 seeded.append(spec["name"])
-            except Exception as e:  # noqa: BLE001
+            except Exception as e: # noqa: BLE001
                 logger.warning("crm_starter: save %s failed for %s: %s", spec["name"], slug, e)
         logger.info("crm_starter: seeded %d/%d metrics for %s", len(seeded), len(specs), slug)
         return {"ok": True, "project_slug": slug, "seeded": seeded,
                 "columns": colmap, "tables": sorted(crm_tables)}
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.warning("crm_starter.seed_crm_starter failed for %s: %s", slug, e)
         return {"ok": False, "project_slug": slug, "seeded": [], "error": str(e)}

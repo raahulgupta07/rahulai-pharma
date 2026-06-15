@@ -42,16 +42,16 @@ WORKFLOW:
 
 FOR SCANNED PDFs:
 - Tesseract OCR runs automatically (local, free)
-- If Tesseract fails on a page → Vision LLM describes it
+- If Tesseract fails on a page > Vision LLM describes it
 - Report how many pages were scanned vs digital
 
 FOR IMAGES IN DOCUMENTS:
-- PPTX slide images and PDF chart images → Vision describes them
+- PPTX slide images and PDF chart images > Vision describes them
 - Descriptions become searchable text in knowledge base
 
 FOR DIAGRAMS/FLOWCHARTS (auto-detected):
 - Pages with short text labels (< 2000 chars, avg line < 30 chars)
-- Rendered as full-page image → Vision describes the complete flow
+- Rendered as full-page image > Vision describes the complete flow
 - Vision extracts: steps, connections, decision points, arrows, sequence
 - Both text labels AND visual structure are captured
 

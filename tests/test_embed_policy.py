@@ -1,4 +1,4 @@
-"""Embed-widget → visibility-policy wiring tests.
+"""Embed-widget > visibility-policy wiring tests.
 
 Validates that embeds can be bound to a fixed scope/intent/role and that the
 chat handler propagates these into the visibility policy engine + RLS layer.
@@ -56,7 +56,7 @@ def test_embed_bound_scope_overrides_session_user_attrs():
 
     assert merged["store_id"] == "MUM01"
     assert merged["role"] == "store_manager"
-    assert merged["extra"] == "ok"  # Untouched session attrs preserved
+    assert merged["extra"] == "ok" # Untouched session attrs preserved
 
 
 def test_patch_rejects_invalid_bound_intent():

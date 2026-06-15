@@ -5,8 +5,8 @@ Mirrors dash/cron/venture_rescore.py: env-gate, tunable interval, run_once
 public, fail-soft per portco.
 
 Tunables:
-  OPS_ANOMALY_DAEMON_DISABLED=1 → skip
-  OPS_ANOMALY_INTERVAL_SECONDS  → default 604800 (7d), floor 3600
+  OPS_ANOMALY_DAEMON_DISABLED=1 > skip
+  OPS_ANOMALY_INTERVAL_SECONDS > default 604800 (7d), floor 3600
 """
 from __future__ import annotations
 
@@ -19,11 +19,11 @@ logger = logging.getLogger(__name__)
 
 try:
     from dash.obs.trace import trace_span
-except Exception:  # noqa: BLE001
+except Exception: # noqa: BLE001
     from contextlib import contextmanager as _cm
 
     @_cm
-    def trace_span(*_a, **_k):  # type: ignore
+    def trace_span(*_a, **_k): # type: ignore
         yield None
 
 
@@ -97,7 +97,7 @@ async def run_once() -> dict[str, Any]:
     for pid in portco_ids:
         try:
             r = await asyncio.to_thread(detect_anomalies, pid, 2.0)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e: # noqa: BLE001
             logger.exception("ops_anomaly_scan: portco crashed pid=%s", pid)
             out["errors"].append({"portco_id": pid, "error": str(e)})
             continue

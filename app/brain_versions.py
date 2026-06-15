@@ -7,10 +7,10 @@ Every create/update/delete on `dash_company_brain` writes a snapshot to
 from the main table.
 
 Public endpoints:
-    GET  /api/brain/{id}/history
-    GET  /api/brain/{id}/version/{version}
+    GET /api/brain/{id}/history
+    GET /api/brain/{id}/version/{version}
     POST /api/brain/{id}/rollback/{version}
-    GET  /api/brain/changes/recent
+    GET /api/brain/changes/recent
 
 Helper:
     snapshot_version(conn, brain_id, change_type, changed_by, change_reason, row=None)
@@ -300,7 +300,7 @@ def rollback_to_version(brain_id: int, version: int, request: Request):
 
     - Super-admin OR original creator (matching `changed_by` on v1) is allowed.
     - Idempotent: rolling back to current state is a no-op.
-    - Implementation: read snapshot → UPDATE main row → snapshot new version
+    - Implementation: read snapshot > UPDATE main row > snapshot new version
       with change_type='rollback'. All in one transaction.
     """
     user = _get_user(request)

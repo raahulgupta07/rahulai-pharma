@@ -72,19 +72,19 @@ def render_classification_overlay(
             if c.get("value_distribution") in ("long_tail", "bimodal", "monotonic"):
                 extras.append(c["value_distribution"])
             if c.get("fk_candidate_for"):
-                extras.append(f"fk→{c['fk_candidate_for']}")
+                extras.append(f"fk>{c['fk_candidate_for']}")
 
             extra_str = " · ".join(extras)
             try:
                 conf_f = float(conf)
             except Exception:
                 conf_f = 0.0
-            line = f"  {col:<24} {str(role):<10} · {str(sem):<22} {extra_str}{pii_flag} (conf {conf_f:.2f})"
+            line = f" {col:<24} {str(role):<10} · {str(sem):<22} {extra_str}{pii_flag} (conf {conf_f:.2f})"
             lines.append(line)
         lines.append("")
 
     if pii_count > 0:
-        lines.append(f"⚠ {pii_count} PII columns detected — apply masking_recommended hint when surfacing.")
+        lines.append(f" {pii_count} PII columns detected — apply masking_recommended hint when surfacing.")
         lines.append("")
 
     lines.append("Rules for Analyst:")

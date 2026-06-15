@@ -7,8 +7,8 @@ referencing nonexistent tables/columns or missing Postgres dialect casts).
 
 Public API:
     validate_and_fix(sql, project_slug, *, schema=None, strict=True) -> dict
-    get_schema_hint(project_slug, schema=None) -> str  # for prompt injection
-    invalidate_cache(project_slug)                     # after schema changes
+    get_schema_hint(project_slug, schema=None) -> str # for prompt injection
+    invalidate_cache(project_slug) # after schema changes
 """
 from __future__ import annotations
 import re
@@ -58,7 +58,7 @@ def _emit_event(
     SQL validator stats endpoint.
     """
     try:
-        from db.session import get_write_engine  # public+dash writes
+        from db.session import get_write_engine # public+dash writes
         from sqlalchemy import text as _sa_text
         import json as _json
         eng = get_write_engine()
@@ -84,7 +84,7 @@ def _norm_slug(slug: str) -> str:
 
 def _load_schema(project_slug: str, schema: Optional[str] = None) -> dict[str, list[tuple[str, str]]]:
     """Returns {table_name: [(col_name, dtype), ...]} for project's schema.
-    Cached 5 min. Fail-soft → empty dict on DB error."""
+    Cached 5 min. Fail-soft > empty dict on DB error."""
     schema = schema or _norm_slug(project_slug)
     now = time.time()
     cached = _cache.get(schema)
@@ -121,7 +121,7 @@ def get_schema_hint(project_slug: str, schema: Optional[str] = None, max_tables:
     for tbl in sorted(schema_map.keys())[:max_tables]:
         cols = schema_map[tbl][:max_cols_per_table]
         col_str = ", ".join(f"{c}:{_short_dtype(d)}" for c, d in cols)
-        lines.append(f"  {tbl} ({col_str})")
+        lines.append(f" {tbl} ({col_str})")
     return "TABLES:\n" + "\n".join(lines)
 
 
@@ -171,7 +171,7 @@ def _suggest(name: str, candidates: list[str], cutoff_ratio: float = 0.4) -> Opt
 # --- Auto-fixes ---
 
 def _autofix_date_trunc_text(sql: str, schema_map: dict[str, list[tuple[str, str]]]) -> tuple[str, list[str]]:
-    """date_trunc('month', text_col) → date_trunc('month', text_col::date)
+    """date_trunc('month', text_col) > date_trunc('month', text_col::date)
     Only fixes when col exists + is TEXT in any table."""
     fixes: list[str] = []
     text_cols = {c.lower() for cols in schema_map.values() for c, d in cols if "char" in (d or "").lower() or "text" in (d or "").lower()}
@@ -192,7 +192,7 @@ def _autofix_date_trunc_text(sql: str, schema_map: dict[str, list[tuple[str, str
 
 
 def _autofix_text_comparison(sql: str, schema_map: dict[str, list[tuple[str, str]]]) -> tuple[str, list[str]]:
-    """text_col >= timestamp_literal → text_col::date >= timestamp_literal"""
+    """text_col >= timestamp_literal > text_col::date >= timestamp_literal"""
     fixes: list[str] = []
     text_cols = {c.lower() for cols in schema_map.values() for c, d in cols if "char" in (d or "").lower() or "text" in (d or "").lower()}
     if not text_cols:
@@ -226,8 +226,8 @@ def validate_and_fix(
 
     Returns:
         {
-            "ok": bool,           # safe to execute?
-            "sql": str,           # original or fixed
+            "ok": bool, # safe to execute?
+            "sql": str, # original or fixed
             "fixes_applied": [str],
             "errors": [str],
             "warnings": [str],
@@ -235,7 +235,7 @@ def validate_and_fix(
             "columns_used": [str],
             "unknown_tables": [str],
             "unknown_columns": [str],
-            "schema_hint": str,   # for retry prompt
+            "schema_hint": str, # for retry prompt
         }
     """
     result = {

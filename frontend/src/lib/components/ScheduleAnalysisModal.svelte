@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { base } from '$app/paths';
  import { createWorkflowFromChat, presetToCron } from '$lib/api';
  import type { WorkflowFromChatStep } from '$lib/api';
@@ -215,7 +215,7 @@
                         placeholder="Analyst"
                         style="width: 140px; border: 1px solid var(--pw-border, #c8c0b0); padding: 4px 8px; font-size: 11px; background: var(--pw-bg);"
                       />
-                      <span style="font-size: 11px; color: var(--pw-muted, #6b6b6b); align-self: center;">→</span>
+                      <span style="font-size: 11px; color: var(--pw-muted, #6b6b6b); align-self: center;"><Icon name="arrow-right" size={16} /></span>
                       <input
                         type="text"
                         value={step.prompt || ''}

@@ -1,7 +1,7 @@
 """AI Research workflow.
 
 Pattern: N parallel researchers (``asyncio.gather``) on a user-provided
-topic → DEEP synthesis.
+topic > DEEP synthesis.
 
 Schedule: daily 07:00 UTC (cron ``0 7 * * *``).
 """
@@ -27,11 +27,11 @@ WORKFLOW_META = {
 # ── Engine + run state helpers ─────────────────────────────────────────
 def _engine():
     try:
-        from db.session import get_sql_engine  # type: ignore
+        from db.session import get_sql_engine # type: ignore
         return get_sql_engine()
     except Exception:
         try:
-            from db import get_sql_engine  # type: ignore
+            from db import get_sql_engine # type: ignore
             return get_sql_engine()
         except Exception:
             return None
@@ -63,7 +63,7 @@ def _record_run(run_id: str, workflow_name: str, args: Dict[str, Any],
                     ON CONFLICT (run_id) DO UPDATE
                       SET status = EXCLUDED.status,
                           result = COALESCE(EXCLUDED.result, public.dash_workflow_runs_v2.result),
-                          error  = COALESCE(EXCLUDED.error,  public.dash_workflow_runs_v2.error),
+                          error = COALESCE(EXCLUDED.error, public.dash_workflow_runs_v2.error),
                           finished_at = EXCLUDED.finished_at
                     """
                 ),
@@ -105,7 +105,7 @@ def _record_run(run_id: str, workflow_name: str, args: Dict[str, Any],
 # ── LLM helpers ────────────────────────────────────────────────────────
 async def _llm(prompt: str, task: str) -> str:
     try:
-        from dash.settings import training_llm_call  # type: ignore
+        from dash.settings import training_llm_call # type: ignore
         out = await asyncio.to_thread(training_llm_call, prompt, task)
         return out or ""
     except Exception as e:
@@ -124,7 +124,7 @@ async def _researcher(topic: str, angle: str, idx: int) -> Dict[str, Any]:
     )
     # Try to leverage the existing researcher agent if importable.
     try:
-        from dash.agents import researcher as _r  # type: ignore  # noqa: F401
+        from dash.agents import researcher as _r # type: ignore # noqa: F401
         # We don't have a project context here; fall through to LLM call.
     except Exception:
         pass

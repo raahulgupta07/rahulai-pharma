@@ -84,7 +84,7 @@ def embed_sandbox(slug: str, embed_id: str, request: Request, token: str | None 
         sample_sig = hmac_user(row["secret_key"], sample_user)
 
     origin_hint = (row["allowed_origins"] or [""])[0] if row["allowed_origins"] else ""
-    base_url = str(request.base_url).rstrip("/")  # e.g. https://localhost
+    base_url = str(request.base_url).rstrip("/") # e.g. https://localhost
 
     html = f"""<!doctype html>
 <html><head><meta charset="utf-8"/>
@@ -155,12 +155,12 @@ def embed_sandbox(slug: str, embed_id: str, request: Request, token: str | None 
   window.fetch = function(input, init) {{
     const url = typeof input === 'string' ? input : input.url;
     if (url.includes('/api/embed/')) {{
-      log('→ ' + (init?.method || 'GET') + ' ' + url, 'warn');
-      if (init?.body) log('  body: ' + init.body, '');
+      log('> ' + (init?.method || 'GET') + ' ' + url, 'warn');
+      if (init?.body) log(' body: ' + init.body, '');
     }}
     return _origFetch.apply(this, arguments).then(function(r) {{
       if (url.includes('/api/embed/')) {{
-        log('← HTTP ' + r.status + ' ' + url, r.ok ? 'ok' : 'err');
+        log('< HTTP ' + r.status + ' ' + url, r.ok ? 'ok' : 'err');
       }}
       return r;
     }});
@@ -175,7 +175,7 @@ def embed_sandbox(slug: str, embed_id: str, request: Request, token: str | None 
     if (oldScr) oldScr.remove();
 
     const userJson = document.getElementById('userJson').value;
-    const userSig  = document.getElementById('userSig').value;
+    const userSig = document.getElementById('userSig').value;
 
     const s = document.createElement('script');
     s.id = 'dash-embed-script';
@@ -412,7 +412,7 @@ async def update_embed_endpoint(slug: str, embed_id: str, request: Request):
         "rls_policies",
         "rls_claim_source",
     }
-    # Alias frontend field names → canonical
+    # Alias frontend field names > canonical
     _ALIASES = {"answer_style": "response_style", "test_access_mode": "access_mode"}
     body = {(_ALIASES.get(k, k)): v for k, v in body.items()}
 
@@ -482,10 +482,10 @@ def _brand_inheritance(slug: str) -> dict:
         with eng.connect() as conn:
             rows = conn.execute(text(
                 "SELECT embed_id, name, bound_scope_id, "
-                "       (primary_color IS NOT NULL AND primary_color <> '') AS overridden "
+                " (primary_color IS NOT NULL AND primary_color <> '') AS overridden "
                 "FROM public.dash_agent_embeds "
                 "WHERE project_slug = :s AND COALESCE(enabled, true) = true "
-                "  AND COALESCE(status,'') <> 'revoked'"
+                " AND COALESCE(status,'') <> 'revoked'"
             ), {"s": slug}).mappings().all()
     except Exception:
         return {"total": 0, "inherit": 0, "override": 0, "overrides": []}
@@ -580,7 +580,7 @@ async def bulk_set_embed_auth(slug: str, request: Request):
 
 @router.post("/{slug}/embed-brand/reset-widgets")
 def reset_widgets_to_brand(slug: str, request: Request):
-    """Clear every per-store appearance override → all widgets inherit the brand."""
+    """Clear every per-store appearance override > all widgets inherit the brand."""
     from sqlalchemy import text
     from dash.embed import _get_engine
     user = _get_user(request)
@@ -591,7 +591,7 @@ def reset_widgets_to_brand(slug: str, request: Request):
             res = conn.execute(text(
                 "UPDATE public.dash_agent_embeds "
                 "SET primary_color = NULL, position = NULL, theme = NULL, "
-                "    welcome_msg = NULL, logo_url = NULL "
+                " welcome_msg = NULL, logo_url = NULL "
                 "WHERE project_slug = :s"
             ), {"s": slug})
             n = res.rowcount or 0
@@ -609,7 +609,7 @@ _LOGO_EXT = {
     "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp",
     "image/svg+xml": "svg", "image/gif": "gif",
 }
-_LOGO_MAX_BYTES = 1024 * 1024  # 1MB
+_LOGO_MAX_BYTES = 1024 * 1024 # 1MB
 
 
 @router.post("/{slug}/embeds/{embed_id}/logo")
@@ -836,7 +836,7 @@ def get_embed_by_agent(slug: str, agent_id: str, request: Request):
 
     out = dict(row._mapping)
     out.pop("secret_key_hash", None)
-    out.pop("secret_key", None)  # never echo on read
+    out.pop("secret_key", None) # never echo on read
     for k in ("created_at", "last_used_at"):
         if out.get(k) is not None:
             out[k] = str(out[k])
@@ -869,7 +869,7 @@ def backfill_agent_embeds(slug: str, request: Request):
 
     # 2) Per-agent embeds (legacy).
     try:
-        from app.learning import _list_project_agents  # type: ignore
+        from app.learning import _list_project_agents # type: ignore
         agents = _list_project_agents(slug) or []
     except Exception:
         agents = []
@@ -1091,7 +1091,7 @@ def get_embed_rls(slug: str, embed_id: str, request: Request):
 
     # Prefer the sibling loader so claim defs are normalized consistently.
     try:
-        from dash.embed.rls import load_rls_for_embed  # type: ignore
+        from dash.embed.rls import load_rls_for_embed # type: ignore
         cfg = load_rls_for_embed(embed_id) or {}
         if cfg:
             return {"status": "ok", "rls": cfg}
@@ -1127,7 +1127,7 @@ import time as _time
 
 # 5-minute in-memory cache: project_slug -> (timestamp, payload)
 _SCHEMA_CATALOG_CACHE: dict[str, tuple[float, dict]] = {}
-_SCHEMA_CATALOG_TTL = 300  # seconds
+_SCHEMA_CATALOG_TTL = 300 # seconds
 _MAX_TABLES = 200
 _MAX_COLS_PER_TABLE = 100
 
@@ -1260,7 +1260,7 @@ def _suggest_claims(tables: list[dict]) -> list[dict]:
 
 
 def _suggest_policies(tables: list[dict], suggested_claims: list[dict]) -> list[dict]:
-    """Per-column regex match → policy mode + filter recommendation."""
+    """Per-column regex match > policy mode + filter recommendation."""
     first_claim = suggested_claims[0]["key"] if suggested_claims else None
     out: list[dict] = []
 
@@ -1338,7 +1338,7 @@ def _suggest_policies(tables: list[dict], suggested_claims: list[dict]) -> list[
                 })
                 continue
 
-            # No match → skip (don't over-suggest)
+            # No match > skip (don't over-suggest)
 
     return out
 
@@ -1418,9 +1418,9 @@ async def rls_wizard_generate(slug: str, embed_id: str, request: Request):
         applied=False,
     )
     out["policies_explained"] = _rls_explainer.explain_policies(out.get("policies") or [])
-    out["claims_explained"]   = _rls_explainer.explain_claims(out.get("claims") or [])
-    out["apply_modes"]        = _rls_explainer.apply_modes_legend()
-    out["mode_legend"]        = _rls_explainer.mode_legend()
+    out["claims_explained"] = _rls_explainer.explain_claims(out.get("claims") or [])
+    out["apply_modes"] = _rls_explainer.apply_modes_legend()
+    out["mode_legend"] = _rls_explainer.mode_legend()
     return out
 
 
@@ -1488,16 +1488,16 @@ async def rls_wizard_apply(slug: str, embed_id: str, request: Request):
         with eng.begin() as conn:
             conn.execute(_t(
                 "INSERT INTO public.dash_embed_rls_audit "
-                "  (embed_id, session_token, claims, denied_table, denied_column, action, sql_snippet) "
+                " (embed_id, session_token, claims, denied_table, denied_column, action, sql_snippet) "
                 "VALUES (:e, NULL, CAST(:c AS jsonb), NULL, NULL, :a, :sql)"
             ), {
-                "e":   embed_id,
-                "c":   _j.dumps({"user_id": user.get("user_id"), "mode": mode}),
-                "a":   "wizard_apply",
+                "e": embed_id,
+                "c": _j.dumps({"user_id": user.get("user_id"), "mode": mode}),
+                "a": "wizard_apply",
                 "sql": _j.dumps(answers)[:4000],
             })
     except Exception:
-        pass  # audit table may not exist on older deployments
+        pass # audit table may not exist on older deployments
 
     log_wizard_run(
         embed_id=embed_id,
@@ -1506,20 +1506,20 @@ async def rls_wizard_apply(slug: str, embed_id: str, request: Request):
         answers=answers,
         generated={"claims": new_claims, "policies": new_policies,
                    "warnings": out.get("warnings") or [],
-                   "summary":  out.get("summary") or {}},
+                   "summary": out.get("summary") or {}},
         applied=True,
     )
 
     return {
-        "status":   "ok",
-        "mode":     mode,
-        "claims":   new_claims,
+        "status": "ok",
+        "mode": mode,
+        "claims": new_claims,
         "policies": new_policies,
         "warnings": out.get("warnings") or [],
-        "summary":  out.get("summary") or {},
+        "summary": out.get("summary") or {},
         "applied_explained": _rls_explainer.explain_policies(new_policies),
-        "claims_explained":  _rls_explainer.explain_claims(new_claims),
-        "apply_modes":       _rls_explainer.apply_modes_legend(),
+        "claims_explained": _rls_explainer.explain_claims(new_claims),
+        "apply_modes": _rls_explainer.apply_modes_legend(),
     }
 
 
@@ -1543,7 +1543,7 @@ def _bp_engine():
 
 
 def _bp_summary_row(row) -> dict:
-    """Convert DB row → list-card payload (no full claims/policies)."""
+    """Convert DB row > list-card payload (no full claims/policies)."""
     claims = row["claims"] or []
     policies = row["policies"] or []
     industry = row["industry"]
@@ -1584,7 +1584,7 @@ def list_blueprints(request: Request):
     with eng.connect() as conn:
         rows = conn.execute(_t(
             "SELECT slug, name, industry, icon, description, claims, policies, "
-            "       required_tables, popularity, is_system, created_by, created_at "
+            " required_tables, popularity, is_system, created_by, created_at "
             "FROM public.dash_embed_rls_blueprints "
             "WHERE is_system = TRUE OR created_by = :uid "
             "ORDER BY is_system DESC, popularity DESC, name ASC"
@@ -1603,7 +1603,7 @@ def get_blueprint(slug: str, request: Request):
     with eng.connect() as conn:
         row = conn.execute(_t(
             "SELECT slug, name, industry, icon, description, claims, policies, "
-            "       required_tables, popularity, is_system, created_by, created_at "
+            " required_tables, popularity, is_system, created_by, created_at "
             "FROM public.dash_embed_rls_blueprints "
             "WHERE slug = :slug AND (is_system = TRUE OR created_by = :uid)"
         ), {"slug": slug, "uid": uid}).mappings().first()
@@ -1634,7 +1634,7 @@ def get_blueprint(slug: str, request: Request):
                       "next_steps", "faq"):
                 if k in _sys and k not in bp_payload:
                     bp_payload[k] = _sys[k]
-    except Exception:  # pragma: no cover
+    except Exception: # pragma: no cover
         pass
     bp_payload["display"] = _rls_explainer.cached_blueprint_display(
         row["slug"], bp_payload
@@ -1675,11 +1675,11 @@ async def create_user_blueprint(request: Request):
         with eng.begin() as conn:
             conn.execute(_t(
                 "INSERT INTO public.dash_embed_rls_blueprints "
-                "  (slug, name, industry, icon, description, claims, policies, "
-                "   required_tables, is_system, created_by) "
+                " (slug, name, industry, icon, description, claims, policies, "
+                " required_tables, is_system, created_by) "
                 "VALUES (:slug, :name, :industry, :icon, :description, "
-                "        CAST(:claims AS jsonb), CAST(:policies AS jsonb), "
-                "        :required_tables, FALSE, :uid)"
+                " CAST(:claims AS jsonb), CAST(:policies AS jsonb), "
+                " :required_tables, FALSE, :uid)"
             ), {
                 "slug": slug, "name": name, "industry": industry,
                 "icon": icon, "description": description,
@@ -1829,7 +1829,7 @@ async def apply_blueprint_to_embed(slug: str, embed_id: str, request: Request):
 
     Body: ``{"blueprint_slug": str, "mode": "replace"|"merge"}``
     - replace: clobber existing claims+policies with blueprint's
-    - merge:   dedupe by claim.key / (policy.table, policy.column);
+    - merge: dedupe by claim.key / (policy.table, policy.column);
                blueprint values WIN on conflict; conflicts reported
 
     Enables rls_enabled=TRUE. Validates each policy against project schema
@@ -1889,8 +1889,8 @@ async def apply_blueprint_to_embed(slug: str, embed_id: str, request: Request):
             override_used = True
 
     # 2. Validate policies against project schema (drop missing tables/cols).
-    #    For override mode the same checks apply — invalid policies are dropped
-    #    into `skipped` and reported back to the caller.
+    # For override mode the same checks apply — invalid policies are dropped
+    # into `skipped` and reported back to the caller.
     bp_policies_kept, skipped = _validate_policies_against_schema(slug, bp_policies)
     # Additional override-only validation: filter must reference a declared claim key.
     if override_used and bp_claims:
@@ -1948,8 +1948,8 @@ async def apply_blueprint_to_embed(slug: str, embed_id: str, request: Request):
         conn.execute(_t(
             "UPDATE public.dash_agent_embeds "
             "SET rls_enabled = TRUE, "
-            "    rls_claims = CAST(:c AS jsonb), "
-            "    rls_policies = CAST(:p AS jsonb) "
+            " rls_claims = CAST(:c AS jsonb), "
+            " rls_policies = CAST(:p AS jsonb) "
             "WHERE embed_id = :e"
         ), {"c": _j.dumps(new_claims),
             "p": _j.dumps(new_policies),
@@ -1982,9 +1982,9 @@ async def apply_blueprint_to_embed(slug: str, embed_id: str, request: Request):
         "skipped": skipped,
         "conflicts": conflicts,
         "applied_explained": _rls_explainer.explain_policies(new_policies),
-        "claims_explained":  _rls_explainer.explain_claims(new_claims),
+        "claims_explained": _rls_explainer.explain_claims(new_claims),
         "skipped_explained": _rls_explainer.explain_skipped(skipped),
-        "apply_modes":       _rls_explainer.apply_modes_legend(),
+        "apply_modes": _rls_explainer.apply_modes_legend(),
     }
 
 
@@ -2043,7 +2043,7 @@ def blueprint_compatibility(slug: str, embed_id: str, request: Request):
 # Mounted under different prefix because router prefix is /api/projects.
 # Use a second router so paths can be /api/admin/embed-cache/* and
 # /api/admin/embeds/{embed_id}/cache/invalidate.
-from fastapi import APIRouter as _APIRouter  # noqa: E402
+from fastapi import APIRouter as _APIRouter # noqa: E402
 
 cache_admin_router = _APIRouter(prefix="/api/admin", tags=["EmbedCacheAdmin"])
 

@@ -14,8 +14,8 @@ statements land in the project's primary schema (``dash``) instead of
 the wrong default.
 
 Failure behavior is governed by ``RAISE_ON_MIGRATION_FAIL``:
-- ``0`` (default) → log warning + continue (existing DBs).
-- ``1`` → re-raise (fresh DBs, fail-fast).
+- ``0`` (default) > log warning + continue (existing DBs).
+- ``1`` > re-raise (fresh DBs, fail-fast).
 """
 from __future__ import annotations
 
@@ -40,12 +40,12 @@ def _direct_db_url() -> str:
     The runner serializes concurrent workers with ``pg_advisory_lock`` — a
     SESSION-level lock. Through a pgbouncer in ``transaction`` pool mode that
     lock is released the instant its txn ends, so the guard is void and N
-    workers stampede a fresh DB (CREATE TABLE / INSERT collisions → partial
+    workers stampede a fresh DB (CREATE TABLE / INSERT collisions > partial
     schema). Migrations therefore run against the DB directly.
 
     Resolution order:
       1. ``MIGRATION_DB_URL`` (explicit override), else
-      2. ``DB_HOST``/``DB_PORT`` with the host swapped pgbouncer→direct:
+      2. ``DB_HOST``/``DB_PORT`` with the host swapped pgbouncer>direct:
          ``MIGRATION_DB_HOST`` if set, else a ``*pgbouncer*`` host rewritten to
          ``dash-db`` (this compose's direct Postgres service), else DB_HOST as-is.
     """
@@ -65,9 +65,9 @@ def _direct_db_url() -> str:
     return f"{driver}://{user}:{password}@{direct_host}:{port}/{database}"
 _TRACKING_TABLE_DDL = """
 CREATE TABLE IF NOT EXISTS public.dash_migrations (
-    filename   TEXT PRIMARY KEY,
+    filename TEXT PRIMARY KEY,
     applied_at TIMESTAMPTZ DEFAULT now(),
-    checksum   TEXT
+    checksum TEXT
 )
 """
 
@@ -144,7 +144,7 @@ def run_migrations() -> dict[str, Any]:
     files = sorted(migrations_dir.glob("*.sql"))
     log.info(f"migration scan: {len(files)} *.sql file(s) found in {migrations_dir}")
     for _p in files:
-        log.debug(f"  scanned: {_p.name}")
+        log.debug(f" scanned: {_p.name}")
     if not files:
         log.info("no migration files found")
         return {"applied": applied, "skipped": skipped, "errors": errors}
@@ -223,7 +223,7 @@ def run_migrations() -> dict[str, Any]:
                     raw = getattr(conn.connection, "driver_connection", None) or conn.connection
                     _orig_handler = None
                     try:
-                        def _notice_handler(diag):  # psycopg3 Diagnostic
+                        def _notice_handler(diag): # psycopg3 Diagnostic
                             try:
                                 notices.append(getattr(diag, "message_primary", str(diag)))
                             except Exception:
@@ -243,7 +243,7 @@ def run_migrations() -> dict[str, Any]:
                         # placeholder ("only %s/%b/%t allowed, got %I") — breaks
                         # any migration with a literal % (e.g. format('%I',…) in a
                         # PL/pgSQL DO block, or '%' in a LIKE/comment). Double them;
-                        # psycopg halves '%%'→'%' on the wire, so the server sees
+                        # psycopg halves '%%'>'%' on the wire, so the server sees
                         # the original SQL unchanged.
                         conn.exec_driver_sql(content.replace("%", "%%"))
                         conn.execute(
@@ -272,7 +272,7 @@ def run_migrations() -> dict[str, Any]:
                         f"applied migration: {fname} (with {len(notices)} NOTICE(s), idempotent)"
                     )
                     for n in notices[:5]:
-                        log.info(f"  NOTICE [{fname}]: {n}")
+                        log.info(f" NOTICE [{fname}]: {n}")
                 else:
                     log.info(f"applied migration: {fname}")
             except Exception as e:

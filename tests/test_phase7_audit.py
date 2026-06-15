@@ -98,7 +98,7 @@ def fake_store(monkeypatch):
 
 
 def _flush_now(store: _Store):
-    """Drain queue → store directly (bypass background thread)."""
+    """Drain queue > store directly (bypass background thread)."""
     while True:
         try:
             payload = read_audit._QUEUE.get_nowait()
@@ -177,7 +177,7 @@ def test_export_audit_csv_has_header_and_rows(fake_store):
     header = rows[0]
     for col in ["id", "project_slug", "viewer_user_id", "intent", "fields_downgraded"]:
         assert col in header
-    assert len(rows) >= 2  # header + at least one data row
+    assert len(rows) >= 2 # header + at least one data row
 
 
 # ---------------------------------------------------------------------------

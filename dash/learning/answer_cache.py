@@ -6,7 +6,7 @@ the cached questions (dash.dash_vectors, namespace='qcache'); on a close enough
 match AND a fresh source-table schema, the saved answer is served verbatim with
 no model call.
 
-- Store:   dash.dash_answer_cache (migration 185)
+- Store: dash.dash_answer_cache (migration 185)
 - Vectors: dash.dash_vectors namespace='qcache', source_id = cache row id
 - Freshness: schema_hash stamped at promote (dash/learning/schema_guard), the
   same drift guard as the P0 metric_shortcut gate. Row-count changes do NOT
@@ -15,7 +15,7 @@ no model call.
   untrustworthy; a future P-phase can add a row-fingerprint TTL for volatile
   aggregates, today the Curator only promotes stable ones).
 
-Fail-soft everywhere: any error → None / no-op, never raises, never blocks chat.
+Fail-soft everywhere: any error > None / no-op, never raises, never blocks chat.
 Async (embedding is async); call sites await it.
 """
 from __future__ import annotations
@@ -65,8 +65,8 @@ def _has_any(slug: str) -> bool:
 async def try_answer_cache(project_slug: str, question: str) -> dict | None:
     """Serve a cached full answer for `question`, or None.
 
-    Steps: existence check → embed → cosine NN in qcache → similarity gate →
-    load row → schema-drift gate → return stored content (hit_count++).
+    Steps: existence check > embed > cosine NN in qcache > similarity gate >
+    load row > schema-drift gate > return stored content (hit_count++).
     """
     try:
         norm = _norm(question)
@@ -106,7 +106,7 @@ async def try_answer_cache(project_slug: str, question: str) -> dict | None:
         if not content:
             return None
 
-        # Schema-drift gate (same as P0). On drift → mark stale + miss.
+        # Schema-drift gate (same as P0). On drift > mark stale + miss.
         if schema_hash and os.getenv("ANSWER_CACHE_SCHEMA_GUARD", "1") != "0":
             try:
                 from dash.learning.schema_guard import live_schema_hash
@@ -117,7 +117,7 @@ async def try_answer_cache(project_slug: str, question: str) -> dict | None:
                     _mark_stale(cid)
                     return None
             except Exception:
-                pass  # fail-open
+                pass # fail-open
 
         _bump_hit(cid)
         return {
@@ -128,7 +128,7 @@ async def try_answer_cache(project_slug: str, question: str) -> dict | None:
             "sql": (payload or {}).get("sql"),
             "elapsed_ms": int((time.time() - t0) * 1000),
         }
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("try_answer_cache failed for %s: %s", project_slug, exc)
         return None
 
@@ -143,7 +143,7 @@ async def promote_answer(
     confidence: float = 1.0,
     promoted_by: str = "admin",
 ) -> dict:
-    """Pin a question → full rendered answer into the cache (+ embed the question).
+    """Pin a question > full rendered answer into the cache (+ embed the question).
 
     Idempotent on (project_slug, question_norm). Fail-soft.
     """
@@ -173,10 +173,10 @@ async def promote_answer(
                 " source_tables, schema_hash, confidence, promoted_by) "
                 "VALUES (:s, :q, :n, :sql, CAST(:p AS jsonb), :st, :sh, :c, :by) "
                 "ON CONFLICT (project_slug, question_norm) DO UPDATE SET "
-                "  question = EXCLUDED.question, canonical_sql = EXCLUDED.canonical_sql, "
-                "  answer_payload = EXCLUDED.answer_payload, source_tables = EXCLUDED.source_tables, "
-                "  schema_hash = EXCLUDED.schema_hash, confidence = EXCLUDED.confidence, "
-                "  promoted_by = EXCLUDED.promoted_by, status = 'live' "
+                " question = EXCLUDED.question, canonical_sql = EXCLUDED.canonical_sql, "
+                " answer_payload = EXCLUDED.answer_payload, source_tables = EXCLUDED.source_tables, "
+                " schema_hash = EXCLUDED.schema_hash, confidence = EXCLUDED.confidence, "
+                " promoted_by = EXCLUDED.promoted_by, status = 'live' "
                 "RETURNING id"
             ), {"s": project_slug, "q": question, "n": norm, "sql": canonical_sql,
                 "p": payload, "st": source_tables, "sh": schema_hash or None,
@@ -192,12 +192,12 @@ async def promote_answer(
                 "(project_slug, namespace, source_id, text, text_hash, embedding, metadata) "
                 "VALUES (:s, :ns, :sid, :t, :h, CAST(:v AS vector), '{}'::jsonb) "
                 "ON CONFLICT (project_slug, namespace, source_id) DO UPDATE SET "
-                "  text = EXCLUDED.text, text_hash = EXCLUDED.text_hash, "
-                "  embedding = EXCLUDED.embedding, updated_at = now()"
+                " text = EXCLUDED.text, text_hash = EXCLUDED.text_hash, "
+                " embedding = EXCLUDED.embedding, updated_at = now()"
             ), {"s": project_slug, "ns": _NAMESPACE, "sid": str(cid),
                 "t": question, "h": qhash, "v": vec})
         return {"ok": True, "id": int(cid), "schema_hash": schema_hash}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.warning("promote_answer failed for %s: %s", project_slug, exc)
         return {"ok": False, "error": str(exc)}
 
@@ -218,7 +218,7 @@ def demote_answer(project_slug: str, cache_id: int) -> dict:
                 "WHERE project_slug = :s AND namespace = :ns AND source_id = :sid"
             ), {"s": project_slug, "ns": _NAMESPACE, "sid": str(cache_id)})
         return {"ok": True}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         return {"ok": False, "error": str(exc)}
 
 

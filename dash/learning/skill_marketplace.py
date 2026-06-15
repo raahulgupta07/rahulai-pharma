@@ -89,7 +89,7 @@ def _parameterize_schema(sql_template: str, user_schema: Optional[str]) -> str:
         return sql_template
     out = sql_template
 
-    # Already-template placeholder (Python ``str.format`` style) → normalize.
+    # Already-template placeholder (Python ``str.format`` style) > normalize.
     out = re.sub(r"\{user_schema\}\.", r"${schema}.", out)
     out = re.sub(r"\{schema\}\.", r"${schema}.", out)
 
@@ -170,8 +170,8 @@ def nominate_to_marketplace(skill_id: int, nominator_user_id: int) -> Dict[str, 
             sk = conn.execute(
                 text(
                     "SELECT id, project_slug, name, description, sql_template, "
-                    "       params_schema, success_count, failure_count, "
-                    "       avg_judge_score, status, last_used_at "
+                    " params_schema, success_count, failure_count, "
+                    " avg_judge_score, status, last_used_at "
                     "FROM public.dash_skill_library WHERE id = :sid"
                 ),
                 {"sid": int(skill_id)},
@@ -239,18 +239,18 @@ def nominate_to_marketplace(skill_id: int, nominator_user_id: int) -> Dict[str, 
             row = conn.execute(
                 text(
                     "INSERT INTO dash.dash_skill_marketplace "
-                    "  (name, description, sql_template, params_schema, "
-                    "   template_name, source_project_slug, nominator_user_id, "
-                    "   avg_judge_score, source_success_count, tags) "
+                    " (name, description, sql_template, params_schema, "
+                    " template_name, source_project_slug, nominator_user_id, "
+                    " avg_judge_score, source_success_count, tags) "
                     "VALUES (:n, :d, :sql, CAST(:p AS jsonb), :t, :sp, :uid, "
-                    "        :score, :sc, CAST(:tags AS text[])) "
+                    " :score, :sc, CAST(:tags AS text[])) "
                     "ON CONFLICT (name, template_name) DO UPDATE SET "
-                    "  description = EXCLUDED.description, "
-                    "  sql_template = EXCLUDED.sql_template, "
-                    "  params_schema = EXCLUDED.params_schema, "
-                    "  avg_judge_score = EXCLUDED.avg_judge_score, "
-                    "  source_success_count = EXCLUDED.source_success_count, "
-                    "  status = 'active' "
+                    " description = EXCLUDED.description, "
+                    " sql_template = EXCLUDED.sql_template, "
+                    " params_schema = EXCLUDED.params_schema, "
+                    " avg_judge_score = EXCLUDED.avg_judge_score, "
+                    " source_success_count = EXCLUDED.source_success_count, "
+                    " status = 'active' "
                     "RETURNING id"
                 ),
                 {
@@ -269,7 +269,7 @@ def nominate_to_marketplace(skill_id: int, nominator_user_id: int) -> Dict[str, 
             mid = int(row[0]) if row else None
 
         logger.info(
-            "skill_marketplace: nominated skill_id=%s → marketplace_id=%s template=%s",
+            "skill_marketplace: nominated skill_id=%s > marketplace_id=%s template=%s",
             skill_id, mid, template_name,
         )
         return {
@@ -310,13 +310,13 @@ def list_marketplace(
 
         sql = (
             "SELECT id, name, description, template_name, source_project_slug, "
-            "       avg_judge_score, source_success_count, install_count, "
-            "       total_installs_succeeded, total_installs_failed, tags, "
-            "       created_at "
+            " avg_judge_score, source_success_count, install_count, "
+            " total_installs_succeeded, total_installs_failed, tags, "
+            " created_at "
             "FROM dash.dash_skill_marketplace "
             f"WHERE {' AND '.join(where)} "
             "ORDER BY install_count DESC, avg_judge_score DESC NULLS LAST, "
-            "         source_success_count DESC "
+            " source_success_count DESC "
             "LIMIT :l"
         )
         with _engine().connect() as conn:
@@ -334,10 +334,10 @@ def get_marketplace_skill(marketplace_id: int) -> Optional[Dict[str, Any]]:
             row = conn.execute(
                 text(
                     "SELECT id, name, description, sql_template, params_schema, "
-                    "       template_name, source_project_slug, nominator_user_id, "
-                    "       avg_judge_score, source_success_count, install_count, "
-                    "       total_installs_succeeded, total_installs_failed, "
-                    "       status, tags, created_at "
+                    " template_name, source_project_slug, nominator_user_id, "
+                    " avg_judge_score, source_success_count, install_count, "
+                    " total_installs_succeeded, total_installs_failed, "
+                    " status, tags, created_at "
                     "FROM dash.dash_skill_marketplace WHERE id = :mid"
                 ),
                 {"mid": int(marketplace_id)},
@@ -366,7 +366,7 @@ def install_skill(
             mk = conn.execute(
                 text(
                     "SELECT id, name, description, sql_template, params_schema, "
-                    "       template_name "
+                    " template_name "
                     "FROM dash.dash_skill_marketplace "
                     "WHERE id = :mid AND status = 'active'"
                 ),
@@ -412,8 +412,8 @@ def install_skill(
                 row = conn.execute(
                     text(
                         "INSERT INTO public.dash_skill_library "
-                        "  (project_slug, name, description, sql_template, "
-                        "   params_schema, status) "
+                        " (project_slug, name, description, sql_template, "
+                        " params_schema, status) "
                         "VALUES (:s, :n, :d, :sql, CAST(:p AS jsonb), 'active') "
                         "RETURNING id"
                     ),
@@ -440,7 +440,7 @@ def install_skill(
         # Optional skill_audit hook (best-effort, never blocks)
         audit_result = None
         try:
-            from dash.learning.skill_audit import audit_skill_candidate  # type: ignore
+            from dash.learning.skill_audit import audit_skill_candidate # type: ignore
             audit_result = audit_skill_candidate(
                 project_slug=target_project_slug,
                 name=mk["name"],
@@ -500,7 +500,7 @@ def auto_bootstrap_new_project(project_slug: str, template_name: str) -> int:
                     "SELECT id FROM dash.dash_skill_marketplace "
                     "WHERE status = 'active' AND template_name = :t "
                     "ORDER BY install_count DESC, avg_judge_score DESC NULLS LAST, "
-                    "         source_success_count DESC "
+                    " source_success_count DESC "
                     "LIMIT :n"
                 ),
                 {"t": template_name, "n": _BOOTSTRAP_TOP_N},

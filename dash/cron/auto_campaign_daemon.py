@@ -9,10 +9,10 @@ EDIT / DISMISS panel.
 
 Trigger rules (initial set, easy to extend):
 
-* ``champions_drop``       — Champions count fell ≥15% vs prior snapshot
-* ``at_risk_surge``        — At Risk count rose ≥20% vs prior snapshot
+* ``champions_drop`` — Champions count fell ≥15% vs prior snapshot
+* ``at_risk_surge`` — At Risk count rose ≥20% vs prior snapshot
 * ``hibernating_overflow`` — Hibernating > 25% of total customer base
-* ``new_spike``            — New Customers count rose ≥30% vs prior snapshot
+* ``new_spike`` — New Customers count rose ≥30% vs prior snapshot
 
 Each fired rule:
 
@@ -21,7 +21,7 @@ Each fired rule:
 * records ``metadata.rule``, ``metadata.reasoning`` (detected_change +
   suggested_discount + suggested_audience + expected_revenue_lift);
 * logs a ``dash_campaign_events`` row of type ``auto_drafted``;
-* surfaces in chat via ``dash_proactive_insights`` with a 🤖 AUTO badge
+* surfaces in chat via ``dash_proactive_insights`` with a AUTO badge
   prefix on the message.
 
 Operational guarantees:
@@ -51,17 +51,17 @@ logger = logging.getLogger(__name__)
 # Observability tracing (fail-soft; no-op if unavailable or TRACING_DISABLED).
 try:
     from dash.obs.trace import trace_span
-except Exception:  # noqa: BLE001
+except Exception: # noqa: BLE001
     from contextlib import contextmanager as _cm
 
     @_cm
-    def trace_span(*_a, **_k):  # type: ignore
+    def trace_span(*_a, **_k): # type: ignore
         yield None
 
 
 # ── Tunables ──────────────────────────────────────────────────────────
 
-DEFAULT_INTERVAL_SECONDS = 24 * 60 * 60  # 24h
+DEFAULT_INTERVAL_SECONDS = 24 * 60 * 60 # 24h
 COOLDOWN_DAYS = 7
 MAX_DRAFTS_PER_PROJECT_PER_CYCLE = 5
 
@@ -82,8 +82,8 @@ def _engine():
     """Resolve the shared SQL engine, or None if unavailable."""
     try:
         from db.session import get_sql_engine
-    except Exception:  # pragma: no cover
-        from db import get_sql_engine  # type: ignore[no-redef]
+    except Exception: # pragma: no cover
+        from db import get_sql_engine # type: ignore[no-redef]
     return get_sql_engine()
 
 
@@ -116,7 +116,7 @@ def _is_project_enabled(slug: str) -> bool:
         from dash.feature_config import get_feature_config
         cfg = get_feature_config(slug) or {}
         tools = cfg.get("tools") or {}
-        # Missing key → enabled by default.
+        # Missing key > enabled by default.
         v = tools.get("auto_campaign_daemon", True)
         return bool(v)
     except Exception:
@@ -189,7 +189,7 @@ def _save_snapshot(cn, slug: str, sample: dict[str, Any]) -> int:
     from sqlalchemy import text as _t
     row = cn.execute(_t(
         "INSERT INTO dash_segment_snapshots "
-        "  (project_slug, rfm_distribution, churn_distribution, total_customers, metadata) "
+        " (project_slug, rfm_distribution, churn_distribution, total_customers, metadata) "
         "VALUES (:s, CAST(:r AS jsonb), CAST(:c AS jsonb), :t, CAST(:m AS jsonb)) "
         "RETURNING id"
     ), {
@@ -232,10 +232,10 @@ def _is_in_cooldown(cn, slug: str, rule: str) -> bool:
     row = cn.execute(_t(
         "SELECT 1 FROM dash_campaigns "
         " WHERE project_slug = :s "
-        "   AND type = 'auto' "
-        "   AND created_by = 'auto_campaign_daemon' "
-        "   AND metadata->>'rule' = :r "
-        "   AND created_at > now() - (:days::int * INTERVAL '1 day') "
+        " AND type = 'auto' "
+        " AND created_by = 'auto_campaign_daemon' "
+        " AND metadata->>'rule' = :r "
+        " AND created_at > now() - (:days::int * INTERVAL '1 day') "
         " LIMIT 1"
     ), {"s": slug, "r": rule, "days": COOLDOWN_DAYS}).fetchone()
     return row is not None
@@ -441,7 +441,7 @@ def _draft_campaign(
     # Best-effort: notify project owner of auto-drafted campaign
     try:
         from sqlalchemy import text as _nt
-        from app.auth import notify_user  # type: ignore
+        from app.auth import notify_user # type: ignore
         owner_row = cn.execute(_nt(
             "SELECT user_id FROM public.dash_projects WHERE slug = :s"
         ), {"s": slug}).fetchone()
@@ -459,9 +459,9 @@ def _draft_campaign(
     try:
         cn.execute(_t(
             "INSERT INTO dash_campaign_events "
-            "  (campaign_id, event_type, actor, payload) "
+            " (campaign_id, event_type, actor, payload) "
             "VALUES (:c, 'auto_drafted', 'auto_campaign_daemon', "
-            "        CAST(:p AS jsonb))"
+            " CAST(:p AS jsonb))"
         ), {
             "c": cid,
             "p": json.dumps({
@@ -476,12 +476,12 @@ def _draft_campaign(
     try:
         cn.execute(_t(
             "INSERT INTO public.dash_proactive_insights "
-            "  (project_slug, user_id, insight, severity, tables_involved) "
+            " (project_slug, user_id, insight, severity, tables_involved) "
             "VALUES (:s, NULL, :ins, :sev, :tbl)"
         ), {
             "s": slug,
             "ins": (
-                f"🤖 AUTO: {rule.get('detected_change')}. "
+                f" AUTO: {rule.get('detected_change')}. "
                 f"Drafted campaign '{name}' targeting {seg} "
                 f"({audience:,} customers, {discount_pct}% off, "
                 f"~${expected_lift:,.0f} expected lift). "

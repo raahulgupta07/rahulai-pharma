@@ -87,7 +87,7 @@ def _insert_span(name: str, kind: str, parent_id: str | None, trace_id: str,
                 },
             ).first()
             return int(row[0]) if row else None
-    except Exception as e:  # noqa: BLE001 — fail-soft
+    except Exception as e: # noqa: BLE001 — fail-soft
         logger.debug("trace insert failed: %s", e)
         return None
 
@@ -108,7 +108,7 @@ def _finish_span(db_id: int | None, status: str, duration_ms: int, error: str | 
                 {"status": status, "duration_ms": duration_ms,
                  "error": (error[:2000] if error else None), "id": db_id},
             )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.debug("trace finish failed: %s", e)
 
 
@@ -183,7 +183,7 @@ def record_cost(usd: float | None = None, tokens: int | None = None,
                         "cost_usd = COALESCE(cost_usd, 0) + COALESCE(:usd, 0), "
                         "tokens = COALESCE(tokens, 0) + COALESCE(:tokens, 0), "
                         "meta = COALESCE(meta, '{}'::jsonb) "
-                        "       || jsonb_build_object('model', :model::text) "
+                        " || jsonb_build_object('model', :model::text) "
                         "WHERE id = :id"
                     ),
                     {"usd": usd, "tokens": tokens, "model": model, "id": db_id},
@@ -198,7 +198,7 @@ def record_cost(usd: float | None = None, tokens: int | None = None,
                     ),
                     {"usd": usd, "tokens": tokens, "id": db_id},
                 )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.debug("record_cost failed: %s", e)
 
 
@@ -229,7 +229,7 @@ def set_root_meta(**kw) -> None:
                 ),
                 {"attrs": json.dumps(attrs), "id": db_id},
             )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.debug("set_root_meta failed: %s", e)
 
 
@@ -256,7 +256,7 @@ def trace_span(name: str, kind: str = "task", project_slug: str | None = None,
     status, err = "done", None
     try:
         yield db_id
-    except Exception as e:  # noqa: BLE001 — record + re-raise
+    except Exception as e: # noqa: BLE001 — record + re-raise
         status, err = "error", str(e)
         raise
     finally:
@@ -264,7 +264,7 @@ def trace_span(name: str, kind: str = "task", project_slug: str | None = None,
         _finish_span(db_id, status, dur, err)
         # Restore via set(prev) — NOT reset(token): a token created in one
         # context can't be reset in another (SSE generators / to_thread run in
-        # a different context → reset() raises). set(prev) is context-safe.
+        # a different context > reset() raises). set(prev) is context-safe.
         _cur_db_id.set(prev_cur)
 
 
@@ -293,7 +293,7 @@ def trace_step(name: str, kind: str = "task"):
                 status, err = "done", None
                 try:
                     return await fn(*args, **kwargs)
-                except Exception as e:  # noqa: BLE001
+                except Exception as e: # noqa: BLE001
                     status, err = "error", str(e)
                     raise
                 finally:
@@ -316,7 +316,7 @@ def trace_step(name: str, kind: str = "task"):
             status, err = "done", None
             try:
                 return fn(*args, **kwargs)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e: # noqa: BLE001
                 status, err = "error", str(e)
                 raise
             finally:

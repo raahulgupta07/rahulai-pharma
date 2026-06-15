@@ -54,11 +54,11 @@ def test_per_tier_caps(settings_module):
     s = settings_module
 
     async def _check():
-        # qa_generation has no `model` key in TRAINING_CONFIGS → defaults to chat tier.
+        # qa_generation has no `model` key in TRAINING_CONFIGS > defaults to chat tier.
         sem_chat = s._get_sem("qa_generation")
-        # deep_analysis has model=DEEP_MODEL → deep tier.
+        # deep_analysis has model=DEEP_MODEL > deep tier.
         sem_deep = s._get_sem("deep_analysis")
-        # scoring has model=LITE_MODEL → lite tier.
+        # scoring has model=LITE_MODEL > lite tier.
         sem_lite = s._get_sem("scoring")
         return sem_chat._value, sem_deep._value, sem_lite._value
 
@@ -92,7 +92,7 @@ def test_semaphore_blocks_beyond_cap(settings_module, monkeypatch):
     async def _tracked_call(i):
         nonlocal in_flight, max_in_flight
         # Acquire sem manually so we can observe in-flight count from inside.
-        sem = s._get_sem("qa_generation")  # chat tier, cap=10
+        sem = s._get_sem("qa_generation") # chat tier, cap=10
         async with sem:
             async with lock:
                 in_flight += 1

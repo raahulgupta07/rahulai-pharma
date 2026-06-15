@@ -6,18 +6,18 @@ Surfaces data-quality issues across a project's uploaded tables. Read-only.
 
 Issue types
 -----------
-- text_dates         : TEXT column with date-shaped values (>70% match) — should be TIMESTAMPTZ
-- opaque_columns     : short (<4 chars) or undocumented column name (e.g. `mmreg`, `other`)
-- high_null_pct      : column > 50% NULL
-- duplicate_tables   : table pair with >80% column overlap
-- missing_fk         : column matches `<name>_id` / `<name>id` but no FK in pg_constraint
-- unicode_non_latin  : column contains non-ASCII chars (Myanmar / Chinese / etc.)
-- tiny_table         : <100 rows (low statistical value)
-- cast_artifact      : table name ends in `_casted`
-- enum_no_value_map  : bigint/int column with <10 distinct values + no value-map in brain
+- text_dates : TEXT column with date-shaped values (>70% match) — should be TIMESTAMPTZ
+- opaque_columns : short (<4 chars) or undocumented column name (e.g. `mmreg`, `other`)
+- high_null_pct : column > 50% NULL
+- duplicate_tables : table pair with >80% column overlap
+- missing_fk : column matches `<name>_id` / `<name>id` but no FK in pg_constraint
+- unicode_non_latin : column contains non-ASCII chars (Myanmar / Chinese / etc.)
+- tiny_table : <100 rows (low statistical value)
+- cast_artifact : table name ends in `_casted`
+- enum_no_value_map : bigint/int column with <10 distinct values + no value-map in brain
 - low_codex_confidence: table missing purpose / grain / PK in semantic_model
-- catalog_gap         : article in catalog with no stock (shop_flat link_status='catalog_only') — LEGIT gap
-- orphan_stock        : stock row with no catalog match (shop_flat link_status='stock_only') — LEGIT gap
+- catalog_gap : article in catalog with no stock (shop_flat link_status='catalog_only') — LEGIT gap
+- orphan_stock : stock row with no catalog match (shop_flat link_status='stock_only') — LEGIT gap
 
 Each issue: {type, severity, table, column?, message, suggestion, count}
 severity ∈ {'high', 'medium', 'low', 'info'}
@@ -45,13 +45,13 @@ logger = logging.getLogger(__name__)
 
 # Simple in-process cache: slug -> (ts_epoch, payload)
 _CACHE: dict[str, tuple[float, dict]] = {}
-_CACHE_TTL_S = 300  # 5 min
+_CACHE_TTL_S = 300 # 5 min
 
 _DATE_REGEXES = [
-    re.compile(r"^\d{1,2}/\d{1,2}/\d{4}"),          # DD/MM/YYYY
-    re.compile(r"^\d{4}-\d{1,2}-\d{1,2}"),          # YYYY-MM-DD
-    re.compile(r"^\d{1,2}-\d{1,2}-\d{4}"),          # DD-MM-YYYY
-    re.compile(r"^\d{4}/\d{1,2}/\d{1,2}"),          # YYYY/MM/DD
+    re.compile(r"^\d{1,2}/\d{1,2}/\d{4}"), # DD/MM/YYYY
+    re.compile(r"^\d{4}-\d{1,2}-\d{1,2}"), # YYYY-MM-DD
+    re.compile(r"^\d{1,2}-\d{1,2}-\d{4}"), # DD-MM-YYYY
+    re.compile(r"^\d{4}/\d{1,2}/\d{1,2}"), # YYYY/MM/DD
 ]
 
 _SEVERITY_WEIGHTS = {"high": 12, "medium": 5, "low": 2, "info": 0}
@@ -78,7 +78,7 @@ def _has_non_ascii(s: str) -> bool:
 
 # Plain-words consequence per issue type — shown as the IMPACT line in the UI.
 _IMPACT_BY_TYPE = {
-    "sci_notation_id": "Catalog↔stock join returns 0 rows — every stock/quantity answer shows 'unavailable'.",
+    "sci_notation_id": "Catalog<>stock join returns 0 rows — every stock/quantity answer shows 'unavailable'.",
     "type_mismatch": "Cross-table join on this column fails with a type error — dependent tools crash.",
     "text_dates": "Date filters, sorting and time-range questions don't work (compared as text).",
     "high_null_pct": "Aggregates and filters on this column are unreliable — most rows are blank.",
@@ -121,7 +121,7 @@ def _make_issue(
         "total_rows": total_rows,
         "impact": impact or _IMPACT_BY_TYPE.get(issue_type, ""),
         "root_cause": root_cause,
-        "recoverable": recoverable,  # None = n/a, True = fixable in-place, False = re-source needed
+        "recoverable": recoverable, # None = n/a, True = fixable in-place, False = re-source needed
     }
 
 
@@ -156,7 +156,7 @@ def _load_value_maps(eng: Engine, slug: str) -> set[str]:
             rows = c.execute(text(
                 "SELECT name FROM public.dash_company_brain "
                 "WHERE category IN ('value_map', 'alias', 'enum') "
-                "  AND (project_slug = :s OR project_slug IS NULL)"
+                " AND (project_slug = :s OR project_slug IS NULL)"
             ), {"s": slug}).fetchall()
             for r in rows:
                 if r[0]:
@@ -205,10 +205,10 @@ def _foreign_key_columns(eng: Engine, slug: str, table: str) -> set[str]:
                 "SELECT kcu.column_name "
                 "FROM information_schema.table_constraints tc "
                 "JOIN information_schema.key_column_usage kcu "
-                "  ON tc.constraint_name = kcu.constraint_name "
+                " ON tc.constraint_name = kcu.constraint_name "
                 " AND tc.table_schema = kcu.table_schema "
                 "WHERE tc.constraint_type = 'FOREIGN KEY' "
-                "  AND tc.table_schema = :s AND tc.table_name = :t"
+                " AND tc.table_schema = :s AND tc.table_name = :t"
             ), {"s": slug, "t": table}).fetchall()
             for r in rows:
                 out.add(r[0])
@@ -273,13 +273,13 @@ def _scan_shop_flat_link_gaps(eng: Engine, slug: str) -> list[dict]:
     Schema-level checks over citypharma.shop_flat (the FULL OUTER join of catalog
     and balance-stock). These are LEGITIMATE business gaps, NOT corruption:
 
-      - catalog_gap  (link_status='catalog_only') : article in catalog, no stock row
+      - catalog_gap (link_status='catalog_only') : article in catalog, no stock row
                        (frozen / advance-entry / supplier-out — COMMON, expected).
-      - orphan_stock (link_status='stock_only')   : stock row, no catalog match
+      - orphan_stock (link_status='stock_only') : stock row, no catalog match
                        (delayed catalog update — RARE).
 
     Fail-soft: if shop_flat doesn't exist yet, or has no link_status column, return
-    []. 0 rows for a status → no issue emitted (no noise).
+    []. 0 rows for a status > no issue emitted (no noise).
     """
     out: list[dict] = []
     try:
@@ -294,7 +294,7 @@ def _scan_shop_flat_link_gaps(eng: Engine, slug: str) -> list[dict]:
             has_col = c.execute(text(
                 "SELECT 1 FROM information_schema.columns "
                 "WHERE table_schema = 'citypharma' AND table_name = 'shop_flat' "
-                "  AND column_name = 'link_status'"
+                " AND column_name = 'link_status'"
             )).scalar()
             if not has_col:
                 return out
@@ -458,7 +458,7 @@ def scan_project(eng: Engine, slug: str, force: bool = False) -> dict:
                     sci_frac = sci_hits / len(sample) if sample else 0
                     sci_distinct = None
                     if sci_frac <= 0.5 and n_rows > 1000:
-                        # cheap check: cap at 3 distinct → if ≤2 returned, collapsed
+                        # cheap check: cap at 3 distinct > if ≤2 returned, collapsed
                         sci_distinct = _distinct_count(eng, slug, tbl, col, cap=3)
                     sci_collapsed = sci_frac > 0.5 or (sci_distinct is not None and sci_distinct <= 2)
                     if sci_collapsed:
@@ -475,7 +475,7 @@ def scan_project(eng: Engine, slug: str, force: bool = False) -> dict:
                             f"Column `{col}` contains Excel scientific-notation values "
                             f"(e.g. '{sample_val}') — large IDs have been collapsed "
                             f"(only {n_distinct_display} distinct value(s) over {n_rows:,} rows). "
-                            f"The catalog↔stock join on `{col}` WILL return 0 matches; "
+                            f"The catalog<>stock join on `{col}` WILL return 0 matches; "
                             f"every stock answer will show 'unavailable'.",
                             (f"The original codes are GONE — every value rounded to '{sample_val}', "
                              f"so they cannot be recovered from this file. Re-export the data from the "
@@ -488,7 +488,7 @@ def scan_project(eng: Engine, slug: str, force: bool = False) -> dict:
                             column=col,
                             count=sci_hits if sci_frac > 0.5 else n_distinct_display,
                             root_cause="Excel auto-converted large ID numbers to scientific notation "
-                                       "(e.g. 1000000131948 → 1E+12) before/during CSV export — the file "
+                                       "(e.g. 1000000131948 > 1E+12) before/during CSV export — the file "
                                        "arrived already corrupted, not damaged by the loader.",
                             recoverable=(not _dead),
                         ))
@@ -529,7 +529,7 @@ def scan_project(eng: Engine, slug: str, force: bool = False) -> dict:
                         f"Column `{col}` is an integer with only {ndistinct} distinct "
                         "values but has no value-map in Company Brain.",
                         "Add a value-map entry so agents render meaningful labels "
-                        "(e.g. 1→'Active', 2→'Inactive').",
+                        "(e.g. 1>'Active', 2>'Inactive').",
                         column=col,
                         count=ndistinct,
                     ))
@@ -562,7 +562,7 @@ def scan_project(eng: Engine, slug: str, force: bool = False) -> dict:
 
     # ------------------------------------------------------------------
     # Schema/table-level checks (run once over derived tables, not per-column).
-    # catalog_gap / orphan_stock — LEGITIMATE catalog↔stock gaps on shop_flat
+    # catalog_gap / orphan_stock — LEGITIMATE catalog<>stock gaps on shop_flat
     # (distinct from the per-column sci_notation_id corruption check). Fail-soft.
     # ------------------------------------------------------------------
     issues.extend(_scan_shop_flat_link_gaps(eng, slug))

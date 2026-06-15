@@ -57,9 +57,9 @@ class TestGetLineage:
         assert result["descendants"] == []
 
     def test_returns_self_when_no_parent(self):
-        # First call: SELECT self → row tuple matching schema
+        # First call: SELECT self > row tuple matching schema
         self_row = (42, "test statement", "pattern", 0.85, "verified", None, 0)
-        # Second call: SELECT descendants → []
+        # Second call: SELECT descendants > []
         eng = _mk_engine_with_rows([self_row, []])
         with patch("db.session.get_sql_engine", return_value=eng):
             result = get_lineage(42)
@@ -90,12 +90,12 @@ class TestGetLineage:
         eng = _mk_engine_with_rows(eng_rows)
         with patch("db.session.get_sql_engine", return_value=eng):
             result = get_lineage(1)
-        assert len(result["ancestors"]) <= 22  # cap is "> 20" check
+        assert len(result["ancestors"]) <= 22 # cap is "> 20" check
 
     def test_descendants_via_recursive_cte(self):
         self_row = (1, "root", "pattern", 0.9, "verified", None, 0)
         descendants = [
-            (2, "child", "pattern", 0.7, "pending", 1, 1, 1),  # 8 cols incl gen
+            (2, "child", "pattern", 0.7, "pending", 1, 1, 1), # 8 cols incl gen
             (3, "grandchild", "pattern", 0.6, "pending", 2, 2, 2),
         ]
         eng = _mk_engine_with_rows([self_row, descendants])

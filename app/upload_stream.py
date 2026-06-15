@@ -6,19 +6,19 @@ psycopg3 COPY-based ingest. Emits SSE progress every 2s.
 
 Endpoint:
   POST /api/projects/{slug}/upload-stream?table=&format=
-    multipart/form-data field "file" → REQUIRED
-    query param "table" → REQUIRED (target table name in project schema)
-    query param "format" → optional (csv | xlsx | parquet — defaults to file ext)
+    multipart/form-data field "file" > REQUIRED
+    query param "table" > REQUIRED (target table name in project schema)
+    query param "format" > optional (csv | xlsx | parquet — defaults to file ext)
 
 Limits:
   STREAM_UPLOAD_MAX_GB env (default 10) — absolute ceiling, fails before disk full.
   No row cap. No RAM cap.
 
 Returns SSE stream with events:
-  event: progress  data: {"pct":int,"bytes":int,"rows":int}
-  event: ingest    data: {"status":"copying","table":"..."}
-  event: done      data: {"rows_loaded":int,"elapsed_s":float,"columns":[...]}
-  event: error     data: {"error":"...","stage":"..."}
+  event: progress data: {"pct":int,"bytes":int,"rows":int}
+  event: ingest data: {"status":"copying","table":"..."}
+  event: done data: {"rows_loaded":int,"elapsed_s":float,"columns":[...]}
+  event: error data: {"error":"...","stage":"..."}
 """
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ router = APIRouter(tags=["upload-stream"])
 
 MAX_GB = float(os.getenv("STREAM_UPLOAD_MAX_GB", "10"))
 MAX_BYTES = int(MAX_GB * 1024 * 1024 * 1024)
-CHUNK_SIZE = 64 * 1024  # 64KB read buffer
+CHUNK_SIZE = 64 * 1024 # 64KB read buffer
 PROGRESS_INTERVAL_S = 1.0
 
 

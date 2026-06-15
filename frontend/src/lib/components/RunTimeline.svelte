@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount } from 'svelte';
 
  interface Props { runId: string; kind?: 'workflow' | 'agent'; }
@@ -22,7 +22,7 @@
 </script>
 
 <div class="timeline">
-  <header><h3>Run Timeline</h3><button class="ghost" onclick={load}>↻</button></header>
+  <header><h3>Run Timeline</h3><button class="ghost" onclick={load}><Icon name="refresh" size={16} /></button></header>
   {#if loading}
     <div class="empty">loading…</div>
   {:else if !steps.length}

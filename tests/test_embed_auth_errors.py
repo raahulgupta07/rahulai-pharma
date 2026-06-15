@@ -180,7 +180,7 @@ def test_partial_auth_code_400():
     )):
         with patch("dash.embed.auth.verify_origin", return_value=True):
             with pytest.raises(EmbedAuthError) as exc:
-                # Payload but no signature → partial.
+                # Payload but no signature > partial.
                 _call(user_payload={"id": "u1"}, signature=None)
     assert exc.value.code == "partial_auth"
     assert exc.value.status == 400

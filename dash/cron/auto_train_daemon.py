@@ -13,7 +13,7 @@ log = logging.getLogger("dash.auto_train")
 
 _POLL_INTERVAL = int(os.getenv("AUTO_TRAIN_POLL_INTERVAL_S", "900"))
 _DISABLED = os.getenv("AUTO_TRAIN_DAEMON_DISABLED", "0").strip().lower() in ("1", "true", "yes")
-_ROW_DELTA_THRESHOLD = float(os.getenv("AUTO_TRAIN_ROW_DELTA_PCT", "5"))  # 5%
+_ROW_DELTA_THRESHOLD = float(os.getenv("AUTO_TRAIN_ROW_DELTA_PCT", "5")) # 5%
 # Don't fire an auto-train if a run started within this window — an upload's
 # promote+train is likely already handling these tables (its metadata write lags
 # the table load, so the untrained-check would otherwise double-fire). 10 min.
@@ -36,8 +36,8 @@ async def _seconds_since_last_run(slug: str) -> float | None:
         return None
 
 # In-memory state: last known row counts per project
-_last_row_counts: dict[str, dict[str, int]] = {}  # {slug: {table: count}}
-_last_trained_at: dict[str, float] = {}  # {slug: epoch}
+_last_row_counts: dict[str, dict[str, int]] = {} # {slug: {table: count}}
+_last_trained_at: dict[str, float] = {} # {slug: epoch}
 
 # Circuit-breaker for the untrained-retrain loop. A table that hangs/fails
 # training never gets its Q&A, so _get_untrained_tables keeps returning it and
@@ -48,7 +48,7 @@ _last_trained_at: dict[str, float] = {}  # {slug: epoch}
 # train / a data change) until the set changes or a clean run clears it. In
 # memory only — a redeploy resets it (gives the fixed code one fresh attempt).
 _MAX_AUTO_RETRY = max(1, int(os.getenv("AUTO_TRAIN_MAX_RETRY", "2")))
-_untrained_attempts: dict[str, tuple[frozenset, int]] = {}  # {slug: (table_set, attempts)}
+_untrained_attempts: dict[str, tuple[frozenset, int]] = {} # {slug: (table_set, attempts)}
 
 
 async def _get_locked_slug() -> Optional[str]:
@@ -149,8 +149,8 @@ def _get_untrained_tables(slug: str) -> list[str]:
             trained = {r[0] for r in conn.execute(text(
                 "SELECT m.table_name FROM public.dash_table_metadata m "
                 "WHERE m.project_slug = :s AND EXISTS ("
-                "  SELECT 1 FROM public.dash_training_qa q "
-                "  WHERE q.project_slug = :s AND q.table_name = m.table_name)"
+                " SELECT 1 FROM public.dash_training_qa q "
+                " WHERE q.project_slug = :s AND q.table_name = m.table_name)"
             ), {"s": slug}).fetchall()}
         return sorted(all_tables - trained)
     except Exception as e:
@@ -178,7 +178,7 @@ async def _trigger_full_train(slug: str, tables: list[str]) -> bool:
                 return {"force": True, "table_names": tables}
 
         log.info(f"auto_train: triggering FULL retrain for {slug} (untrained tables={tables})")
-        await retrain_project(slug, _StubReq())  # type: ignore[arg-type]
+        await retrain_project(slug, _StubReq()) # type: ignore[arg-type]
         return True
     except Exception as e:
         log.warning(f"auto_train: full retrain failed for {slug}: {e}")
@@ -193,7 +193,7 @@ def tables_needing_train(slug: str) -> list[str]:
       - data changed vs its stored fingerprint (rows or schema changed).
     A pipeline-complete table whose fingerprint is unchanged is SKIPPED. When the
     returned list is empty, the caller must NOT create a run at all — that is the
-    'no change → nothing happens (not even an empty run)' guarantee.
+    'no change > nothing happens (not even an empty run)' guarantee.
     Fail-soft: on any error, fall back to 'all base tables' (never silently skip a
     genuine change)."""
     try:
@@ -201,7 +201,7 @@ def tables_needing_train(slug: str) -> list[str]:
         from sqlalchemy import text
         from app.upload import check_fingerprint_changed
 
-        needing = set(_get_untrained_tables(slug))  # pipeline-incomplete always need it
+        needing = set(_get_untrained_tables(slug)) # pipeline-incomplete always need it
 
         eng = get_sql_engine()
         with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
@@ -225,7 +225,7 @@ def tables_needing_train(slug: str) -> list[str]:
                     if check_fingerprint_changed(slug, t, rc, cols) != "unchanged":
                         needing.add(t)
                 except Exception as ie:
-                    # Can't verify this one → treat as needing (safe side).
+                    # Can't verify this one > treat as needing (safe side).
                     log.debug(f"auto_train: fingerprint check failed for {slug}.{t}: {ie}")
                     needing.add(t)
         return sorted(needing)
@@ -296,7 +296,7 @@ async def _check_and_train(slug: str) -> dict:
         _prev_key, _prev_n = _untrained_attempts.get(slug, (frozenset(), 0))
         _n = (_prev_n + 1) if _key == _prev_key else 1
         if _n > _MAX_AUTO_RETRY:
-            _untrained_attempts[slug] = (_key, _prev_n)  # hold count, stay open
+            _untrained_attempts[slug] = (_key, _prev_n) # hold count, stay open
             _last_row_counts[slug] = current
             result["action"] = "circuit_open"
             result["reason"] = (f"same {len(untrained)} table(s) failed training {_prev_n}× "

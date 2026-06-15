@@ -1,11 +1,11 @@
 """
 Slack delivery. Stub-safe when neither SLACK_BOT_TOKEN nor SLACK_WEBHOOK_URL set.
 
-- bot token → files.upload + chat.postMessage (supports file attachment)
-- webhook   → POST {text} (no file upload via webhook — limitation noted)
-- neither   → stub, logs + returns mode='stub'
+- bot token > files.upload + chat.postMessage (supports file attachment)
+- webhook > POST {text} (no file upload via webhook — limitation noted)
+- neither > stub, logs + returns mode='stub'
 
-If a credential is set but delivery fails → raises (fail-loud).
+If a credential is set but delivery fails > raises (fail-loud).
 """
 from __future__ import annotations
 

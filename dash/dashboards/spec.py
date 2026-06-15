@@ -69,10 +69,10 @@ class DashboardIntent(BaseModel):
     question: str = ""
     audience: Literal["executive", "analyst", "operator", "general"] = "executive"
     n_panels_target: int = Field(default=8, ge=1, le=20)
-    time_window: str = ""           # "last 90 days", "Q3 2026"
+    time_window: str = "" # "last 90 days", "Q3 2026"
     domain_hints: list[str] = Field(default_factory=list)
-    is_edit: bool = False           # True → JSON Patch path, not full rebuild
-    target_panel_id: str | None = None  # set when is_edit
+    is_edit: bool = False # True > JSON Patch path, not full rebuild
+    target_panel_id: str | None = None # set when is_edit
 
 
 # Stage 2 — schema RAG (pgvector top-k tables + sample rows + MDL)
@@ -80,7 +80,7 @@ class TableContext(BaseModel):
     model_config = ConfigDict(extra="ignore")
     name: str
     purpose: str = ""
-    columns: list[dict] = Field(default_factory=list)  # [{name, dtype, semantic}]
+    columns: list[dict] = Field(default_factory=list) # [{name, dtype, semantic}]
     sample_rows: list[dict] = Field(default_factory=list)
     row_count: int | None = None
 
@@ -97,9 +97,9 @@ class PanelPlan(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str
     title: str
-    question: str                    # natural-language sub-question
+    question: str # natural-language sub-question
     panel_type: PanelType = "chart"
-    chart_type: ChartType | None = None  # recommendation, refined at stage 7
+    chart_type: ChartType | None = None # recommendation, refined at stage 7
     metrics: list[str] = Field(default_factory=list)
     dimensions: list[str] = Field(default_factory=list)
     filters: list[str] = Field(default_factory=list)
@@ -112,7 +112,7 @@ class PanelSQL(BaseModel):
     model_config = ConfigDict(extra="ignore")
     panel_id: str
     sql: str
-    explain_cost: float | None = None  # set after EXPLAIN gate
+    explain_cost: float | None = None # set after EXPLAIN gate
     explain_passed: bool = False
     explain_error: str | None = None
 
@@ -124,7 +124,7 @@ class PanelData(BaseModel):
     rows: list[dict] = Field(default_factory=list)
     row_count: int = 0
     columns: list[dict] = Field(default_factory=list)
-    profile: dict = Field(default_factory=dict)  # cardinality, nulls, dtypes
+    profile: dict = Field(default_factory=dict) # cardinality, nulls, dtypes
     exec_ms: int = 0
 
 
@@ -138,10 +138,10 @@ class EChartsPanelSpec(BaseModel):
     title: str = ""
     # ECharts options pass-through (validated externally via JSON schema if needed)
     options: dict = Field(default_factory=dict)
-    grid: list[int] = Field(default_factory=lambda: [0, 0, 6, 3])  # [x,y,w,h] in 12-col grid
+    grid: list[int] = Field(default_factory=lambda: [0, 0, 6, 3]) # [x,y,w,h] in 12-col grid
     narrative: str = ""
     confidence: Confidence = "medium"
-    sources: list[str] = Field(default_factory=list)  # table names
+    sources: list[str] = Field(default_factory=list) # table names
 
 
 # Stage 8 — critique (different-model judge)
@@ -170,7 +170,7 @@ class Critique(BaseModel):
 class JsonPatchOp(BaseModel):
     model_config = ConfigDict(extra="ignore")
     op: Literal["add", "remove", "replace", "move", "copy", "test"]
-    path: str                        # e.g. /panels/3/options/title/text
+    path: str # e.g. /panels/3/options/title/text
     value: Any = None
     from_: str | None = Field(default=None, alias="from")
 
@@ -190,7 +190,7 @@ class DeepDashSpec(BaseModel):
     audience: str = "executive"
     refresh_cron: str | None = None
     judge_score: int | None = None
-    spec_version: int = 1                # bumps on each JSON Patch apply
+    spec_version: int = 1 # bumps on each JSON Patch apply
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

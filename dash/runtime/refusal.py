@@ -43,9 +43,9 @@ def mark_refused(
 
     Args:
       session_id: agno session id (may be None — fall back to question-only)
-      question:   user's question text
-      source:     'scope_classifier' | 'agent_self' | 'stuck_loop' | 'text_sentinel'
-      reason:     free-text reason (off_topic, denied_intent, …)
+      question: user's question text
+      source: 'scope_classifier' | 'agent_self' | 'stuck_loop' | 'text_sentinel'
+      reason: free-text reason (off_topic, denied_intent, …)
 
     Returns True if marked, False on any failure (still fail-soft).
     """
@@ -59,7 +59,7 @@ def mark_refused(
         with eng.begin() as cn:
             cn.execute(text(
                 "INSERT INTO dash.dash_refusal_marks "
-                "  (session_id, question_hash, question_preview, source, reason) "
+                " (session_id, question_hash, question_preview, source, reason) "
                 "VALUES (:s, :h, :p, :src, :rsn)"
             ), {"s": sid, "h": qhash, "p": qprev,
                 "src": source, "rsn": reason or ""})
@@ -77,8 +77,8 @@ def was_refused(
     """Return refusal-mark row if THIS session was refused recently.
 
     Strategy:
-      - If question provided → match by (session_id, question_hash) — exact-turn
-      - Else → match latest refusal in session within window
+      - If question provided > match by (session_id, question_hash) — exact-turn
+      - Else > match latest refusal in session within window
     Returns dict {source, reason, refused_at} or None.
     """
     if not session_id:
@@ -90,18 +90,18 @@ def was_refused(
             if question:
                 row = cn.execute(text(
                     "SELECT source, reason, refused_at "
-                    "  FROM dash.dash_refusal_marks "
+                    " FROM dash.dash_refusal_marks "
                     " WHERE session_id=:s AND question_hash=:h "
-                    "   AND refused_at > NOW() - make_interval(secs => :w) "
+                    " AND refused_at > NOW() - make_interval(secs => :w) "
                     " ORDER BY refused_at DESC LIMIT 1"
                 ), {"s": sid, "h": _hash_question(question),
                     "w": within_seconds}).mappings().fetchone()
             else:
                 row = cn.execute(text(
                     "SELECT source, reason, refused_at "
-                    "  FROM dash.dash_refusal_marks "
+                    " FROM dash.dash_refusal_marks "
                     " WHERE session_id=:s "
-                    "   AND refused_at > NOW() - make_interval(secs => :w) "
+                    " AND refused_at > NOW() - make_interval(secs => :w) "
                     " ORDER BY refused_at DESC LIMIT 1"
                 ), {"s": sid, "w": within_seconds}).mappings().fetchone()
         return dict(row) if row else None

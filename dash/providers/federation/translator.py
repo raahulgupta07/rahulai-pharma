@@ -14,7 +14,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
-# Map our dialect names → sqlglot dialect names
+# Map our dialect names > sqlglot dialect names
 _DIALECT_MAP = {
     "postgresql": "postgres",
     "postgres": "postgres",
@@ -23,7 +23,7 @@ _DIALECT_MAP = {
     "mssql": "tsql",
     "sqlserver": "tsql",
     "fabric": "tsql",
-    "files": "duckdb",   # files queried via DuckDB
+    "files": "duckdb", # files queried via DuckDB
     "duckdb": "duckdb",
 }
 
@@ -52,11 +52,11 @@ def translate(
         source_dialect=src,
         target_dialect=tgt,
         original_sql=sql,
-        translated_sql=sql,  # default unchanged
+        translated_sql=sql, # default unchanged
     )
 
     if src == tgt:
-        return result   # no-op
+        return result # no-op
 
     # Try sqlglot.transpile()
     try:
@@ -77,64 +77,64 @@ def _regex_translate(sql: str, src: str, tgt: str, warnings: list) -> str:
     """Best-effort regex translation. Very limited."""
     s = sql
 
-    # Postgres → T-SQL
+    # Postgres > T-SQL
     if src == "postgres" and tgt == "tsql":
-        # LIMIT N → TOP N (simple — only at start of SELECT)
+        # LIMIT N > TOP N (simple — only at start of SELECT)
         m = re.search(r"\bLIMIT\s+(\d+)\b", s, re.IGNORECASE)
         if m:
             n = m.group(1)
             s = re.sub(r"\bLIMIT\s+\d+\b", "", s, flags=re.IGNORECASE)
             s = re.sub(r"\bSELECT\b", f"SELECT TOP {n}", s, count=1, flags=re.IGNORECASE)
 
-        # ::type cast → CAST(x AS type)
+        # ::type cast > CAST(x AS type)
         s = re.sub(r"(\w+)::(\w+)", r"CAST(\1 AS \2)", s)
 
-        # NOW() → GETDATE()
+        # NOW() > GETDATE()
         s = re.sub(r"\bNOW\(\)", "GETDATE()", s, flags=re.IGNORECASE)
 
         # INTERVAL — flag for manual review
         if "INTERVAL" in s.upper():
             warnings.append("INTERVAL used — needs manual DATEADD conversion")
 
-        # Double-quoted identifiers → square brackets (best effort, risky)
+        # Double-quoted identifiers > square brackets (best effort, risky)
         # Only for simple "name" patterns
         s = re.sub(r'"([a-zA-Z_][a-zA-Z0-9_]*)"', r"[\1]", s)
 
-    # T-SQL → Postgres
+    # T-SQL > Postgres
     elif src == "tsql" and tgt == "postgres":
-        # TOP N → LIMIT N (best effort — moves to end)
+        # TOP N > LIMIT N (best effort — moves to end)
         m = re.search(r"\bTOP\s+(\d+)\b", s, re.IGNORECASE)
         if m:
             n = m.group(1)
             s = re.sub(r"\bTOP\s+\d+\s*", "", s, flags=re.IGNORECASE)
             s = s.rstrip().rstrip(";") + f" LIMIT {n}"
 
-        # GETDATE() → NOW()
+        # GETDATE() > NOW()
         s = re.sub(r"\bGETDATE\(\)", "NOW()", s, flags=re.IGNORECASE)
 
-        # Square brackets → double quotes
+        # Square brackets > double quotes
         s = re.sub(r"\[([a-zA-Z_][a-zA-Z0-9_ ]*)\]", r'"\1"', s)
 
-        # ISNULL → COALESCE (preserve order — ISNULL takes 2 args, COALESCE takes N)
+        # ISNULL > COALESCE (preserve order — ISNULL takes 2 args, COALESCE takes N)
         s = re.sub(r"\bISNULL\(", "COALESCE(", s, flags=re.IGNORECASE)
 
-    # Postgres → MySQL
+    # Postgres > MySQL
     elif src == "postgres" and tgt == "mysql":
-        # ::type cast → CAST(x AS type)
+        # ::type cast > CAST(x AS type)
         s = re.sub(r"(\w+)::(\w+)", r"CAST(\1 AS \2)", s)
-        # ILIKE → LIKE (case-sensitivity warning)
+        # ILIKE > LIKE (case-sensitivity warning)
         if re.search(r"\bILIKE\b", s, re.IGNORECASE):
-            warnings.append("ILIKE → LIKE; MySQL is case-insensitive by default")
+            warnings.append("ILIKE > LIKE; MySQL is case-insensitive by default")
             s = re.sub(r"\bILIKE\b", "LIKE", s, flags=re.IGNORECASE)
-        # double-quoted → backticks
+        # double-quoted > backticks
         s = re.sub(r'"([a-zA-Z_][a-zA-Z0-9_]*)"', r"`\1`", s)
 
-    # MySQL → Postgres
+    # MySQL > Postgres
     elif src == "mysql" and tgt == "postgres":
-        # Backticks → double quotes
+        # Backticks > double quotes
         s = re.sub(r"`([a-zA-Z_][a-zA-Z0-9_]*)`", r'"\1"', s)
 
-    # T-SQL → MySQL
+    # T-SQL > MySQL
     elif src == "tsql" and tgt == "mysql":
         m = re.search(r"\bTOP\s+(\d+)\b", s, re.IGNORECASE)
         if m:
@@ -143,7 +143,7 @@ def _regex_translate(sql: str, src: str, tgt: str, warnings: list) -> str:
             s = s.rstrip().rstrip(";") + f" LIMIT {n}"
         s = re.sub(r"\[([a-zA-Z_][a-zA-Z0-9_]*)\]", r"`\1`", s)
 
-    # MySQL → T-SQL
+    # MySQL > T-SQL
     elif src == "mysql" and tgt == "tsql":
         m = re.search(r"\bLIMIT\s+(\d+)\b", s, re.IGNORECASE)
         if m:
@@ -153,7 +153,7 @@ def _regex_translate(sql: str, src: str, tgt: str, warnings: list) -> str:
         s = re.sub(r"`([a-zA-Z_][a-zA-Z0-9_]*)`", r"[\1]", s)
 
     else:
-        warnings.append(f"no regex rules for {src} → {tgt}")
+        warnings.append(f"no regex rules for {src} > {tgt}")
 
     return s
 

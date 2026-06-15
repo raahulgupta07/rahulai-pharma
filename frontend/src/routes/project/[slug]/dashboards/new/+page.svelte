@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount } from 'svelte';
  import { page } from '$app/state';
  import { goto } from '$app/navigation';
@@ -140,7 +140,7 @@
     {#if !spec}
       <div class="empty">
         <p>No dashboard spec found.</p>
-        <button class="btn" onclick={() => goto(`${base}/project/${projectSlug}`)}>← Back to chat</button>
+        <button class="btn" onclick={() => goto(`${base}/project/${projectSlug}`)}><Icon name="arrow-left" size={16} /> Back to chat</button>
       </div>
     {:else}
       <div class="banner">

@@ -1,10 +1,10 @@
 """
 Email delivery via SMTP. Stub-safe when SMTP_HOST is unset.
 
-If SMTP_HOST is missing → returns {ok:True, mode:'stub', would_send_to:[...]}
+If SMTP_HOST is missing > returns {ok:True, mode:'stub', would_send_to:[...]}
 and logs at INFO. Never raises.
 
-If SMTP_HOST is set and delivery fails → raises (fail-loud, no silent swallow).
+If SMTP_HOST is set and delivery fails > raises (fail-loud, no silent swallow).
 """
 from __future__ import annotations
 

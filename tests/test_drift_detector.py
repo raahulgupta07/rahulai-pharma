@@ -68,7 +68,7 @@ class TestSchemaHash:
         h1 = _schema_hash(cat)
         h2 = _schema_hash(cat)
         assert h1 == h2
-        assert len(h1) == 16  # truncated sha256
+        assert len(h1) == 16 # truncated sha256
 
     def test_schema_hash_order_invariant(self):
         a = {"columns": {"t": ["a", "b", "c"]}}
@@ -109,7 +109,7 @@ class TestDiffSchema:
 
 class TestNdvDrift:
     def test_check_ndv_drift_no_baseline_skips(self, tmp_path, monkeypatch):
-        # No dimensions dir → no events
+        # No dimensions dir > no events
         monkeypatch.chdir(tmp_path)
         evs = _check_ndv_drift("slug", 1, baseline={}, threshold_pct=0.20)
         assert evs == []
@@ -122,7 +122,7 @@ class TestNdvDrift:
         (dim_dir / "orders.json").write_text(json.dumps({
             "status": [["s" + str(i), 1] for i in range(200)],
         }))
-        baseline = {"ndv_snapshot": {"orders": {"status": 100}}}  # 100% jump
+        baseline = {"ndv_snapshot": {"orders": {"status": 100}}} # 100% jump
         evs = _check_ndv_drift("slug", 1, baseline=baseline, threshold_pct=0.20)
         assert len(evs) == 1
         e = evs[0]
@@ -139,7 +139,7 @@ class TestNdvDrift:
         (dim_dir / "orders.json").write_text(json.dumps({
             "status": [["s" + str(i), 1] for i in range(105)],
         }))
-        baseline = {"ndv_snapshot": {"orders": {"status": 100}}}  # 5% jump
+        baseline = {"ndv_snapshot": {"orders": {"status": 100}}} # 5% jump
         evs = _check_ndv_drift("slug", 1, baseline=baseline, threshold_pct=0.20)
         assert evs == []
 
@@ -154,7 +154,7 @@ class TestRowCountDrift:
         prof = tmp_path / "knowledge" / "slug" / "source_1" / "profile"
         prof.mkdir(parents=True)
         (prof / "orders.json").write_text(json.dumps({
-            "id": {"count": 5000},  # 5x baseline → pct=4.0 > 2.0 → high
+            "id": {"count": 5000}, # 5x baseline > pct=4.0 > 2.0 > high
         }))
         baseline = {"row_counts": {"orders": 1000}}
         evs = _check_row_count_drift("slug", 1, baseline=baseline,
@@ -171,7 +171,7 @@ class TestRowCountDrift:
         prof = tmp_path / "knowledge" / "slug" / "source_1" / "profile"
         prof.mkdir(parents=True)
         (prof / "orders.json").write_text(json.dumps({
-            "id": {"count": 1100},  # 10% change
+            "id": {"count": 1100}, # 10% change
         }))
         baseline = {"row_counts": {"orders": 1000}}
         evs = _check_row_count_drift("slug", 1, baseline=baseline,
@@ -185,14 +185,14 @@ class TestRowCountDrift:
 
 class TestWatermarkDrift:
     def test_check_watermark_stale_emits_when_old(self):
-        # 30 days old → stale
+        # 30 days old > stale
         from datetime import datetime, timedelta
         old_ts = (datetime.utcnow() - timedelta(days=30)).isoformat() + "Z"
         watermark = {"observed_at": old_ts, "col": "updated_at", "value": "x"}
         evs = _check_watermark_stale("slug", 1, watermark, stale_days=7)
         assert len(evs) == 1
         assert evs[0].drift_type == "watermark"
-        assert evs[0].severity == "critical"  # 30 >= 7*3
+        assert evs[0].severity == "critical" # 30 >= 7*3
         assert evs[0].details["days_stale"] >= 29
 
     def test_check_watermark_fresh_no_event(self):

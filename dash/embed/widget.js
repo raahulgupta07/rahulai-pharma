@@ -2,16 +2,16 @@
  * Vanilla JS, shadow-DOM isolated
  *
  * Usage:
- *   <script src="https://your-dash-host/api/embed/widget.js"
- *           data-embed-id="emb_xxx"
- *           data-key="pub_xxx"
- *           data-user='{"id":"alice","store_id":"MUM01"}'
- *           data-user-sig="<hmac>"
- *           data-position="bottom-right"
- *           data-theme="consumer"
- *           data-greeting="Ask anything…"
- *           data-show-branding="1"
- *           async></script>
+ * <script src="https://your-dash-host/api/embed/widget.js"
+ * data-embed-id="emb_xxx"
+ * data-key="pub_xxx"
+ * data-user='{"id":"alice","store_id":"MUM01"}'
+ * data-user-sig="<hmac>"
+ * data-position="bottom-right"
+ * data-theme="consumer"
+ * data-greeting="Ask anything…"
+ * data-show-branding="1"
+ * async></script>
  */
 (function () {
   "use strict";
@@ -20,17 +20,17 @@
                document.querySelector('script[data-embed-id]');
   if (!script) return;
 
-  var embedId  = script.getAttribute('data-embed-id');
-  var pubKey   = script.getAttribute('data-key') || script.getAttribute('data-public-key');
+  var embedId = script.getAttribute('data-embed-id');
+  var pubKey = script.getAttribute('data-key') || script.getAttribute('data-public-key');
   var userJson = script.getAttribute('data-user');
-  var userSig  = script.getAttribute('data-user-sig');
+  var userSig = script.getAttribute('data-user-sig');
   var position = script.getAttribute('data-position') || 'bottom-right';
-  var theme    = script.getAttribute('data-theme') || 'consumer';
+  var theme = script.getAttribute('data-theme') || 'consumer';
   var greeting = script.getAttribute('data-greeting') || 'Hi! How can I help you today?';
-  var title    = script.getAttribute('data-title') || 'Support';
+  var title = script.getAttribute('data-title') || 'Support';
   var showBranding = script.getAttribute('data-show-branding') === '1';
   // SSE streaming: opt-out via data-stream="false". Default ON; falls back
-  // to non-streaming POST /chat on any 4xx (e.g. consumer-mode → 400).
+  // to non-streaming POST /chat on any 4xx (e.g. consumer-mode > 400).
   var streamingEnabled = script.getAttribute('data-stream') !== 'false';
 
   if (!embedId || !pubKey) {
@@ -63,10 +63,10 @@
 
   var explicit = {
     position: script.hasAttribute('data-position'),
-    theme:    script.hasAttribute('data-theme'),
+    theme: script.hasAttribute('data-theme'),
     greeting: script.hasAttribute('data-greeting'),
-    title:    script.hasAttribute('data-title'),
-    accent:   script.hasAttribute('data-accent'),
+    title: script.hasAttribute('data-title'),
+    accent: script.hasAttribute('data-accent'),
   };
   var accent = script.getAttribute('data-accent') || null;
   var logoUrl = script.getAttribute('data-logo') || null;
@@ -78,10 +78,10 @@
         .then(function(cfg) {
           if (cfg) {
             if (!explicit.position && cfg.position) position = cfg.position;
-            if (!explicit.theme    && cfg.theme)    theme    = cfg.theme;
+            if (!explicit.theme && cfg.theme) theme = cfg.theme;
             if (!explicit.greeting && cfg.welcome_msg) greeting = cfg.welcome_msg;
-            if (!explicit.title    && cfg.name)     title    = cfg.name;
-            if (!explicit.accent   && cfg.primary_color) accent = cfg.primary_color;
+            if (!explicit.title && cfg.name) title = cfg.name;
+            if (!explicit.accent && cfg.primary_color) accent = cfg.primary_color;
             if (!logoUrl && cfg.logo_url) logoUrl = cfg.logo_url;
             if (cfg.starter_questions && cfg.starter_questions.length) {
               starterQuestions = cfg.starter_questions;
@@ -97,7 +97,7 @@
 
   function buildWidget() {
 
-  // Resolve theme=auto → consumer (light) or dark by system pref
+  // Resolve theme=auto > consumer (light) or dark by system pref
   if (theme === 'auto') {
     var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     theme = prefersDark ? 'dark' : 'consumer';
@@ -107,9 +107,9 @@
   host.id = 'dash-agent-embed';
   host.style.cssText = 'position:fixed;z-index:2147483647;';
   if (position.indexOf('bottom') >= 0) host.style.bottom = '20px';
-  if (position.indexOf('top')    >= 0) host.style.top    = '20px';
-  if (position.indexOf('right')  >= 0) host.style.right  = '20px';
-  if (position.indexOf('left')   >= 0) host.style.left   = '20px';
+  if (position.indexOf('top') >= 0) host.style.top = '20px';
+  if (position.indexOf('right') >= 0) host.style.right = '20px';
+  if (position.indexOf('left') >= 0) host.style.left = '20px';
   document.body.appendChild(host);
   var sr = host.attachShadow ? host.attachShadow({ mode: 'open' }) : host;
 
@@ -483,7 +483,7 @@
   function thinkBotSvg() {
     return '<svg class="think-bot" viewBox="0 0 42 30" width="38" height="27" aria-hidden="true">'
       // spinning gear, upper-right
-      + '<text class="tb-gear" x="33" y="11" font-size="13" text-anchor="middle" fill="' + t.accent + '">⚙</text>'
+      + '<text class="tb-gear" x="33" y="11" font-size="13" text-anchor="middle" fill="' + t.accent + '"></text>'
       // antenna
       + '<line x1="13" y1="9" x2="13" y2="5.5" stroke="' + t.accent + '" stroke-width="2" stroke-linecap="round"/>'
       + '<circle class="tb-ant" cx="13" cy="4.6" r="1.7" fill="' + t.accent + '"/>'
@@ -519,10 +519,10 @@
     '</div>';
   sr.appendChild(panel);
 
-  var msgList   = panel.querySelector('.messages');
-  var inputEl   = panel.querySelector('textarea');
-  var sendBtn   = panel.querySelector('.send');
-  var closeBtn  = panel.querySelector('.close');
+  var msgList = panel.querySelector('.messages');
+  var inputEl = panel.querySelector('textarea');
+  var sendBtn = panel.querySelector('.send');
+  var closeBtn = panel.querySelector('.close');
 
   // ── Markdown renderer ───────────────────────────────────────────────
   function renderMd(s) {
@@ -643,7 +643,7 @@
     var h = '<div style="border-left:3px solid #c96342;padding-left:12px;margin:2px 0;">';
     // head
     h += '<div style="display:flex;align-items:flex-start;gap:8px;">';
-    h += '<span style="font-size:18px;">🧪</span><div style="flex:1;min-width:0;">';
+    h += '<span style="font-size:18px;"></span><div style="flex:1;min-width:0;">';
     h += '<div style="font-size:16px;font-weight:700;text-transform:uppercase;color:#1f1a14;">' + e(salt) + '</div>';
     if (brand || article) {
       h += '<div style="font-size:11px;color:#7a6f60;">' + e(brand);
@@ -663,8 +663,8 @@
     var caut = _tagMany(s, 'CAUTION'), inter = _tagMany(s, 'INTERACTS');
     if (caut.length || inter.length) {
       h += '<div style="margin-top:10px;background:rgba(192,57,43,0.07);border:1px solid rgba(192,57,43,0.25);border-left:3px solid #c0392b;border-radius:4px;padding:8px 10px;">';
-      caut.forEach(function(c){ h += '<div style="font-size:13px;margin:2px 0;"><span style="font-size:9px;font-weight:700;color:#c0392b;">⚠ CAUTION</span>&nbsp; ' + e(c) + '</div>'; });
-      inter.forEach(function(it){ h += '<div style="font-size:13px;margin:2px 0;"><span style="font-size:9px;font-weight:700;color:#c0392b;">⚠ INTERACTS</span>&nbsp; ' + e(it) + '</div>'; });
+      caut.forEach(function(c){ h += '<div style="font-size:13px;margin:2px 0;"><span style="font-size:9px;font-weight:700;color:#c0392b;"> CAUTION</span>&nbsp; ' + e(c) + '</div>'; });
+      inter.forEach(function(it){ h += '<div style="font-size:13px;margin:2px 0;"><span style="font-size:9px;font-weight:700;color:#c0392b;"> INTERACTS</span>&nbsp; ' + e(it) + '</div>'; });
       h += '</div>';
     }
     // stock
@@ -673,14 +673,14 @@
       var sp = _parts(sm[1], 5); // qty|skus|branch|cost|status
       h += '<div style="margin-top:10px;background:#f6ecda;border-radius:4px;padding:9px 12px;">';
       h += '<div style="font-size:9px;font-weight:700;letter-spacing:0.08em;color:#7a6f60;">DISPENSING' + (sp[2] ? ' · branch ' + e(sp[2]) : '') + '</div>';
-      h += '<div style="display:flex;justify-content:space-between;gap:10px;margin-top:3px;flex-wrap:wrap;"><span style="font-size:15px;font-weight:600;">' + e(sp[4] || '✅') + ' ' + e(sp[0]) + (sp[1] ? ' · ' + e(sp[1]) + ' SKUs' : '') + '</span>';
+      h += '<div style="display:flex;justify-content:space-between;gap:10px;margin-top:3px;flex-wrap:wrap;"><span style="font-size:15px;font-weight:600;">' + e(sp[4] || '') + ' ' + e(sp[0]) + (sp[1] ? ' · ' + e(sp[1]) + ' SKUs' : '') + '</span>';
       if (sp[3]) h += '<span style="font-size:12px;color:#7a6f60;">COST ' + e(sp[3]) + '</span>';
       h += '</div></div>';
     }
     // equivalents
     var eq = _tagMany(s, 'EQUIV');
     if (eq.length) {
-      h += '<div style="margin-top:10px;"><div style="font-size:9px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#7a6f60;margin-bottom:4px;">🔄 Therapeutic equivalents</div>';
+      h += '<div style="margin-top:10px;"><div style="font-size:9px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#7a6f60;margin-bottom:4px;"> Therapeutic equivalents</div>';
       eq.forEach(function(raw){
         var ep = _parts(raw, 4); // name|qty|cost|article
         var meta = [ep[1] ? ep[1] + ' u' : '', ep[2], ep[3]].filter(Boolean).join(' · ');
@@ -692,7 +692,7 @@
     var ev = s.match(/\[EVIDENCE:\s*([^\]]+)\]/);
     if (ev) {
       var evp = _parts(ev[1], 2);
-      h += '<div style="margin-top:12px;font-size:11px;font-family:monospace;color:#7a6f60;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">🔗 evidence&nbsp; ' + e(evp[0]) + (evp[1] ? ' · ' + e(evp[1]) : '') + '<span style="margin-left:auto;color:#16a34a;font-weight:700;">✓ verified</span></div>';
+      h += '<div style="margin-top:12px;font-size:11px;font-family:monospace;color:#7a6f60;display:flex;align-items:center;gap:4px;flex-wrap:wrap;"> evidence&nbsp; ' + e(evp[0]) + (evp[1] ? ' · ' + e(evp[1]) : '') + '<span style="margin-left:auto;color:#16a34a;font-weight:700;">OK verified</span></div>';
     }
     h += '</div>';
     // prose after tags
@@ -714,11 +714,11 @@
     var conf = _confDot(_tag1(s, 'CONFIDENCE'));
     var src = _tag1(s, 'SOURCE') || 'articles';
     var h = '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:8px;margin-bottom:10px;border-bottom:1px solid rgba(0,0,0,0.08);">';
-    h += '<div style="display:flex;align-items:center;gap:7px;min-width:0;"><span style="color:#9a4a2f;font-size:14px;">⬡</span>';
+    h += '<div style="display:flex;align-items:center;gap:7px;min-width:0;"><span style="color:#9a4a2f;font-size:14px;">*</span>';
     h += '<span style="font-size:15px;font-weight:700;color:#1f1a14;overflow-wrap:anywhere;">' + e(title || 'Answer') + '</span></div>';
     h += '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">';
     if (conf) h += '<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap;color:' + conf.c + ';background:' + conf.bg + ';">' + conf.g + ' ' + conf.t + '</span>';
-    h += '<span style="font-size:10px;font-weight:600;color:#9a4a2f;background:#f3ece1;padding:2px 8px;border-radius:999px;white-space:nowrap;">⌖ ' + e(src) + '</span>';
+    h += '<span style="font-size:10px;font-weight:600;color:#9a4a2f;background:#f3ece1;padding:2px 8px;border-radius:999px;white-space:nowrap;">+ ' + e(src) + '</span>';
     h += '</div></div>';
     return h;
   }
@@ -735,7 +735,7 @@
 
     var h = '<div style="border-left:3px solid #c96342;padding-left:12px;margin:2px 0;">';
     h += _renderBand(s, headline);
-    if (lead) h += '<p style="display:flex;gap:7px;align-items:baseline;font-size:14px;font-weight:600;line-height:1.5;margin:0 0 10px;"><span style="color:#9a4a2f;">➜</span><span>' + e(lead) + '</span></p>';
+    if (lead) h += '<p style="display:flex;gap:7px;align-items:baseline;font-size:14px;font-weight:600;line-height:1.5;margin:0 0 10px;"><span style="color:#9a4a2f;">></span><span>' + e(lead) + '</span></p>';
     if (kpis.length) {
       h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;">';
       kpis.forEach(function(raw){
@@ -757,7 +757,7 @@
       var sw = _parts(soWhatRaw, 3); // action|owner|effort
       var meta = [sw[1], sw[2]].filter(Boolean).join(' · ');
       h += '<div style="margin:10px 0 4px;padding:8px 12px;background:rgba(154,74,47,0.05);border-left:2px solid #9a4a2f;border-radius:3px;font-size:13px;">';
-      h += '<span style="font-weight:700;color:#9a4a2f;">So what →</span> <span style="font-weight:600;">' + e(sw[0]) + '</span>';
+      h += '<span style="font-weight:700;color:#9a4a2f;">So what ></span> <span style="font-weight:600;">' + e(sw[0]) + '</span>';
       if (meta) h += ' <span style="color:#8a7a66;font-size:12px;">(' + e(meta) + ')</span>';
       h += '</div>';
     }
@@ -927,13 +927,13 @@
     var bar = document.createElement('div');
     bar.className = 'fb-bar';
     var up = document.createElement('button');
-    up.className = 'fb-btn'; up.type = 'button'; up.title = 'Helpful'; up.innerHTML = '👍';
+    up.className = 'fb-btn'; up.type = 'button'; up.title = 'Helpful'; up.innerHTML = '';
     var down = document.createElement('button');
-    down.className = 'fb-btn'; down.type = 'button'; down.title = 'Not helpful'; down.innerHTML = '👎';
+    down.className = 'fb-btn'; down.type = 'button'; down.title = 'Not helpful'; down.innerHTML = '';
     bar.appendChild(up); bar.appendChild(down);
     host.appendChild(bar);
 
-    function thanks() { bar.innerHTML = '<span class="fb-thanks">Thanks for the feedback ✓</span>'; }
+    function thanks() { bar.innerHTML = '<span class="fb-thanks">Thanks for the feedback OK</span>'; }
 
     up.addEventListener('click', function () {
       postFeedback(question, answer, 'up'); thanks();
@@ -1002,7 +1002,7 @@
     }
     var body = { embed_id: embedId, public_key: pubKey };
     if (userPayload) body.user = userPayload;
-    if (userSig)     body.signature = userSig;
+    if (userSig) body.signature = userSig;
 
     return fetch(apiOrigin + '/api/embed/session/create', {
       method: 'POST',
@@ -1157,12 +1157,12 @@
 
         var stepStart = Date.now();
         var stepCount = 0;
-        var pendingLine = null;   // the step currently "in progress" (spinner)
-        // Mark the in-progress step complete (✓) before the next one starts.
+        var pendingLine = null; // the step currently "in progress" (spinner)
+        // Mark the in-progress step complete (OK) before the next one starts.
         function tickPending() {
           if (pendingLine) {
             var ic = pendingLine.querySelector('.ic');
-            if (ic) { ic.textContent = '✓'; ic.classList.add('ok'); }
+            if (ic) { ic.textContent = 'OK'; ic.classList.add('ok'); }
             pendingLine.classList.add('agent-step-done');
             pendingLine = null;
           }
@@ -1187,7 +1187,7 @@
           strip.classList.add('done');
           if (stepCount === 0) { strip.remove(); return; }
           strip.querySelector('.agent-steps-head').innerHTML =
-            '✓ done · ' + secs + 's · ' + stepCount + ' step' + (stepCount === 1 ? '' : 's');
+            'OK done · ' + secs + 's · ' + stepCount + ' step' + (stepCount === 1 ? '' : 's');
           strip.addEventListener('click', function () { strip.classList.toggle('done'); });
         }
 
@@ -1263,9 +1263,9 @@
   }
 
   window.DashAgent = window.DashAgent || {
-    open:  function () { bubble.click(); },
+    open: function () { bubble.click(); },
     close: function () { closeBtn.click(); },
-    send:  function (m) { inputEl.value = m; submit(); },
+    send: function (m) { inputEl.value = m; submit(); },
     config: { embedId: embedId, apiOrigin: apiOrigin, theme: theme },
   };
   } // end buildWidget

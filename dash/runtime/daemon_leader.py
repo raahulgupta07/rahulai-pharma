@@ -1,7 +1,7 @@
 """Daemon leader election — pick exactly ONE worker/pod to run background daemons.
 
 Replaces the broken ``WORKER_RANK == 0`` gate (gunicorn ``worker.age`` starts at
-1 and drifts to N on respawn, so rank 0 is essentially never present → every
+1 and drifts to N on respawn, so rank 0 is essentially never present > every
 daemon gated on it silently never ran).
 
 PgBouncer-safe: uses a heartbeat row + plain ``UPDATE`` (no session-level
@@ -14,11 +14,11 @@ Model:
   current holder's heartbeat is stale (> LEASE_S old).
 - The leader renews its heartbeat on a background thread every RENEW_S. If the
   leader dies, its heartbeat goes stale and (on its next startup, or any worker's
-  retry) another worker claims leadership → daemons resume.
+  retry) another worker claims leadership > daemons resume.
 
 Usage (in app lifespan):
     from dash.runtime.daemon_leader import try_become_leader
-    if try_become_leader():   # exactly one worker returns True (best-effort)
+    if try_become_leader(): # exactly one worker returns True (best-effort)
         ... start daemons ...
 """
 from __future__ import annotations
@@ -34,8 +34,8 @@ from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
-LEASE_S = 30      # a holder is considered dead if heartbeat older than this
-RENEW_S = 10      # leader renews heartbeat this often
+LEASE_S = 30 # a holder is considered dead if heartbeat older than this
+RENEW_S = 10 # leader renews heartbeat this often
 
 _WORKER_ID = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 _is_leader = False
@@ -53,9 +53,9 @@ def _bootstrap() -> None:
     with eng.begin() as conn:
         conn.execute(text(
             "CREATE TABLE IF NOT EXISTS dash.dash_daemon_leader ("
-            "  id INT PRIMARY KEY,"
-            "  holder TEXT,"
-            "  heartbeat TIMESTAMPTZ NOT NULL DEFAULT now()"
+            " id INT PRIMARY KEY,"
+            " holder TEXT,"
+            " heartbeat TIMESTAMPTZ NOT NULL DEFAULT now()"
             ")"
         ))
         conn.execute(text(
@@ -76,8 +76,8 @@ def _claim() -> bool:
             "UPDATE dash.dash_daemon_leader "
             "SET holder = :me, heartbeat = now() "
             "WHERE id = 1 AND ("
-            "  holder IS NULL OR holder = :me "
-            "  OR heartbeat < now() - make_interval(secs => :lease)"
+            " holder IS NULL OR holder = :me "
+            " OR heartbeat < now() - make_interval(secs => :lease)"
             ")"
         ), {"me": _WORKER_ID, "lease": LEASE_S})
         return (res.rowcount or 0) == 1
@@ -117,7 +117,7 @@ def try_become_leader() -> bool:
     Retry semantics: on initial loss (another holder appears alive), retry every
     5s for up to LEASE_S + 15s. Force-recreate timing window — old container's
     heartbeat may still be < 30s old at new container startup, so first claim
-    fails. After old holder dies, its heartbeat goes stale → retry wins.
+    fails. After old holder dies, its heartbeat goes stale > retry wins.
     """
     global _is_leader, _renew_thread
     if _is_leader:
@@ -138,7 +138,7 @@ def try_become_leader() -> bool:
         # _is_leader to detect post-startup acquisition.
         def _retry_until_won() -> None:
             global _is_leader, _renew_thread
-            deadline = time.time() + (LEASE_S + 15)  # 45s window — covers force-recreate
+            deadline = time.time() + (LEASE_S + 15) # 45s window — covers force-recreate
             while time.time() < deadline:
                 time.sleep(5)
                 try:

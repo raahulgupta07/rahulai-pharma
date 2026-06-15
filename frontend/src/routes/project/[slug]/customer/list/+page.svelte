@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount } from 'svelte';
  import { page } from '$app/stores';
  import { goto } from '$app/navigation';
@@ -140,10 +140,10 @@
 
   <!-- Header -->
   <div style="background: #1a1a1a; color: #00fc40; padding: 12px 18px; display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
-    <a href={`${base}/project/${slug}/settings`} style="color: #ccc; font-size: 11px; text-decoration: none; padding: 4px 8px; border: 1px solid #888;">←</a>
+    <a href={`${base}/project/${slug}/settings`} style="color: #ccc; font-size: 11px; text-decoration: none; padding: 4px 8px; border: 1px solid #888;"><Icon name="arrow-left" size={16} /></a>
     <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.06em;"><Icon name="user" size={14} /> CUSTOMERS · {slug}</span>
     <span style="margin-left: auto; font-size: 11px; color: #888;">{total} total</span>
-    <button onclick={load} style="padding: 4px 10px; background: #00fc40; color: #000; border: 1px solid #00fc40; cursor: pointer; font-family: monospace; font-size: 10px; font-weight: 900;">↻ REFRESH</button>
+    <button onclick={load} style="padding: 4px 10px; background: #00fc40; color: #000; border: 1px solid #00fc40; cursor: pointer; font-family: monospace; font-size: 10px; font-weight: 900;"><Icon name="refresh" size={16} /> REFRESH</button>
     <button onclick={recompute} disabled={recomputing} title="Recompute nightly RFM + churn + CLV cache" style="padding: 4px 10px; background: {recomputing ? '#555' : '#ff9d00'}; color: #000; border: 1px solid {recomputing ? '#555' : '#ff9d00'}; cursor: {recomputing ? 'wait' : 'pointer'}; font-family: monospace; font-size: 10px; font-weight: 900;">
       {recomputing ? 'COMPUTING…' : 'RECOMPUTE NIGHTLY SCORES'}
     </button>
@@ -212,7 +212,7 @@
           <th style="padding: 8px 10px; text-align: left;">LAST</th>
           <th style="padding: 8px 10px; text-align: right;">DAYS</th>
           <th style="padding: 8px 10px; text-align: center;">12W</th>
-          <th style="padding: 8px 10px; text-align: left;">→</th>
+          <th style="padding: 8px 10px; text-align: left;"><Icon name="arrow-right" size={16} /></th>
         </tr>
       </thead>
       <tbody>
@@ -241,7 +241,7 @@
                 <span style="color: #888;">—</span>
               {/if}
             </td>
-            <td style="padding: 6px 10px;">→</td>
+            <td style="padding: 6px 10px;"><Icon name="arrow-right" size={16} /></td>
           </tr>
         {/each}
       </tbody>

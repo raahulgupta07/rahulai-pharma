@@ -36,7 +36,7 @@ def _get_engine():
         return get_sql_engine()
     except Exception:
         try:
-            from db import get_sql_engine  # type: ignore
+            from db import get_sql_engine # type: ignore
             return get_sql_engine()
         except Exception:
             return None
@@ -128,7 +128,7 @@ def handle_inbound_message(
     log_message(thread["id"], "inbound", body, author=from_addr, external_msg_id=message_id)
 
     result = dispatch_to_agent(project_slug, body, session_id=thread["dash_session_id"])
-    reply_text = result.get("text") if result.get("ok") else f"⚠️ {result.get('error')}"
+    reply_text = result.get("text") if result.get("ok") else f" {result.get('error')}"
     log_message(
         thread["id"], "outbound", reply_text,
         agent_response_excerpt=reply_text[:500],

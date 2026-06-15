@@ -138,7 +138,7 @@ def _quality(conn, schema: str, table: str, columns: list[dict], rows: int) -> d
 
     try:
         # P2 — an ID/code column collapsed to ≤1 distinct value across many rows is
-        # a destroyed join key (e.g. article_code exported as "1E+12" → all identical).
+        # a destroyed join key (e.g. article_code exported as "1E+12" > all identical).
         id_cols = [c for c in colnames
                    if re.search(r'(^|_)(id|code|barcode|sku|ean|upc|gtin)($|_|no$)', c, re.I)]
         for c in id_cols:
@@ -146,7 +146,7 @@ def _quality(conn, schema: str, table: str, columns: list[dict], rows: int) -> d
                 f"SELECT COUNT(DISTINCT {_q(c)}) FROM {_q(schema)}.{_q(table)}")).scalar() or 0)
             if rows >= 50 and nd <= 1:
                 out["notes"].append(
-                    f"⚠ '{c}' has only {nd} distinct value across {rows:,} rows — "
+                    f" '{c}' has only {nd} distinct value across {rows:,} rows — "
                     f"likely a corrupt/lost key (check for scientific-notation in the source file)")
                 out["consistency"] = min(out["consistency"], 40)
     except Exception as e:
@@ -289,7 +289,7 @@ def _active_run(conn, slug: str) -> dict | None:
 def datasource(slug: str, request: Request, quality: bool = True, preview: bool = True):
     """Aggregated Data Source view. quality/preview can be disabled for speed."""
     user = _get_user(request)
-    _check_access(user, slug)  # raises 401/403 — auth stays strict
+    _check_access(user, slug) # raises 401/403 — auth stays strict
 
     schema = _schema_for(slug)
     # Past auth: never 500 this page. The frontend leaves the table list on
@@ -317,7 +317,7 @@ def _build_datasource(slug: str, schema: str, quality: bool, preview: bool):
         table_names = []
 
     tables: list[dict] = []
-    col_index: dict[str, set] = {}  # table -> set(columns) for link detection
+    col_index: dict[str, set] = {} # table -> set(columns) for link detection
     total_rows = 0
 
     # AUTOCOMMIT so a missing optional table (e.g. dash_knowledge_triples) that
@@ -387,7 +387,7 @@ def _build_datasource(slug: str, schema: str, quality: bool, preview: bool):
                             if ov == 0:
                                 link["join"] = "broken"
                                 _join_warnings.append(
-                                    f"⚠ '{e['name']}' and '{other}' share key '{sc}' but 0 values match — "
+                                    f" '{e['name']}' and '{other}' share key '{sc}' but 0 values match — "
                                     f"join broken (e.g. scientific-notation/type mismatch in the source)")
                             break
                     links.append(link)

@@ -1,5 +1,5 @@
 """
-PPTX → PDF rendering via LibreOffice headless (soffice).
+PPTX > PDF rendering via LibreOffice headless (soffice).
 
 Returns None + logs warning when soffice is unavailable, so caller can fall
 back to attaching the PPTX only.

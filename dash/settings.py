@@ -17,11 +17,11 @@ _otel_logging.getLogger("opentelemetry.context").setLevel(_otel_logging.CRITICAL
 # ── LLM concurrency control ────────────────────────────────────────────────
 # Prevents OpenRouter rate-limit failures when many parallel chat / training
 # requests overwhelm the upstream provider. Three knobs:
-#   * Per-tier asyncio.Semaphore caps simultaneous in-flight requests.
-#   * Dedicated ThreadPoolExecutor offloads the blocking httpx.post() call
-#     so the event loop stays free while we hold the semaphore.
-#   * Semaphores are lazy-initialized via _get_sem() to avoid binding to the
-#     wrong event loop at import time (each loop needs its own semaphore).
+# * Per-tier asyncio.Semaphore caps simultaneous in-flight requests.
+# * Dedicated ThreadPoolExecutor offloads the blocking httpx.post() call
+# so the event loop stays free while we hold the semaphore.
+# * Semaphores are lazy-initialized via _get_sem() to avoid binding to the
+# wrong event loop at import time (each loop needs its own semaphore).
 import asyncio as _asyncio
 import concurrent.futures as _futures
 import threading as _llm_threading
@@ -107,7 +107,7 @@ def _get_sem(task: str) -> "_asyncio.Semaphore":
     tier = _tier_for_task(task)
     cap = _cap_for_tier(tier)
     # Cap is part of the cache key: when a super-admin changes llm_parallel_cap_chat
-    # the new value yields a new key → a fresh Semaphore at the new cap, no restart.
+    # the new value yields a new key > a fresh Semaphore at the new cap, no restart.
     # (Old semaphores for the prior cap simply go unused and are GC'd.)
     key = (id(loop), tier, cap)
     with _LLM_SEM_LOCK:
@@ -181,7 +181,7 @@ from db import create_knowledge, get_postgres_db
 # emits stale required[] entries (notably from *args/**kwargs in decorated
 # callables — Agno introspects signature, marks them required, but never adds
 # them to properties). The error:
-#   `required fields ['args', 'kwargs'] are not defined in the schema properties`
+# `required fields ['args', 'kwargs'] are not defined in the schema properties`
 # To stop the entire fleet from dying, wrap to_dict so every emitted schema is
 # pruned to `required ⊆ properties.keys()` at every LLM call (idempotent).
 try:
@@ -229,16 +229,16 @@ except Exception as _patch_err:
 agent_db = get_postgres_db()
 
 # ═══ 3-MODEL ARCHITECTURE ═══
-# Gemini 3 Flash  — chat + SQL + vision + Q&A (workhorse: best SQL, fastest TTFT, best vision)
-# GPT-5.4 Mini    — deep analysis + relationships + domain knowledge + auto-evolve (deep thinker)
-# Flash Lite      — scoring + routing + bulk extraction (router: cheapest, fastest output)
+# Gemini 3 Flash — chat + SQL + vision + Q&A (workhorse: best SQL, fastest TTFT, best vision)
+# GPT-5.4 Mini — deep analysis + relationships + domain knowledge + auto-evolve (deep thinker)
+# Flash Lite — scoring + routing + bulk extraction (router: cheapest, fastest output)
 
 # Boot-time defaults from env. May be overridden live via dash_admin_settings
-# (Command Center → LLM config). Read via get_chat_model()/get_deep_model()/
-# get_lite_model() for runtime resolution (DB-first → env fallback → default).
+# (Command Center > LLM config). Read via get_chat_model()/get_deep_model()/
+# get_lite_model() for runtime resolution (DB-first > env fallback > default).
 _DEFAULT_CHAT = "google/gemini-3-flash-preview"
 _DEFAULT_DEEP = "openai/gpt-5.4-mini"
-_DEFAULT_LITE = "google/gemini-3-flash-preview"  # Burmese+English agent: 3.1-flash-lite is weak on Burmese, so FAST tier uses 3-flash too
+_DEFAULT_LITE = "google/gemini-3-flash-preview" # Burmese+English agent: 3.1-flash-lite is weak on Burmese, so FAST tier uses 3-flash too
 _DEFAULT_EMBED = "openai/text-embedding-3-small"
 
 CHAT_MODEL = getenv("CHAT_MODEL") or _DEFAULT_CHAT
@@ -276,7 +276,7 @@ def get_embedding_model() -> str:
 
 
 def get_training_model() -> str:
-    # DB-editable training_model → env TRAINING_MODEL → fall back to CHAT model.
+    # DB-editable training_model > env TRAINING_MODEL > fall back to CHAT model.
     return _model_from_settings("training_model", "") or get_chat_model()
 
 
@@ -339,41 +339,41 @@ MODEL = OpenRouter(id=CHAT_MODEL, temperature=0.1, extra_body=OR_DATA_POLICY)
 # Tasks without "model" key use TRAINING_MODEL (Gemini 3 Flash)
 TRAINING_CONFIGS = {
     # ── Gemini 3 Flash tasks (workhorse: SQL, vision, structured output) ──
-    "qa_generation":    {"temp": 0.3, "tokens": 2000, "thinking": "medium"},
-    "persona":          {"temp": 0.2, "tokens": 1000, "thinking": "low"},
-    "workflows":        {"temp": 0.3, "tokens": 500,  "thinking": "minimal"},
-    "synthesis":        {"temp": 0.1, "tokens": 1000, "thinking": "minimal"},
-    "insights":         {"temp": 0.1, "tokens": 500,  "thinking": "minimal"},
-    "dashboard":        {"temp": 0.2, "tokens": 3000, "thinking": "medium"},
-    "dashboard_gen":    {"temp": 0.3, "tokens": 8000, "thinking": "low", "model": CHAT_MODEL, "timeout": 60},
-    "fact_extraction":  {"temp": 0.1, "tokens": 2000, "thinking": "medium"},
-    "vision":           {"temp": 0.1, "tokens": 1000, "thinking": "minimal"},
-    "excel_analysis":   {"temp": 0.1, "tokens": 4000, "thinking": "medium", "timeout": 60},
+    "qa_generation": {"temp": 0.3, "tokens": 2000, "thinking": "medium"},
+    "persona": {"temp": 0.2, "tokens": 1000, "thinking": "low"},
+    "workflows": {"temp": 0.3, "tokens": 500, "thinking": "minimal"},
+    "synthesis": {"temp": 0.1, "tokens": 1000, "thinking": "minimal"},
+    "insights": {"temp": 0.1, "tokens": 500, "thinking": "minimal"},
+    "dashboard": {"temp": 0.2, "tokens": 3000, "thinking": "medium"},
+    "dashboard_gen": {"temp": 0.3, "tokens": 8000, "thinking": "low", "model": CHAT_MODEL, "timeout": 60},
+    "fact_extraction": {"temp": 0.1, "tokens": 2000, "thinking": "medium"},
+    "vision": {"temp": 0.1, "tokens": 1000, "thinking": "minimal"},
+    "excel_analysis": {"temp": 0.1, "tokens": 4000, "thinking": "medium", "timeout": 60},
 
     # ── GPT-5.4 Mini tasks (deep thinker: xhigh reasoning, offline) ──
-    "deep_analysis":    {"temp": 0.1, "tokens": 8000, "thinking": "medium", "model": DEEP_MODEL, "timeout": 60},
-    "relationships":    {"temp": 0.1, "tokens": 500,  "thinking": "high",  "model": DEEP_MODEL, "timeout": 60},
-    "evolve":           {"temp": 0.1, "tokens": 800,  "thinking": "high",  "model": DEEP_MODEL, "timeout": 60},
-    "consolidation":    {"temp": 0.1, "tokens": 800,  "thinking": "high",  "model": DEEP_MODEL, "timeout": 60},
-    "domain_knowledge": {"temp": 0.1, "tokens": 1000, "thinking": "high",  "model": DEEP_MODEL, "timeout": 60},
+    "deep_analysis": {"temp": 0.1, "tokens": 8000, "thinking": "medium", "model": DEEP_MODEL, "timeout": 60},
+    "relationships": {"temp": 0.1, "tokens": 500, "thinking": "high", "model": DEEP_MODEL, "timeout": 60},
+    "evolve": {"temp": 0.1, "tokens": 800, "thinking": "high", "model": DEEP_MODEL, "timeout": 60},
+    "consolidation": {"temp": 0.1, "tokens": 800, "thinking": "high", "model": DEEP_MODEL, "timeout": 60},
+    "domain_knowledge": {"temp": 0.1, "tokens": 1000, "thinking": "high", "model": DEEP_MODEL, "timeout": 60},
 
     # ── ML prediction (needs strong reasoning for numerical trends) ──
-    "ml_prediction":    {"temp": 0.1, "tokens": 1000, "thinking": "high",  "model": DEEP_MODEL, "timeout": 30},
+    "ml_prediction": {"temp": 0.1, "tokens": 1000, "thinking": "high", "model": DEEP_MODEL, "timeout": 30},
 
     # ── Flash Lite tasks (router: fastest, cheapest, bulk) ──
-    "scoring":          {"temp": 0.0, "tokens": 100,  "thinking": "none",    "model": LITE_MODEL},
-    "routing":          {"temp": 0.0, "tokens": 80,   "thinking": "none",    "model": LITE_MODEL},
-    "extraction":       {"temp": 0.1, "tokens": 800,  "thinking": "minimal", "model": LITE_MODEL},
-    "meta_learning":    {"temp": 0.0, "tokens": 300,  "thinking": "none",    "model": LITE_MODEL},
-    "mining":           {"temp": 0.2, "tokens": 1000, "thinking": "low",     "model": LITE_MODEL},
+    "scoring": {"temp": 0.0, "tokens": 100, "thinking": "none", "model": LITE_MODEL},
+    "routing": {"temp": 0.0, "tokens": 80, "thinking": "none", "model": LITE_MODEL},
+    "extraction": {"temp": 0.1, "tokens": 800, "thinking": "minimal", "model": LITE_MODEL},
+    "meta_learning": {"temp": 0.0, "tokens": 300, "thinking": "none", "model": LITE_MODEL},
+    "mining": {"temp": 0.2, "tokens": 1000, "thinking": "low", "model": LITE_MODEL},
     # Ingest router: decide append-vs-new-table per uploaded file. temp 0 so the
     # same file always routes the same way (determinism > creativity for ingest).
-    "ingest_router":    {"temp": 0.0, "tokens": 600,  "thinking": "minimal", "model": LITE_MODEL},
+    "ingest_router": {"temp": 0.0, "tokens": 600, "thinking": "minimal", "model": LITE_MODEL},
     # Complexity router: classify a chat message LOOKUP/ANALYSIS/AGENTIC. temp 0
     # for deterministic tiebreaks; only invoked in the ambiguous boundary band.
     "complexity_router": {"temp": 0.0, "tokens": 200, "thinking": "minimal", "model": LITE_MODEL},
     # Viz router: pick the best chart type when the rules engine is unsure.
-    "viz_router":        {"temp": 0.0, "tokens": 120, "thinking": "minimal", "model": LITE_MODEL},
+    "viz_router": {"temp": 0.0, "tokens": 120, "thinking": "minimal", "model": LITE_MODEL},
 }
 
 
@@ -418,7 +418,7 @@ def _repair_json(s: str) -> str:
         json.loads(fixed)
         return fixed
     except Exception:
-        return s  # Return original if still broken
+        return s # Return original if still broken
 
 
 # LLM call observers — keyed by an arbitrary tag (typically project_slug).
@@ -510,7 +510,7 @@ def _check_budget(slug: str | None) -> tuple[bool, float, float]:
             r2 = conn.execute(_text(
                 "SELECT COALESCE(SUM(cost_usd), 0) FROM public.dash_llm_costs "
                 "WHERE project_slug = :s "
-                "  AND ts >= DATE_TRUNC('day', NOW() AT TIME ZONE 'UTC')"
+                " AND ts >= DATE_TRUNC('day', NOW() AT TIME ZONE 'UTC')"
             ), {"s": slug}).fetchone()
             today = float((r2 or [0])[0] or 0.0)
         # cap <= 0 = unlimited
@@ -528,10 +528,10 @@ def _invalidate_budget_cache(slug: str | None):
 
 # Approx prices per 1M tokens (USD). Used as fallback when API doesn't return usage.cost.
 _MODEL_PRICES_PER_1M = {
-    "google/gemini-3-flash-preview":            (0.30, 1.20),   # in, out
-    "google/gemini-3.1-flash-lite-preview":     (0.075, 0.30),
-    "openai/gpt-5.4-mini":                      (0.30, 1.50),
-    "google/gemini-embedding-2-preview":        (0.10, 0.0),
+    "google/gemini-3-flash-preview": (0.30, 1.20), # in, out
+    "google/gemini-3.1-flash-lite-preview": (0.075, 0.30),
+    "openai/gpt-5.4-mini": (0.30, 1.50),
+    "google/gemini-embedding-2-preview": (0.10, 0.0),
 }
 
 
@@ -557,7 +557,7 @@ def _usage_token_details(usage: dict) -> tuple[int, int]:
     """Pull (cached_tokens, reasoning_tokens) from an OpenRouter usage object.
     OpenRouter returns these under usage.prompt_tokens_details.cached_tokens and
     usage.completion_tokens_details.reasoning_tokens when the model supports
-    prompt caching / reasoning. Absent → 0 (back-compat)."""
+    prompt caching / reasoning. Absent > 0 (back-compat)."""
     if not usage:
         return 0, 0
     cached = 0
@@ -626,7 +626,7 @@ def training_llm_call(prompt: str, task: str = "extraction", model: str | None =
             return None
     model = model or cfg.get("model") or get_training_model()
     # Live-resolve: if model still matches boot-time CHAT/DEEP/LITE, swap to current setting
-    if model == CHAT_MODEL:   model = get_chat_model()
+    if model == CHAT_MODEL: model = get_chat_model()
     elif model == DEEP_MODEL: model = get_deep_model()
     elif model == LITE_MODEL: model = get_lite_model()
     # Daily cost cap gate
@@ -754,7 +754,7 @@ def training_vision_call(prompt: str, images: list[dict], task: str = "vision") 
         return None
     cfg = TRAINING_CONFIGS.get(task, TRAINING_CONFIGS["extraction"])
     model = cfg.get("model") or get_training_model()
-    if model == CHAT_MODEL:   model = get_chat_model()
+    if model == CHAT_MODEL: model = get_chat_model()
     elif model == DEEP_MODEL: model = get_deep_model()
     elif model == LITE_MODEL: model = get_lite_model()
     # Daily cost cap gate

@@ -7,9 +7,9 @@ Per-project daily digest delivery:
     and fires send_digest(slug) within a +/- 2 min window if not sent today
 
 Endpoints (all under /api/projects/{slug}/digest/*):
-  GET    /config        viewer+   returns config + env-availability flags
-  POST   /config        editor+   persist config to dash_projects
-  POST   /test          editor+   fires send_digest(slug) immediately
+  GET /config viewer+ returns config + env-availability flags
+  POST /config editor+ persist config to dash_projects
+  POST /test editor+ fires send_digest(slug) immediately
 
 Env vars (no secrets in code):
   SMTP_HOST, SMTP_PORT (default 587), SMTP_USER, SMTP_PASS, SMTP_FROM,
@@ -74,12 +74,12 @@ def _ensure_columns() -> None:
         with _write_eng().begin() as conn:
             conn.execute(text(
                 "ALTER TABLE public.dash_projects "
-                "  ADD COLUMN IF NOT EXISTS digest_enabled BOOLEAN DEFAULT FALSE, "
-                "  ADD COLUMN IF NOT EXISTS digest_email_to TEXT, "
-                "  ADD COLUMN IF NOT EXISTS digest_slack_enabled BOOLEAN DEFAULT FALSE, "
-                "  ADD COLUMN IF NOT EXISTS digest_time_utc TEXT DEFAULT '08:00', "
-                "  ADD COLUMN IF NOT EXISTS last_digest_sent_at TIMESTAMPTZ, "
-                "  ADD COLUMN IF NOT EXISTS last_digest_error TEXT"
+                " ADD COLUMN IF NOT EXISTS digest_enabled BOOLEAN DEFAULT FALSE, "
+                " ADD COLUMN IF NOT EXISTS digest_email_to TEXT, "
+                " ADD COLUMN IF NOT EXISTS digest_slack_enabled BOOLEAN DEFAULT FALSE, "
+                " ADD COLUMN IF NOT EXISTS digest_time_utc TEXT DEFAULT '08:00', "
+                " ADD COLUMN IF NOT EXISTS last_digest_sent_at TIMESTAMPTZ, "
+                " ADD COLUMN IF NOT EXISTS last_digest_error TEXT"
             ))
     except Exception as e:
         logger.warning(f"_ensure_columns failed: {e}")
@@ -121,8 +121,8 @@ def _project_row(slug: str) -> Optional[dict]:
         with _engine().connect() as conn:
             r = conn.execute(text(
                 "SELECT slug, name, digest_enabled, digest_email_to, "
-                "  digest_slack_enabled, digest_time_utc, last_digest_sent_at, "
-                "  last_digest_error, daily_cost_cap_usd "
+                " digest_slack_enabled, digest_time_utc, last_digest_sent_at, "
+                " last_digest_error, daily_cost_cap_usd "
                 "FROM public.dash_projects WHERE slug = :s"
             ), {"s": slug}).fetchone()
         if not r:
@@ -161,11 +161,11 @@ def _gather_today(slug: str) -> dict:
         with eng.connect() as conn:
             row = conn.execute(text(
                 "SELECT COUNT(*), "
-                "  SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END), "
-                "  COALESCE(SUM(cost_usd),0) "
+                " SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END), "
+                " COALESCE(SUM(cost_usd),0) "
                 "FROM public.dash_self_learning_runs "
                 "WHERE project_slug = :s "
-                "  AND started_at >= NOW() - INTERVAL '1 day'"
+                " AND started_at >= NOW() - INTERVAL '1 day'"
             ), {"s": slug}).fetchone()
             if row:
                 tot = int(row[0] or 0)
@@ -183,9 +183,9 @@ def _gather_today(slug: str) -> dict:
                 "SELECT statement, hypothesis_type, confidence "
                 "FROM public.dash_hypotheses "
                 "WHERE project_slug = :s "
-                "  AND verification_status = 'verified' "
-                "  AND promoted_to_central = TRUE "
-                "  AND created_at >= NOW() - INTERVAL '1 day' "
+                " AND verification_status = 'verified' "
+                " AND promoted_to_central = TRUE "
+                " AND created_at >= NOW() - INTERVAL '1 day' "
                 "ORDER BY confidence DESC LIMIT 3"
             ), {"s": slug}).fetchall()
             out["top_hypotheses"] = [{
@@ -201,7 +201,7 @@ def _gather_today(slug: str) -> dict:
             rows = conn.execute(text(
                 "SELECT severity, COUNT(*) FROM public.dash_drift_events "
                 "WHERE project_slug = :s "
-                "  AND detected_at >= NOW() - INTERVAL '1 day' "
+                " AND detected_at >= NOW() - INTERVAL '1 day' "
                 "GROUP BY severity"
             ), {"s": slug}).fetchall()
             out["drift_by_severity"] = {r[0]: int(r[1]) for r in rows}
@@ -225,8 +225,8 @@ def _gather_today(slug: str) -> dict:
             rows = conn.execute(text(
                 "SELECT content, source FROM public.dash_memories "
                 "WHERE project_slug = :s "
-                "  AND source IN ('auto_learned', 'episodic') "
-                "  AND created_at >= NOW() - INTERVAL '1 day' "
+                " AND source IN ('auto_learned', 'episodic') "
+                " AND created_at >= NOW() - INTERVAL '1 day' "
                 "ORDER BY created_at DESC LIMIT 5"
             ), {"s": slug}).fetchall()
             out["new_memories"] = [{
@@ -241,7 +241,7 @@ def _gather_today(slug: str) -> dict:
             r = conn.execute(text(
                 "SELECT summary FROM public.dash_digests "
                 "WHERE project_slug = :s "
-                "  AND created_at >= NOW() - INTERVAL '1 day' "
+                " AND created_at >= NOW() - INTERVAL '1 day' "
                 "ORDER BY created_at DESC LIMIT 1"
             ), {"s": slug}).fetchone()
             if r and r[0]:
@@ -305,13 +305,13 @@ def build_digest_content(slug: str) -> dict:
         plain_lines.append("Top promoted hypotheses:")
         for h in data["top_hypotheses"]:
             plain_lines.append(
-                f"  * [{h['type']}] (conf {h['confidence']:.2f}) {h['statement']}"
+                f" * [{h['type']}] (conf {h['confidence']:.2f}) {h['statement']}"
             )
     if data["new_memories"]:
         plain_lines.append("")
         plain_lines.append("New memories:")
         for m in data["new_memories"]:
-            plain_lines.append(f"  * ({m['source']}) {m['content']}")
+            plain_lines.append(f" * ({m['source']}) {m['content']}")
     if data["self_learn_summary"]:
         plain_lines.append("")
         plain_lines.append("Self-learning summary:")
@@ -389,7 +389,7 @@ def send_email(recipients: list[str], subject: str, plain: str, markdown: str) -
     msg["From"] = sender
     msg["To"] = ", ".join(recipients)
     msg.attach(MIMEText(plain, "plain", "utf-8"))
-    # naive markdown→html: keep markdown as plain pre-block for clients
+    # naive markdown>html: keep markdown as plain pre-block for clients
     html = (
         "<html><body><pre style='font-family:monospace;font-size:13px;'>"
         + markdown.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -480,8 +480,8 @@ def send_digest(slug: str) -> dict:
             if result["channels"]:
                 conn.execute(text(
                     "UPDATE public.dash_projects SET "
-                    "  last_digest_sent_at = NOW(), "
-                    "  last_digest_error = :err "
+                    " last_digest_sent_at = NOW(), "
+                    " last_digest_error = :err "
                     "WHERE slug = :s"
                 ), {"err": (("; ".join(result["errors"]))[:500]
                             if result["errors"] else None),
@@ -489,7 +489,7 @@ def send_digest(slug: str) -> dict:
             elif result["errors"]:
                 conn.execute(text(
                     "UPDATE public.dash_projects SET "
-                    "  last_digest_error = :err WHERE slug = :s"
+                    " last_digest_error = :err WHERE slug = :s"
                 ), {"err": ("; ".join(result["errors"]))[:500], "s": slug})
         # audit log (best-effort)
         try:
@@ -510,8 +510,8 @@ def send_digest(slug: str) -> dict:
 # Scheduler
 # ---------------------------------------------------------------------------
 
-_DIGEST_POLL_SECONDS = 5 * 60  # 5 min
-_DIGEST_WINDOW_MIN = 2          # +/- 2 min match window
+_DIGEST_POLL_SECONDS = 5 * 60 # 5 min
+_DIGEST_WINDOW_MIN = 2 # +/- 2 min match window
 _digest_task: Optional[asyncio.Task] = None
 _digest_state: dict[str, Any] = {
     "last_poll": None, "last_sent_count": 0,
@@ -664,10 +664,10 @@ async def set_digest_config(slug: str, request: Request):
         with _write_eng().begin() as conn:
             conn.execute(text(
                 "UPDATE public.dash_projects SET "
-                "  digest_enabled = :en, "
-                "  digest_email_to = :em, "
-                "  digest_slack_enabled = :sl, "
-                "  digest_time_utc = :tu "
+                " digest_enabled = :en, "
+                " digest_email_to = :em, "
+                " digest_slack_enabled = :sl, "
+                " digest_time_utc = :tu "
                 "WHERE slug = :s"
             ), {"en": enabled, "em": email_to, "sl": slack_enabled,
                 "tu": time_utc, "s": slug})

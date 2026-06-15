@@ -1217,20 +1217,15 @@ body { overflow-x: hidden; }
 
 .input-bar {
   background: var(--color-surface-bright);
-  border-top: 1px solid var(--pw-border);
 }
 
 .input-bar textarea {
-  background: var(--color-surface);
-  border: 1px solid var(--pw-border);
-  border-right-width: 1px;
-  border-bottom-width: 1px;
+  background: transparent;
+  border: none;
   font-family: var(--font-family-display);
-  font-size: 13px;
   color: var(--color-on-surface);
   resize: none;
   outline: none;
-  padding: 10px 14px;
   width: 100%;
 }
 
@@ -1843,22 +1838,18 @@ body { overflow-x: hidden; }
 
 :root:not([data-theme="brutalist"]) .input-bar {
   background: var(--pw-bg);
-  border-top: 1px solid var(--pw-border);
 }
 
 :root:not([data-theme="brutalist"]) .input-bar textarea {
-  background: var(--pw-surface);
-  border: 1px solid var(--pw-border);
-  border-radius: var(--pw-radius-sm);
+  background: transparent;
+  border: none;
   font-family: var(--pw-font-body);
-  font-size: 13px;
   color: var(--pw-ink);
-  padding: 10px 14px;
 }
 
 :root:not([data-theme="brutalist"]) .input-bar textarea:focus {
-  border-color: var(--pw-accent);
-  box-shadow: 0 0 0 3px var(--pw-accent-soft);
+  border: none;
+  box-shadow: none;
 }
 
 :root:not([data-theme="brutalist"]) .input-bar textarea::placeholder {

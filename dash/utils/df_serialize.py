@@ -10,14 +10,14 @@ USAGE:
     # out: list[dict] — JSON-safe; bad cells repr()'d, never raises.
 
 Coercion rules (per cell):
-    - Decimal → int if integral, else float
-    - datetime / date / time → isoformat() string
-    - bytes / bytearray → utf-8 decode (errors='replace')
-    - float NaN / Inf → None (JSON-spec / FastAPI reject NaN)
-    - anything else → passthrough (None, int, float, str, bool, list, dict)
+    - Decimal > int if integral, else float
+    - datetime / date / time > isoformat() string
+    - bytes / bytearray > utf-8 decode (errors='replace')
+    - float NaN / Inf > None (JSON-spec / FastAPI reject NaN)
+    - anything else > passthrough (None, int, float, str, bool, list, dict)
 
-Fail-soft: a bad cell (raises during coercion) → repr(cell). Function
-NEVER raises on a row; whole-row exception → returns row with all values
+Fail-soft: a bad cell (raises during coercion) > repr(cell). Function
+NEVER raises on a row; whole-row exception > returns row with all values
 as repr() so caller still gets a usable dict. Bad column-list lengths
 are tolerated (zip-stop on shortest).
 """
@@ -30,7 +30,7 @@ from typing import Any, Iterable, Sequence
 
 
 def _coerce_cell(cell: Any) -> Any:
-    """Single cell → JSON-safe scalar. Never raises (returns repr on error)."""
+    """Single cell > JSON-safe scalar. Never raises (returns repr on error)."""
     try:
         if cell is None:
             return None
@@ -82,7 +82,7 @@ def _coerce_cell(cell: Any) -> Any:
 
         # Last resort — repr(). Don't raise.
         return repr(cell)
-    except Exception:  # noqa: BLE001 — fail-soft
+    except Exception: # noqa: BLE001 — fail-soft
         try:
             return repr(cell)
         except Exception:
@@ -100,10 +100,10 @@ def df_rows_to_jsonable(
         cols: column names (same order as row cells).
 
     Returns:
-        list[dict] — never raises. Bad cell → repr(cell). Empty input → [].
+        list[dict] — never raises. Bad cell > repr(cell). Empty input > [].
 
     Behavior:
-        - If rows or cols is None / empty → returns [].
+        - If rows or cols is None / empty > returns [].
         - zip(row, cols) stops at shortest — extra cells dropped, missing cells
           omitted from dict (caller can handle absence).
     """
@@ -117,7 +117,7 @@ def df_rows_to_jsonable(
             for col_name, cell in zip(cols_list, row):
                 d[col_name] = _coerce_cell(cell)
             out.append(d)
-        except Exception:  # noqa: BLE001 — whole-row failure, still emit something
+        except Exception: # noqa: BLE001 — whole-row failure, still emit something
             try:
                 d = {c: repr(getattr(row, c, None)) for c in cols_list}
             except Exception:

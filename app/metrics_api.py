@@ -1,6 +1,6 @@
 """Per-project user-configurable metric system — FastAPI router.
 
-Prefix: /api/projects  (paths include the project slug)
+Prefix: /api/projects (paths include the project slug)
 
 Endpoint ordering matters: literal sub-paths registered before /{name} catch-all.
 """
@@ -17,14 +17,14 @@ logger = logging.getLogger(__name__)
 
 # Central SQL validator + helper (fail-soft if missing)
 try:
-    from dash.tools.sql_validator import validate_and_fix  # type: ignore
-    from dash.tools.llm_sql_helper import _postgres_sql_rules, get_schema_hint  # type: ignore
+    from dash.tools.sql_validator import validate_and_fix # type: ignore
+    from dash.tools.llm_sql_helper import _postgres_sql_rules, get_schema_hint # type: ignore
     _SQL_VALIDATOR_AVAILABLE = True
-except Exception as _sqlv_exc:  # noqa: BLE001
+except Exception as _sqlv_exc: # noqa: BLE001
     logger.warning("SQL validator unavailable, skipping validation: %s", _sqlv_exc)
-    validate_and_fix = None  # type: ignore
-    _postgres_sql_rules = None  # type: ignore
-    get_schema_hint = None  # type: ignore
+    validate_and_fix = None # type: ignore
+    _postgres_sql_rules = None # type: ignore
+    get_schema_hint = None # type: ignore
     _SQL_VALIDATOR_AVAILABLE = False
 
 router = APIRouter(prefix="/api/projects", tags=["metrics"])
@@ -38,7 +38,7 @@ def _get_user(request: Request) -> Dict[str, Any]:
     user = getattr(getattr(request, "state", None), "user", None)
     if not user:
         try:
-            from app.auth import get_current_user  # type: ignore
+            from app.auth import get_current_user # type: ignore
             user = get_current_user(request)
         except Exception:
             user = None
@@ -50,7 +50,7 @@ def _get_user(request: Request) -> Dict[str, Any]:
 def _require_editor(user: Dict[str, Any], slug: str) -> None:
     """Gate: require editor (or higher) role on the project."""
     try:
-        from app.auth import check_project_permission  # type: ignore
+        from app.auth import check_project_permission # type: ignore
         perm = check_project_permission(user, slug, required_role="editor")
         if not perm:
             raise HTTPException(403, "Editor role required")
@@ -70,7 +70,7 @@ class SpecBody(BaseModel):
     name: Optional[str] = None
     synonyms: Optional[List[str]] = None
     description: Optional[str] = None
-    kind: Optional[str] = None            # count|rate|ratio|contribution|sum|avg
+    kind: Optional[str] = None # count|rate|ratio|contribution|sum|avg
     source_glob: Optional[str] = None
     source_tables: Optional[List[str]] = None
     measure_col: Optional[str] = None
@@ -115,7 +115,7 @@ class AliasBody(BaseModel):
 
 
 class RollbackBody(BaseModel):
-    pass  # version comes from path
+    pass # version comes from path
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +168,7 @@ _TEMPLATES = [
 def _safe_import():
     """Import metric_compiler; raise 503 if not yet available."""
     try:
-        from dash.tools import metric_compiler  # type: ignore
+        from dash.tools import metric_compiler # type: ignore
         return metric_compiler
     except ImportError as exc:
         raise HTTPException(503, f"metric_compiler not available: {exc}")
@@ -215,7 +215,7 @@ def get_review_queue(slug: str, request: Request):
 def get_drift(slug: str, request: Request):
     """
     For each verified metric with a verified_answer pin, run_metric and
-    compare live total vs the pin.  Returns [{name, pinned, live, ok|drift}].
+    compare live total vs the pin. Returns [{name, pinned, live, ok|drift}].
     """
     _get_user(request)
     mc = _safe_import()
@@ -239,14 +239,14 @@ def get_drift(slug: str, request: Request):
             run = mc.run_metric(slug, d, group_by=[])
             if kind in ("rate", "ratio"):
                 rows = run.get("rows") or []
-                live = rows[0][-1] if rows and rows[0] else None  # rate_pct column
+                live = rows[0][-1] if rows and rows[0] else None # rate_pct column
             else:
                 live = run.get("total")
             if expected is None or live is None:
                 status = "no_pin" if expected is None else "error"
                 ok = None
             else:
-                ok = abs(float(live) - float(expected)) <= 0.15  # tolerance for rounding
+                ok = abs(float(live) - float(expected)) <= 0.15 # tolerance for rounding
                 status = "ok" if ok else "drift"
             results.append({"name": name, "kind": kind, "pinned": expected,
                             "live": live, "status": status})
@@ -309,17 +309,17 @@ def tier_compare(slug: str, body: TierCompareBody, request: Request):
     if _SQL_VALIDATOR_AVAILABLE:
         try:
             rules_block = _postgres_sql_rules() or ""
-        except Exception as _rb_exc:  # noqa: BLE001
+        except Exception as _rb_exc: # noqa: BLE001
             logger.warning("_postgres_sql_rules failed for %s: %s", slug, _rb_exc)
         try:
             schema_hint = get_schema_hint(slug) or ""
-        except Exception as _sh_exc:  # noqa: BLE001
+        except Exception as _sh_exc: # noqa: BLE001
             logger.warning("get_schema_hint failed for %s: %s", slug, _sh_exc)
 
     tiers_out = []
     for tier in ["lite", "deep"]:
         try:
-            from dash.settings import training_llm_call  # type: ignore
+            from dash.settings import training_llm_call # type: ignore
             task = "extraction" if tier == "lite" else "deep_analysis"
             prompt_parts = []
             if rules_block:
@@ -353,13 +353,13 @@ def tier_compare(slug: str, body: TierCompareBody, request: Request):
                             "validation_errors": v.get("errors"),
                         })
                         continue
-                    sql_clean = v.get("sql") or sql_clean  # SQL-VALIDATED
-                except Exception as _val_exc:  # noqa: BLE001
+                    sql_clean = v.get("sql") or sql_clean # SQL-VALIDATED
+                except Exception as _val_exc: # noqa: BLE001
                     logger.warning("validate_and_fix raised, skipping: %s", _val_exc)
 
             # Run via run_metric-style — build a minimal spec and run_metric
             synthetic_spec = dict(body.spec)
-            synthetic_spec["_raw_sql_override"] = sql_clean  # SQL-VALIDATED
+            synthetic_spec["_raw_sql_override"] = sql_clean # SQL-VALIDATED
             try:
                 result = mc.run_metric(slug, synthetic_spec)
                 tiers_out.append({"tier": tier, "answer": result.get("total"), "error": None})
@@ -374,8 +374,8 @@ def tier_compare(slug: str, body: TierCompareBody, request: Request):
 @router.post("/{slug}/metrics/derive")
 async def derive_metric(slug: str, body: DeriveBody, request: Request):
     """
-    NL → spec DRAFT.  Uses LLM with column catalog to produce a proposed spec.
-    Returns {spec, confidence}.  NOT saved.
+    NL > spec DRAFT. Uses LLM with column catalog to produce a proposed spec.
+    Returns {spec, confidence}. NOT saved.
     """
     _get_user(request)
     mc = _safe_import()
@@ -395,9 +395,9 @@ async def derive_metric(slug: str, body: DeriveBody, request: Request):
         f"You are a metric definition expert. The user describes a metric: \"{body.text}\"\n\n"
         f"Available columns:\n{catalog_text}\n\n"
         "Output STRICT JSON only (no markdown, no fences) with keys:\n"
-        "  name (snake_case), kind (count|rate|ratio|contribution|sum|avg),\n"
-        "  filters (list of {{col, op, value}}), group_dims (list of col names),\n"
-        "  measure_col (string or null), description (one sentence).\n"
+        " name (snake_case), kind (count|rate|ratio|contribution|sum|avg),\n"
+        " filters (list of {{col, op, value}}), group_dims (list of col names),\n"
+        " measure_col (string or null), description (one sentence).\n"
         "Example: {\"name\":\"active_users\",\"kind\":\"count\","
         "\"filters\":[{\"col\":\"status\",\"op\":\"=\",\"value\":\"active\"}],"
         "\"group_dims\":[],\"measure_col\":null,\"description\":\"...\"}"
@@ -405,7 +405,7 @@ async def derive_metric(slug: str, body: DeriveBody, request: Request):
 
     try:
         import json
-        from dash.settings import training_llm_call  # type: ignore
+        from dash.settings import training_llm_call # type: ignore
         raw = training_llm_call(prompt, "extraction") or ""
         raw = re.sub(r"```[a-z]*\n?", "", raw).replace("```", "").strip()
 
@@ -503,15 +503,15 @@ async def recommend_new_metrics(slug: str, request: Request):
         f"Existing metrics (do NOT repeat these or close variants): {sorted(existing) or 'none'}\n\n"
         f"Available columns:\n{catalog_text}\n\n"
         "Output STRICT JSON only (no markdown/fences): a JSON array where each item has keys:\n"
-        "  name (snake_case), kind (count|rate|ratio|contribution|sum|avg),\n"
-        "  filters (list of {{col, op, value}}), group_dims (list of real column names),\n"
-        "  measure_col (string or null), description (one sentence),\n"
-        "  reason (why this metric is useful, one short phrase).\n"
+        " name (snake_case), kind (count|rate|ratio|contribution|sum|avg),\n"
+        " filters (list of {{col, op, value}}), group_dims (list of real column names),\n"
+        " measure_col (string or null), description (one sentence),\n"
+        " reason (why this metric is useful, one short phrase).\n"
         "Use only real column names from the schema. Return [] if nothing new is worthwhile."
     )
 
     try:
-        from dash.settings import training_llm_call  # type: ignore
+        from dash.settings import training_llm_call # type: ignore
         import json
         raw = training_llm_call(prompt, "extraction") or ""
         raw = re.sub(r"```[a-z]*\n?", "", raw).replace("```", "").strip()
@@ -532,7 +532,7 @@ async def recommend_new_metrics(slug: str, request: Request):
 async def from_chat(slug: str, body: FromChatBody, request: Request):
     """
     Prefill a spec from the SQL the agent actually ran.
-    Parses simple WHERE predicates, COUNT/SUM/AVG → kind, GROUP BY → group_dims.
+    Parses simple WHERE predicates, COUNT/SUM/AVG > kind, GROUP BY > group_dims.
     Returns a draft spec (NOT saved).
     """
     _get_user(request)
@@ -604,13 +604,13 @@ async def import_metrics(slug: str, body: ImportBody, request: Request):
 
 @router.get("/{slug}/metrics/permissions")
 def get_permissions(slug: str, request: Request):
-    """Static role → capability matrix (informational for UI)."""
+    """Static role > capability matrix (informational for UI)."""
     _get_user(request)
     return {
         "permissions": {
-            "viewer":  {"view": True,  "test": True,  "save": False, "approve": False},
-            "editor":  {"view": True,  "test": True,  "save": True,  "approve": False},
-            "admin":   {"view": True,  "test": True,  "save": True,  "approve": True},
+            "viewer": {"view": True, "test": True, "save": False, "approve": False},
+            "editor": {"view": True, "test": True, "save": True, "approve": False},
+            "admin": {"view": True, "test": True, "save": True, "approve": True},
         }
     }
 
@@ -655,12 +655,12 @@ async def create_metric(slug: str, body: SpecBody, request: Request):
 @router.get("/{slug}/metrics/crm-eligible")
 def crm_eligible(slug: str, request: Request):
     """Whether this project's schema looks like a CRM (drives the 'Seed CRM
-    metrics' button visibility). Fail-soft → eligible:false."""
+    metrics' button visibility). Fail-soft > eligible:false."""
     _get_user(request)
     try:
-        from dash.tools.crm_starter import looks_like_crm  # type: ignore
+        from dash.tools.crm_starter import looks_like_crm # type: ignore
         return {"eligible": bool(looks_like_crm(slug))}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("crm-eligible failed for %s: %s", slug, exc)
         return {"eligible": False}
 
@@ -671,9 +671,9 @@ def crm_preview(slug: str, request: Request):
     saving — so the user can pick which to seed."""
     _get_user(request)
     try:
-        from dash.tools.crm_starter import preview_crm_starter  # type: ignore
+        from dash.tools.crm_starter import preview_crm_starter # type: ignore
         return preview_crm_starter(slug)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.warning("crm-preview failed for %s: %s", slug, exc)
         return {"ok": False, "candidates": [], "error": str(exc)}
 
@@ -690,17 +690,17 @@ async def seed_crm(slug: str, request: Request):
         body = await request.json()
         if isinstance(body, dict) and isinstance(body.get("names"), list):
             only = [str(n) for n in body["names"] if n]
-    except Exception:  # noqa: BLE001
+    except Exception: # noqa: BLE001
         only = None
     try:
-        from dash.tools.crm_starter import seed_crm_starter  # type: ignore
+        from dash.tools.crm_starter import seed_crm_starter # type: ignore
         res = seed_crm_starter(slug, only=only)
         try:
             _safe_import().cache_bust(slug)
-        except Exception:  # noqa: BLE001
+        except Exception: # noqa: BLE001
             pass
         return res
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.warning("seed-crm failed for %s: %s", slug, exc)
         raise HTTPException(502, f"seed-crm error: {exc}")
 

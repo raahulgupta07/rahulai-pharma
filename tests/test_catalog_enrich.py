@@ -48,9 +48,9 @@ def test_gap_predicate_rejects_unknown_field():
 def test_is_blank():
     assert ce._is_blank(None)
     assert ce._is_blank("")
-    assert ce._is_blank("   ")
+    assert ce._is_blank(" ")
     assert not ce._is_blank("x")
-    assert not ce._is_blank(0)  # numeric zero is a real value
+    assert not ce._is_blank(0) # numeric zero is a real value
 
 
 # --------------------------------------------------------------------------- #
@@ -69,10 +69,10 @@ def test_prompt_includes_brand_and_examples():
         examples,
     )
     assert "Panadol Extra" in prompt
-    assert "Paracetamol" in prompt          # grounded example value present
+    assert "Paracetamol" in prompt # grounded example value present
     assert "generic_name" in prompt
     assert "composition" in prompt
-    assert "unknown" in prompt              # the non-answer contract
+    assert "unknown" in prompt # the non-answer contract
     assert "STRICT JSON" in prompt
 
 
@@ -107,7 +107,7 @@ def test_parse_fenced_json():
     out = ce.parse_llm_json(raw)
     assert out["category"]["suggested"] == "Antibiotic"
     assert out["category"]["confidence"] == 0.7
-    assert out["category"]["reason"] == ""  # missing reason → empty string
+    assert out["category"]["reason"] == "" # missing reason > empty string
 
 
 def test_parse_json_with_surrounding_prose():
@@ -123,8 +123,8 @@ def test_parse_drops_unknown_and_blank():
         ' "category": {"suggested": "Vitamin", "confidence": 0.8}}'
     )
     out = ce.parse_llm_json(raw)
-    assert "generic_name" not in out      # "unknown" skipped
-    assert "composition" not in out       # blank skipped
+    assert "generic_name" not in out # "unknown" skipped
+    assert "composition" not in out # blank skipped
     assert out["category"]["suggested"] == "Vitamin"
 
 
@@ -132,7 +132,7 @@ def test_parse_garbage_returns_empty():
     assert ce.parse_llm_json("not json at all") == {}
     assert ce.parse_llm_json("") == {}
     assert ce.parse_llm_json("```json\n{broken json,,,\n```") == {}
-    assert ce.parse_llm_json("[1, 2, 3]") == {}  # list, not object
+    assert ce.parse_llm_json("[1, 2, 3]") == {} # list, not object
 
 
 def test_parse_ignores_non_enrichable_keys_and_clamps_confidence():
@@ -142,7 +142,7 @@ def test_parse_ignores_non_enrichable_keys_and_clamps_confidence():
     )
     out = ce.parse_llm_json(raw)
     assert "brand_name" not in out
-    assert out["category"]["confidence"] == 1.0  # clamped to [0,1]
+    assert out["category"]["confidence"] == 1.0 # clamped to [0,1]
 
 
 def test_parse_bad_confidence_defaults_zero():

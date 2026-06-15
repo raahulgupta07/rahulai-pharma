@@ -1,7 +1,7 @@
 """External data adapter — plug-in registry for free open-data APIs.
 
 Sources:
-- FRED (US macro econ): https://api.stlouisfed.org/fred/series  (api key)
+- FRED (US macro econ): https://api.stlouisfed.org/fred/series (api key)
 - Census (US demographics): https://api.census.gov/data
 - World Bank: https://api.worldbank.org/v2/country
 - Wikipedia: https://en.wikipedia.org/api/rest_v1/page/summary
@@ -12,7 +12,7 @@ Sources:
 
 Each source = subclass of DataProvider w/ search() method.
 Results cached in dash_external_facts table by query_hash.
-Registry maps domain → list of providers prioritized for that domain.
+Registry maps domain > list of providers prioritized for that domain.
 """
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ class ExternalFact:
 
 class DataProvider(ABC):
     name: str = ""
-    domains: list[str] = []     # which domains this is relevant to
+    domains: list[str] = [] # which domains this is relevant to
 
     @abstractmethod
     def search(self, query: str, *, limit: int = 5) -> list[ExternalFact]:
@@ -58,7 +58,7 @@ class DataProvider(ABC):
 def _try_import_requests():
     """Lazy import of requests; logs a warning and returns None if unavailable."""
     try:
-        import requests  # type: ignore
+        import requests # type: ignore
         return requests
     except Exception as e:
         logger.warning(f"requests library not available: {e}")
@@ -123,7 +123,7 @@ class FREDProvider(DataProvider):
 
 class WikipediaProvider(DataProvider):
     name = "wikipedia"
-    domains = ["all"]   # universal
+    domains = ["all"] # universal
 
     def is_configured(self) -> bool:
         try:
@@ -199,7 +199,7 @@ class WorldBankProvider(DataProvider):
             r = requests.get(
                 "https://api.worldbank.org/v2/indicator",
                 params={"format": "json", "per_page": 1000,
-                        "source": 2},  # WDI
+                        "source": 2}, # WDI
                 timeout=15,
             )
             if r.status_code != 200:
@@ -401,8 +401,8 @@ def _query_hash(query: str, source: str) -> str:
 
 def _cache_get(query: str, source: str) -> Optional[list[ExternalFact]]:
     try:
-        from sqlalchemy import text  # type: ignore
-        from db.session import get_sql_engine  # type: ignore
+        from sqlalchemy import text # type: ignore
+        from db.session import get_sql_engine # type: ignore
         eng = get_sql_engine()
         with eng.connect() as conn:
             row = conn.execute(text(
@@ -426,8 +426,8 @@ def _cache_get(query: str, source: str) -> Optional[list[ExternalFact]]:
 
 def _cache_put(query: str, source: str, facts: list[ExternalFact], ttl_days: int):
     try:
-        from sqlalchemy import text  # type: ignore
-        from db.session import get_sql_engine  # type: ignore
+        from sqlalchemy import text # type: ignore
+        from db.session import get_sql_engine # type: ignore
         eng = get_sql_engine()
         payload = {"facts": [asdict(f) for f in facts]}
         with eng.connect() as conn:

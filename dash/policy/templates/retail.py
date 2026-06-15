@@ -2,7 +2,7 @@ TEMPLATE = {
     "label": "Retail",
     "description": "Multi-store retail chain — protect customer + commercial fields, share availability",
     "scope_keyword": "store",
-    "icon": "🛒",
+    "icon": "",
     "policy": {
         "version": 1,
         "private": {"fields": {}},

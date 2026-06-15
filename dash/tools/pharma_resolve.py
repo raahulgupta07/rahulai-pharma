@@ -1,16 +1,16 @@
 """Shared 3-state article resolver for the CityPharma pharma tools.
 
 shop_flat is a FULL OUTER join of catalog × stock with a `link_status` column:
-  'both'         — article in catalog AND has a stock row (brand/generic real,
+  'both' — article in catalog AND has a stock row (brand/generic real,
                    stock_qty real, linked=true, site_code = a real site).
   'catalog_only' — article in catalog but NO stock anywhere (the COMMON case:
                    frozen / advance-entry / supplier-out). ONE row per article,
                    site_code='__none__', stock_qty=0, brand/generic POPULATED.
-  'stock_only'   — stock row with NO catalog match (rare: delayed catalog
+  'stock_only' — stock row with NO catalog match (rare: delayed catalog
                    update). brand/generic NULL, linked=false, real site_code.
 
 `resolve_article` is the SINGLE SOURCE of the "Not Found" wording so every tool
-answers the product owner's rule the same way: "found → return info; not found →
+answers the product owner's rule the same way: "found > return info; not found >
 Not Found." Catalog and stock are maintained by different ERP processes and do
 NOT match 100% — that is EXPECTED, never an error. An article that is merely
 `catalog_only` is IN the catalog with 0 stock; it is NOT "out of stock
@@ -57,11 +57,11 @@ def _looks_like_code(query: str) -> bool:
 def resolve_article(cur, schema: str, query: str, *, sites=None) -> dict:
     """Resolve a free-text brand/generic OR a bare article code to a 3-state result.
 
-    cur    — an OPEN psycopg cursor (caller owns the connection; search_path is
+    cur — an OPEN psycopg cursor (caller owns the connection; search_path is
              expected to already include `schema`, as the pharma tools set it).
     schema — the data schema (e.g. 'citypharma').
-    query  — brand name, generic/salt, partial name, OR a bare article code.
-    sites  — optional list of site_codes to restrict the STOCK view to (e.g. a
+    query — brand name, generic/salt, partial name, OR a bare article code.
+    sites — optional list of site_codes to restrict the STOCK view to (e.g. a
              store-locked key's owned set). Catalog PRESENCE is always
              whole-chain (sites only narrows which real sites count as stocked).
 
@@ -69,8 +69,8 @@ def resolve_article(cur, schema: str, query: str, *, sites=None) -> dict:
       {"state": "both"|"catalog_only"|"stock_only"|"not_found",
        "art_keys": [...], "rows": [...], "message": <human string>}
 
-    State precedence over all matched rows: any 'both' → 'both'; elif only
-    'catalog_only' → 'catalog_only'; elif only 'stock_only' → 'stock_only'; else
+    State precedence over all matched rows: any 'both' > 'both'; elif only
+    'catalog_only' > 'catalog_only'; elif only 'stock_only' > 'stock_only'; else
     'not_found'. Fail-soft: a missing/NULL link_status (older pre-build row) is
     treated as 'both' so nothing breaks before the build rewrite lands.
     """
@@ -85,7 +85,7 @@ def resolve_article(cur, schema: str, query: str, *, sites=None) -> dict:
 
     # Match by name (brand/generic ILIKE) and — when the query looks like a code —
     # by an exact art_key match too. The exact-code arm is what surfaces
-    # stock_only rows (NULL brand → an ILIKE-by-name can never reach them).
+    # stock_only rows (NULL brand > an ILIKE-by-name can never reach them).
     where = ["brand ILIKE %s", "generic ILIKE %s"]
     params: list = [like, like]
     if is_code:
@@ -149,7 +149,7 @@ def resolve_article(cur, schema: str, query: str, *, sites=None) -> dict:
         "not_found": MSG_NOT_FOUND,
     }
 
-    art_keys = list(dict.fromkeys(r["art_key"] for r in rows))  # dedup, ordered
+    art_keys = list(dict.fromkeys(r["art_key"] for r in rows)) # dedup, ordered
     return {
         "state": state,
         "art_keys": art_keys,

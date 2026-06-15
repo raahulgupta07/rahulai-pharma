@@ -10,7 +10,7 @@ import json
 import logging
 import os
 import threading
-import time  # noqa: F401
+import time # noqa: F401
 from contextvars import ContextVar
 from typing import Any, Callable
 
@@ -170,7 +170,7 @@ def _classify_result(result: Any) -> tuple[bool, str | None, str | None]:
     """Heuristic: tool functions return strings; ones starting with ERROR/Error are failures."""
     if isinstance(result, str):
         head = result.lstrip()[:32].lower()
-        if head.startswith(("error", "no rows", "failed", "❌")):
+        if head.startswith(("error", "no rows", "failed", "")):
             return False, "ToolReturnedError", result[:500]
     return True, None, None
 
@@ -282,13 +282,13 @@ start_flusher()
 
 # ── Phase 2 — Utility scoring ──────────────────────────────────────────
 SCORE_WINDOW_DAYS = 14
-LATENCY_NORM_MS = 5000   # 5s = 0; 0ms = 1; linearly clipped
+LATENCY_NORM_MS = 5000 # 5s = 0; 0ms = 1; linearly clipped
 
 
 # ── Phase 5 — Active patch loader ──────────────────────────────────────
 _PATCH_CACHE: dict[tuple[str, str | None], dict] = {}
 _PATCH_CACHE_TS: float = 0.0
-_PATCH_CACHE_TTL = 60.0  # seconds
+_PATCH_CACHE_TTL = 60.0 # seconds
 
 
 def _get_active_patch(tool_name: str, project_slug: str | None = None) -> dict | None:
@@ -316,8 +316,8 @@ def _get_active_patch(tool_name: str, project_slug: str | None = None) -> dict |
                 "SELECT new_description, default_args, version "
                 "FROM public.dash_tool_patches "
                 "WHERE tool_name = :t "
-                "  AND (project_slug = :s OR project_slug IS NULL) "
-                "  AND applied = TRUE AND reverted = FALSE "
+                " AND (project_slug = :s OR project_slug IS NULL) "
+                " AND applied = TRUE AND reverted = FALSE "
                 "ORDER BY (project_slug IS NULL), version DESC "
                 "LIMIT 1"
             ), {"t": tool_name, "s": project_slug}).first()
@@ -355,7 +355,7 @@ def merge_default_args(tool_name: str, kwargs: dict,
     if not p or not p.get("default_args"):
         return kwargs
     merged = dict(p["default_args"])
-    merged.update(kwargs)  # caller's values override patch defaults
+    merged.update(kwargs) # caller's values override patch defaults
     return merged
 
 
@@ -432,8 +432,8 @@ def _wrap_plain_callable(fn, agent, project_slug, name):
             call_kwargs["agent"] = agent
         return tracked(name, fn, *args, **call_kwargs)
 
-    _w._sr_tracked = True  # type: ignore[attr-defined]
-    _w._sr_original = fn   # type: ignore[attr-defined]
+    _w._sr_tracked = True # type: ignore[attr-defined]
+    _w._sr_original = fn # type: ignore[attr-defined]
     return _w
 
 
@@ -441,8 +441,8 @@ def auto_track_list(tools, agent: str | None = None, project_slug: str | None = 
     """Wrap every tool in the list IN PLACE.
 
     Two paths:
-    - agno Function/Tool objects (have .entrypoint) → swap entrypoint
-    - plain Python @tool-decorated callables (no .entrypoint) → replace with wrapped fn
+    - agno Function/Tool objects (have .entrypoint) > swap entrypoint
+    - plain Python @tool-decorated callables (no .entrypoint) > replace with wrapped fn
     """
     for i, t in enumerate(tools):
         try:
@@ -474,7 +474,7 @@ def compute_utility_scores(project_slug: str | None = None,
     from sqlalchemy import text
 
     eng = _get_engine()
-    flush_first = _flush_buffer_to_db()  # capture in-flight rows before scoring
+    flush_first = _flush_buffer_to_db() # capture in-flight rows before scoring
     if flush_first:
         logger.info("skill_refinery: flushed %d before scoring", flush_first)
 
@@ -487,14 +487,14 @@ def compute_utility_scores(project_slug: str | None = None,
 
     sql = f"""
         SELECT tool_name,
-               COUNT(*)                                                  AS calls,
-               SUM(CASE WHEN NOT success THEN 1 ELSE 0 END)              AS fails,
-               AVG(CASE WHEN success THEN 1.0 ELSE 0.0 END)              AS success_rate,
-               AVG(NULLIF(feedback,0)::float)                            AS fb_avg,
-               PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms)   AS p50,
-               PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms)  AS p95,
+               COUNT(*) AS calls,
+               SUM(CASE WHEN NOT success THEN 1 ELSE 0 END) AS fails,
+               AVG(CASE WHEN success THEN 1.0 ELSE 0.0 END) AS success_rate,
+               AVG(NULLIF(feedback,0)::float) AS fb_avg,
+               PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms) AS p50,
+               PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95,
                (ARRAY_AGG(error_message ORDER BY ts DESC)
-                FILTER (WHERE error_message IS NOT NULL))[1]             AS last_err
+                FILTER (WHERE error_message IS NOT NULL))[1] AS last_err
         FROM dash.dash_tool_utility_scores
         WHERE {where_sql}
         GROUP BY tool_name
@@ -507,7 +507,7 @@ def compute_utility_scores(project_slug: str | None = None,
         for r in rows:
             tool_name, calls, fails, sr, fb_avg, p50, p95, last_err = r
             success_pct = float(sr or 0) * 100.0
-            # feedback: -1..+1 → 0..1; neutral 0.5 if no signal
+            # feedback: -1..+1 > 0..1; neutral 0.5 if no signal
             fb_norm = ((float(fb_avg) + 1.0) / 2.0) if fb_avg is not None else 0.5
             feedback_pct = fb_norm * 100.0
             lat_norm = max(0.0, min(1.0, 1.0 - (float(p50 or 0) / LATENCY_NORM_MS)))

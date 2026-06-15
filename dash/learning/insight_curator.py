@@ -135,7 +135,7 @@ def _gen_coverage(cur, schema: str) -> list[dict]:
             try:
                 from dash.tools.shop_labels import shop_label
             except Exception:
-                shop_label = lambda x: x  # noqa: E731
+                shop_label = lambda x: x # noqa: E731
             worst = rows[0]
             out.append({
                 "kind": "coverage",
@@ -214,7 +214,7 @@ def run_insight_curator(slug: str, dry_run: bool = False) -> dict:
     """
     if not slug:
         return {"insights": [], "written": 0, "error": "no slug"}
-    schema = slug  # single-tenant: schema name == slug
+    schema = slug # single-tenant: schema name == slug
     insights: list[dict] = []
     fresh = {}
     try:
@@ -266,7 +266,7 @@ def run_insight_curator(slug: str, dry_run: bool = False) -> dict:
                 for ins in insights:
                     # ON CONFLICT DO NOTHING: a name already present is either an
                     # admin-APPROVED (active) insight or a rejected one — don't
-                    # re-propose it. fetchone() → None on conflict, so we skip it.
+                    # re-propose it. fetchone() > None on conflict, so we skip it.
                     cur.execute(
                         "INSERT INTO public.dash_company_brain "
                         "(category, name, definition, metadata, project_slug, "
@@ -280,7 +280,7 @@ def run_insight_curator(slug: str, dry_run: bool = False) -> dict:
                          slug))
                     _r = cur.fetchone()
                     if not _r:
-                        continue  # name already exists (approved/rejected) — skip
+                        continue # name already exists (approved/rejected) — skip
                     brain_id = _r[0]
                     cur.execute(
                         "INSERT INTO public.dash_insights "

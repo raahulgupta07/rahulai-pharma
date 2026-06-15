@@ -36,7 +36,7 @@ _DDL_STORE_CAP = 4000
 # DDL fed to the LLM prompt is capped too (views can be huge).
 _DDL_PROMPT_CAP = 8000
 
-_LLM_TASK = "deep_analysis"  # valid task key in TRAINING_CONFIGS
+_LLM_TASK = "deep_analysis" # valid task key in TRAINING_CONFIGS
 
 
 # --------------------------------------------------------------------------- #
@@ -93,7 +93,7 @@ def _table_ddl(conn, slug: str, table: str) -> str:
 
     col_lines = []
     for name, dtype, nullable, default in cols:
-        piece = f'  "{name}" {dtype}'
+        piece = f' "{name}" {dtype}'
         if (nullable or "").upper() == "NO":
             piece += " NOT NULL"
         if default:
@@ -106,10 +106,10 @@ def _table_ddl(conn, slug: str, table: str) -> str:
             "SELECT tc.constraint_type, kcu.column_name, tc.constraint_name "
             "FROM information_schema.table_constraints tc "
             "JOIN information_schema.key_column_usage kcu "
-            "  ON tc.constraint_name = kcu.constraint_name "
-            "  AND tc.table_schema = kcu.table_schema "
+            " ON tc.constraint_name = kcu.constraint_name "
+            " AND tc.table_schema = kcu.table_schema "
             "WHERE tc.table_schema = :slug AND tc.table_name = :t "
-            "  AND tc.constraint_type IN ('PRIMARY KEY','FOREIGN KEY') "
+            " AND tc.constraint_type IN ('PRIMARY KEY','FOREIGN KEY') "
             "ORDER BY tc.constraint_type, kcu.ordinal_position"
         ),
         {"slug": slug, "t": table},
@@ -120,10 +120,10 @@ def _table_ddl(conn, slug: str, table: str) -> str:
 
     extra = []
     if pk_cols:
-        extra.append("  PRIMARY KEY (" + ", ".join(f'"{c}"' for c in pk_cols) + ")")
+        extra.append(" PRIMARY KEY (" + ", ".join(f'"{c}"' for c in pk_cols) + ")")
     if fk_cols:
         # We can't cheaply resolve target tables here; note the FK columns.
-        extra.append("  -- FOREIGN KEY columns: " + ", ".join(fk_cols))
+        extra.append(" -- FOREIGN KEY columns: " + ", ".join(fk_cols))
 
     body = ",\n".join(col_lines + extra)
     return f'CREATE TABLE {_qualified(slug, table)} (\n{body}\n);'
@@ -193,7 +193,7 @@ def _enrich_with_llm(kind: str, table: str, ddl: str, saved_sql: str | None) -> 
         prompt_parts.append(
             "--- A SAVED TRANSFORMATION QUERY THAT REFERENCES THIS OBJECT ---\n"
             f"{saved_sql[:2000]}\n"
-            "⚠ NOTE: this saved query is illustrative — it does NOT define the "
+            " NOTE: this saved query is illustrative — it does NOT define the "
             "grain. Grain = what one row of the BASE TABLE represents, derived "
             "from the DDL above (primary key cols, column semantics). DO NOT "
             "let aggregation in the saved query (SUM/AVG/COUNT/GROUP BY) bleed "
@@ -205,18 +205,18 @@ def _enrich_with_llm(kind: str, table: str, ddl: str, saved_sql: str | None) -> 
         "Extract the pipeline logic and respond with ONLY a JSON object "
         "(no prose, no code fences) with EXACTLY these keys:\n"
         "{\n"
-        '  "grain": "what one row represents",\n'
-        '  "derived_columns": [{"col": "name", "formula": "how it is computed"}],\n'
-        '  "populations_included": "rows/filters this includes",\n'
-        '  "populations_excluded": "rows/filters this excludes",\n'
-        '  "refresh_hint": "how/when this is refreshed if inferable, else empty",\n'
-        '  "summary": "one-paragraph plain-English description of what this object means"\n'
+        ' "grain": "what one row represents",\n'
+        ' "derived_columns": [{"col": "name", "formula": "how it is computed"}],\n'
+        ' "populations_included": "rows/filters this includes",\n'
+        ' "populations_excluded": "rows/filters this excludes",\n'
+        ' "refresh_hint": "how/when this is refreshed if inferable, else empty",\n'
+        ' "summary": "one-paragraph plain-English description of what this object means"\n'
         "}"
     )
     prompt = "\n".join(prompt_parts)
     try:
         raw = training_llm_call(prompt, _LLM_TASK)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.warning("codex_code: LLM call failed for %s: %s", table, e)
         return {}
     return _parse_llm_json(raw)
@@ -265,9 +265,9 @@ def _persist(conn, slug: str, table: str, payload: dict) -> None:
             text(
                 "UPDATE public.dash_table_metadata "
                 "SET metadata = jsonb_set("
-                "  COALESCE(metadata, '{}'::jsonb), "
-                "  '{pipeline_logic}', CAST(:p AS jsonb), true), "
-                "  updated_at = NOW() "
+                " COALESCE(metadata, '{}'::jsonb), "
+                " '{pipeline_logic}', CAST(:p AS jsonb), true), "
+                " updated_at = NOW() "
                 "WHERE project_slug = :s AND table_name = :t"
             ),
             {"p": p, "s": slug, "t": table},
@@ -295,7 +295,7 @@ def run_codex_code_enrichment(project_slug: str) -> dict:
 
     try:
         engine = _get_engine()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.warning("codex_code: could not get engine: %s", e)
         result["errors"] += 1
         return result
@@ -304,7 +304,7 @@ def run_codex_code_enrichment(project_slug: str) -> dict:
         with engine.connect() as conn:
             try:
                 tables = _list_tables(conn, project_slug)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e: # noqa: BLE001
                 logger.warning("codex_code: list tables failed for %s: %s", project_slug, e)
                 result["errors"] += 1
                 return result
@@ -350,14 +350,14 @@ def run_codex_code_enrichment(project_slug: str) -> dict:
                     _persist(conn, project_slug, table, payload)
                     result["tables_enriched"] += 1
 
-                except Exception as e:  # noqa: BLE001
+                except Exception as e: # noqa: BLE001
                     logger.warning(
                         "codex_code: enrichment failed for %s.%s: %s",
                         project_slug, table, e,
                     )
                     result["errors"] += 1
                     continue
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.warning("codex_code: run failed for %s: %s", project_slug, e)
         result["errors"] += 1
 

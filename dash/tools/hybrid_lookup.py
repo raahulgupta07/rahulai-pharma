@@ -17,13 +17,13 @@ Contract:
     hybrid_lookup(query: str) -> str
 
     - Classifies `query`.
-    - DETERMINISTIC (exact)  → runs a single safe COUNT/SUM SQL against the
+    - DETERMINISTIC (exact) > runs a single safe COUNT/SUM SQL against the
       project read-only engine (resolved exactly like the Analyst's SQL tool)
       and returns the figure.
-    - SEMANTIC               → calls the existing search_all tool and returns
+    - SEMANTIC > calls the existing search_all tool and returns
       ranked context.
-    - HYBRID                 → returns both, clearly separated.
-    - Never raises. Any failure → "hybrid_lookup error: ...". If a safe SQL
+    - HYBRID > returns both, clearly separated.
+    - Never raises. Any failure > "hybrid_lookup error: ...". If a safe SQL
       can't be built, it conservatively falls back to SEMANTIC and says so.
 
 Engine rule: reads go through ``get_project_readonly_engine`` (same resolution
@@ -135,7 +135,7 @@ def _pick_table(query: str, tables: list[str]) -> str | None:
             best, best_score = tbl, score
     if best is not None and best_score > 0:
         return best
-    # Single-table project → safe to use it even without overlap.
+    # Single-table project > safe to use it even without overlap.
     return tables[0] if len(tables) == 1 else None
 
 
@@ -164,9 +164,9 @@ def _deterministic_count(engine, schema: str, query: str) -> str:
 
     return (
         f"DETERMINISTIC (exact)\n"
-        f"  table : {safe_schema}.{safe_table}\n"
-        f"  sql   : {sql}\n"
-        f"  count : {int(n) if n is not None else 0}\n"
+        f" table : {safe_schema}.{safe_table}\n"
+        f" sql : {sql}\n"
+        f" count : {int(n) if n is not None else 0}\n"
         f"(Exact figure from Postgres — not from similarity search.)"
     )
 
@@ -181,7 +181,7 @@ def _semantic(query: str, project_slug: str | None) -> str:
         fn = getattr(sa, "entrypoint", None) or sa
         result = fn(query)
         return f"SEMANTIC\n{result}"
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.debug(f"semantic path failed: {e}")
         return f"SEMANTIC\n(semantic search unavailable: {e})"
 
@@ -211,7 +211,7 @@ def create_hybrid_lookup_tool(project_slug: str | None = None):
             mode = _classify(query)
             engine, schema = _resolve_engine_and_schema(project_slug)
 
-            # No project bound → can't run deterministic SQL; semantic only.
+            # No project bound > can't run deterministic SQL; semantic only.
             if mode == "deterministic" and engine is None:
                 return (
                     "DETERMINISTIC requested but no project schema is bound; "
@@ -248,7 +248,7 @@ def create_hybrid_lookup_tool(project_slug: str | None = None):
             parts.append(_semantic(query, project_slug))
             return "\n".join(parts)
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e: # noqa: BLE001
             logger.warning(f"hybrid_lookup error: {e}")
             return f"hybrid_lookup error: {e}"
 

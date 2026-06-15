@@ -52,7 +52,7 @@ SYSTEM_BLUEPRINTS: list[dict[str, Any]] = [
         "slug": "pharmacy",
         "name": "Pharmacy / Multi-Site Retail",
         "industry": "pharmacy",
-        "icon": "💊",
+        "icon": "",
         "tagline": "Each pharmacy sees only its own stock; customers can still discover availability across the network.",
         "description": (
             "Per-site stock visibility for pharmacy chains. Each site sees only "
@@ -68,7 +68,7 @@ SYSTEM_BLUEPRINTS: list[dict[str, Any]] = [
         ],
         "common_pitfalls": [
             "If your stock table is named `inventory` or `stock_balance` instead of `balance_stock`, the apply will skip those policies — rename via IMPORT FROM SCHEMA or save as a custom blueprint.",
-            "Missing `site_code` claim → every request will be denied. Pass it from your auth layer.",
+            "Missing `site_code` claim > every request will be denied. Pass it from your auth layer.",
             "Setting cost columns to `shared` instead of `hidden` leaks margin to staff and customers.",
         ],
         "next_steps": [
@@ -101,7 +101,7 @@ SYSTEM_BLUEPRINTS: list[dict[str, Any]] = [
         "slug": "retail_multi_store",
         "name": "Retail Multi-Store",
         "industry": "retail",
-        "icon": "🛒",
+        "icon": "",
         "tagline": "Each store sees only its own sales and stock; HQ sees the network.",
         "description": (
             "Store-scoped inventory + sales for retail chains. Each store sees "
@@ -151,7 +151,7 @@ SYSTEM_BLUEPRINTS: list[dict[str, Any]] = [
         "slug": "saas_b2b",
         "name": "SaaS B2B Multi-Tenant",
         "industry": "saas",
-        "icon": "☁️",
+        "icon": "",
         "tagline": "Hard tenant isolation — every row scoped to tenant_id, no cross-tenant leaks.",
         "description": (
             "Hard tenant isolation for B2B SaaS. Every row in organizations, "
@@ -166,8 +166,8 @@ SYSTEM_BLUEPRINTS: list[dict[str, Any]] = [
             "Internal admin tools needing tenant scope",
         ],
         "common_pitfalls": [
-            "Forgetting to mint a tenant_id claim → all requests rejected (private mode requires the filter).",
-            "Using `org_id` or `account_id` instead of `tenant_id` → rename the claim or save a custom blueprint.",
+            "Forgetting to mint a tenant_id claim > all requests rejected (private mode requires the filter).",
+            "Using `org_id` or `account_id` instead of `tenant_id` > rename the claim or save a custom blueprint.",
             "Super-admin users need an explicit bypass role; otherwise even admin SQL is scoped.",
         ],
         "next_steps": [
@@ -195,7 +195,7 @@ SYSTEM_BLUEPRINTS: list[dict[str, Any]] = [
         "slug": "hr_analytics",
         "name": "HR Analytics",
         "industry": "hr",
-        "icon": "👥",
+        "icon": "",
         "tagline": "Employees see themselves, managers see reports, HR sees all — salaries hidden except for HR.",
         "description": (
             "Employees see only their own record; managers see direct reports; "
@@ -212,7 +212,7 @@ SYSTEM_BLUEPRINTS: list[dict[str, Any]] = [
         "common_pitfalls": [
             "If managers can't see direct reports, double-check the `manager_id` column on employees and add it as a custom filter.",
             "Setting salaries to `redacted` (rounded bands) instead of `hidden` may still let staff infer comp.",
-            "Forgetting role=hr → even HR users see NULL salaries.",
+            "Forgetting role=hr > even HR users see NULL salaries.",
         ],
         "next_steps": [
             "Tag every user with role: self, manager, or hr.",
@@ -241,7 +241,7 @@ SYSTEM_BLUEPRINTS: list[dict[str, Any]] = [
         "slug": "banking_branch",
         "name": "Banking — Branch Scoped",
         "industry": "banking",
-        "icon": "🏦",
+        "icon": "",
         "tagline": "Tellers see only their branch; regional and compliance bypass; SSN always hidden.",
         "description": (
             "Branch-scoped account balances and transactions for retail banking. "
@@ -256,7 +256,7 @@ SYSTEM_BLUEPRINTS: list[dict[str, Any]] = [
             "Compliance / AML audit teams",
         ],
         "common_pitfalls": [
-            "Missing `branch_id` claim → all teller requests rejected.",
+            "Missing `branch_id` claim > all teller requests rejected.",
             "Setting customers.ssn to anything other than `hidden` is a regulatory red flag.",
             "Compliance users must have role=compliance — without it, they cannot run audits.",
         ],
@@ -288,7 +288,7 @@ SYSTEM_BLUEPRINTS: list[dict[str, Any]] = [
         "slug": "healthcare_clinic",
         "name": "Healthcare — Clinic Scoped",
         "industry": "healthcare",
-        "icon": "🏥",
+        "icon": "",
         "tagline": "Each clinic sees only its own patients; billing hidden from clinical staff.",
         "description": (
             "Clinic-scoped patient records and prescriptions. Each clinic sees "
@@ -303,7 +303,7 @@ SYSTEM_BLUEPRINTS: list[dict[str, Any]] = [
             "Clinic-network admin dashboard",
         ],
         "common_pitfalls": [
-            "Missing `clinic_id` claim → all patient queries rejected.",
+            "Missing `clinic_id` claim > all patient queries rejected.",
             "If your prescriptions table is `rx` or `medications`, the apply skips that policy.",
             "Letting clinical staff see billing amounts violates the staff/finance split.",
         ],
@@ -342,14 +342,14 @@ _UPSERT_SQL = text(
          CAST(:claims AS jsonb), CAST(:policies AS jsonb),
          :required_tables, TRUE, NULL, 0)
     ON CONFLICT (slug) DO UPDATE SET
-        name            = EXCLUDED.name,
-        industry        = EXCLUDED.industry,
-        icon            = EXCLUDED.icon,
-        description     = EXCLUDED.description,
-        claims          = EXCLUDED.claims,
-        policies        = EXCLUDED.policies,
+        name = EXCLUDED.name,
+        industry = EXCLUDED.industry,
+        icon = EXCLUDED.icon,
+        description = EXCLUDED.description,
+        claims = EXCLUDED.claims,
+        policies = EXCLUDED.policies,
         required_tables = EXCLUDED.required_tables,
-        is_system       = TRUE
+        is_system = TRUE
     """
 )
 

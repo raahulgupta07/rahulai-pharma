@@ -31,7 +31,7 @@ def product_name() -> str:
 
 
 def resolve_slug(slug: str | None = None) -> str:
-    """In single-agent mode, ignore the requested slug → always the locked one."""
+    """In single-agent mode, ignore the requested slug > always the locked one."""
     if is_single_agent():
         return locked_slug()
     return slug or ""

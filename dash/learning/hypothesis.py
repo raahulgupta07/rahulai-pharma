@@ -1,6 +1,6 @@
 """HypothesisEngine — convert ResearchDossier into testable Hypothesis objects.
 
-Pattern: 1 dossier → 1-3 hypotheses. Type detection by LLM. Confidence
+Pattern: 1 dossier > 1-3 hypotheses. Type detection by LLM. Confidence
 seeded by triangulation count (0 tiers = 0.30, 1 tier = 0.40, 2 = 0.55,
 3+ = 0.70). LLM extracts SPO/rule/formula form.
 
@@ -246,7 +246,7 @@ If no hypothesis is well-supported, return empty array [].
                     "UPDATE public.dash_hypotheses SET "
                     " confidence = LEAST(1.0, GREATEST(0.0, confidence + :d)), "
                     " metadata = COALESCE(metadata, '{}'::jsonb) || "
-                    "            jsonb_build_object('last_delta_reason', :r) "
+                    " jsonb_build_object('last_delta_reason', :r) "
                     "WHERE id = :id"
                 ), {"d": delta, "r": reason, "id": hypothesis_id})
                 conn.commit()

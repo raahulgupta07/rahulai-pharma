@@ -17,8 +17,8 @@ Each run records per-group pass/fail into a compact tracking table
 (``dash_eval_canary_runs``, JSONB ``groups`` column). On each run we compare the
 current per-group result to the PREVIOUS canary run:
 
-* a group that PASSED last time and FAILS now  → **regression** (WARNING + notify)
-* a group that FAILED last time and PASSES now  → **new_pass** (logged INFO)
+* a group that PASSED last time and FAILS now > **regression** (WARNING + notify)
+* a group that FAILED last time and PASSES now > **new_pass** (logged INFO)
 
 Notification reuses ``app.auth.notify_user`` (best-effort) to the super-admin;
 if that's unavailable we just emit a structured WARNING log.
@@ -44,11 +44,11 @@ log = logging.getLogger(__name__)
 # Observability tracing (fail-soft; no-op if unavailable or TRACING_DISABLED).
 try:
     from dash.obs.trace import trace_span
-except Exception:  # noqa: BLE001
+except Exception: # noqa: BLE001
     from contextlib import contextmanager as _cm
 
     @_cm
-    def trace_span(*_a, **_k):  # type: ignore
+    def trace_span(*_a, **_k): # type: ignore
         yield None
 
 _DAY = 86400

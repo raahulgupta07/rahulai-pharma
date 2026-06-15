@@ -77,7 +77,7 @@ class TestCheck:
         eng = _mk_engine([(3, past, "old_err")])
         with patch("db.session.get_sql_engine", return_value=eng):
             s = check("p1")
-        # Cooldown elapsed → not open anymore (half-open / closed)
+        # Cooldown elapsed > not open anymore (half-open / closed)
         assert s.is_open is False
         assert s.consecutive_failures == 3
         assert s.last_error == "old_err"

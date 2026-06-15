@@ -49,7 +49,7 @@ class TestConnectionRequest(BaseModel):
     username: str
     password: str
     database: str
-    db_type: str  # postgresql | mysql
+    db_type: str # postgresql | mysql
 
 
 class ConnectRequest(BaseModel):
@@ -60,16 +60,16 @@ class ConnectRequest(BaseModel):
     password: str
     database: str
     db_type: str
-    name: str = ""  # friendly display name
+    name: str = "" # friendly display name
     selected_tables: list[str] = []
     sync_schedule: str = "manual"
-    mode: str = "sync"               # sync | live | hybrid
-    agent_scope: str = "project"     # project | shared | analyst_only | researcher_only
+    mode: str = "sync" # sync | live | hybrid
+    agent_scope: str = "project" # project | shared | analyst_only | researcher_only
 
 
 class SyncRequest(BaseModel):
     source_id: int
-    tables: list[str] = []  # empty -> use source's selected_tables
+    tables: list[str] = [] # empty -> use source's selected_tables
     force: bool = False
 
 
@@ -401,7 +401,7 @@ def sync_tables(req: SyncRequest, request: Request):
                         continue
 
                     # Write to project schema
-                    _emit(f"Writing ({i+1}/{total})", f"{tbl_name} → {schema}.{safe_name} ({row_count} rows)")
+                    _emit(f"Writing ({i+1}/{total})", f"{tbl_name} > {schema}.{safe_name} ({row_count} rows)")
                     df.to_sql(safe_name, proj_eng, schema=schema, if_exists="replace", index=False)
 
                     table_states[safe_name] = {
@@ -924,7 +924,7 @@ async def train_source(source_id: int, request: Request):
                     yield f"event: done\ndata: {evt.to_json()}\n\n"
                 else:
                     yield f"data: {evt.to_json()}\n\n"
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc: # noqa: BLE001
             logger.exception("train_source streaming failed")
             err = json.dumps({"step": "__error__", "status": "error", "message": str(exc)[:300]})
             yield f"data: {err}\n\n"
@@ -947,7 +947,7 @@ def list_training_runs(source_id: int, request: Request):
 
         rows = conn.execute(text(
             "SELECT id, status, current_step, total_steps, cost_usd, "
-            "       duration_seconds, error, started_at, completed_at "
+            " duration_seconds, error, started_at, completed_at "
             "FROM public.dash_source_training_runs "
             "WHERE source_id = :sid ORDER BY started_at DESC LIMIT 10"
         ), {"sid": source_id}).fetchall()

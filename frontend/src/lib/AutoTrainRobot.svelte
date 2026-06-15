@@ -1,40 +1,41 @@
 <script lang="ts">
-  let {
-    status = 'watching',
-    message = '',
-    progress = 0,
-    totalSteps = 14,
-    countdown = 0,
-    lastTrained = '',
-    nextCheck = '',
-    deltaInfo = '',
-    onTrainNow = undefined as (() => void) | undefined,
-    onPause = undefined as (() => void) | undefined,
-    onDismiss = undefined as (() => void) | undefined,
-    onRetry = undefined as (() => void) | undefined,
-  }: {
-    status?: 'watching' | 'detected' | 'training' | 'done' | 'error' | 'disabled';
-    message?: string;
-    progress?: number;
-    totalSteps?: number;
-    countdown?: number;
-    lastTrained?: string;
-    nextCheck?: string;
-    deltaInfo?: string;
-    onTrainNow?: (() => void) | undefined;
-    onPause?: (() => void) | undefined;
-    onDismiss?: (() => void) | undefined;
-    onRetry?: (() => void) | undefined;
-  } = $props();
+  import Icon from '$lib/Icon.svelte';
+ let {
+ status = 'watching',
+ message = '',
+ progress = 0,
+ totalSteps = 14,
+ countdown = 0,
+ lastTrained = '',
+ nextCheck = '',
+ deltaInfo = '',
+ onTrainNow = undefined as (() => void) | undefined,
+ onPause = undefined as (() => void) | undefined,
+ onDismiss = undefined as (() => void) | undefined,
+ onRetry = undefined as (() => void) | undefined,
+ }: {
+ status?: 'watching' | 'detected' | 'training' | 'done' | 'error' | 'disabled';
+ message?: string;
+ progress?: number;
+ totalSteps?: number;
+ countdown?: number;
+ lastTrained?: string;
+ nextCheck?: string;
+ deltaInfo?: string;
+ onTrainNow?: (() => void) | undefined;
+ onPause?: (() => void) | undefined;
+ onDismiss?: (() => void) | undefined;
+ onRetry?: (() => void) | undefined;
+ } = $props();
 
-  const stepNames = [
-    'Catalog', 'Profile', 'Dimensions', 'Hierarchy', 'Sampling',
-    'Analysis', 'Q&A Gen', 'Persona', 'Workflows', 'Relationships',
-    'Vectors', 'Brain', 'Domain', 'Watermark'
-  ];
+ const stepNames = [
+ 'Catalog', 'Profile', 'Dimensions', 'Hierarchy', 'Sampling',
+ 'Analysis', 'Q&A Gen', 'Persona', 'Workflows', 'Relationships',
+ 'Vectors', 'Brain', 'Domain', 'Watermark'
+ ];
 
-  const currentStep = $derived(stepNames[Math.min(progress, stepNames.length - 1)] || '');
-  const progressPct = $derived(Math.round((progress / totalSteps) * 100));
+ const currentStep = $derived(stepNames[Math.min(progress, stepNames.length - 1)] || '');
+ const progressPct = $derived(Math.round((progress / totalSteps) * 100));
 </script>
 
 <div class="robot-card status-{status}">
@@ -139,9 +140,9 @@
     {:else if status === 'training'}
       <span class="badge-spinner"></span> TRAINING
     {:else if status === 'done'}
-      ✓ COMPLETE
+      <Icon name="check" size={16} /> COMPLETE
     {:else if status === 'error'}
-      ✗ FAILED
+      <Icon name="x" size={16} /> FAILED
     {:else}
       ○ PAUSED
     {/if}
@@ -190,360 +191,360 @@
   <div class="robot-actions">
     {#if status === 'watching'}
       {#if onPause}
-        <button class="rb-ghost" onclick={onPause}>⏸ Pause</button>
+        <button class="rb-ghost" onclick={onPause}><Icon name="pause" size={16} /> Pause</button>
       {/if}
       {#if onTrainNow}
-        <button class="rb-coral" onclick={onTrainNow}>▶ Train Now</button>
+        <button class="rb-coral" onclick={onTrainNow}><Icon name="play" size={16} /> Train Now</button>
       {/if}
     {:else if status === 'detected'}
       {#if onDismiss}
-        <button class="rb-ghost" onclick={onDismiss}>✕ Cancel</button>
+        <button class="rb-ghost" onclick={onDismiss}><Icon name="x" size={16} /> Cancel</button>
       {/if}
       {#if onTrainNow}
-        <button class="rb-coral" onclick={onTrainNow}>▶ Train Now</button>
+        <button class="rb-coral" onclick={onTrainNow}><Icon name="play" size={16} /> Train Now</button>
       {/if}
     {:else if status === 'done'}
       {#if onDismiss}
-        <button class="rb-ghost" onclick={onDismiss}>✕ Dismiss</button>
+        <button class="rb-ghost" onclick={onDismiss}><Icon name="x" size={16} /> Dismiss</button>
       {/if}
     {:else if status === 'error'}
       {#if onRetry}
-        <button class="rb-coral" onclick={onRetry}>↻ Retry</button>
+        <button class="rb-coral" onclick={onRetry}><Icon name="refresh" size={16} /> Retry</button>
       {/if}
     {/if}
   </div>
 </div>
 
 <style>
-  /* ── CSS variables (match CityPharma light-mode) ── */
-  :root {
-    --pw-accent: #c96342;
-    --pw-bg-alt: #f6f2ea;
-    --pw-surface: #fff;
-    --pw-ink: #1a1614;
-    --pw-muted: #877f74;
-    --pw-border: #e5ddd0;
-  }
+ /* ── CSS variables (match CityPharma light-mode) ── */
+ :root {
+ --pw-accent: #c96342;
+ --pw-bg-alt: #f6f2ea;
+ --pw-surface: #fff;
+ --pw-ink: #1a1614;
+ --pw-muted: #877f74;
+ --pw-border: #e5ddd0;
+ }
 
-  /* ── Card ── */
-  .robot-card {
-    background: var(--pw-surface, #fff);
-    border: 1px solid var(--pw-border, #e5ddd0);
-    border-radius: 4px;
-    box-shadow: 0 1px 4px rgba(26, 22, 20, 0.07), 0 0 0 0 transparent;
-    padding: 16px;
-    width: 100%;
-    max-width: 340px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    font-family: inherit;
-    box-sizing: border-box;
-  }
+ /* ── Card ── */
+ .robot-card {
+ background: var(--pw-surface, #fff);
+ border: 1px solid var(--pw-border, #e5ddd0);
+ border-radius: 4px;
+ box-shadow: 0 1px 4px rgba(26, 22, 20, 0.07), 0 0 0 0 transparent;
+ padding: 16px;
+ width: 100%;
+ max-width: 340px;
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ gap: 10px;
+ font-family: inherit;
+ box-sizing: border-box;
+ }
 
-  /* ── Robot SVG wrapper ── */
-  .robot-svg-wrap {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 80px;
-  }
+ /* ── Robot SVG wrapper ── */
+ .robot-svg-wrap {
+ display: flex;
+ justify-content: center;
+ align-items: center;
+ height: 80px;
+ }
 
-  /* ── Body animations ── */
-  .body-watching {
-    animation: bob 3s ease-in-out infinite;
-  }
+ /* ── Body animations ── */
+ .body-watching {
+ animation: bob 3s ease-in-out infinite;
+ }
 
-  .body-detected {
-    animation: bounce 0.8s ease-in-out infinite;
-  }
+ .body-detected {
+ animation: bounce 0.8s ease-in-out infinite;
+ }
 
-  .body-training {
-    animation: sway 1s ease-in-out infinite;
-  }
+ .body-training {
+ animation: sway 1s ease-in-out infinite;
+ }
 
-  .body-done {
-    animation: jump 0.6s ease-out forwards;
-  }
+ .body-done {
+ animation: jump 0.6s ease-out forwards;
+ }
 
-  .body-error {
-    animation: shake 0.4s ease-in-out;
-  }
+ .body-error {
+ animation: shake 0.4s ease-in-out;
+ }
 
-  .body-disabled {
-    opacity: 0.6;
-  }
+ .body-disabled {
+ opacity: 0.6;
+ }
 
-  /* ── Eye animations ── */
-  .eye-pulse {
-    animation: eyepulse 2s ease-in-out infinite;
-  }
+ /* ── Eye animations ── */
+ .eye-pulse {
+ animation: eyepulse 2s ease-in-out infinite;
+ }
 
-  .eye-blink {
-    animation: eyepulse 0.5s ease-in-out infinite;
-  }
+ .eye-blink {
+ animation: eyepulse 0.5s ease-in-out infinite;
+ }
 
-  .eye-spin {
-    transform-origin: center;
-    animation: spin 1s linear infinite;
-    transform-box: fill-box;
-  }
+ .eye-spin {
+ transform-origin: center;
+ animation: spin 1s linear infinite;
+ transform-box: fill-box;
+ }
 
-  .mouth-spin {
-    transform-origin: center;
-    animation: spin 1.5s linear infinite;
-    transform-box: fill-box;
-  }
+ .mouth-spin {
+ transform-origin: center;
+ animation: spin 1.5s linear infinite;
+ transform-box: fill-box;
+ }
 
-  .chest-pulse {
-    animation: eyepulse 1s ease-in-out infinite;
-  }
+ .chest-pulse {
+ animation: eyepulse 1s ease-in-out infinite;
+ }
 
-  /* ── Status badge ── */
-  .robot-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    padding: 3px 10px;
-    border-radius: 999px;
-    line-height: 1.4;
-  }
+ /* ── Status badge ── */
+ .robot-badge {
+ display: inline-flex;
+ align-items: center;
+ gap: 5px;
+ font-size: 10px;
+ font-weight: 700;
+ letter-spacing: 0.06em;
+ padding: 3px 10px;
+ border-radius: 999px;
+ line-height: 1.4;
+ }
 
-  .badge-watching {
-    background: #ede9e2;
-    color: #877f74;
-  }
+ .badge-watching {
+ background: #ede9e2;
+ color: #877f74;
+ }
 
-  .badge-detected {
-    background: #fef3cd;
-    color: #a06800;
-  }
+ .badge-detected {
+ background: #fef3cd;
+ color: #a06800;
+ }
 
-  .badge-training {
-    background: #fbe8e2;
-    color: #c96342;
-  }
+ .badge-training {
+ background: #fbe8e2;
+ color: #c96342;
+ }
 
-  .badge-done {
-    background: #d6f0e0;
-    color: #2d8a4e;
-  }
+ .badge-done {
+ background: #d6f0e0;
+ color: #2d8a4e;
+ }
 
-  .badge-error {
-    background: #fde8e6;
-    color: #c0392b;
-  }
+ .badge-error {
+ background: #fde8e6;
+ color: #c0392b;
+ }
 
-  .badge-disabled {
-    background: #ede9e2;
-    color: #c8c0b4;
-  }
+ .badge-disabled {
+ background: #ede9e2;
+ color: #c8c0b4;
+ }
 
-  .badge-dot {
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-  }
+ .badge-dot {
+ display: inline-block;
+ width: 6px;
+ height: 6px;
+ border-radius: 50%;
+ background: currentColor;
+ }
 
-  .badge-spinner {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border: 1.5px solid currentColor;
-    border-top-color: transparent;
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
+ .badge-spinner {
+ display: inline-block;
+ width: 8px;
+ height: 8px;
+ border: 1.5px solid currentColor;
+ border-top-color: transparent;
+ border-radius: 50%;
+ animation: spin 0.7s linear infinite;
+ }
 
-  /* ── Message ── */
-  .robot-msg {
-    margin: 0;
-    font-size: 13px;
-    color: #4a4438;
-    text-align: center;
-    line-height: 1.5;
-  }
+ /* ── Message ── */
+ .robot-msg {
+ margin: 0;
+ font-size: 13px;
+ color: #4a4438;
+ text-align: center;
+ line-height: 1.5;
+ }
 
-  /* ── Countdown ── */
-  .robot-countdown {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
+ /* ── Countdown ── */
+ .robot-countdown {
+ width: 100%;
+ display: flex;
+ flex-direction: column;
+ gap: 4px;
+ }
 
-  .countdown-track {
-    width: 100%;
-    height: 4px;
-    background: #e5ddd0;
-    border-radius: 2px;
-    overflow: hidden;
-  }
+ .countdown-track {
+ width: 100%;
+ height: 4px;
+ background: #e5ddd0;
+ border-radius: 2px;
+ overflow: hidden;
+ }
 
-  .countdown-bar {
-    height: 100%;
-    background: #d4930e;
-    border-radius: 2px;
-    animation: countdown linear forwards;
-    width: 100%;
-  }
+ .countdown-bar {
+ height: 100%;
+ background: #d4930e;
+ border-radius: 2px;
+ animation: countdown linear forwards;
+ width: 100%;
+ }
 
-  /* ── Training progress ── */
-  .robot-progress {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-  }
+ /* ── Training progress ── */
+ .robot-progress {
+ width: 100%;
+ display: flex;
+ flex-direction: column;
+ gap: 5px;
+ }
 
-  .prog-track {
-    width: 100%;
-    height: 6px;
-    background: #e5ddd0;
-    border-radius: 3px;
-    overflow: hidden;
-  }
+ .prog-track {
+ width: 100%;
+ height: 6px;
+ background: #e5ddd0;
+ border-radius: 3px;
+ overflow: hidden;
+ }
 
-  .prog-fill {
-    height: 100%;
-    background: var(--pw-accent, #c96342);
-    border-radius: 3px;
-    transition: width 0.4s ease;
-  }
+ .prog-fill {
+ height: 100%;
+ background: var(--pw-accent, #c96342);
+ border-radius: 3px;
+ transition: width 0.4s ease;
+ }
 
-  /* ── Stats row ── */
-  .robot-stats {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    color: var(--pw-muted, #877f74);
-    flex-wrap: wrap;
-    justify-content: center;
-  }
+ /* ── Stats row ── */
+ .robot-stats {
+ display: flex;
+ align-items: center;
+ gap: 6px;
+ font-size: 11px;
+ color: var(--pw-muted, #877f74);
+ flex-wrap: wrap;
+ justify-content: center;
+ }
 
-  .stat-sep {
-    color: var(--pw-border, #e5ddd0);
-  }
+ .stat-sep {
+ color: var(--pw-border, #e5ddd0);
+ }
 
-  /* ── Sub text ── */
-  .robot-sub {
-    font-size: 11px;
-    color: var(--pw-muted, #877f74);
-    text-align: center;
-  }
+ /* ── Sub text ── */
+ .robot-sub {
+ font-size: 11px;
+ color: var(--pw-muted, #877f74);
+ text-align: center;
+ }
 
-  /* ── Delta info ── */
-  .robot-delta {
-    margin: 0;
-    font-size: 12px;
-    font-weight: 600;
-    color: #a06800;
-    background: #fef3cd;
-    padding: 3px 10px;
-    border-radius: 4px;
-    text-align: center;
-  }
+ /* ── Delta info ── */
+ .robot-delta {
+ margin: 0;
+ font-size: 12px;
+ font-weight: 600;
+ color: #a06800;
+ background: #fef3cd;
+ padding: 3px 10px;
+ border-radius: 4px;
+ text-align: center;
+ }
 
-  /* ── Action buttons ── */
-  .robot-actions {
-    display: flex;
-    gap: 8px;
-    width: 100%;
-    justify-content: center;
-    flex-wrap: wrap;
-    margin-top: 2px;
-  }
+ /* ── Action buttons ── */
+ .robot-actions {
+ display: flex;
+ gap: 8px;
+ width: 100%;
+ justify-content: center;
+ flex-wrap: wrap;
+ margin-top: 2px;
+ }
 
-  .rb-ghost,
-  .rb-coral {
-    font-size: 12px;
-    font-weight: 600;
-    padding: 6px 14px;
-    border-radius: 4px;
-    cursor: pointer;
-    border: 1px solid;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
-    line-height: 1.2;
-    font-family: inherit;
-  }
+ .rb-ghost,
+ .rb-coral {
+ font-size: 12px;
+ font-weight: 600;
+ padding: 6px 14px;
+ border-radius: 4px;
+ cursor: pointer;
+ border: 1px solid;
+ transition: background 0.15s, color 0.15s, border-color 0.15s;
+ line-height: 1.2;
+ font-family: inherit;
+ }
 
-  .rb-ghost {
-    background: transparent;
-    color: var(--pw-muted, #877f74);
-    border-color: var(--pw-border, #e5ddd0);
-  }
+ .rb-ghost {
+ background: transparent;
+ color: var(--pw-muted, #877f74);
+ border-color: var(--pw-border, #e5ddd0);
+ }
 
-  .rb-ghost:hover {
-    background: var(--pw-bg-alt, #f6f2ea);
-    color: var(--pw-ink, #1a1614);
-    border-color: #c8c0b4;
-  }
+ .rb-ghost:hover {
+ background: var(--pw-bg-alt, #f6f2ea);
+ color: var(--pw-ink, #1a1614);
+ border-color: #c8c0b4;
+ }
 
-  .rb-coral {
-    background: var(--pw-accent, #c96342);
-    color: #fff;
-    border-color: var(--pw-accent, #c96342);
-  }
+ .rb-coral {
+ background: var(--pw-accent, #c96342);
+ color: #fff;
+ border-color: var(--pw-accent, #c96342);
+ }
 
-  .rb-coral:hover {
-    background: #b5512e;
-    border-color: #b5512e;
-  }
+ .rb-coral:hover {
+ background: #b5512e;
+ border-color: #b5512e;
+ }
 
-  .rb-ghost:active,
-  .rb-coral:active {
-    transform: scale(0.97);
-  }
+ .rb-ghost:active,
+ .rb-coral:active {
+ transform: scale(0.97);
+ }
 
-  /* ── Keyframe animations ── */
-  @keyframes bob {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-3px); }
-  }
+ /* ── Keyframe animations ── */
+ @keyframes bob {
+ 0%, 100% { transform: translateY(0); }
+ 50% { transform: translateY(-3px); }
+ }
 
-  @keyframes bounce {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-6px); }
-  }
+ @keyframes bounce {
+ 0%, 100% { transform: translateY(0); }
+ 50% { transform: translateY(-6px); }
+ }
 
-  @keyframes sway {
-    0%, 100% { transform: translateX(0); }
-    50% { transform: translateX(2px); }
-  }
+ @keyframes sway {
+ 0%, 100% { transform: translateX(0); }
+ 50% { transform: translateX(2px); }
+ }
 
-  @keyframes shake {
-    0% { transform: translateX(0); }
-    25% { transform: translateX(-3px); }
-    75% { transform: translateX(3px); }
-    100% { transform: translateX(0); }
-  }
+ @keyframes shake {
+ 0% { transform: translateX(0); }
+ 25% { transform: translateX(-3px); }
+ 75% { transform: translateX(3px); }
+ 100% { transform: translateX(0); }
+ }
 
-  @keyframes jump {
-    0% { transform: translateY(0); }
-    30% { transform: translateY(-10px); }
-    60% { transform: translateY(-4px); }
-    80% { transform: translateY(-1px); }
-    100% { transform: translateY(0); }
-  }
+ @keyframes jump {
+ 0% { transform: translateY(0); }
+ 30% { transform: translateY(-10px); }
+ 60% { transform: translateY(-4px); }
+ 80% { transform: translateY(-1px); }
+ 100% { transform: translateY(0); }
+ }
 
-  @keyframes eyepulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
-  }
+ @keyframes eyepulse {
+ 0%, 100% { opacity: 1; }
+ 50% { opacity: 0.3; }
+ }
 
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
+ @keyframes spin {
+ to { transform: rotate(360deg); }
+ }
 
-  @keyframes countdown {
-    from { width: 100%; }
-    to { width: 0%; }
-  }
+ @keyframes countdown {
+ from { width: 100%; }
+ to { width: 0%; }
+ }
 </style>

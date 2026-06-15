@@ -40,7 +40,7 @@ def test_croniter_imports():
 
 
 def test_create_schedule_valid_cron():
-    """POST /schedules with cron='*/5 * * * *' → 200 + next_run_at within 5min."""
+    """POST /schedules with cron='*/5 * * * *' > 200 + next_run_at within 5min."""
     try:
         from fastapi.testclient import TestClient
         from app.main import app
@@ -68,7 +68,7 @@ def test_create_schedule_valid_cron():
 
 
 def test_create_schedule_invalid_cron():
-    """POST with cron='not a cron' → 400."""
+    """POST with cron='not a cron' > 400."""
     try:
         from fastapi.testclient import TestClient
         from app.main import app

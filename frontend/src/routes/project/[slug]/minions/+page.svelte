@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount, onDestroy } from 'svelte';
  import { page } from '$app/stores';
  import { base } from '$app/paths';
@@ -111,7 +111,7 @@
 
 <div class="page">
   <header class="hd">
-    <a class="back" href="{base}/project/{slug}/settings">← Settings</a>
+    <a class="back" href="{base}/project/{slug}/settings"><Icon name="arrow-left" size={16} /> Settings</a>
     <h1>Minions</h1>
     <p class="sub">Durable Postgres-backed job queue. Survives crashes via lease-based claim. Dream nightly cycle enqueues dedupe / re-embed / prune / recompile maintenance.</p>
   </header>
@@ -141,8 +141,8 @@
         <label class="chk"><input type="checkbox" bind:checked={autoRefresh} /> Auto-refresh 5s</label>
       </div>
       <div class="actions-bar">
-        <button class="btn" onclick={load} disabled={loading}>↻ Refresh</button>
-        <button class="btn" onclick={runOne}>▶ Run one (test)</button>
+        <button class="btn" onclick={load} disabled={loading}><Icon name="refresh" size={16} /> Refresh</button>
+        <button class="btn" onclick={runOne}><Icon name="play" size={16} /> Run one (test)</button>
         <button class="btn primary" onclick={enqueueDream}><Icon name="star" size={14} /> Enqueue Dream Cycle</button>
       </div>
     </div>

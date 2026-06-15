@@ -3,7 +3,7 @@
 3-step pipeline triggered between chat turns:
   1. Pull unconsumed episode buffer rows for session
   2. Update user persona via core_memory_replace pattern (LITE call)
-     → write to public.dash_dream_personas (UPSERT)
+     > write to public.dash_dream_personas (UPSERT)
   3. Generate top-3 anticipated next questions for this user/session topic
      (precompute enqueue removed — dream_precompute module retired)
 

@@ -1,4 +1,4 @@
-"""Phase 6A — visibility policy → multi-agent dashboard pipeline tests."""
+"""Phase 6A — visibility policy > multi-agent dashboard pipeline tests."""
 from __future__ import annotations
 
 import asyncio
@@ -50,4 +50,4 @@ def test_sanitize_passthrough_when_private():
 
 def test_sanitize_handles_none_and_empty():
     assert sanitize_narrative("", "demo", "network") == ""
-    assert sanitize_narrative(None, "demo", "network") == ""  # type: ignore[arg-type]
+    assert sanitize_narrative(None, "demo", "network") == "" # type: ignore[arg-type]

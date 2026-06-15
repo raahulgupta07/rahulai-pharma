@@ -4,18 +4,18 @@ Migration 064 adds rls_enabled / rls_claims / rls_policies / rls_claim_source
 columns to dash_agent_embeds. This module provides the runtime enforcement:
 
   - ContextVars carrying per-request claims + active policy list
-  - load_rls_for_embed(embed_id)  - read config from DB
-  - extract_claims(...)           - pull declared claims from token/hmac/url/header
-  - rewrite_sql(sql, policies, claims)  - SQL rewriter (sqlglot AST or regex fallback)
+  - load_rls_for_embed(embed_id) - read config from DB
+  - extract_claims(...) - pull declared claims from token/hmac/url/header
+  - rewrite_sql(sql, policies, claims) - SQL rewriter (sqlglot AST or regex fallback)
   - scrub_result(rows, policies, claims)- defense-in-depth row scrubber
-  - audit_denial(...)             - INSERT into dash_embed_rls_audit
+  - audit_denial(...) - INSERT into dash_embed_rls_audit
 
 Policy modes (per column):
-  hidden     -> remove column from SELECT list / replace with NULL AS col
-  redacted   -> replace value with NULL AS col (mask configurable later)
-  private    -> append WHERE table.filter_col = '<claim>' (filters whole rows)
-  shared     -> no-op
-  own_value  -> per-ROW mask: CASE WHEN filter_col = '<claim>' THEN col ELSE NULL END.
+  hidden -> remove column from SELECT list / replace with NULL AS col
+  redacted -> replace value with NULL AS col (mask configurable later)
+  private -> append WHERE table.filter_col = '<claim>' (filters whole rows)
+  shared -> no-op
+  own_value -> per-ROW mask: CASE WHEN filter_col = '<claim>' THEN col ELSE NULL END.
                 Row stays in result set; value is NULL for non-matching rows.
                 Aggregates (SUM/AVG/COUNT/MIN/MAX) get the CASE injected inside.
 """
@@ -46,9 +46,9 @@ try:
     import sqlglot
     from sqlglot import exp as _sg_exp
     _HAS_SQLGLOT = True
-except Exception:  # pragma: no cover
-    sqlglot = None  # type: ignore
-    _sg_exp = None  # type: ignore
+except Exception: # pragma: no cover
+    sqlglot = None # type: ignore
+    _sg_exp = None # type: ignore
     _HAS_SQLGLOT = False
 
 
@@ -72,11 +72,11 @@ def load_rls_for_embed(embed_id: str) -> tuple[bool, list, list, str]:
         eng = _engine()
         with eng.begin() as conn:
             row = conn.execute(_t(
-                "SELECT COALESCE(rls_enabled, FALSE)        AS rls_enabled, "
-                "       COALESCE(CAST(rls_claims   AS TEXT), '[]') AS rls_claims, "
-                "       COALESCE(CAST(rls_policies AS TEXT), '[]') AS rls_policies, "
-                "       COALESCE(rls_claim_source, 'token') AS rls_claim_source "
-                "  FROM public.dash_agent_embeds WHERE embed_id = :eid"
+                "SELECT COALESCE(rls_enabled, FALSE) AS rls_enabled, "
+                " COALESCE(CAST(rls_claims AS TEXT), '[]') AS rls_claims, "
+                " COALESCE(CAST(rls_policies AS TEXT), '[]') AS rls_policies, "
+                " COALESCE(rls_claim_source, 'token') AS rls_claim_source "
+                " FROM public.dash_agent_embeds WHERE embed_id = :eid"
             ), {"eid": embed_id}).fetchone()
         if not row or not row[0]:
             return False, [], [], "token"
@@ -235,7 +235,7 @@ def _rewrite_with_sqlglot(sql: str, policies: list, claims: dict) -> str:
     projections = list(select.expressions or [])
     is_star = any(isinstance(e, _sg_exp.Star) for e in projections)
 
-    own_value_rewrites: list[tuple[str, str, str]] = []  # (table, col, sql_snippet) for audit
+    own_value_rewrites: list[tuple[str, str, str]] = [] # (table, col, sql_snippet) for audit
 
     if not is_star and projections:
         new_proj: list = []
@@ -265,7 +265,7 @@ def _rewrite_with_sqlglot(sql: str, policies: list, claims: dict) -> str:
                     inner_col = agg_node_for_rewrite.this
                     case_expr = _build_case(inner_col, fcol, cval, talias)
                     agg_node_for_rewrite.set("this", case_expr)
-                    own_value_rewrites.append((tname, cname, f"agg({cname})→CASE"))
+                    own_value_rewrites.append((tname, cname, f"agg({cname})>CASE"))
                     # preserve outer alias if any
                     if outer_alias_node is not None:
                         new_proj.append(outer_alias_node)
@@ -331,7 +331,7 @@ def _rewrite_with_sqlglot(sql: str, policies: list, claims: dict) -> str:
                 claim_key = matched.get("claim") or filter_col
                 cval = (claims or {}).get(claim_key)
                 if not filter_col or cval is None:
-                    # Defensive: missing claim → mask to NULL (don't leak)
+                    # Defensive: missing claim > mask to NULL (don't leak)
                     null_alias = _sg_exp.Alias(
                         this=_sg_exp.Null(),
                         alias=_sg_exp.to_identifier(col_name),
@@ -349,7 +349,7 @@ def _rewrite_with_sqlglot(sql: str, policies: list, claims: dict) -> str:
                         this=case_expr,
                         alias=_sg_exp.to_identifier(alias_name_use),
                     ))
-                    own_value_rewrites.append((matched_table or "", col_name, f"{col_name}→CASE"))
+                    own_value_rewrites.append((matched_table or "", col_name, f"{col_name}>CASE"))
             else:
                 new_proj.append(exp_node)
 
@@ -373,7 +373,7 @@ def _rewrite_with_sqlglot(sql: str, policies: list, claims: dict) -> str:
             claim_key = p.get("claim") or filter_col
             cval = (claims or {}).get(claim_key)
             if cval is None:
-                # Required filter but no claim → deny.
+                # Required filter but no claim > deny.
                 raise RLSDenied(f"Missing claim '{claim_key}' for private policy on {tname}.{filter_col}")
             extra_wheres.append(f'"{alias}"."{filter_col}" = {_sqlescape(cval)}')
 
@@ -566,7 +566,7 @@ def audit_denial(
         with eng.begin() as conn:
             conn.execute(_t(
                 "INSERT INTO public.dash_embed_rls_audit "
-                "  (embed_id, session_token, claims, denied_table, denied_column, action, sql_snippet) "
+                " (embed_id, session_token, claims, denied_table, denied_column, action, sql_snippet) "
                 "VALUES (:e, :s, CAST(:c AS jsonb), :t, :col, :a, :sql)"
             ), {
                 "e": embed_id,

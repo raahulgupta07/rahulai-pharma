@@ -1,5 +1,5 @@
 """Stale training step reaper. Every 5 min, finds dash_training_steps rows
-stuck at status='running' for >15min → marks 'failed' w/ reason 'timeout'.
+stuck at status='running' for >15min > marks 'failed' w/ reason 'timeout'.
 Frees stuck pipelines, surfaces dead daemons. Fail-soft."""
 
 import asyncio

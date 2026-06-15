@@ -108,7 +108,7 @@ def find_substitutes(article_code: int = 0, brand_name: str = "", site_code: str
                 return {"ok": False, "error": "provide article_code or brand_name"}
             row = cur.fetchone()
             if not row or not row[0]:
-                # Input article not found (or has no generic to match on) →
+                # Input article not found (or has no generic to match on) >
                 # explicit Not Found, not a bare empty list.
                 from dash.tools.pharma_resolve import MSG_NOT_FOUND
                 return {"ok": True, "count": 0, "substitutes": [],
@@ -131,7 +131,7 @@ def find_substitutes(article_code: int = 0, brand_name: str = "", site_code: str
             subs.sort(key=lambda x: -(x.get("stock_qty") or 0))
             if not subs:
                 # Article found but no substitutes (no other brand shares its
-                # generic, or none in stock when in_stock_only) → explicit.
+                # generic, or none in stock when in_stock_only) > explicit.
                 from dash.tools.pharma_resolve import MSG_NOT_FOUND
                 return {"ok": True, "count": 0, "generic": generic,
                         "site": site_code or "all", "substitutes": [],
@@ -181,7 +181,7 @@ def alternatives_for_indication(indication: str = "", site_code: str = "", in_st
             arts.sort(key=lambda x: -(x.get("stock_qty") or 0))
             if not arts:
                 # No article treats this indication (or none in stock when
-                # in_stock_only) → explicit Not Found, not a bare empty list.
+                # in_stock_only) > explicit Not Found, not a bare empty list.
                 from dash.tools.pharma_resolve import MSG_NOT_FOUND
                 return {"ok": True, "count": 0, "indication": indication,
                         "site": site_code or "all", "articles": [],

@@ -8,14 +8,14 @@ it can corrupt a destination table.
 
 Public API
 ----------
-pg_type(series)                      → str
-detect_load_key(df, filename)        → dict
-infer_contract(df, project, dataset, filename) → dict
-get_contract(project, dataset)       → dict | None
-save_contract(project, dataset, contract) → int
-check_against_contract(contract, df) → dict
-evolve_contract(project, dataset, df, mapping, filename) → dict
-set_load_key(project, dataset, strategy, columns) → dict
+pg_type(series) > str
+detect_load_key(df, filename) > dict
+infer_contract(df, project, dataset, filename) > dict
+get_contract(project, dataset) > dict | None
+save_contract(project, dataset, contract) > int
+check_against_contract(contract, df) > dict
+evolve_contract(project, dataset, df, mapping, filename) > dict
+set_load_key(project, dataset, strategy, columns) > dict
 
 CRITICAL: get_sql_engine() is the CACHED SHARED engine — never .dispose() it.
 All DB access is fail-soft (try/except, log, sensible default).
@@ -63,22 +63,22 @@ _STRONG_PK_RE = re.compile(
 
 
 # ===========================================================================
-# 1. pg_type — dtype → postgres type string
+# 1. pg_type — dtype > postgres type string
 # ===========================================================================
 
 def pg_type(series: pd.Series) -> str:
     """Map a pandas Series dtype to a PostgreSQL type string.
 
     Rules (first match wins):
-      bool            → boolean
-      int32/int16/… → integer
-      int64           → bigint
-      float*/decimal  → double precision
-      datetime*/…     → timestamp
-      default         → text
+      bool > boolean
+      int32/int16/… > integer
+      int64 > bigint
+      float*/decimal > double precision
+      datetime*/… > timestamp
+      default > text
     """
     dtype = series.dtype
-    kind = dtype.kind          # 'b' bool, 'i' int, 'u' uint, 'f' float, 'M' datetime, 'O' object …
+    kind = dtype.kind # 'b' bool, 'i' int, 'u' uint, 'f' float, 'M' datetime, 'O' object …
 
     if kind == "b":
         return "boolean"
@@ -86,7 +86,7 @@ def pg_type(series: pd.Series) -> str:
         # unsigned ints — use bigint to be safe
         return "bigint"
     if kind == "i":
-        # int8/16/32 → integer, int64 → bigint
+        # int8/16/32 > integer, int64 > bigint
         if dtype.itemsize <= 4:
             return "integer"
         return "bigint"
@@ -160,7 +160,7 @@ def detect_load_key(df: pd.DataFrame, filename: str = "") -> dict:
                 break
 
     # ------------------------------------------------------------------
-    # Tier 0: month-level period IN THE FILENAME → transactional monthly drop.
+    # Tier 0: month-level period IN THE FILENAME > transactional monthly drop.
     # This beats single, because a column that merely LOOKS like a pk
     # (e.g. customer_id) is unique in one month but repeats across months —
     # it's a foreign key, not the dataset key. A dimension snapshot named with
@@ -335,7 +335,7 @@ def get_contract(project: str, dataset: str) -> dict | None:
             row = conn.execute(
                 text(
                     "SELECT id, project_slug, dataset, version, active, "
-                    "       columns, load_key, period_source "
+                    " columns, load_key, period_source "
                     "FROM public.dash_ingest_contracts "
                     "WHERE project_slug = :p AND dataset = :d AND active = TRUE "
                     "ORDER BY version DESC LIMIT 1"
@@ -407,9 +407,9 @@ def save_contract(project: str, dataset: str, contract: dict) -> int:
                     "INSERT INTO public.dash_ingest_contracts "
                     "(project_slug, dataset, version, active, columns, load_key, period_source) "
                     "VALUES (:p, :d, :v, TRUE, "
-                    "        CAST(:cols AS jsonb), "
-                    "        CAST(:lk AS jsonb), "
-                    "        :ps)"
+                    " CAST(:cols AS jsonb), "
+                    " CAST(:lk AS jsonb), "
+                    " :ps)"
                 ),
                 {
                     "p": project,
@@ -438,7 +438,7 @@ def check_against_contract(contract: dict | None, df: pd.DataFrame) -> dict:
         {
             "verdict": "exact|drift|new",
             "diff": {
-                "added":   [str],
+                "added": [str],
                 "removed": [str],
                 "retyped": [{"col": str, "from": str, "to": str}],
                 "renamed": [{"from": str, "to": str}],
@@ -489,7 +489,7 @@ def check_against_contract(contract: dict | None, df: pd.DataFrame) -> dict:
         if df_cols[col] != ct_cols[col]:
             retyped.append({"col": col, "from": ct_cols[col], "to": df_cols[col]})
 
-    # Rename detection: match removed → added by name similarity
+    # Rename detection: match removed > added by name similarity
     renamed: list[dict] = []
     proposed_mapping: dict[str, str] = {}
     if added and removed:
@@ -541,13 +541,13 @@ def evolve_contract(
        (existing types preserved; genuinely new columns appended).
     4. Re-detect load_key from the renamed DF (fresh eyes each time).
     5. Bump version (existing max + 1).
-    6. save_contract → DB.
+    6. save_contract > DB.
     7. Return the new contract dict.
     """
     if mapping:
         # mapping = {new_col_in_df: existing_col_in_contract}
-        # We rename df columns from new_col → existing_col so they unify
-        rename_map = {v: k for k, v in mapping.items()}  # df already has new names
+        # We rename df columns from new_col > existing_col so they unify
+        rename_map = {v: k for k, v in mapping.items()} # df already has new names
         # Actually mapping is {new_df_col: existing_contract_col} so rename df
         try:
             df = df.rename(columns=mapping)
@@ -599,10 +599,10 @@ def set_load_key(
 
     Parameters
     ----------
-    project:  project slug
-    dataset:  dataset name
+    project: project slug
+    dataset: dataset name
     strategy: one of "single", "composite", "period", "content_hash"
-    columns:  list of column names relevant to the strategy (default [])
+    columns: list of column names relevant to the strategy (default [])
 
     Returns
     -------

@@ -24,7 +24,7 @@ def _get_user(request: Request) -> Optional[dict]:
     if user:
         return user
     try:
-        from app.auth import get_current_user  # type: ignore
+        from app.auth import get_current_user # type: ignore
         return get_current_user(request)
     except Exception:
         return None
@@ -55,12 +55,12 @@ def _can_access(meta: dict, user: Optional[dict]) -> bool:
     project_slug = meta.get("project_slug")
     if project_slug:
         try:
-            from app.auth import check_project_permission  # type: ignore
+            from app.auth import check_project_permission # type: ignore
             if check_project_permission(user, project_slug, required_role="viewer"):
                 return True
         except Exception:
             pass
-    # Globally-scoped artifact (no project) → allow any authed user
+    # Globally-scoped artifact (no project) > allow any authed user
     if not project_slug and meta.get("user_id") is None:
         return True
     return False

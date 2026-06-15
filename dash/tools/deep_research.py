@@ -6,15 +6,15 @@ artifact is rendered to PDF bytes via `dash.tools.research_pdf.render`.
 
 Stages
 ------
-    1. SCOPE             parse question → ResearchSpec (intent, entities, time_range)
-    2. HYPOTHESIS_TREE   3-5 hypotheses × 2-3 sub-questions
-    3. PLAN_SQL          1-2 SQL queries per leaf sub-question
-    4. PARALLEL_EXEC     asyncio.gather of read-only SQL against project schema
-    5. EVIDENCE_RANKING  LLM judge scores each result 0-1 for relevance
-    6. SYNTHESIS         one finding paragraph per hypothesis, citing data
-    7. CROSS_CHECK       LLM self-critique: "do findings contradict?"
-    8. RECOMMENDATION    3-5 ranked recommendations w/ confidence
-    9. RENDER            research_pdf.render(spec) → bytes
+    1. SCOPE parse question > ResearchSpec (intent, entities, time_range)
+    2. HYPOTHESIS_TREE 3-5 hypotheses × 2-3 sub-questions
+    3. PLAN_SQL 1-2 SQL queries per leaf sub-question
+    4. PARALLEL_EXEC asyncio.gather of read-only SQL against project schema
+    5. EVIDENCE_RANKING LLM judge scores each result 0-1 for relevance
+    6. SYNTHESIS one finding paragraph per hypothesis, citing data
+    7. CROSS_CHECK LLM self-critique: "do findings contradict?"
+    8. RECOMMENDATION 3-5 ranked recommendations w/ confidence
+    9. RENDER research_pdf.render(spec) > bytes
 
 Return dict:
     {
@@ -47,7 +47,7 @@ def _get_engine():
         return get_sql_engine()
     except Exception:
         try:
-            from db import get_sql_engine  # type: ignore
+            from db import get_sql_engine # type: ignore
             return get_sql_engine()
         except Exception:
             return None
@@ -160,13 +160,13 @@ def _schema_block(table_columns: Dict[str, List[str]], cap_tables: int = 20,
     lines = []
     for tn in list(table_columns.keys())[:cap_tables]:
         cols = table_columns[tn][:cap_cols]
-        lines.append(f"  {tn}({', '.join(cols)})")
+        lines.append(f" {tn}({', '.join(cols)})")
     return "\n".join(lines)
 
 
 # ── STAGE 1: SCOPE ──────────────────────────────────────────────────────
 def stage_scope(question: str, project_slug: str) -> Dict[str, Any]:
-    """Parse question → intent + entities + time_range."""
+    """Parse question > intent + entities + time_range."""
     prompt = (
         "You are a senior research analyst. Parse the following research question "
         "into a structured spec. Identify the research intent, the key entities "
@@ -458,7 +458,7 @@ def stage_recommendation(spec: Dict[str, Any], findings: List[Dict[str, Any]],
                          cross_check: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Produce 3-5 ranked recommendations w/ confidence."""
     block = "\n".join(
-        f"- {f.get('hypothesis', '')} → {f.get('finding', '')[:300]}"
+        f"- {f.get('hypothesis', '')} > {f.get('finding', '')[:300]}"
         for f in findings
     )
     prompt = (

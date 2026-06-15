@@ -9,14 +9,14 @@ any load can be reversed by batch_id or period.
 
 Public API
 ----------
-compute_row_key      : sha256 key per row for single/composite strategies
-stamp_lineage        : add 6 lineage columns to a DataFrame copy
-ensure_columns       : ALTER TABLE … ADD COLUMN IF NOT EXISTS for new cols
-table_exists         : check whether a schema.table is present
-file_hash_seen       : check whether a content_hash is already present
-delete_where_period  : DELETE WHERE _period=… (reversible replace)
-delete_where_batch   : DELETE WHERE _batch_id=… (full undo)
-promote_file         : THE CORE — decide + execute the idempotent load
+compute_row_key : sha256 key per row for single/composite strategies
+stamp_lineage : add 6 lineage columns to a DataFrame copy
+ensure_columns : ALTER TABLE … ADD COLUMN IF NOT EXISTS for new cols
+table_exists : check whether a schema.table is present
+file_hash_seen : check whether a content_hash is already present
+delete_where_period : DELETE WHERE _period=… (reversible replace)
+delete_where_batch : DELETE WHERE _batch_id=… (full undo)
+promote_file : THE CORE — decide + execute the idempotent load
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ import pandas as pd
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
-from db.session import get_sql_engine  # CACHED SHARED — NEVER .dispose()
+from db.session import get_sql_engine # CACHED SHARED — NEVER .dispose()
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ def compute_row_key(df: pd.DataFrame, key_cols: list[str]) -> pd.Series:
     """Return a Series of sha256 hex strings, one per row.
 
     The hash input is the pipe-delimited concatenation of str(value) for each
-    key column.  If *key_cols* is empty (or None) every element is None.
+    key column. If *key_cols* is empty (or None) every element is None.
     """
     if not key_cols:
         return pd.Series([None] * len(df), index=df.index)
@@ -62,12 +62,12 @@ def stamp_lineage(df: pd.DataFrame, lineage: dict, load_key: dict) -> pd.DataFra
 
     Columns stamped
     ---------------
-    _source_file   TEXT
-    _period        TEXT | None
-    _batch_id      TEXT
-    _content_hash  TEXT
-    _row_key       TEXT | None   (only for single / composite strategies)
-    _ingested_at   TIMESTAMP UTC
+    _source_file TEXT
+    _period TEXT | None
+    _batch_id TEXT
+    _content_hash TEXT
+    _row_key TEXT | None (only for single / composite strategies)
+    _ingested_at TIMESTAMP UTC
     """
     df2 = df.copy()
 
@@ -156,7 +156,7 @@ def file_hash_seen(engine: Engine, schema: str, table: str, content_hash: str) -
 
 
 def delete_where_period(engine: Engine, schema: str, table: str, period: str) -> int:
-    """DELETE rows where _period = *period*.  Returns rowcount; fail-soft 0."""
+    """DELETE rows where _period = *period*. Returns rowcount; fail-soft 0."""
     try:
         with engine.begin() as conn:
             result = conn.execute(
@@ -172,7 +172,7 @@ def delete_where_period(engine: Engine, schema: str, table: str, period: str) ->
 
 
 def delete_where_batch(engine: Engine, schema: str, table: str, batch_id: str) -> int:
-    """DELETE rows where _batch_id = *batch_id*.  Returns rowcount; fail-soft 0."""
+    """DELETE rows where _batch_id = *batch_id*. Returns rowcount; fail-soft 0."""
     try:
         with engine.begin() as conn:
             result = conn.execute(
@@ -204,12 +204,12 @@ def promote_file(
     """Idempotent load of *df* into *schema.target_table*.
 
     Returns a result dict with keys:
-        action        : "create" | "append" | "replace_period" | "upsert" | "skip_duplicate" | "error"
-        rows_loaded   : int
-        rows_skipped  : int
-        table         : target_table
-        load_key      : the contract load_key dict
-        note          : human-readable summary string
+        action : "create" | "append" | "replace_period" | "upsert" | "skip_duplicate" | "error"
+        rows_loaded : int
+        rows_skipped : int
+        table : target_table
+        load_key : the contract load_key dict
+        note : human-readable summary string
     """
     load_key: dict = contract.get("load_key", {}) or {}
     strategy: str = load_key.get("strategy", "content_hash")
@@ -226,7 +226,7 @@ def promote_file(
         # 1. Stamp lineage onto a copy of the DataFrame
         df2 = stamp_lineage(df, lineage, load_key)
 
-        # 2. Table does NOT exist → create
+        # 2. Table does NOT exist > create
         if not table_exists(engine, schema, target_table):
             if_exists_mode = "replace" if mode_hint == "replace" else "append"
             df2.to_sql(
@@ -283,7 +283,7 @@ def promote_file(
                     "note": note,
                 }
             else:
-                # No period info → plain append
+                # No period info > plain append
                 df2.to_sql(target_table, engine, schema=schema, if_exists="append", index=False)
                 note = (
                     f"Appended {len(df2)} rows to {schema}.{target_table} "
@@ -329,7 +329,7 @@ def promote_file(
             }
 
         else:
-            # Unknown strategy → plain append (safe fallback)
+            # Unknown strategy > plain append (safe fallback)
             df2.to_sql(target_table, engine, schema=schema, if_exists="append", index=False)
             note = (
                 f"Appended {len(df2)} rows to {schema}.{target_table} "

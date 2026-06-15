@@ -8,15 +8,15 @@ when no vertical scores above a strong threshold.
 Structure
 ---------
 LEXICONS[vertical_key] = {
-    "template":  <template name from dash/templates/registry.py>,
-    "tables":    [(keyword, weight 1-5), ...],   # table-name signals
-    "columns":   [(keyword, weight 1-5), ...],   # column-name signals
-    "docs":      [(keyword, weight 1-5), ...],   # doc filename signals
-    "personas":  [persona hint string, ...],     # persona text signals
+    "template": <template name from dash/templates/registry.py>,
+    "tables": [(keyword, weight 1-5), ...], # table-name signals
+    "columns": [(keyword, weight 1-5), ...], # column-name signals
+    "docs": [(keyword, weight 1-5), ...], # doc filename signals
+    "personas": [persona hint string, ...], # persona text signals
 }
 
 Weights: 1=weak / 2=fair / 3=solid / 4=strong / 5=defining (almost
-unambiguous — e.g. "ndc" → pharmacy, "rxnorm" → pharmacy).
+unambiguous — e.g. "ndc" > pharmacy, "rxnorm" > pharmacy).
 
 Matching is case-insensitive substring against tokens. A token is a
 lowercased name with non-alphanumeric replaced by spaces, so
@@ -33,14 +33,14 @@ vertical_ceiling = sum of all weights in that vertical's lexicon (table
 + column + doc + persona — persona weights default to 2 each).
 
 This keeps scores comparable across verticals even though some have more
-keywords than others. A perfect match (every keyword present) → 1.0.
+keywords than others. A perfect match (every keyword present) > 1.0.
 
 Helpers
 -------
 - score_vertical(vertical_key, tables, columns, docs, persona="") -> float
-- rank_verticals(tables, columns, docs, persona="")              -> list[(vk, score)]
-- get_lexicon(vertical_key)                                       -> dict | None
-- list_verticals()                                                -> list[str]
+- rank_verticals(tables, columns, docs, persona="") -> list[(vk, score)]
+- get_lexicon(vertical_key) -> dict | None
+- list_verticals() -> list[str]
 """
 
 from __future__ import annotations

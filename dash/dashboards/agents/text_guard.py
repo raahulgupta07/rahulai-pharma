@@ -18,14 +18,14 @@ _PATTERNS = [
     (re.compile(r'\b(?:qty|quantity|units?|stock|inventory|count)\s*[:=]?\s*\d[\d,]*\b', re.I), "[banded]"),
     (re.compile(r'\b\d[\d,]*\s+units?\b', re.I), "[banded]"),
     # bare large numbers (>= threshold): only when standalone, not percentages or years
-    (re.compile(r'(?<![\d.,%])\b(\d{1,3}(?:,\d{3})+|\d{2,})\b(?!\s*%|\s*(?:19|20)\d{2})'), None),  # special handler
+    (re.compile(r'(?<![\d.,%])\b(\d{1,3}(?:,\d{3})+|\d{2,})\b(?!\s*%|\s*(?:19|20)\d{2})'), None), # special handler
 ]
 
 
 def sanitize_narrative(text: str, project_slug: str, intent: str) -> str:
     """Replace raw numbers with banded markers when intent restricts visibility.
 
-    intent='private' is passthrough. 'network'/'public' → strip large numbers.
+    intent='private' is passthrough. 'network'/'public' > strip large numbers.
     Never raises; returns original on error.
     """
     if not text or not isinstance(text, str):

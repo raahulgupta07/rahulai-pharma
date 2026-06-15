@@ -8,18 +8,18 @@ Strategy
 --------
 1. Gather signals from project schema + knowledge directory + persona.
 2. Run the RULE ENGINE (`vertical_lexicon.rank_verticals`) — instant, $0.
-3. If top score >= 0.75 → return rule pick (high confidence, no LLM).
-4. Else if top score >= 0.30 → call LLM tie-breaker (LITE_MODEL,
+3. If top score >= 0.75 > return rule pick (high confidence, no LLM).
+4. Else if top score >= 0.30 > call LLM tie-breaker (LITE_MODEL,
    `training_llm_call(prompt, "extraction")`), blend rule (60%) + LLM (40%).
-5. Else → return `{vertical: "generic", confidence: 0.0, method: "no_signal"}`.
+5. Else > return `{vertical: "generic", confidence: 0.0, method: "no_signal"}`.
 
 This module does NOT apply anything, hit any API endpoint, or touch the UI.
 Other agents handle apply + API + UI. We just classify and return.
 
 Public entry points
 -------------------
-- classify_vertical(project_slug)           → dict (DB-backed, full pipeline)
-- classify_from_signals(tables, cols, docs) → dict (no DB, unit-test friendly)
+- classify_vertical(project_slug) > dict (DB-backed, full pipeline)
+- classify_from_signals(tables, cols, docs) > dict (no DB, unit-test friendly)
 """
 
 from __future__ import annotations
@@ -82,13 +82,13 @@ def _call_with_timeout(fn, *args, timeout: float = _VERTICAL_LLM_TIMEOUT_S, **kw
 # Thresholds
 # ---------------------------------------------------------------------------
 
-RULE_STRONG_THRESHOLD = 0.45   # >= this → use rule pick directly, no LLM
-RULE_WEAK_THRESHOLD = 0.12     # >= this → invoke LLM tie-breaker
-RULE_WEIGHT_IN_BLEND = 0.60    # rule contribution in blended confidence
-LLM_WEIGHT_IN_BLEND = 0.40     # llm contribution in blended confidence
+RULE_STRONG_THRESHOLD = 0.45 # >= this > use rule pick directly, no LLM
+RULE_WEAK_THRESHOLD = 0.12 # >= this > invoke LLM tie-breaker
+RULE_WEIGHT_IN_BLEND = 0.60 # rule contribution in blended confidence
+LLM_WEIGHT_IN_BLEND = 0.40 # llm contribution in blended confidence
 
 SAMPLE_ROWS_PER_TABLE = 5
-SAMPLE_TABLES_CAP = 20         # avoid massive schemas blowing up signal blob
+SAMPLE_TABLES_CAP = 20 # avoid massive schemas blowing up signal blob
 SAMPLE_COLS_CAP = 400
 
 
@@ -104,7 +104,7 @@ def _get_engine(project_slug: str | None = None):
     engine from `DATABASE_URL` / `DB_URL` env. Returns None if no URL set.
     """
     try:
-        from db.session import get_sql_engine  # absolute import per spec
+        from db.session import get_sql_engine # absolute import per spec
         return get_sql_engine()
     except Exception as e:
         log.debug("db.session.get_sql_engine() unavailable: %s", e)
@@ -317,7 +317,7 @@ def _llm_tiebreaker(
 ) -> dict | None:
     """Call LITE_MODEL via training_llm_call. Returns parsed dict or None."""
     try:
-        from dash.settings import training_llm_call  # absolute import per spec
+        from dash.settings import training_llm_call # absolute import per spec
     except Exception as e:
         log.debug("training_llm_call import failed: %s", e)
         return None
@@ -351,7 +351,7 @@ def _llm_tiebreaker(
 
 
 # ---------------------------------------------------------------------------
-# Core classifier (signal → result)
+# Core classifier (signal > result)
 # ---------------------------------------------------------------------------
 
 def _build_reasoning(
@@ -419,7 +419,7 @@ def classify_from_signals(
     top_lex = get_lexicon(top_key) or {}
     top_detail = score_vertical_detail(top_key, tables, columns, docs, persona)
 
-    # ----- strong rule pick → done
+    # ----- strong rule pick > done
     if top_score >= RULE_STRONG_THRESHOLD:
         return {
             "vertical": top_key,
@@ -432,11 +432,11 @@ def classify_from_signals(
             "all_scores": all_scores,
         }
 
-    # ----- weak rule pick → LLM tie-breaker
+    # ----- weak rule pick > LLM tie-breaker
     if top_score >= RULE_WEAK_THRESHOLD:
         llm_pick = _llm_tiebreaker(tables, columns, docs, ranked[:5])
         if llm_pick:
-            # blend confidence; if LLM agrees with top → boost, else use LLM pick
+            # blend confidence; if LLM agrees with top > boost, else use LLM pick
             if llm_pick["vertical"] == top_key:
                 blended = (
                     RULE_WEIGHT_IN_BLEND * top_score
@@ -483,7 +483,7 @@ def classify_from_signals(
             "all_scores": all_scores,
         }
 
-    # ----- below weak threshold → generic
+    # ----- below weak threshold > generic
     return _generic_result("no_signal", all_scores)
 
 
@@ -498,7 +498,7 @@ def classify_vertical(project_slug: str) -> dict:
     signals, reasoning, runner_up, all_scores. Always returns a dict —
     never raises — so callers can safely consume in pipelines.
 
-    Missing project / empty schema → `{vertical: "generic", confidence: 0.0,
+    Missing project / empty schema > `{vertical: "generic", confidence: 0.0,
     method: "no_data"}`.
     """
     if not project_slug or not isinstance(project_slug, str):
@@ -514,7 +514,7 @@ def classify_vertical(project_slug: str) -> dict:
         return classify_from_signals(tables=[], columns=[], docs=docs, persona=persona)
 
     try:
-        schema = project_slug  # Dash convention: project slug == schema name
+        schema = project_slug # Dash convention: project slug == schema name
         if not _project_schema_exists(engine, schema):
             log.info("classify_vertical: schema %s does not exist", schema)
             docs = _list_docs(project_slug)

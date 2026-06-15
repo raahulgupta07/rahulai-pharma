@@ -6,8 +6,8 @@ encrypt-at-rest using Fernet (cryptography.fernet) and decrypt on read.
 
 Key sourcing (mirrors dash/connectors/crypto.py):
   1. CONNECTION_ENCRYPTION_KEY env var — 44-char urlsafe-b64 Fernet key OR raw 32 bytes
-  2. fallback: sha256(JWT_SECRET) → urlsafe_b64 → 44-char Fernet key
-  3. neither set → clear ImproperlyConfigured error at first call
+  2. fallback: sha256(JWT_SECRET) > urlsafe_b64 > 44-char Fernet key
+  3. neither set > clear ImproperlyConfigured error at first call
 
 Failure-soft on decrypt: returns None on InvalidToken so legacy plaintext rows
 can still authenticate via the fallback path in dash/embed/auth.py.
@@ -30,7 +30,7 @@ class EmbedSecretConfigError(RuntimeError):
 
 
 def _derive_key_from_secret(secret: str) -> bytes:
-    """sha256(secret) → 32 bytes → urlsafe_b64 = 44-char Fernet key."""
+    """sha256(secret) > 32 bytes > urlsafe_b64 = 44-char Fernet key."""
     digest = hashlib.sha256(secret.encode("utf-8")).digest()
     return base64.urlsafe_b64encode(digest)
 
@@ -92,6 +92,6 @@ def decrypt_secret(ciphertext: str) -> str | None:
     except EmbedSecretConfigError:
         # Misconfiguration — let it propagate so caller can surface.
         raise
-    except Exception as e:  # pragma: no cover - unexpected path
+    except Exception as e: # pragma: no cover - unexpected path
         logger.warning("embed decrypt_secret failed: %s", e)
         return None

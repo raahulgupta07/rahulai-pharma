@@ -23,7 +23,7 @@ os.environ.setdefault("EXPERIMENTAL_AGI", "1")
 
 def _get_engine_or_skip():
     try:
-        from db.session import get_sql_engine  # type: ignore
+        from db.session import get_sql_engine # type: ignore
         eng = get_sql_engine()
         with eng.connect() as conn:
             conn.execute(__import__("sqlalchemy").text("SELECT 1"))
@@ -133,6 +133,6 @@ def test_sse_auth_token_fallback_helper():
             user = None
         state = _State()
 
-    # No user, no token → 401
+    # No user, no token > 401
     with pytest.raises(Exception):
         hitl_api._get_user_with_token_fallback(_Req(), token=None)

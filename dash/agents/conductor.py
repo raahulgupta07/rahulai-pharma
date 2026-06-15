@@ -18,7 +18,7 @@ def create_upload_team(project_slug: str, user_id: int = 1) -> Team:
     """Create the Upload Agent Team for a project.
 
     Team structure:
-        Conductor (leader) → Parser + Scanner + Vision + Inspector
+        Conductor (leader) > Parser + Scanner + Vision + Inspector
         + Engineer (existing, for post-upload optimization)
     """
     import re
@@ -76,25 +76,25 @@ TEAM:
 WORKFLOW:
 1. LOOK at the file(s) and their type(s)
 2. ASSIGN the right agent:
-   - Data files → Parser
-   - Documents → Scanner
-   - Images → Vision
-3. AFTER tables are created → Inspector validates each table
-4. IF Inspector says FAIL → ask Parser/Scanner to retry with different strategy
-5. AFTER all validated → Engineer creates views + discovers relationships
+   - Data files > Parser
+   - Documents > Scanner
+   - Images > Vision
+3. AFTER tables are created > Inspector validates each table
+4. IF Inspector says FAIL > ask Parser/Scanner to retry with different strategy
+5. AFTER all validated > Engineer creates views + discovers relationships
 6. REPORT summary: tables created, health scores, views, relationships
 
 MERGE DECISION (for Excel with multiple sheets/tables):
 After Parser creates tables, check if any should be MERGED:
-- Same columns across sheets (different FY/year) → tell Parser to merge
-- Same columns across files (different location) → tell Parser to merge
-- Different columns → keep separate
+- Same columns across sheets (different FY/year) > tell Parser to merge
+- Same columns across files (different location) > tell Parser to merge
+- Different columns > keep separate
 
 SELF-CORRECTION:
 If Inspector reports a table with health < 40%:
 - Ask Parser to retry with: different header row, different split, read raw + AI
 - Max 2 retries per table
-- If still fails after retries → mark as "needs manual review"
+- If still fails after retries > mark as "needs manual review"
 
 ALWAYS report what happened clearly.""",
         tools=[ReasoningTools()],

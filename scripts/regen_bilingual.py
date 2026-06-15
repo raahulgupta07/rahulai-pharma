@@ -36,9 +36,9 @@ MODEL = "google/gemini-3-flash-preview"
 CACHE = {
     "memories": "/tmp/cp_my_memories.json",
     "patterns": "/tmp/cp_my_patterns.json",
-    "schema":   "/tmp/cp_my_schema.json",
-    "rules":    "/tmp/cp_my_rules.json",
-    "brain":    "/tmp/cp_my_brain.json",
+    "schema": "/tmp/cp_my_schema.json",
+    "rules": "/tmp/cp_my_rules.json",
+    "brain": "/tmp/cp_my_brain.json",
 }
 
 BACKUP_PATH = "/tmp/pre_bilingual_write.sql"
@@ -80,7 +80,7 @@ def translate_batch(texts: list[str]) -> list[str]:
         "model": MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.1,
-        # REQUIRED: OpenRouter account data policy → without this the model
+        # REQUIRED: OpenRouter account data policy > without this the model
         # endpoint 404s ("No endpoints available matching your data policy").
         "provider": {"data_collection": "allow"},
     }).encode()
@@ -475,7 +475,7 @@ def regen_schema(cur) -> int:
     for mid, tname, meta in rows:
         if isinstance(meta, str):
             meta = json.loads(meta)
-        path_my = dict(cache_tables.get(tname, {}))   # translation hints only
+        path_my = dict(cache_tables.get(tname, {})) # translation hints only
         # derive targets from the LIVE jsonb, not the cache
         targets = _collect_nl_paths(meta)
         # translate uncovered (cache miss / new column) on the fly
@@ -484,7 +484,7 @@ def regen_schema(cur) -> int:
             en = _get_path(meta, p)
             if not isinstance(en, str) or not en.strip():
                 continue
-            if _MY_TAG in en:           # already bilingual — idempotent skip
+            if _MY_TAG in en: # already bilingual — idempotent skip
                 continue
             if not path_my.get(p):
                 to_llm.append(en)
@@ -555,12 +555,12 @@ def run() -> dict:
             conn.commit()
 
             # 3) per-surface twins (commit after each so a later failure keeps
-            #    earlier surfaces durable; each surface is independently idempotent)
+            # earlier surfaces durable; each surface is independently idempotent)
             m = regen_memories(cur); conn.commit(); print(f"[memories] +{m}")
             p = regen_patterns(cur); conn.commit(); print(f"[patterns] +{p}")
-            r = regen_rules(cur);    conn.commit(); print(f"[rules]    +{r}")
-            b = regen_brain(cur);    conn.commit(); print(f"[brain]    +{b}")
-            s = regen_schema(cur);   conn.commit(); print(f"[schema]   {s} table(s) bilingual")
+            r = regen_rules(cur); conn.commit(); print(f"[rules] +{r}")
+            b = regen_brain(cur); conn.commit(); print(f"[brain] +{b}")
+            s = regen_schema(cur); conn.commit(); print(f"[schema] {s} table(s) bilingual")
 
             counts = verify(cur)
         print("[verify]", json.dumps(counts, ensure_ascii=False))

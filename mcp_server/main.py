@@ -8,7 +8,7 @@ Methods supported
 -----------------
 
 * ``initialize`` — handshake. Returns ``serverInfo`` + ``capabilities``.
-* ``initialized`` (notification) — client→server ack. No-op.
+* ``initialized`` (notification) — client>server ack. No-op.
 * ``ping`` — round-trip health.
 * ``tools/list`` — returns the 8 Dash tools from ``tools_registry``.
 * ``tools/call`` — invokes a tool, returns ``content`` with stringified
@@ -87,7 +87,7 @@ def _read_message() -> dict | None:
     """
     line = sys.stdin.readline()
     if not line:
-        return None  # EOF
+        return None # EOF
 
     line = line.strip()
     if not line:
@@ -296,12 +296,12 @@ def _dispatch(msg: dict, user: dict | None) -> dict | None:
         return _err(msg.get("id"), INVALID_REQUEST, "jsonrpc must be '2.0'")
 
     method = msg.get("method")
-    req_id = msg.get("id")  # notifications have no id
+    req_id = msg.get("id") # notifications have no id
 
     if not method:
         return _err(req_id, INVALID_REQUEST, "missing method")
 
-    # Notifications: client→server only, no response.
+    # Notifications: client>server only, no response.
     if req_id is None and method == "initialized":
         log.info("mcp client initialized")
         return None
@@ -351,7 +351,7 @@ def run_stdio() -> None:
             _write_message(response)
 
 
-def main() -> None:  # pragma: no cover - thin wrapper
+def main() -> None: # pragma: no cover - thin wrapper
     try:
         run_stdio()
     except KeyboardInterrupt:

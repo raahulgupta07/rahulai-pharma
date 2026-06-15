@@ -66,11 +66,11 @@ def cap_tool_result(payload, max_tokens: int | None = None):
 
     Returns ``(capped_payload, was_capped: bool, dropped_count: int)``.
 
-    - list of rows  → keep the first K rows that fit, append a sentinel dict
+    - list of rows > keep the first K rows that fit, append a sentinel dict
       ``{"_truncated": True, "_dropped": N, "_hint": "paginate via offset"}``.
-    - string        → slice to budget, append
+    - string > slice to budget, append
       ``"\\n… [truncated N chars, paginate via offset]"``.
-    - dict / other  → returned unchanged unless its ``str()`` exceeds budget,
+    - dict / other > returned unchanged unless its ``str()`` exceeds budget,
       in which case the string form is sliced (best-effort).
     """
     try:

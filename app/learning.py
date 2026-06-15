@@ -29,7 +29,7 @@ def _iso_utc(v):
     """Serialize a DB timestamp as ISO-8601 UTC ending in 'Z'.
 
     The DB stores NAIVE UTC; the frontend parses bare 'YYYY-MM-DD HH:MM:SS'
-    strings as LOCAL time → phantom elapsed. Always emit an explicit 'Z'/offset.
+    strings as LOCAL time > phantom elapsed. Always emit an explicit 'Z'/offset.
     Handles None / datetime / str. Never throws. (Mirrors
     dash.training.flow_map._iso_utc — kept local to avoid import coupling.)"""
     if v is None:
@@ -190,8 +190,8 @@ def list_query_patterns(slug: str, request: Request):
             "SELECT en.id, en.question, en.sql, en.uses, en.last_used, en.created_at, my.question AS question_my "
             "FROM public.dash_query_patterns en "
             "LEFT JOIN public.dash_query_patterns my ON my.project_slug = en.project_slug "
-            "  AND my.source = 'bilingual_twin' "
-            "  AND regexp_replace(my.sql, E'\\n-- bilingual_twin$', '') = en.sql "
+            " AND my.source = 'bilingual_twin' "
+            " AND regexp_replace(my.sql, E'\\n-- bilingual_twin$', '') = en.sql "
             "WHERE en.project_slug = :s AND (en.source IS NULL OR en.source <> 'bilingual_twin') "
             "ORDER BY en.uses DESC LIMIT 20"
         ), {"s": slug}).fetchall()
@@ -468,7 +468,7 @@ async def run_evals(slug: str, request: Request):
 
 
 # ---------------------------------------------------------------------------
-# Natural Language → SQL Rules
+# Natural Language > SQL Rules
 # ---------------------------------------------------------------------------
 
 @router.post("/{slug}/nl-to-rule")
@@ -618,19 +618,19 @@ def _reap_stale_runs(slug: str) -> int:
             res = conn.execute(text(
                 "UPDATE public.dash_training_runs "
                 "SET status='failed', finished_at=now(), "
-                "    current_step = left(COALESCE(NULLIF(current_step,''),'')"
-                "                   || ' · aborted (stale: no progress > ' || :m || ' min)', 200), "
+                " current_step = left(COALESCE(NULLIF(current_step,''),'')"
+                " || ' · aborted (stale: no progress > ' || :m || ' min)', 200), "
                 # Also stamp the error column — current_step is invisible to
                 # get_run_status/the robot console, so a stale-abort otherwise has
                 # NO surfaced reason. Keep any real step error already recorded.
-                "    error = left(COALESCE(NULLIF(error,''), 'watchdog: aborted — no progress > '"
-                "                   || :m || ' min. A training step hung; check logs for the last step "
+                " error = left(COALESCE(NULLIF(error,''), 'watchdog: aborted — no progress > '"
+                " || :m || ' min. A training step hung; check logs for the last step "
                 "reached (empty logs = hung before the first step).'), 1000) "
                 "WHERE project_slug = :s AND status IN ('running','finalizing') "
-                "  AND COALESCE( "
-                "        (SELECT max((e->>'tsabs')::float) FROM jsonb_array_elements(logs) e), "
-                "        EXTRACT(EPOCH FROM started_at) "
-                "      ) < EXTRACT(EPOCH FROM now()) - (:m * 60)"
+                " AND COALESCE( "
+                " (SELECT max((e->>'tsabs')::float) FROM jsonb_array_elements(logs) e), "
+                " EXTRACT(EPOCH FROM started_at) "
+                " ) < EXTRACT(EPOCH FROM now()) - (:m * 60)"
             ), {"s": slug, "m": stale_min})
             conn.commit()
             return res.rowcount or 0
@@ -743,7 +743,7 @@ def get_auto_train_log(slug: str, request: Request, since: int = 0, limit: int =
     Source = public.dash_training_runs.logs (JSONB array of
     {ts, msg, table, table_index, total_tables}) appended by _master_log +
     the LLM observer on every training step / model call. `since` is the
-    array index already seen by the client → we return only newer entries.
+    array index already seen by the client > we return only newer entries.
     Falls back to the latest run when no active run, so a just-finished
     run still shows its tail (incl. the ━━━ training done ━━━ line)."""
     _get_user(request)
@@ -836,7 +836,7 @@ def get_learning_feed(slug: str, request: Request, since: float = 0.0, limit: in
     events = []
     try:
         eng = get_sql_engine()
-        since_ts = since if since > 0 else (__import__("time").time() - 3600)  # default last 1h
+        since_ts = since if since > 0 else (__import__("time").time() - 3600) # default last 1h
 
         # Each source gets its OWN short connection. A single bad query (schema
         # drift, missing table) must NOT abort the Postgres tx and silently nuke
@@ -867,8 +867,8 @@ def get_learning_feed(slug: str, request: Request, since: float = 0.0, limit: in
             "ORDER BY created_at DESC LIMIT :lim",
             {"s": slug, "since": since_ts, "lim": 20}):
             src = r[1] or "agent"
-            label = {"auto_learned": "💡 Learned", "episodic": "📌 Episode",
-                     "agent": "🧠 Memory", "user": "👤 Saved"}.get(src, "🧠 Memory")
+            label = {"auto_learned": " Learned", "episodic": " Episode",
+                     "agent": " Memory", "user": " Saved"}.get(src, " Memory")
             events.append({"ts": int(r[0]), "type": "memory",
                            "text": f"{label}: {str(r[2] or '')[:120]}{_pct(r[3])}"})
 
@@ -880,7 +880,7 @@ def get_learning_feed(slug: str, request: Request, since: float = 0.0, limit: in
             "ORDER BY created_at DESC LIMIT 10",
             {"s": slug, "since": since_ts}):
             events.append({"ts": int(r[0]), "type": "quality",
-                           "text": f"✓ Quality score {r[1]}/5 — {r[2] or 'response'}"})
+                           "text": f"OK Quality score {r[1]}/5 — {r[2] or 'response'}"})
 
         # Proactive insights
         for r in _q(
@@ -889,7 +889,7 @@ def get_learning_feed(slug: str, request: Request, since: float = 0.0, limit: in
             "AND EXTRACT(EPOCH FROM created_at) > :since "
             "ORDER BY created_at DESC LIMIT 10",
             {"s": slug, "since": since_ts}):
-            icon = "⚠️" if (r[2] or "info") == "alert" else "💡"
+            icon = "" if (r[2] or "info") == "alert" else ""
             events.append({"ts": int(r[0]), "type": "insight",
                            "text": f"{icon} Insight: {str(r[1] or '')[:100]}"})
 
@@ -901,7 +901,7 @@ def get_learning_feed(slug: str, request: Request, since: float = 0.0, limit: in
             "ORDER BY created_at DESC LIMIT 10",
             {"s": slug, "since": since_ts}):
             events.append({"ts": int(r[0]), "type": "triple",
-                           "text": f"⬡ KG: {r[1]} → {r[2]} → {r[3]}"})
+                           "text": f"* KG: {r[1]} > {r[2]} > {r[3]}"})
 
         # Evolved instructions
         for r in _q(
@@ -911,10 +911,10 @@ def get_learning_feed(slug: str, request: Request, since: float = 0.0, limit: in
             "ORDER BY updated_at DESC LIMIT 3",
             {"s": slug, "since": since_ts}):
             events.append({"ts": int(r[0]), "type": "evolve",
-                           "text": f"🔄 Auto-evolved instructions v{r[1]} (after {r[2]} chats)"})
+                           "text": f" Auto-evolved instructions v{r[1]} (after {r[2]} chats)"})
 
     except Exception:
-        pass  # fail-soft — return whatever we got
+        pass # fail-soft — return whatever we got
 
     # Sort by timestamp desc, cap at limit
     events.sort(key=lambda x: x["ts"], reverse=True)
@@ -974,17 +974,17 @@ def list_agents(slug: str, request: Request):
     Return the agent team configuration for this project.
 
     4-state model (industry-standard tri-state + error):
-      - active       : prerequisites met AND called within 7 days
-      - ready        : prerequisites met, never called (default for new project)
-      - needs_setup  : prerequisite missing (e.g. Researcher with 0 docs)
-      - error        : last invocation failed within last hour
+      - active : prerequisites met AND called within 7 days
+      - ready : prerequisites met, never called (default for new project)
+      - needs_setup : prerequisite missing (e.g. Researcher with 0 docs)
+      - error : last invocation failed within last hour
 
     Backward-compat: every agent also has `status` field returning
     "active" or "standby" (legacy renderers keep working).
 
     Each agent also returns:
-      - reason   : one-sentence why this state
-      - cta      : optional {label, url} for needs_setup states
+      - reason : one-sentence why this state
+      - cta : optional {label, url} for needs_setup states
       - last_used_at : ISO timestamp or null
     """
     user = _get_user(request)
@@ -1155,7 +1155,7 @@ def list_agents(slug: str, request: Request):
          "supplier / supply chain / single-source / lead time / geopolitical / BOM", 7),
     ]
     for vname, vkey, vrole, vtrig, vtools in vertical_defs:
-        enabled = bool(_agents_cfg.get(vkey, True))  # Default ON
+        enabled = bool(_agents_cfg.get(vkey, True)) # Default ON
         agents.append({
             "name": vname,
             "category": "vertical",
@@ -1168,7 +1168,7 @@ def list_agents(slug: str, request: Request):
             "reason": (
                 "Active · fires on keyword match · tools self-check data presence"
                 if enabled
-                else f"Disabled per project via Settings → CONFIG → '{vkey}'."
+                else f"Disabled per project via Settings > CONFIG > '{vkey}'."
             ),
             "cta": None if enabled else {
                 "label": "Re-enable in CONFIG",
@@ -1214,7 +1214,7 @@ def list_agents(slug: str, request: Request):
         ("Query Plan Extractor", "parses SQL · tables · joins · filters", 0),
         ("Meta Learner", "tracks self-correction strategy success rates", 0),
         ("Auto Evolver", "regenerates instructions every 20 chats", 0),
-        ("Chat Triple Extractor", "extracts 3-10 SPO triples per chat → KG", 0),
+        ("Chat Triple Extractor", "extracts 3-10 SPO triples per chat > KG", 0),
         ("Auto-Memory Promoter", "saves factual observations to memory", 0),
         ("User Preference Tracker", "analysis style · favorite metrics · viz prefs", 0),
         ("Episodic Memory Extractor", "captures reactions · surprises · corrections", 0),
@@ -1280,20 +1280,20 @@ def list_agents(slug: str, request: Request):
         investment_defs = []
     else:
         investment_defs = [
-        ("Market Analyst",     "sector + comparable deal context",
+        ("Market Analyst", "sector + comparable deal context",
          ["search_brain", "recall", "find_comparable_deals", "exa_news_search"]),
-        ("Financial Analyst",  "balance sheet, P&L, cash flow analysis from project tables",
+        ("Financial Analyst", "balance sheet, P&L, cash flow analysis from project tables",
          ["get_balance_sheet", "get_income_statement", "get_cashflow", "get_cap_table",
           "compute_unit_economics", "compute_valuation_multiples"]),
-        ("Cohort Analyst",     "growth, retention, churn from internal data",
+        ("Cohort Analyst", "growth, retention, churn from internal data",
          ["compute_growth_metrics", "cohort_curve", "rfm_score"]),
-        ("Risk Officer",       "mandate compliance + red flag detection",
+        ("Risk Officer", "mandate compliance + red flag detection",
          ["find_red_flags", "get_customer_concentration", "verify_against_mandate"]),
-        ("Memo Writer",        "drafts IC memo from analyst outputs",
+        ("Memo Writer", "drafts IC memo from analyst outputs",
          ["save_memo", "list_memos"]),
-        ("Committee Chair",    "ACQUIRE/DEFER/PASS verdict + conviction",
+        ("Committee Chair", "ACQUIRE/DEFER/PASS verdict + conviction",
          []),
-        ("Knowledge (RAG)",    "RAG over pitch deck, DD reports, term sheets",
+        ("Knowledge (RAG)", "RAG over pitch deck, DD reports, term sheets",
          ["recall", "search_pitch_deck", "search_dd_findings", "extract_team_bios",
           "extract_market_size"]),
     ]
@@ -1320,7 +1320,7 @@ def list_agents(slug: str, request: Request):
 
     # Routing (2)
     routing_defs = [
-        ("Smart Router", "2-tier project routing · keyword score → Router Agent · 4 tools", 4,
+        ("Smart Router", "2-tier project routing · keyword score > Router Agent · 4 tools", 4,
          "ambiguous project selection in Dash Agent"),
         ("Visualizer", "auto-detect chart type · 8 types · rules engine + LLM fallback", 1,
          "after every data query result"),
@@ -1366,8 +1366,8 @@ def list_agents(slug: str, request: Request):
         "model": DEEP_MODEL,
         "schema": slug,
         "reasoning": [
-            {"mode": "FAST", "description": "direct SQL → answer (simple questions)"},
-            {"mode": "DEEP", "description": "think() + analyze() → multi-step reasoning (complex questions)"},
+            {"mode": "FAST", "description": "direct SQL > answer (simple questions)"},
+            {"mode": "DEEP", "description": "think() + analyze() > multi-step reasoning (complex questions)"},
         ],
         "legend": {
             "active": "Healthy + invoked within 7d",
@@ -1446,9 +1446,9 @@ def _list_minions_with_stats(eng, slug: str | None) -> list[dict]:
             SELECT r.agent_name, r.display_name, r.category, r.description,
                    r.handler_kind, r.trigger_model, r.llm_model,
                    r.cost_per_invocation, r.status,
-                   COALESCE(s.queued, 0)     AS queued,
-                   COALESCE(s.running, 0)    AS running,
-                   COALESCE(s.done_24h, 0)   AS done_24h,
+                   COALESCE(s.queued, 0) AS queued,
+                   COALESCE(s.running, 0) AS running,
+                   COALESCE(s.done_24h, 0) AS done_24h,
                    COALESCE(s.failed_24h, 0) AS failed_24h,
                    s.last_done_at
               FROM public.dash_agent_registry r
@@ -1532,7 +1532,7 @@ def os_hub_aggregate(request: Request):
     """
     Single aggregator for Dash-OS overview tab.
     Returns ALL counters + drill targets in one round-trip.
-    Each sub-query wrapped in try/except → fail-soft 0/null.
+    Each sub-query wrapped in try/except > fail-soft 0/null.
     """
     from app.auth import _require_super
     _require_super(request)
@@ -1647,14 +1647,14 @@ def os_hub_aggregate(request: Request):
             try:
                 row = c.execute(text(
                     "SELECT COALESCE(SUM("
-                    "  cost_per_invocation * "
-                    "  CASE trigger_model "
-                    "    WHEN 'sync_chat' THEN 20 "
-                    "    WHEN 'event_hook' THEN 10 "
-                    "    WHEN 'minion_queue' THEN 4 "
-                    "    WHEN 'cron' THEN 1 "
-                    "    ELSE 5 "
-                    "  END"
+                    " cost_per_invocation * "
+                    " CASE trigger_model "
+                    " WHEN 'sync_chat' THEN 20 "
+                    " WHEN 'event_hook' THEN 10 "
+                    " WHEN 'minion_queue' THEN 4 "
+                    " WHEN 'cron' THEN 1 "
+                    " ELSE 5 "
+                    " END"
                     "), 0) AS est "
                     "FROM public.dash_agent_registry "
                     "WHERE status='active'"
@@ -1692,7 +1692,7 @@ def os_hub_aggregate(request: Request):
                 row = c.execute(text(
                     "SELECT COUNT(*) AS total, "
                     "COUNT(*) FILTER (WHERE "
-                    "  last_seen_at > now() - INTERVAL '24 hours') AS active "
+                    " last_seen_at > now() - INTERVAL '24 hours') AS active "
                     "FROM public.dash_agent_registry "
                     "WHERE category='investment'"
                 )).mappings().first()
@@ -1803,10 +1803,10 @@ def os_hub_aggregate(request: Request):
                 row = c.execute(text(
                     "SELECT COUNT(*) AS total, "
                     "COUNT(*) FILTER (WHERE status IN "
-                    "  ('running','graph_building','env_setup','simulating','reporting')"
+                    " ('running','graph_building','env_setup','simulating','reporting')"
                     ") AS running, "
                     "COUNT(*) FILTER (WHERE status='done' "
-                    "  AND updated_at > now() - INTERVAL '24 hours') AS done_24h "
+                    " AND updated_at > now() - INTERVAL '24 hours') AS done_24h "
                     "FROM dash.sim_projects"
                 )).mappings().first()
                 if row:
@@ -2197,8 +2197,8 @@ async def track_preference(slug: str, request: Request):
     user = _get_user(request)
     _check_access(user, slug)
     body = await request.json()
-    action = body.get("action", "")  # e.g. "chart_type", "tab_click"
-    value = body.get("value", "")    # e.g. "pie", "graph"
+    action = body.get("action", "") # e.g. "chart_type", "tab_click"
+    value = body.get("value", "") # e.g. "pie", "graph"
 
     if not action or not value:
         return {"status": "ok"}
@@ -2310,7 +2310,7 @@ def consolidate_knowledge(slug: str, request: Request):
     # Build context for LLM
     facts = "\n".join(f"- {r[1]}" for r in mem_rows)
     fb_context = "\n".join(f"- [{r[1]}] {r[0]}" for r in feedback) if feedback else "None"
-    pattern_context = "\n".join(f"- Q: {r[0]} → SQL: {r[1][:100]}" for r in patterns) if patterns else "None"
+    pattern_context = "\n".join(f"- Q: {r[0]} > SQL: {r[1][:100]}" for r in patterns) if patterns else "None"
 
     prompt = f"""You are consolidating a data agent's knowledge. Below are {len(mem_rows)} individual facts, recent feedback, and proven query patterns.
 
@@ -2441,9 +2441,9 @@ def evolve_instructions(slug: str, request: Request):
         ), {"s": slug}).scalar() or 0
 
     mem_text = "\n".join(f"- {r[0]}" for r in memories) if memories else "None yet"
-    good_text = "\n".join(f"- Q: {r[0]}\n  A: {(r[1] or '')[:150]}" for r in feedback_good) if feedback_good else "None yet"
-    bad_text = "\n".join(f"- Q: {r[0]}\n  A: {(r[1] or '')[:100]}" for r in feedback_bad) if feedback_bad else "None yet"
-    pattern_text = "\n".join(f"- Q: {r[0]} → {r[1][:100]}" for r in patterns) if patterns else "None yet"
+    good_text = "\n".join(f"- Q: {r[0]}\n A: {(r[1] or '')[:150]}" for r in feedback_good) if feedback_good else "None yet"
+    bad_text = "\n".join(f"- Q: {r[0]}\n A: {(r[1] or '')[:100]}" for r in feedback_bad) if feedback_bad else "None yet"
+    pattern_text = "\n".join(f"- Q: {r[0]} > {r[1][:100]}" for r in patterns) if patterns else "None yet"
     plan_text = "\n".join(f"- Tables {r[0]}: {r[1] or 'N/A'}" for r in plans) if plans else "None yet"
 
     prompt = f"""You are generating supplementary instructions for a data analyst AI agent based on what it has learned from user interactions.
@@ -3062,7 +3062,7 @@ def evolution_history(slug: str, request: Request):
 
 @router.post("/{slug}/evolve")
 async def evolve(slug: str, request: Request):
-    """Run the full Autogenesis evolution cycle: Reflect → Select → Improve → Evaluate → Commit."""
+    """Run the full Autogenesis evolution cycle: Reflect > Select > Improve > Evaluate > Commit."""
     from os import getenv
     import httpx
 
@@ -3163,7 +3163,7 @@ async def evolve(slug: str, request: Request):
                                     "INSERT INTO public.dash_memories (project_slug, scope, fact, source, parent_id) VALUES (:s, 'project', :f, 'consolidated', :pid)"
                                 ), {"s": slug, "f": fact, "pid": max_id})
                             conn.commit()
-                        improvements.append(f"Consolidated {len(mem_rows)} memories → {len(consolidated)} insights")
+                        improvements.append(f"Consolidated {len(mem_rows)} memories > {len(consolidated)} insights")
             except Exception:
                 pass
 
@@ -3290,7 +3290,7 @@ def eval_health(slug: str):
 @router.get("/{slug}/semantic-layer")
 def semantic_layer(slug: str):
     """Engineer-built materialized views for a project (name, purpose, grain,
-    live row count). Feeds the Data Source → Semantic Layer UI panel."""
+    live row count). Feeds the Data Source > Semantic Layer UI panel."""
     try:
         from dash.admin.settings import get_setting as _gs
         _v = _gs("engineer_semantic_layer")
@@ -3363,7 +3363,7 @@ _STORE_SPEC = {
     },
     "QA": {
         "label": "Training Q&A", "table": "dash_training_qa",
-        "blurb": "Question→SQL pairs generated per table. These teach the agent how to answer real questions.",
+        "blurb": "Question>SQL pairs generated per table. These teach the agent how to answer real questions.",
         "columns": ["question", "table", "answer"],
         "sql": "SELECT question, table_name, LEFT(COALESCE(answer_template,''),90) FROM public.dash_training_qa "
                "WHERE project_slug=:s ORDER BY created_at DESC NULLS LAST LIMIT 20",
@@ -3402,7 +3402,7 @@ _STORE_SPEC = {
     },
     "AGE": {
         "label": "Apache AGE graph", "table": "dash_knowledge_triples",
-        "blurb": "Knowledge-graph triples (subject → predicate → object) backing graph-lane 2-hop reasoning.",
+        "blurb": "Knowledge-graph triples (subject > predicate > object) backing graph-lane 2-hop reasoning.",
         "columns": ["subject", "predicate", "object"],
         "sql": "SELECT subject, predicate, object FROM public.dash_knowledge_triples "
                "WHERE project_slug=:s ORDER BY created_at DESC NULLS LAST LIMIT 20",
@@ -3443,17 +3443,17 @@ def store_detail(slug: str, key: str, request: Request):
     except Exception:
         _OBF = True
     _SMASK = {
-        "STAGE": ("Intake",        "intake",         "Files received before load — one entry per sheet, with status + dedup hash."),
-        "PG":    ("Primary store", "data store",     "Your loaded data tables. Rows promoted into the project after validation."),
-        "META":  ("Metadata",      "metadata",       "Per-table profile + row count. A table is 'trained' once profiled."),
-        "QA":    ("Training Q&A",  "training Q&A",   "Question→answer pairs generated per table to teach the agent."),
-        "VEC":   ("Vector index",  "vector index",   "Embeddings for semantic search over tables, Q&A, and knowledge."),
-        "BRAIN": ("Knowledge base","knowledge",      "Curated facts: aliases, glossary, KPIs, formulas — seeded + learned."),
-        "REL":   ("Relationships", "links",          "Discovered table-to-table links used for multi-table questions."),
-        "MV":    ("Managed views", "managed views",  "Managed views — pre-joined / pre-aggregated for fast reads."),
-        "AGE":   ("Graph store",   "graph store",    "Network triples (subject → relation → object) backing multi-hop reasoning."),
-        "ENR":   ("Enrichment",    "enrichment",     "Suggested fills for missing fields — suggestion-only, human-gated."),
-        "EVAL":  ("Eval runs",     "eval runs",      "Accuracy checks against the golden set: total / passed / average score."),
+        "STAGE": ("Intake", "intake", "Files received before load — one entry per sheet, with status + dedup hash."),
+        "PG": ("Primary store", "data store", "Your loaded data tables. Rows promoted into the project after validation."),
+        "META": ("Metadata", "metadata", "Per-table profile + row count. A table is 'trained' once profiled."),
+        "QA": ("Training Q&A", "training Q&A", "Question>answer pairs generated per table to teach the agent."),
+        "VEC": ("Vector index", "vector index", "Embeddings for semantic search over tables, Q&A, and knowledge."),
+        "BRAIN": ("Knowledge base","knowledge", "Curated facts: aliases, glossary, KPIs, formulas — seeded + learned."),
+        "REL": ("Relationships", "links", "Discovered table-to-table links used for multi-table questions."),
+        "MV": ("Managed views", "managed views", "Managed views — pre-joined / pre-aggregated for fast reads."),
+        "AGE": ("Graph store", "graph store", "Network triples (subject > relation > object) backing multi-hop reasoning."),
+        "ENR": ("Enrichment", "enrichment", "Suggested fills for missing fields — suggestion-only, human-gated."),
+        "EVAL": ("Eval runs", "eval runs", "Accuracy checks against the golden set: total / passed / average score."),
     }
     _m = _SMASK.get(key.upper()) if _OBF else None
     out = {
@@ -3486,8 +3486,8 @@ def store_detail(slug: str, key: str, request: Request):
 @router.get("/{slug}/dashboard-summary")
 def dashboard_summary(slug: str, request: Request):
     """At-a-glance counts for the Dashboard chip grid + Brain rich card.
-    One call → per-tab badge numbers (queries/lineage/rules/schedules/evals/
-    learn/graph + brain breakdown). All counts fail-soft (missing table → 0)."""
+    One call > per-tab badge numbers (queries/lineage/rules/schedules/evals/
+    learn/graph + brain breakdown). All counts fail-soft (missing table > 0)."""
     user = _get_user(request)
     _check_access(user, slug)
     schema = re.sub(r"[^a-z0-9_]", "_", slug.lower())[:63]
@@ -3698,7 +3698,7 @@ def refine_tools_propose(slug: str, tool_name: str):
         active = conn.execute(text(
             "SELECT new_description FROM public.dash_tool_patches "
             "WHERE tool_name = :t AND (project_slug = :s OR project_slug IS NULL) "
-            "  AND applied = TRUE AND reverted = FALSE "
+            " AND applied = TRUE AND reverted = FALSE "
             "ORDER BY version DESC LIMIT 1"
         ), {"t": tool_name, "s": slug}).first()
         old_description = (active[0] if active else "") or ""
@@ -3855,8 +3855,8 @@ def refine_tools_patch_apply(slug: str, patch_id: int, force: bool = False):
         conn.execute(text(
             "UPDATE public.dash_tool_patches SET applied = FALSE "
             "WHERE tool_name = :t "
-            "  AND (project_slug IS NOT DISTINCT FROM :s) "
-            "  AND id <> :id"
+            " AND (project_slug IS NOT DISTINCT FROM :s) "
+            " AND id <> :id"
         ), {"t": row[0], "s": row[1], "id": patch_id})
         conn.execute(text(
             "UPDATE public.dash_tool_patches "
@@ -3946,7 +3946,7 @@ def codex_enriched_tables(slug: str):
     """Tables whose Layer-3 metadata was enriched from source pipeline code.
 
     Powers the CODE badge in DATASETS. Reads dash_table_metadata (DB), which is
-    where dash/tools/codex_code.py persists pipeline_logic. Fail-soft → [].
+    where dash/tools/codex_code.py persists pipeline_logic. Fail-soft > [].
     """
     try:
         from dash.tools.skill_refinery import _get_engine
@@ -3959,7 +3959,7 @@ def codex_enriched_tables(slug: str):
                 "AND (metadata #> '{pipeline_logic,code_enriched}')::text = 'true'"
             ), {"s": slug}).fetchall()
         return {"tables": [r[0] for r in rows]}
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         return {"tables": [], "error": str(e)}
 
 
@@ -3973,7 +3973,7 @@ def feature_config_recommend(slug: str):
     from dash.feature_config import derive_recommended_config
     try:
         return {"status": "ok", "slug": slug, **derive_recommended_config(slug)}
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         return {"status": "error", "detail": str(e)}
 
 
@@ -4209,7 +4209,7 @@ async def rls_config_test(slug: str, request: Request):
 
     # Try Phase 3 rewriter if available; fallback to advisory preview.
     try:
-        from dash.rls.rewriter import rewrite as _rls_rewrite  # type: ignore
+        from dash.rls.rewriter import rewrite as _rls_rewrite # type: ignore
         rewritten = _rls_rewrite(sql, slug, user_attrs)
         result["rewritten_sql"] = rewritten
         result["mode_applied"] = cfg.get("mode")
@@ -4259,7 +4259,7 @@ def rls_config_schema_hints(slug: str, request: Request):
 
     # 1. Pull table metadata from dash_table_metadata
     tables = []
-    column_to_tables: dict[str, list[str]] = {}  # col_name -> [tables containing it]
+    column_to_tables: dict[str, list[str]] = {} # col_name -> [tables containing it]
 
     with _engine.connect() as conn:
         rows = conn.execute(text("""
@@ -4347,7 +4347,7 @@ def rls_config_schema_hints(slug: str, request: Request):
         if col in seen: continue
         if (col.endswith("_id") or col in ("store","shop","site","tenant","org")) and len(ts) >= 2:
             suggested_attr_keys.append(col); seen.add(col)
-    suggested_attr_keys = suggested_attr_keys[:8]  # cap
+    suggested_attr_keys = suggested_attr_keys[:8] # cap
 
     # 3. Suggested filters: for each table containing a suggested attr key, propose filter
     suggested_filters: list[dict] = []
@@ -4555,7 +4555,7 @@ def refine_tools_transfer_candidates(slug: str, request: Request):
                 exists = conn.execute(text(
                     "SELECT 1 FROM public.dash_tool_patches "
                     "WHERE project_slug = :s AND tool_name = :t "
-                    "  AND applied = TRUE AND reverted = FALSE LIMIT 1"
+                    " AND applied = TRUE AND reverted = FALSE LIMIT 1"
                 ), {"s": slug, "t": p["tool_name"]}).first()
                 if exists:
                     continue
@@ -4564,7 +4564,7 @@ def refine_tools_transfer_candidates(slug: str, request: Request):
                 confidence = round(min(100, max(0,
                     0.5 * ov_pct +
                     0.3 * shadow +
-                    0.2 * max(0, gain) * 5  # 20-pt gain → +20
+                    0.2 * max(0, gain) * 5 # 20-pt gain > +20
                 )), 1)
                 patches.append({
                     **{k: v for k, v in dict(p).items() if k != "applied_at"},
@@ -4621,7 +4621,7 @@ def refine_tools_import_patch(slug: str, source_patch_id: int, request: Request,
             "(tool_name, project_slug, version, old_description, new_description, "
             " default_args, reason, score_before, source, applied, applied_at) "
             "VALUES (:t, :s, :v, :old, :new, :args, :reason, :sb, 'transferred', :ap, "
-            "        CASE WHEN :ap THEN NOW() ELSE NULL END) RETURNING id"
+            " CASE WHEN :ap THEN NOW() ELSE NULL END) RETURNING id"
         ), {
             "t": src[0], "s": slug, "v": int(next_ver),
             "old": src[1] or "", "new": src[2],
@@ -4635,7 +4635,7 @@ def refine_tools_import_patch(slug: str, source_patch_id: int, request: Request,
             conn.execute(text(
                 "UPDATE public.dash_tool_patches SET applied = FALSE "
                 "WHERE tool_name = :t AND (project_slug IS NOT DISTINCT FROM :s) "
-                "  AND id <> :id"
+                " AND id <> :id"
             ), {"t": src[0], "s": slug, "id": new_id})
 
     if auto_apply:
@@ -5280,7 +5280,7 @@ def dream_skill_library_list(
         with _engine.connect() as conn:
             rows = conn.execute(text(
                 "SELECT id, name, description, sql_template, success_count, "
-                "       failure_count, avg_judge_score, status, last_used_at, created_at "
+                " failure_count, avg_judge_score, status, last_used_at, created_at "
                 "FROM public.dash_skill_library "
                 "WHERE project_slug = :s AND status = :st "
                 "ORDER BY success_count DESC, avg_judge_score DESC NULLS LAST "
@@ -5379,7 +5379,7 @@ def marketplace_list_skills(
 ):
     """List active marketplace skills. Any authenticated user (viewer+)."""
     from fastapi.responses import JSONResponse
-    _get_user(request)  # 401 if unauth
+    _get_user(request) # 401 if unauth
     try:
         from dash.learning.skill_marketplace import list_marketplace
         skills = list_marketplace(template=template, search=search, limit=int(limit))
@@ -5647,7 +5647,7 @@ def dream_lite_runs(slug: str, request: Request, days: int = 7, limit: int = 50)
             rows = conn.execute(text(
                 "SELECT * FROM public.dash_dream_lite_runs "
                 "WHERE project_slug = :s "
-                "  AND triggered_at > now() - (:d || ' days')::interval "
+                " AND triggered_at > now() - (:d || ' days')::interval "
                 "ORDER BY triggered_at DESC LIMIT :l"
             ), {"s": slug, "d": str(d), "l": l}).mappings().all()
         return {"runs": [_isoify(dict(r)) for r in rows]}
@@ -5705,10 +5705,10 @@ def dream_skill_audit_log(slug: str, request: Request, days: int = 14, limit: in
         with _engine.connect() as conn:
             rows = conn.execute(text(
                 "SELECT id, skill_name, project_slug, candidate_sql, "
-                "       audit_result, passed, created_at "
-                "  FROM dash.dash_skill_audit_log "
+                " audit_result, passed, created_at "
+                " FROM dash.dash_skill_audit_log "
                 " WHERE project_slug = :s "
-                "   AND created_at > now() - (:d || ' days')::interval "
+                " AND created_at > now() - (:d || ' days')::interval "
                 " ORDER BY created_at DESC LIMIT :l"
             ), {"s": slug, "d": str(d), "l": l}).mappings().all()
         out = []

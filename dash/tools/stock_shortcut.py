@@ -3,17 +3,17 @@ LLM round-trip.
 
 WHY: every chat turn on this product runs the same gemini-3-flash model, and each
 OpenRouter round-trip is ~5-6s. A tool-using answer needs ≥2 round-trips
-(pick tool → compose answer) ≈ 12s. For the single most common counter question —
+(pick tool > compose answer) ≈ 12s. For the single most common counter question —
 "do we have X in stock?" — that is pure waste: the answer is one `stock_check`
 call + a fixed format. This module detects that narrow intent, calls `stock_check`
 directly, and formats the reply in code (~0.3s, no model). It is intentionally
 CONSERVATIVE: on ANY ambiguity (multi-part question, clinical wording, no clear
 drug term, or zero matches) it returns None and the caller falls through to the
-full agent. A wrong extraction can only yield 0 rows → fall-through, never a wrong
+full agent. A wrong extraction can only yield 0 rows > fall-through, never a wrong
 answer.
 
 Masking: when `mask_qty=True` (consumer / non-private embeds) it shows availability
-only (✅/❌) and hides quantity + cost — same policy the agent path enforces.
+only (/) and hides quantity + cost — same policy the agent path enforces.
 """
 
 from __future__ import annotations
@@ -32,10 +32,10 @@ _BAIL_PATTERNS = re.compile(
     r"average|count of|breakdown|report)\b",
     re.IGNORECASE,
 )
-# "and" / commas joining two asks → not a single clean lookup.
+# "and" / commas joining two asks > not a single clean lookup.
 _MULTI = re.compile(r"\b(and|also|plus|then)\b|,", re.IGNORECASE)
 
-# English availability carriers → capture the drug term.
+# English availability carriers > capture the drug term.
 _EN_PATTERNS = [
     re.compile(r"^\s*(?:do|does)\s+(?:we|you|i)\s+have\s+(?:any\s+)?(.+?)\s*(?:in stock|available|on hand|left|here)?\s*\??\s*$", re.I),
     re.compile(r"^\s*(?:is|are)\s+(?:there\s+)?(?:any\s+)?(.+?)\s+(?:in stock|available|on hand|left)\s*\??\s*$", re.I),
@@ -66,7 +66,7 @@ def _extract_term(message: str) -> str | None:
     for pat in pats:
         m = pat.match(msg)
         if m:
-            term = (m.group(1) or "").strip(" \t?.း")  # also strip Burmese ။
+            term = (m.group(1) or "").strip(" \t?.း") # also strip Burmese ။
             term = _STRIP_WORDS.sub(" ", term).strip()
             term = re.sub(r"\s{2,}", " ", term)
             # Reject empty / too-generic captures.
@@ -86,18 +86,18 @@ def _fmt_answer(res: dict, term: str, mask_qty: bool, burmese: bool) -> str:
     lines: list[str] = []
     # one-line lead
     if burmese:
-        lead = (f"✅ {term} — လက်ကျန် ရှိပါတယ်" if in_stock
-                else f"❌ {term} — သင့်ဆိုင်မှာ လက်ကျန် မရှိပါ")
+        lead = (f" {term} — လက်ကျန် ရှိပါတယ်" if in_stock
+                else f" {term} — သင့်ဆိုင်မှာ လက်ကျန် မရှိပါ")
     else:
-        lead = (f"✅ {term} — in stock" if in_stock
-                else f"❌ {term} — not in stock at your branch")
+        lead = (f" {term} — in stock" if in_stock
+                else f" {term} — not in stock at your branch")
     lines.append(lead)
     for r in rows:
         brand = r.get("brand") or "—"
         salt = r.get("salt") or ""
         qty = int(r.get("your_stock") or 0)
         cost = int(r.get("cost") or 0)
-        tick = "✅" if r.get("in_stock") else "❌"
+        tick = "" if r.get("in_stock") else ""
         seg = f"{tick} {brand}"
         if salt:
             seg += f" — {salt}"
@@ -126,7 +126,7 @@ def try_stock_shortcut(message: str, site_code: str = "", mask_qty: bool = False
     msg = (message or "").strip()
     if not msg:
         return None
-    # Guard: clinical / advisory / comparative / multi-intent → agent.
+    # Guard: clinical / advisory / comparative / multi-intent > agent.
     if _BAIL_PATTERNS.search(msg) or _MULTI.search(msg):
         return None
     term = _extract_term(msg)
@@ -141,7 +141,7 @@ def try_stock_shortcut(message: str, site_code: str = "", mask_qty: bool = False
     if not isinstance(res, dict) or not res.get("ok"):
         return None
     if int(res.get("count") or 0) <= 0:
-        return None  # nothing matched → let the agent explain / suggest
+        return None # nothing matched > let the agent explain / suggest
     burmese = _looks_burmese(msg)
     answer = _fmt_answer(res, term, mask_qty=mask_qty, burmese=burmese)
     return {

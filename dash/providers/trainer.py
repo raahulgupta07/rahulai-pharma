@@ -52,22 +52,22 @@ from .training_steps import (
 logger = logging.getLogger(__name__)
 
 STEPS = [
-    "catalog",            # 1: introspect
-    "profile",            # 2: SQL column profile
-    "dimension_catalog",  # 3: SELECT DISTINCT for cat cols
-    "hierarchy_detect",   # 4: parent->child mapping (TODO)
-    "sample",             # 5: 20 diverse rows
-    "codex_enrich",       # 6: LLM purpose/grain/PK/FK per table
-    "qa_verify",          # 7: LLM Q&A executed on source (TODO)
-    "relationships",      # 8: FK + value overlap (TODO)
-    "persona",            # 9: domain persona (TODO)
-    "domain_knowledge",   # 10: glossary/KPIs (TODO)
-    "kg_triples",         # 11: SPO triples tagged source_uri (TODO)
-    "langextract",        # 12: grounded facts (TODO)
-    "drift_baseline",     # 13: schema hash + NDV snapshot
+    "catalog", # 1: introspect
+    "profile", # 2: SQL column profile
+    "dimension_catalog", # 3: SELECT DISTINCT for cat cols
+    "hierarchy_detect", # 4: parent->child mapping (TODO)
+    "sample", # 5: 20 diverse rows
+    "codex_enrich", # 6: LLM purpose/grain/PK/FK per table
+    "qa_verify", # 7: LLM Q&A executed on source (TODO)
+    "relationships", # 8: FK + value overlap (TODO)
+    "persona", # 9: domain persona (TODO)
+    "domain_knowledge", # 10: glossary/KPIs (TODO)
+    "kg_triples", # 11: SPO triples tagged source_uri (TODO)
+    "langextract", # 12: grounded facts (TODO)
+    "drift_baseline", # 13: schema hash + NDV snapshot
     "watermark_register", # 14: pick update column, store last value
-    "domain_detect",      # 15: detect domain from sample data + tables
-    "auto_seed",          # 16: load matching brain seeds for detected domain
+    "domain_detect", # 15: detect domain from sample data + tables
+    "auto_seed", # 16: load matching brain seeds for detected domain
 ]
 
 # Numeric SQL types we treat as candidates for percentile/avg profiling.
@@ -96,7 +96,7 @@ class TrainEvent:
     step: str
     index: int
     total: int
-    status: str  # 'start' | 'done' | 'error'
+    status: str # 'start' | 'done' | 'error'
     message: str = ""
     cost_usd: float = 0.0
     duration_ms: int = 0
@@ -210,7 +210,7 @@ class ProviderTrainer:
                     cost_usd=float(summary.get("cost_usd", 0.0)) if isinstance(summary, dict) else 0.0,
                     duration_ms=duration_ms,
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc: # noqa: BLE001
                 duration_ms = int((time.time() - t0) * 1000)
                 logger.exception(
                     "ProviderTrainer step %s failed for source %s",
@@ -286,7 +286,7 @@ class ProviderTrainer:
                     self._write_json, profile_dir / f"{_safe_filename(table)}.json", tbl_profile
                 )
                 profiled += 1
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc: # noqa: BLE001
                 logger.warning("profile failed for %s: %s", table, exc)
         return {"message": f"profiled {profiled}/{len(tables)} tables"}
 
@@ -315,7 +315,7 @@ class ProviderTrainer:
                         "is_numeric": is_numeric,
                         **{k: _coerce_scalar(v) for k, v in row.items()},
                     }
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc: # noqa: BLE001
                     out["columns"][name] = {"type": ctype, "error": str(exc)[:200]}
         return out
 
@@ -341,7 +341,7 @@ class ProviderTrainer:
                     )
                     tbl_dims[col_name] = rows
                     captured += 1
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc: # noqa: BLE001
                     logger.debug("dim values failed for %s.%s: %s", table, col_name, exc)
             self._dimensions[table] = tbl_dims
             if tbl_dims:
@@ -377,7 +377,7 @@ class ProviderTrainer:
                 rows = await asyncio.to_thread(self._sample_table, table, 60)
                 self._sample[table] = diversify_sample(rows, target=20)
                 sampled += 1
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc: # noqa: BLE001
                 logger.debug("sample failed for %s: %s", table, exc)
         return {"message": f"sampled {sampled}/{len(tables)} tables (in-memory)"}
 
@@ -422,7 +422,7 @@ class ProviderTrainer:
                     payload,
                 )
                 enriched += 1
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc: # noqa: BLE001
                 logger.warning("codex_enrich failed for %s: %s", table, exc)
         self.cost_usd += cost
         return {"message": f"enriched {enriched}/{len(tables)} tables", "cost_usd": cost}
@@ -464,7 +464,7 @@ class ProviderTrainer:
                 max_v = await asyncio.to_thread(
                     self._fetch_watermark_max, table, wcol
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc: # noqa: BLE001
                 logger.debug("watermark MAX failed for %s.%s: %s", table, wcol, exc)
                 continue
             chosen[table] = {"column": wcol, "max_value": _coerce_scalar(max_v)}
@@ -491,8 +491,8 @@ class ProviderTrainer:
         ``auto_seed`` falls back to the generic seed pack.
         """
         try:
-            from dash.learning.domain_detector import detect  # type: ignore
-        except Exception as e:  # noqa: BLE001
+            from dash.learning.domain_detector import detect # type: ignore
+        except Exception as e: # noqa: BLE001
             logger.warning("domain_detect: detector unavailable: %s", e)
             return {"message": "detector unavailable"}
         try:
@@ -504,7 +504,7 @@ class ProviderTrainer:
             return {
                 "message": f"primary={primary} secondaries={secondaries}"
             }
-        except Exception as e:  # noqa: BLE001
+        except Exception as e: # noqa: BLE001
             logger.warning("domain_detect failed: %s", e)
             return {"message": f"error: {str(e)[:200]}"}
 
@@ -514,7 +514,7 @@ class ProviderTrainer:
         """Load matching brain seed packs for the detected domain."""
         try:
             from dash.learning.seed_loader import auto_load
-        except Exception as e:  # noqa: BLE001
+        except Exception as e: # noqa: BLE001
             logger.warning("auto_seed: loader unavailable: %s", e)
             return {"message": "loader unavailable"}
         try:
@@ -526,7 +526,7 @@ class ProviderTrainer:
             return {
                 "message": f"loaded {inserted} entries from {len(domains)} domains"
             }
-        except Exception as e:  # noqa: BLE001
+        except Exception as e: # noqa: BLE001
             logger.warning("auto_seed failed: %s", e)
             return {"message": f"error: {str(e)[:200]}"}
 
@@ -551,7 +551,7 @@ class ProviderTrainer:
             try:
                 pairs = await asyncio.to_thread(self._detect_table_hierarchies, table, dims)
                 results.extend(pairs[:_HIERARCHY_PER_TABLE_CAP])
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc: # noqa: BLE001
                 logger.warning("hierarchy_detect failed for %s: %s", table, exc)
         path = self._knowledge_dir() / "hierarchies.json"
         await asyncio.to_thread(self._write_json, path, results)
@@ -580,13 +580,13 @@ class ProviderTrainer:
                     if parent == child or len(found) >= _HIERARCHY_PER_TABLE_CAP:
                         continue
                     if ndvs[parent] >= ndvs[child] or ndvs[parent] == 0:
-                        continue  # children must have more values than parents
+                        continue # children must have more values than parents
                     sql = hierarchy_pair_sql(
                         self.provider.dialect, table, parent, child
                     )
                     try:
                         row = conn.execute(text(sql)).first()
-                    except Exception as exc:  # noqa: BLE001
+                    except Exception as exc: # noqa: BLE001
                         logger.debug(
                             "hierarchy SQL failed for %s.%s->%s: %s",
                             table, parent, child, exc,
@@ -616,7 +616,7 @@ class ProviderTrainer:
                 cols_prof = (self._profile.get(t) or {}).get("columns") or {}
                 for stats in cols_prof.values():
                     n = max(n, int(stats.get("n") or 0))
-            except Exception:  # noqa: BLE001
+            except Exception: # noqa: BLE001
                 n = 0
             ranked.append((t, n))
         ranked.sort(key=lambda x: x[1], reverse=True)
@@ -644,7 +644,7 @@ class ProviderTrainer:
                     self._call_llm, prompt, "deep_analysis"
                 )
                 cost += _QA_BATCH_COST_USD
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc: # noqa: BLE001
                 logger.warning("qa_verify LLM failed for %s: %s", table, exc)
                 continue
             pairs = _try_parse_json_list(content) or []
@@ -665,7 +665,7 @@ class ProviderTrainer:
                     ok, answer_text = await asyncio.to_thread(
                         self._execute_qa_sql, sql, expected
                     )
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc: # noqa: BLE001
                     logger.debug("qa SQL exec failed for %s: %s", table, exc)
                 if ok:
                     verified_total += 1
@@ -675,7 +675,7 @@ class ProviderTrainer:
                         self._insert_training_qa,
                         table, question, sql, answer_text, ok, has_source_id,
                     )
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc: # noqa: BLE001
                     logger.debug("qa insert failed for %s: %s", table, exc)
             summary.append(
                 {"table": table, "verified": tbl_verified, "total": min(5, len(pairs))}
@@ -713,11 +713,11 @@ class ProviderTrainer:
                 # Render first row as ``col=val`` joined by commas.
                 try:
                     keys = list(cur.keys())
-                except Exception:  # noqa: BLE001
+                except Exception: # noqa: BLE001
                     keys = [f"c{i}" for i in range(len(row))]
                 pairs = [f"{k}={_coerce_scalar(v)}" for k, v in zip(keys, row)]
                 return True, ", ".join(pairs)[:1000]
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc: # noqa: BLE001
             logger.debug("qa SQL exec error: %s", exc)
             return False, fallback
 
@@ -733,7 +733,7 @@ class ProviderTrainer:
                     {"t": table, "c": column},
                 ).first()
                 return bool(row)
-        except Exception:  # noqa: BLE001
+        except Exception: # noqa: BLE001
             return False
 
     def _insert_training_qa(
@@ -780,7 +780,7 @@ class ProviderTrainer:
         """Verify FKs by data overlap; mine implicit joins by name match.
 
         Implicit candidates are confirmed via a cheap LLM call (extraction
-        task → LITE_MODEL). Anything LLM rejects is skipped.
+        task > LITE_MODEL). Anything LLM rejects is skipped.
         """
         catalog = self._catalog or {}
         fks = list((self.provider.schema_blob or {}).get("fks") or catalog.get("fks") or [])
@@ -802,7 +802,7 @@ class ProviderTrainer:
                 overlap, _, ndv_a = await asyncio.to_thread(
                     self._fetch_overlap, from_table, from_col, to_table, to_col
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc: # noqa: BLE001
                 logger.debug("FK overlap failed for %s.%s: %s", from_table, from_col, exc)
                 continue
             if ndv_a <= 0 or (overlap / max(ndv_a, 1)) < 0.5:
@@ -816,7 +816,7 @@ class ProviderTrainer:
                     has_source_id,
                 )
                 fks_verified += 1
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc: # noqa: BLE001
                 logger.debug("FK insert failed: %s", exc)
 
         # Build implicit candidate list from name match / fuzzy match.
@@ -866,7 +866,7 @@ class ProviderTrainer:
                 overlap, ndv_a, ndv_b = await asyncio.to_thread(
                     self._fetch_overlap, ta, ca, tb, cb
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc: # noqa: BLE001
                 logger.debug("implicit overlap failed for %s.%s ~ %s.%s: %s",
                              ta, ca, tb, cb, exc)
                 continue
@@ -878,7 +878,7 @@ class ProviderTrainer:
             try:
                 content = await asyncio.to_thread(self._call_llm, prompt, "extraction")
                 cost += _REL_CALL_COST_USD
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc: # noqa: BLE001
                 logger.debug("rel LLM failed: %s", exc)
                 continue
             decision = _try_parse_json(content) or {}
@@ -892,7 +892,7 @@ class ProviderTrainer:
                     has_source_id,
                 )
                 implicit_found += 1
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc: # noqa: BLE001
                 logger.debug("implicit insert failed: %s", exc)
 
         await asyncio.to_thread(
@@ -997,7 +997,7 @@ class ProviderTrainer:
                 "persona_chars": len(persona_text),
                 "saved": saved,
             }
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc: # noqa: BLE001
             logger.exception("persona step failed")
             raise
 
@@ -1066,7 +1066,7 @@ class ProviderTrainer:
                     "AND column_name='source_id' LIMIT 1"
                 )).fetchone()
                 has_source_id = bool(row)
-        except Exception:  # noqa: BLE001
+        except Exception: # noqa: BLE001
             has_source_id = False
 
         if has_source_id:
@@ -1086,7 +1086,7 @@ class ProviderTrainer:
                     )
                     conn.commit()
                 return True
-            except Exception:  # noqa: BLE001
+            except Exception: # noqa: BLE001
                 logger.exception("dash_personas insert failed; falling back to disk")
 
         # Fallback — file under knowledge/{slug}/source_{id}/persona.txt
@@ -1098,7 +1098,7 @@ class ProviderTrainer:
         try:
             path.write_text(persona_text, encoding="utf-8")
             return False
-        except Exception:  # noqa: BLE001
+        except Exception: # noqa: BLE001
             logger.exception("persona disk write failed")
             return False
 
@@ -1174,7 +1174,7 @@ class ProviderTrainer:
                 )
                 total_entries += saved
                 sub_done.append(kind)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc: # noqa: BLE001
                 logger.warning("domain_knowledge sub-step %s failed: %s", kind, exc)
         self.cost_usd += cost
         return {
@@ -1239,7 +1239,7 @@ class ProviderTrainer:
                             },
                         )
                         saved += 1
-                    except Exception:  # noqa: BLE001
+                    except Exception: # noqa: BLE001
                         # source_id col may be missing on legacy DBs — retry without
                         try:
                             conn.execute(
@@ -1256,10 +1256,10 @@ class ProviderTrainer:
                                 },
                             )
                             saved += 1
-                        except Exception:  # noqa: BLE001
+                        except Exception: # noqa: BLE001
                             pass
                 conn.commit()
-        except Exception:  # noqa: BLE001
+        except Exception: # noqa: BLE001
             logger.exception("persist_domain_entries failed for %s", source_tag)
         return saved
 
@@ -1392,7 +1392,7 @@ class ProviderTrainer:
                             },
                         )
                         inserted += 1
-                    except Exception:  # noqa: BLE001
+                    except Exception: # noqa: BLE001
                         # Older schema without source_uri column — retry without it
                         try:
                             conn.execute(
@@ -1411,10 +1411,10 @@ class ProviderTrainer:
                                 },
                             )
                             inserted += 1
-                        except Exception:  # noqa: BLE001
+                        except Exception: # noqa: BLE001
                             pass
                 conn.commit()
-        except Exception:  # noqa: BLE001
+        except Exception: # noqa: BLE001
             logger.exception("kg_triples insert failed")
         return inserted
 
@@ -1439,7 +1439,7 @@ class ProviderTrainer:
             facts = await asyncio.to_thread(self._run_langextract, artifact_text)
             if facts:
                 method = "langextract"
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc: # noqa: BLE001
             logger.info("langextract unavailable or failed (%s); using regex fallback", exc)
 
         if not facts:
@@ -1469,20 +1469,20 @@ class ProviderTrainer:
             for p in sorted(d.glob("*.json")):
                 try:
                     chunks.append(f"=== {sub}/{p.name} ===\n{p.read_text(encoding='utf-8')}")
-                except Exception:  # noqa: BLE001
+                except Exception: # noqa: BLE001
                     continue
         return "\n\n".join(chunks)
 
     def _run_langextract(self, all_text: str) -> list[dict[str, Any]]:
         """Try langextract; raises on ImportError to trigger fallback."""
-        import langextract as lx  # noqa: F401  # raises ImportError when missing
+        import langextract as lx # noqa: F401 # raises ImportError when missing
 
         import os
         api_key = os.getenv("OPENROUTER_API_KEY", "")
         if not api_key:
             return []
 
-        from dash.settings import TRAINING_MODEL  # type: ignore
+        from dash.settings import TRAINING_MODEL # type: ignore
 
         examples = [
             lx.ExampleData(
@@ -1595,7 +1595,7 @@ class ProviderTrainer:
                             },
                         )
                         saved += 1
-                    except Exception:  # noqa: BLE001
+                    except Exception: # noqa: BLE001
                         try:
                             conn.execute(
                                 text(
@@ -1607,10 +1607,10 @@ class ProviderTrainer:
                                 {"slug": self.project_slug, "fact": memory_text},
                             )
                             saved += 1
-                        except Exception:  # noqa: BLE001
+                        except Exception: # noqa: BLE001
                             pass
                 conn.commit()
-        except Exception:  # noqa: BLE001
+        except Exception: # noqa: BLE001
             logger.exception("persist_langextract_facts failed")
         return saved
 
@@ -1650,7 +1650,7 @@ class ProviderTrainer:
                 ).fetchone()
                 conn.commit()
                 self.run_id = int(row[0]) if row else None
-        except Exception:  # noqa: BLE001
+        except Exception: # noqa: BLE001
             logger.exception("Failed to insert dash_source_training_runs row")
 
     def _update_run_row(self, *, current_step: str) -> None:
@@ -1667,7 +1667,7 @@ class ProviderTrainer:
                     {"step": current_step, "cost": self.cost_usd, "id": self.run_id},
                 )
                 conn.commit()
-        except Exception:  # noqa: BLE001
+        except Exception: # noqa: BLE001
             logger.exception("Failed to update training run row")
 
     def _finalize_run_row(
@@ -1681,7 +1681,7 @@ class ProviderTrainer:
                     text(
                         "UPDATE public.dash_source_training_runs "
                         "SET status = :status, completed_at = NOW(), "
-                        "    duration_seconds = :dur, cost_usd = :cost, error = :err "
+                        " duration_seconds = :dur, cost_usd = :cost, error = :err "
                         "WHERE id = :id"
                     ),
                     {
@@ -1693,7 +1693,7 @@ class ProviderTrainer:
                     },
                 )
                 conn.commit()
-        except Exception:  # noqa: BLE001
+        except Exception: # noqa: BLE001
             logger.exception("Failed to finalize training run row")
 
     def _write_data_source_jsonb(self, column: str, payload: dict[str, Any]) -> None:
@@ -1711,7 +1711,7 @@ class ProviderTrainer:
                     {"payload": json.dumps(payload), "id": self.source_id},
                 )
                 conn.commit()
-        except Exception:  # noqa: BLE001
+        except Exception: # noqa: BLE001
             logger.exception(
                 "Failed to write %s for source %s", column, self.source_id
             )
@@ -1757,7 +1757,7 @@ def _try_parse_json(content: str | None) -> dict[str, Any] | None:
         return None
     try:
         parsed = json.loads(content)
-    except Exception:  # noqa: BLE001
+    except Exception: # noqa: BLE001
         return None
     return parsed if isinstance(parsed, dict) else None
 
@@ -1775,7 +1775,7 @@ def _try_parse_json_list(content: str | None) -> list[Any] | None:
     # Common case: object wrapping a list — try direct first, then bracket scan.
     try:
         parsed = json.loads(raw)
-    except Exception:  # noqa: BLE001
+    except Exception: # noqa: BLE001
         # Fallback: extract first [...] block.
         start = raw.find("[")
         end = raw.rfind("]")
@@ -1783,7 +1783,7 @@ def _try_parse_json_list(content: str | None) -> list[Any] | None:
             return None
         try:
             parsed = json.loads(raw[start : end + 1])
-        except Exception:  # noqa: BLE001
+        except Exception: # noqa: BLE001
             return None
     if isinstance(parsed, list):
         return parsed
@@ -1812,7 +1812,7 @@ def _try_parse_json_array(content: str | None) -> list[Any] | None:
         parsed = json.loads(s)
         if isinstance(parsed, list):
             return parsed
-    except Exception:  # noqa: BLE001
+    except Exception: # noqa: BLE001
         pass
     # Fall back: locate first '[' .. matching ']'
     start = s.find("[")
@@ -1822,6 +1822,6 @@ def _try_parse_json_array(content: str | None) -> list[Any] | None:
             parsed = json.loads(s[start:end + 1])
             if isinstance(parsed, list):
                 return parsed
-        except Exception:  # noqa: BLE001
+        except Exception: # noqa: BLE001
             return None
     return None

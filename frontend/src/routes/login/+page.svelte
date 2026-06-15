@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount, onDestroy } from 'svelte';
  import { get } from 'svelte/store';
  import { brand } from '$lib/stores/branding';
@@ -40,7 +40,7 @@
  }
  }
  } catch {}
- // Discover enabled methods (fail-soft → local only)
+ // Discover enabled methods (fail-soft > local only)
  fetch('/api/auth/methods')
  .then((r) => (r.ok ? r.json() : null))
  .then((d) => { if (d) methods = d; })
@@ -105,32 +105,32 @@
  // Build version + data freshness + What's-new feed (GET /api/version, public)
  type Release = { version: string; date?: string; title?: string; items: string[] };
  type VersionInfo = {
-   version: string; commit?: string; built_at?: string | null;
-   image_age_hours?: number | null; stale?: boolean;
-   data?: { last_upload?: string | null; catalog_rows?: number | null;
-            stock_rows?: number | null;
-            shop_flat?: { both: number; catalog_only: number; stock_only: number } | null } | null;
-   changelog?: Release[];
+ version: string; commit?: string; built_at?: string | null;
+ image_age_hours?: number | null; stale?: boolean;
+ data?: { last_upload?: string | null; catalog_rows?: number | null;
+ stock_rows?: number | null;
+ shop_flat?: { both: number; catalog_only: number; stock_only: number } | null } | null;
+ changelog?: Release[];
  };
  let versionInfo = $state<VersionInfo | null>(null);
  let showWhatsNew = $state(false);
 
  let shortCommit = $derived(versionInfo?.commit && versionInfo.commit !== 'unknown'
-   ? versionInfo.commit.slice(0, 7) : '');
+ ? versionInfo.commit.slice(0, 7) : '');
  let builtLabel = $derived.by(() => {
-   const iso = versionInfo?.built_at;
-   if (!iso) return '';
-   try { return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
-   catch { return ''; }
+ const iso = versionInfo?.built_at;
+ if (!iso) return '';
+ try { return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
+ catch { return ''; }
  });
  let latestRelease = $derived(versionInfo?.changelog?.[0] ?? null);
 
  async function loadVersion() {
-   try {
-     const res = await fetch('/api/version', { headers: { Accept: 'application/json' } });
-     if (!res.ok) { versionInfo = null; return; }
-     versionInfo = await res.json();
-   } catch { versionInfo = null; }
+ try {
+ const res = await fetch('/api/version', { headers: { Accept: 'application/json' } });
+ if (!res.ok) { versionInfo = null; return; }
+ versionInfo = await res.json();
+ } catch { versionInfo = null; }
  }
 
  let _statsTimer: any = null;
@@ -217,15 +217,15 @@
           <span class="pw-ver-v">v{versionInfo.version}</span>
           {#if shortCommit}<span class="pw-ver-sep">·</span><span class="pw-ver-c">{shortCommit}</span>{/if}
           {#if builtLabel}<span class="pw-ver-sep">·</span><span class="pw-ver-d">{builtLabel}</span>{/if}
-          {#if versionInfo.stale}<span class="pw-ver-warn">⚠ stale</span>{/if}
+          {#if versionInfo.stale}<span class="pw-ver-warn"> stale</span>{/if}
         </button>
 
         {#if showWhatsNew && latestRelease}
           <div class="pw-ver-pop" role="dialog" aria-label="What's new">
             <div class="pw-pop-head">
-              <span class="pw-pop-spark">✦</span>
+              <span class="pw-pop-spark">*</span>
               <span class="pw-pop-ttl">What's new <span class="pw-pop-ver">in v{versionInfo.version}</span></span>
-              <button class="pw-pop-x" type="button" onclick={() => showWhatsNew = false} aria-label="Close">✕</button>
+              <button class="pw-pop-x" type="button" onclick={() => showWhatsNew = false} aria-label="Close">x</button>
             </div>
             {#if latestRelease.title}<div class="pw-pop-sub">{latestRelease.title}</div>{/if}
             <ul class="pw-wn-list">
@@ -374,7 +374,7 @@
         <div class="pw-dock">
           <button class="pw-dock-folder" type="button"><Icon name="flask" size={14} /> CityAgent Pharma · Counter assistant</button>
           <button class="pw-dock-add" type="button">+</button>
-          <button class="pw-dock-go" type="button">Let's go →</button>
+          <button class="pw-dock-go" type="button">Let's go &gt;</button>
         </div>
       </div>
     </aside>
@@ -1101,7 +1101,7 @@
  }
  }
 
- /* Morphing mini-chart in tile 2 (bar → line → pie cycle) */
+ /* Morphing mini-chart in tile 2 (bar > line > pie cycle) */
  .pw-morph {
  position: relative;
  width: 22px;

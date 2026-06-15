@@ -93,16 +93,16 @@ def ensure_enrichment_table(db_url: str) -> None:
     ddl = text(
         f"""
         CREATE TABLE IF NOT EXISTS {SCHEMA}.{ENRICH_TABLE} (
-            id              serial PRIMARY KEY,
-            article_code    text,
-            field           text,
-            original_value  text,
+            id serial PRIMARY KEY,
+            article_code text,
+            field text,
+            original_value text,
             suggested_value text,
-            confidence      real,
-            model           text,
-            status          text DEFAULT 'pending',
-            reason          text,
-            created_at      timestamptz DEFAULT now(),
+            confidence real,
+            model text,
+            status text DEFAULT 'pending',
+            reason text,
+            created_at timestamptz DEFAULT now(),
             UNIQUE (article_code, field)
         )
         """
@@ -213,17 +213,17 @@ def build_prompt(
     want = [f for f in want_fields if f in ENRICHABLE_FIELDS]
 
     present_lines = "\n".join(
-        f"  - {k}: {v}" for k, v in present.items() if not _is_blank(v)
-    ) or "  (none)"
+        f" - {k}: {v}" for k, v in present.items() if not _is_blank(v)
+    ) or " (none)"
 
     if examples:
         ex_lines = []
         for ex in examples:
             parts = [f"{k}={v}" for k, v in ex.items() if not _is_blank(v)]
-            ex_lines.append("  - " + "; ".join(parts))
+            ex_lines.append(" - " + "; ".join(parts))
         examples_block = "\n".join(ex_lines)
     else:
-        examples_block = "  (no close examples found — rely on general pharma knowledge)"
+        examples_block = " (no close examples found — rely on general pharma knowledge)"
 
     fields_csv = ", ".join(want)
 
@@ -238,11 +238,11 @@ def build_prompt(
         f"{examples_block}\n\n"
         f"FILL THESE MISSING FIELDS: {fields_csv}\n\n"
         "RULES:\n"
-        f'  - If you are not confident, output the string "{UNKNOWN}" for that '
+        f' - If you are not confident, output the string "{UNKNOWN}" for that '
         "field. Never guess or fabricate a clinical value.\n"
-        "  - generic_name and composition are patient-safety critical: only "
+        " - generic_name and composition are patient-safety critical: only "
         "answer if certain.\n"
-        "  - Return STRICT JSON only, no prose, no markdown fences.\n\n"
+        " - Return STRICT JSON only, no prose, no markdown fences.\n\n"
         "JSON SHAPE (one entry per missing field):\n"
         '{"<field>": {"suggested": "<value or \\"unknown\\">", '
         '"confidence": <0.0-1.0>, "reason": "<short justification>"}}\n'
@@ -292,7 +292,7 @@ def parse_llm_json(content: str) -> Dict[str, Dict[str, Any]]:
             continue
         suggested = val.get("suggested")
         if _is_blank(suggested) or str(suggested).strip().lower() == UNKNOWN:
-            continue  # never store a non-answer
+            continue # never store a non-answer
         try:
             conf = float(val.get("confidence", 0.0))
         except (TypeError, ValueError):
@@ -364,7 +364,7 @@ def suggest_for_article(
 
     if model is None:
         try:
-            from dash.settings import TRAINING_MODEL  # local import → no settings load for unit tests
+            from dash.settings import TRAINING_MODEL # local import > no settings load for unit tests
             model = TRAINING_MODEL
         except Exception:
             model = "gemini-3-flash-preview"
@@ -466,7 +466,7 @@ def run_enrichment(
             picks = suggest_for_article(
                 code, row, want, examples, model=model, api_key=api_key
             )
-        except Exception as exc:  # fail-soft per article
+        except Exception as exc: # fail-soft per article
             log(f"[catalog_enrich] article {code} failed: {exc}")
             continue
 
@@ -518,8 +518,8 @@ def _resolve_autoapply_fields(fields: Optional[Iterable[str]] = None) -> List[st
     Pure function (no I/O) so the safety guard is unit-testable without a DB.
 
     Rules:
-      * ``None`` → every field in ``LOW_RISK_FIELDS``.
-      * otherwise → the requested fields intersected with ``LOW_RISK_FIELDS``.
+      * ``None`` > every field in ``LOW_RISK_FIELDS``.
+      * otherwise > the requested fields intersected with ``LOW_RISK_FIELDS``.
         Anything outside (med-risk ``dosage``/``side_effect``, clinical
         ``generic_name``/``composition``, or junk) is DROPPED.
       * HARD GUARD: ``CLINICAL_FIELDS`` are removed unconditionally, even if a
@@ -604,7 +604,7 @@ def auto_apply_low_risk(
                 ),
                 {"fields": safe_fields, "conf": conf},
             ).rowcount
-    except Exception as exc:  # fail-soft — never crash the pipeline tail
+    except Exception as exc: # fail-soft — never crash the pipeline tail
         log(f"[catalog_enrich] auto-apply failed: {exc}")
         return {"approved": 0, "considered": 0, "fields": safe_fields}
 

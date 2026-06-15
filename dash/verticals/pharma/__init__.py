@@ -10,7 +10,7 @@ from .workflows import WORKFLOWS as _workflows
 BUNDLE: dict = {
     "label": "Pharmacy",
     "description": "Multi-store pharmacy network — visibility, drug knowledge, expiry/stockout/margin workflows",
-    "icon": "💊",
+    "icon": "",
     "visibility_template": "pharmacy",
     "brain_entries": _brain_entries(),
     "workflows": _workflows,

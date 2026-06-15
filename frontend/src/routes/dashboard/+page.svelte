@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount, onDestroy } from 'svelte';
  import { goto } from '$app/navigation';
  import { base } from '$app/paths';
@@ -284,13 +284,13 @@
                 <div class="dash-card-icon">{(d.name || 'D')[0]?.toUpperCase()}</div>
                 <div class="dash-card-title">
                   <h3>
-                    {#if favorites.has(dashKey(d, d._kind))}<span class="dash-star-inline" title="Starred">★</span>{/if}
+                    {#if favorites.has(dashKey(d, d._kind))}<span class="dash-star-inline" title="Starred">*</span>{/if}
                     {d.name}
                   </h3>
                   <p class="dash-card-cat">{d.project_slug} · {d.widget_count} {d.widget_count === 1 ? 'widget' : 'widgets'}</p>
                 </div>
                 <button class="dash-fav-btn" onclick={() => toggleFav(dashKey(d, d._kind))} title={favorites.has(dashKey(d, d._kind)) ? 'Unstar' : 'Star'} aria-label="Toggle favorite">
-                  {favorites.has(dashKey(d, d._kind)) ? '★' : '☆'}
+                  {favorites.has(dashKey(d, d._kind)) ? '*' : '*'}
                 </button>
               </div>
 
@@ -306,7 +306,7 @@
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
                 </span>
                 <span class="dash-open-label">Open dashboard</span>
-                <span class="dash-open-arrow">→</span>
+                <span class="dash-open-arrow"><Icon name="arrow-right" size={16} /></span>
               </button>
             </div>
           {/each}
@@ -318,7 +318,7 @@
     <!-- ═══ DASHBOARD DETAIL ═══ -->
     <div class="dash-detail-bar">
       <div class="dash-detail-left">
-        <button onclick={goBack} class="dash-back-btn" aria-label="Back">←</button>
+        <button onclick={goBack} class="dash-back-btn" aria-label="Back"><Icon name="arrow-left" size={16} /></button>
         <span class="dash-detail-title">{activeDashboard?.name || 'Dashboard'}</span>
         <span class="dash-detail-meta">{activeDashboard?.widgets?.length || 0} widgets</span>
       </div>
@@ -327,7 +327,7 @@
           if (!activeDashboard?.widgets?.length) return;
           const slides = activeDashboard.widgets.map((w: any) => ({ title: w.title || '', content: w.content || '', headers: w.headers || [], rows: w.rows || [] }));
           try { const res = await fetch('/api/export/pptx', { method: 'POST', headers: { ..._h(), 'Content-Type': 'application/json' }, body: JSON.stringify({ title: activeDashboard.name, slides }) }); if (res.ok) { const blob = await res.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${activeDashboard.name}.pptx`; a.click(); URL.revokeObjectURL(url); } } catch {}
-        }}>↓ Export PPTX</button>
+        }}><Icon name="arrow-down" size={16} /> Export PPTX</button>
         <button class="btn-primary btn-sm" onclick={() => editMode = !editMode}>{editMode ? 'Done' : 'Edit'}</button>
       </div>
     </div>

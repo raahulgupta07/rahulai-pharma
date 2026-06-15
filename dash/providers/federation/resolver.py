@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ResolvedSource:
-    provider_id: str       # input from prefix
-    provider: object       # BaseProvider instance
+    provider_id: str # input from prefix
+    provider: object # BaseProvider instance
     project_slug: str
     dialect: str
     accessible: bool = True
@@ -34,7 +34,7 @@ def resolve(
     requesting_agent_scope: str = "analyst",
     user_role: str = "viewer",
 ) -> ResolutionResult:
-    """Map prefix → provider in CURRENT PROJECT only.
+    """Map prefix > provider in CURRENT PROJECT only.
 
     Rules:
     - Provider must exist in registry for project_slug.

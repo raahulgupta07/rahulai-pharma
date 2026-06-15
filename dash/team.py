@@ -85,7 +85,7 @@ def create_team(
     )
 
 
-_team_cache: dict[str, tuple] = {}  # slug -> (team, created_at)
+_team_cache: dict[str, tuple] = {} # slug -> (team, created_at)
 _cache_lock = threading.Lock()
 
 
@@ -99,7 +99,7 @@ def invalidate_team_cache(project_slug: str | None = None):
         for k in list(_team_cache.keys()):
             if k.startswith(f"{project_slug}_"):
                 _team_cache.pop(k, None)
-_TEAM_CACHE_TTL = 300  # 5 min — a cold rebuild costs 2-4s, so hold the team
+_TEAM_CACHE_TTL = 300 # 5 min — a cold rebuild costs 2-4s, so hold the team
 # longer to cut that off the hot path. Staleness is handled explicitly:
 # invalidate_team_cache(slug) fires on every feature_config/instruction change
 # (dash/feature_config.py), so a longer TTL never serves stale instructions —
@@ -258,7 +258,7 @@ def create_project_team(
             if grounded_facts:
                 fact_lines = []
                 for gf in grounded_facts[:20]:
-                    tag = "✅" if gf.get("grounded", True) else "⚠️"
+                    tag = "" if gf.get("grounded", True) else ""
                     attrs = ""
                     if gf.get("attributes"):
                         attr_parts = [f"{k}: {v}" for k, v in gf["attributes"].items() if isinstance(v, str)]
@@ -382,9 +382,9 @@ def create_project_team(
     from dash.feature_config import get_feature_config as _fc
     _agents_cfg = _fc(project_slug).get("agents", {})
     members = []
-    if _agents_cfg.get("analyst", True):        members.append(analyst)
-    if _writes_ok and _agents_cfg.get("engineer", True):  members.append(engineer)
-    if _agents_cfg.get("researcher", True):     members.append(researcher)
+    if _agents_cfg.get("analyst", True): members.append(analyst)
+    if _writes_ok and _agents_cfg.get("engineer", True): members.append(engineer)
+    if _agents_cfg.get("researcher", True): members.append(researcher)
     if customer_strategist is not None and _agents_cfg.get("customer_strategist", True):
         members.append(customer_strategist)
     if deal_analyst is not None and _agents_cfg.get("deal_analyst", True):
@@ -399,9 +399,9 @@ def create_project_team(
     # Hired sub-agents (Digital Workforce) — load enabled custom agents from
     # dash.dash_custom_agents into the live team so the Leader can delegate to
     # them. This is the wire that makes the Workforce console functional:
-    # auto-spawned drafts → user clicks HIRE (enabled=true) → loaded here →
-    # actually answers queries → usage_count (RUNS) increments via build_or_reuse
-    # → probation progresses. Fail-soft + capped so a bad row never breaks chat.
+    # auto-spawned drafts > user clicks HIRE (enabled=true) > loaded here >
+    # actually answers queries > usage_count (RUNS) increments via build_or_reuse
+    # > probation progresses. Fail-soft + capped so a bad row never breaks chat.
     try:
         from dash.agents.factory import AgentFactory
         from sqlalchemy import text as _text
@@ -416,7 +416,7 @@ def create_project_team(
         _loaded = 0
         for (_cnm,) in _crows:
             try:
-                _res = AgentFactory.build_or_reuse(_cnm, project_slug)  # bumps usage_count
+                _res = AgentFactory.build_or_reuse(_cnm, project_slug) # bumps usage_count
                 if _res.get("ok") and _res.get("spec"):
                     _cag = AgentFactory.instantiate(_res["spec"])
                     if _cag is not None:

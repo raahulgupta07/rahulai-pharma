@@ -1,270 +1,270 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
-  import { sendMessage, generateSessionId, markdownToHtml, parseMarkdownTables, tableToCsv, hasNumericData } from '$lib';
-  import type { ToolCall } from '$lib/api';
-  import type { ParsedTable } from '$lib/table-parser';
-  import ChartView from '$lib/chart.svelte';
+ import { onMount, tick } from 'svelte';
+ import { sendMessage, generateSessionId, markdownToHtml, parseMarkdownTables, tableToCsv, hasNumericData } from '$lib';
+ import type { ToolCall } from '$lib/api';
+ import type { ParsedTable } from '$lib/table-parser';
+ import ChartView from '$lib/chart.svelte';
 
-  interface ChatMessage {
-    role: 'user' | 'assistant';
-    content: string;
-    timestamp: string;
-    status?: 'streaming' | 'done' | 'error';
-    suggestions?: string[];
-    toolCalls?: ToolCall[];
-    workflowExpanded?: boolean;
-    sqlQueries?: string[];
-    showSql?: boolean;
-    showChart?: boolean;
-  }
+ interface ChatMessage {
+ role: 'user' | 'assistant';
+ content: string;
+ timestamp: string;
+ status?: 'streaming' | 'done' | 'error';
+ suggestions?: string[];
+ toolCalls?: ToolCall[];
+ workflowExpanded?: boolean;
+ sqlQueries?: string[];
+ showSql?: boolean;
+ showChart?: boolean;
+ }
 
-  let messages = $state<ChatMessage[]>([]);
-  let inputText = $state('');
-  let isStreaming = $state(false);
-  let sessionId = $state('');
-  let sessionStartTime = $state('');
-  let messagesEl: HTMLDivElement;
-  let textareaEl: HTMLTextAreaElement;
-  let copiedIndex = $state(-1);
+ let messages = $state<ChatMessage[]>([]);
+ let inputText = $state('');
+ let isStreaming = $state(false);
+ let sessionId = $state('');
+ let sessionStartTime = $state('');
+ let messagesEl: HTMLDivElement;
+ let textareaEl: HTMLTextAreaElement;
+ let copiedIndex = $state(-1);
 
-  // Sidebar
-  let sidebarOpen = $state(false);
-  let pastSessions = $state<{session_id: string; created_at: string; updated_at: string}[]>([]);
+ // Sidebar
+ let sidebarOpen = $state(false);
+ let pastSessions = $state<{session_id: string; created_at: string; updated_at: string}[]>([]);
 
-  function _headers(): Record<string, string> {
-    const t = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
-    return t ? { Authorization: `Bearer ${t}` } : {};
-  }
+ function _headers(): Record<string, string> {
+ const t = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
+ return t ? { Authorization: `Bearer ${t}` } : {};
+ }
 
-  async function loadSessions() {
-    try {
-      const res = await fetch('/api/sessions', { headers: _headers() });
-      if (res.ok) { const d = await res.json(); pastSessions = d.sessions || []; }
-    } catch {}
-  }
+ async function loadSessions() {
+ try {
+ const res = await fetch('/api/sessions', { headers: _headers() });
+ if (res.ok) { const d = await res.json(); pastSessions = d.sessions || []; }
+ } catch {}
+ }
 
-  function switchSession(sid: string) {
-    sessionId = sid;
-    localStorage.setItem('dash_session', sid);
-    messages = [];
-    sessionStartTime = getTimestamp();
-    sidebarOpen = false;
-    textareaEl?.focus();
-  }
+ function switchSession(sid: string) {
+ sessionId = sid;
+ localStorage.setItem('dash_session', sid);
+ messages = [];
+ sessionStartTime = getTimestamp();
+ sidebarOpen = false;
+ textareaEl?.focus();
+ }
 
-  function formatSessionTime(ts: string | null): string {
-    if (!ts) return '';
-    try {
-      const d = new Date(ts);
-      const now = new Date();
-      const diff = now.getTime() - d.getTime();
-      if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
-      if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    } catch { return ''; }
-  }
+ function formatSessionTime(ts: string | null): string {
+ if (!ts) return '';
+ try {
+ const d = new Date(ts);
+ const now = new Date();
+ const diff = now.getTime() - d.getTime();
+ if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+ if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+ return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+ } catch { return ''; }
+ }
 
-  let dynamicSuggestions = $state<string[]>([
-    "What's our current MRR?",
-    "Which plan has the highest churn rate?",
-    "Show me revenue trends by plan",
-    "Which customers are at risk of churning?"
-  ]);
+ let dynamicSuggestions = $state<string[]>([
+ "What's our current MRR?",
+ "Which plan has the highest churn rate?",
+ "Show me revenue trends by plan",
+ "Which customers are at risk of churning?"
+ ]);
 
-  async function loadDynamicSuggestions() {
-    try {
-      const token = localStorage.getItem('dash_token');
-      const res = await fetch('/api/tables', { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-      const data = await res.json();
-      const tables = (data.tables || []).map((t: any) => t.name);
-      if (tables.length === 0) return;
+ async function loadDynamicSuggestions() {
+ try {
+ const token = localStorage.getItem('dash_token');
+ const res = await fetch('/api/tables', { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+ const data = await res.json();
+ const tables = (data.tables || []).map((t: any) => t.name);
+ if (tables.length === 0) return;
 
-      const suggestions: string[] = [];
-      for (const t of tables.slice(0, 6)) {
-        const name = t.replace(/_/g, ' ');
-        suggestions.push(`What are the key metrics in ${name}?`);
-      }
-      if (tables.length > 1) {
-        suggestions.push(`How do ${tables[0].replace(/_/g, ' ')} relate to ${tables[1].replace(/_/g, ' ')}?`);
-      }
-      suggestions.push("What tables do I have?");
-      dynamicSuggestions = suggestions.slice(0, 6);
-    } catch {}
-  }
+ const suggestions: string[] = [];
+ for (const t of tables.slice(0, 6)) {
+ const name = t.replace(/_/g, ' ');
+ suggestions.push(`What are the key metrics in ${name}?`);
+ }
+ if (tables.length > 1) {
+ suggestions.push(`How do ${tables[0].replace(/_/g, ' ')} relate to ${tables[1].replace(/_/g, ' ')}?`);
+ }
+ suggestions.push("What tables do I have?");
+ dynamicSuggestions = suggestions.slice(0, 6);
+ } catch {}
+ }
 
-  const followUpSuggestions: Record<string, string[]> = {
-    mrr: ["Break down MRR by plan tier", "Show MRR trend over last 6 months", "What's our net revenue retention?"],
-    churn: ["What are the top cancellation reasons?", "Which customers are at risk?", "Compare churn rates across plans"],
-    revenue: ["Show revenue by acquisition source", "What's our average revenue per account?", "Calculate customer lifetime value"],
-    default: ["Show me support quality metrics", "Create a monthly MRR view", "What's our customer health score?"]
-  };
+ const followUpSuggestions: Record<string, string[]> = {
+ mrr: ["Break down MRR by plan tier", "Show MRR trend over last 6 months", "What's our net revenue retention?"],
+ churn: ["What are the top cancellation reasons?", "Which customers are at risk?", "Compare churn rates across plans"],
+ revenue: ["Show revenue by acquisition source", "What's our average revenue per account?", "Calculate customer lifetime value"],
+ default: ["Show me support quality metrics", "Create a monthly MRR view", "What's our customer health score?"]
+ };
 
-  function getTimestamp(): string {
-    return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-  }
+ function getTimestamp(): string {
+ return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+ }
 
-  function getSuggestions(content: string): string[] {
-    const lower = content.toLowerCase();
-    if (lower.includes('mrr') || lower.includes('revenue')) return followUpSuggestions.mrr;
-    if (lower.includes('churn') || lower.includes('cancel')) return followUpSuggestions.churn;
-    if (lower.includes('trend') || lower.includes('growth')) return followUpSuggestions.revenue;
-    return followUpSuggestions.default;
-  }
+ function getSuggestions(content: string): string[] {
+ const lower = content.toLowerCase();
+ if (lower.includes('mrr') || lower.includes('revenue')) return followUpSuggestions.mrr;
+ if (lower.includes('churn') || lower.includes('cancel')) return followUpSuggestions.churn;
+ if (lower.includes('trend') || lower.includes('growth')) return followUpSuggestions.revenue;
+ return followUpSuggestions.default;
+ }
 
-  function getTotalDuration(tools: ToolCall[]): string {
-    let total = 0;
-    for (const t of tools) {
-      if (t.duration) {
-        total += parseFloat(t.duration);
-      }
-    }
-    return total > 0 ? total.toFixed(1) + 's' : '';
-  }
+ function getTotalDuration(tools: ToolCall[]): string {
+ let total = 0;
+ for (const t of tools) {
+ if (t.duration) {
+ total += parseFloat(t.duration);
+ }
+ }
+ return total > 0 ? total.toFixed(1) + 's' : '';
+ }
 
-  function getAgentMode(tools: ToolCall[]): 'deep' | 'fast' {
-    const names = tools.map(t => t.name.toLowerCase());
-    if (names.some(n => n === 'think' || n === 'analyze')) return 'deep';
-    // Also detect deep by number of SQL queries or total steps
-    const sqlCount = names.filter(n => n.includes('sql') || n.includes('query')).length;
-    if (sqlCount >= 2 || tools.length >= 7) return 'deep';
-    return 'fast';
-  }
+ function getAgentMode(tools: ToolCall[]): 'deep' | 'fast' {
+ const names = tools.map(t => t.name.toLowerCase());
+ if (names.some(n => n === 'think' || n === 'analyze')) return 'deep';
+ // Also detect deep by number of SQL queries or total steps
+ const sqlCount = names.filter(n => n.includes('sql') || n.includes('query')).length;
+ if (sqlCount >= 2 || tools.length >= 7) return 'deep';
+ return 'fast';
+ }
 
-  const DEEP_KEYWORDS = /\b(why|compare|explain|suggest|recommend|correlate|analyze|break down|what should|how can|investigate|diagnose|root cause)\b/i;
+ const DEEP_KEYWORDS = /\b(why|compare|explain|suggest|recommend|correlate|analyze|break down|what should|how can|investigate|diagnose|root cause)\b/i;
 
-  function isComplexQuery(text: string): boolean {
-    if (DEEP_KEYWORDS.test(text)) return true;
-    if ((text.match(/\band\b/gi) || []).length >= 2) return true;
-    if (text.split('?').length > 2) return true;
-    return false;
-  }
+ function isComplexQuery(text: string): boolean {
+ if (DEEP_KEYWORDS.test(text)) return true;
+ if ((text.match(/\band\b/gi) || []).length >= 2) return true;
+ if (text.split('?').length > 2) return true;
+ return false;
+ }
 
-  onMount(() => {
-    sessionId = localStorage.getItem('dash_session') || generateSessionId();
-    localStorage.setItem('dash_session', sessionId);
-    sessionStartTime = getTimestamp();
-    textareaEl?.focus();
-    loadDynamicSuggestions();
-    loadSessions();
-  });
+ onMount(() => {
+ sessionId = localStorage.getItem('dash_session') || generateSessionId();
+ localStorage.setItem('dash_session', sessionId);
+ sessionStartTime = getTimestamp();
+ textareaEl?.focus();
+ loadDynamicSuggestions();
+ loadSessions();
+ });
 
-  function newChat() {
-    messages = [];
-    sessionId = generateSessionId();
-    localStorage.setItem('dash_session', sessionId);
-    sessionStartTime = getTimestamp();
-    textareaEl?.focus();
-    loadSessions();
-  }
+ function newChat() {
+ messages = [];
+ sessionId = generateSessionId();
+ localStorage.setItem('dash_session', sessionId);
+ sessionStartTime = getTimestamp();
+ textareaEl?.focus();
+ loadSessions();
+ }
 
-  function toggleWorkflow(index: number) {
-    const msg = messages[index];
-    if (msg) {
-      messages = [
-        ...messages.slice(0, index),
-        { ...msg, workflowExpanded: !msg.workflowExpanded },
-        ...messages.slice(index + 1)
-      ];
-    }
-  }
+ function toggleWorkflow(index: number) {
+ const msg = messages[index];
+ if (msg) {
+ messages = [
+ ...messages.slice(0, index),
+ { ...msg, workflowExpanded: !msg.workflowExpanded },
+ ...messages.slice(index + 1)
+ ];
+ }
+ }
 
-  async function scrollToBottom() {
-    await tick();
-    if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
+ async function scrollToBottom() {
+ await tick();
+ if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+ }
 
-  async function copyMessage(index: number) {
-    const msg = messages[index];
-    if (msg) {
-      await navigator.clipboard.writeText(msg.content);
-      copiedIndex = index;
-      setTimeout(() => { copiedIndex = -1; }, 2000);
-    }
-  }
+ async function copyMessage(index: number) {
+ const msg = messages[index];
+ if (msg) {
+ await navigator.clipboard.writeText(msg.content);
+ copiedIndex = index;
+ setTimeout(() => { copiedIndex = -1; }, 2000);
+ }
+ }
 
-  async function send(text?: string) {
-    const msg = (text || inputText).trim();
-    if (!msg || isStreaming) return;
-    inputText = '';
-    if (textareaEl) textareaEl.style.height = 'auto';
+ async function send(text?: string) {
+ const msg = (text || inputText).trim();
+ if (!msg || isStreaming) return;
+ inputText = '';
+ if (textareaEl) textareaEl.style.height = 'auto';
 
-    const useDeep = isComplexQuery(msg);
-    const apiMsg = useDeep
-      ? `This is a complex question. Tell your specialist to reason step-by-step, consider multiple angles, and provide a thorough analysis with actionable recommendations. Question: ${msg}`
-      : msg;
+ const useDeep = isComplexQuery(msg);
+ const apiMsg = useDeep
+ ? `This is a complex question. Tell your specialist to reason step-by-step, consider multiple angles, and provide a thorough analysis with actionable recommendations. Question: ${msg}`
+ : msg;
 
-    messages = [...messages, { role: 'user', content: msg, timestamp: getTimestamp() }];
-    isStreaming = true;
-    await scrollToBottom();
+ messages = [...messages, { role: 'user', content: msg, timestamp: getTimestamp() }];
+ isStreaming = true;
+ await scrollToBottom();
 
-    messages = [...messages, { role: 'assistant', content: '', timestamp: '', status: 'streaming', toolCalls: [], workflowExpanded: true }];
-    await scrollToBottom();
+ messages = [...messages, { role: 'assistant', content: '', timestamp: '', status: 'streaming', toolCalls: [], workflowExpanded: true }];
+ await scrollToBottom();
 
-    await sendMessage(
-      apiMsg, sessionId,
-      (token) => {
-        const last = messages[messages.length - 1];
-        if (last.role === 'assistant') {
-          messages = [...messages.slice(0, -1), { ...last, content: last.content + token }];
-        }
-        scrollToBottom();
-      },
-      () => {
-        const last = messages[messages.length - 1];
-        if (last.role === 'assistant') {
-          messages = [...messages.slice(0, -1), {
-            ...last, timestamp: getTimestamp(), status: 'done',
-            suggestions: getSuggestions(last.content), workflowExpanded: false
-          }];
-        }
-        isStreaming = false;
-        scrollToBottom();
-        textareaEl?.focus();
-      },
-      (error) => {
-        const last = messages[messages.length - 1];
-        if (last.role === 'assistant') {
-          messages = [...messages.slice(0, -1), { ...last, content: `Error: ${error}`, timestamp: getTimestamp(), status: 'error' }];
-        }
-        isStreaming = false;
-        scrollToBottom();
-      },
-      (tool: ToolCall) => {
-        const last = messages[messages.length - 1];
-        if (last.role === 'assistant') {
-          const existing = last.toolCalls || [];
-          const idx = existing.findIndex(t => t.name === tool.name && t.status === 'running');
-          let updated: ToolCall[];
-          if (idx >= 0 && tool.status === 'done') {
-            updated = [...existing];
-            updated[idx] = { ...updated[idx], status: 'done', duration: tool.duration };
-          } else if (tool.status === 'running') {
-            updated = [...existing, tool];
-          } else {
-            updated = existing;
-          }
-          // Capture SQL queries
-          const sqls = last.sqlQueries || [];
-          if (tool.sqlQuery && !sqls.includes(tool.sqlQuery)) {
-            sqls.push(tool.sqlQuery);
-          }
-          messages = [...messages.slice(0, -1), { ...last, toolCalls: updated, sqlQueries: sqls }];
-        }
-        scrollToBottom();
-      }
-    );
-  }
+ await sendMessage(
+ apiMsg, sessionId,
+ (token) => {
+ const last = messages[messages.length - 1];
+ if (last.role === 'assistant') {
+ messages = [...messages.slice(0, -1), { ...last, content: last.content + token }];
+ }
+ scrollToBottom();
+ },
+ () => {
+ const last = messages[messages.length - 1];
+ if (last.role === 'assistant') {
+ messages = [...messages.slice(0, -1), {
+ ...last, timestamp: getTimestamp(), status: 'done',
+ suggestions: getSuggestions(last.content), workflowExpanded: false
+ }];
+ }
+ isStreaming = false;
+ scrollToBottom();
+ textareaEl?.focus();
+ },
+ (error) => {
+ const last = messages[messages.length - 1];
+ if (last.role === 'assistant') {
+ messages = [...messages.slice(0, -1), { ...last, content: `Error: ${error}`, timestamp: getTimestamp(), status: 'error' }];
+ }
+ isStreaming = false;
+ scrollToBottom();
+ },
+ (tool: ToolCall) => {
+ const last = messages[messages.length - 1];
+ if (last.role === 'assistant') {
+ const existing = last.toolCalls || [];
+ const idx = existing.findIndex(t => t.name === tool.name && t.status === 'running');
+ let updated: ToolCall[];
+ if (idx >= 0 && tool.status === 'done') {
+ updated = [...existing];
+ updated[idx] = { ...updated[idx], status: 'done', duration: tool.duration };
+ } else if (tool.status === 'running') {
+ updated = [...existing, tool];
+ } else {
+ updated = existing;
+ }
+ // Capture SQL queries
+ const sqls = last.sqlQueries || [];
+ if (tool.sqlQuery && !sqls.includes(tool.sqlQuery)) {
+ sqls.push(tool.sqlQuery);
+ }
+ messages = [...messages.slice(0, -1), { ...last, toolCalls: updated, sqlQueries: sqls }];
+ }
+ scrollToBottom();
+ }
+ );
+ }
 
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
-  }
+ function handleKeydown(e: KeyboardEvent) {
+ if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+ }
 
-  function autoResize() {
-    if (textareaEl) {
-      textareaEl.style.height = 'auto';
-      textareaEl.style.height = Math.min(textareaEl.scrollHeight, 120) + 'px';
-    }
-  }
+ function autoResize() {
+ if (textareaEl) {
+ textareaEl.style.height = 'auto';
+ textareaEl.style.height = Math.min(textareaEl.scrollHeight, 120) + 'px';
+ }
+ }
 </script>
 
 <div class="flex h-full">
@@ -477,7 +477,7 @@
                     <!-- SQL Queries Used -->
                     {#if msg.status === 'done' && msg.sqlQueries && msg.sqlQueries.length > 0}
                       <button class="sql-toggle" onclick={() => { messages = [...messages.slice(0, i), { ...msg, showSql: !msg.showSql }, ...messages.slice(i + 1)]; }}>
-                        <span style="font-size: 10px;">{msg.showSql ? '▼' : '▶'}</span>
+                        <span style="font-size: 10px;">{msg.showSql ? '▼' : ''}</span>
                         <span class="tag-label" style="font-size: 11px;">SQL USED</span>
                         <span style="font-size: 10px; color: var(--color-on-surface-dim);">{msg.sqlQueries.length} {msg.sqlQueries.length === 1 ? 'query' : 'queries'}</span>
                       </button>

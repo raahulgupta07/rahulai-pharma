@@ -1,6 +1,6 @@
 <script module lang="ts">
-  import Icon from '$lib/Icon.svelte';
-  import RobotAvatar from '$lib/RobotAvatar.svelte';
+ import Icon from '$lib/Icon.svelte';
+ import RobotAvatar from '$lib/RobotAvatar.svelte';
  /**
  * Module-level exports for chat-renderer helpers shared across surfaces.
  * Both routes/chat/+page.svelte and routes/project/[slug]/+page.svelte
@@ -18,9 +18,9 @@
  if (dir === 'DOWN') return `<span style="color:#dc2626;font-weight:700;">▼ ${val.startsWith('-') ? val : '-' + val}</span>`;
  return `<span style="color:#a3a3a3;font-weight:700;">━ ${val}</span>`;
  }
- if (/^[▲↑]/.test(s)) return `<span style="color:#16a34a;font-weight:700;">${s}</span>`;
- if (/^[▼↓]/.test(s)) return `<span style="color:#dc2626;font-weight:700;">${s}</span>`;
- if (/^[━→]/.test(s)) return `<span style="color:#a3a3a3;font-weight:700;">${s}</span>`;
+ if (/^[▲^]/.test(s)) return `<span style="color:#16a34a;font-weight:700;">${s}</span>`;
+ if (/^[▼v]/.test(s)) return `<span style="color:#dc2626;font-weight:700;">${s}</span>`;
+ if (/^[━>]/.test(s)) return `<span style="color:#a3a3a3;font-weight:700;">${s}</span>`;
  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
  const pctMatch = s.match(/^([+-]?\d+\.?\d*)%$/);
  if (pctMatch) {
@@ -68,10 +68,10 @@
  }
 
  /**
-  * Collapse consecutive duplicate sentences/paragraphs. Fixes the persona
-  * greeting that sometimes renders twice back-to-back. If the same ~60+ char
-  * trimmed segment repeats consecutively, keep only the first occurrence.
-  */
+ * Collapse consecutive duplicate sentences/paragraphs. Fixes the persona
+ * greeting that sometimes renders twice back-to-back. If the same ~60+ char
+ * trimmed segment repeats consecutively, keep only the first occurrence.
+ */
  export function collapseDuplicateSentences(s: string): string {
  if (!s || typeof s !== 'string') return s || '';
  // Work line-by-line so markdown STRUCTURE survives (tables, ### headers,
@@ -100,13 +100,13 @@
  }
 
  /**
-  * Strip ALL structured render tags from prose so they never leak into the
-  * displayed text. Shared by BOTH the done-branch prose render and the
-  * streaming-branch render. The structured parsers that READ these tags
-  * (parseChartHint, KPI cards, etc.) run separately on the RAW content — this
-  * only cleans the human-facing prose. KPI tags become inline bold (mirrors
-  * the done-branch KPI markdown replace) rather than being dropped.
-  */
+ * Strip ALL structured render tags from prose so they never leak into the
+ * displayed text. Shared by BOTH the done-branch prose render and the
+ * streaming-branch render. The structured parsers that READ these tags
+ * (parseChartHint, KPI cards, etc.) run separately on the RAW content — this
+ * only cleans the human-facing prose. KPI tags become inline bold (mirrors
+ * the done-branch KPI markdown replace) rather than being dropped.
+ */
  export function stripStructureTags(s: string): string {
  if (!s || typeof s !== 'string') return s || '';
  const out = s
@@ -127,11 +127,11 @@
  })
  .replace(/\[CONFIDENCE_BREAKDOWN:[^\]]*\]/gi, '')
  .replace(/\[CONFIDENCE:[^\]]+\]/g, '')
- // [VERIFIED:…] → unicode placeholder ‹‹VERIFIED:…›› that survives both:
- //   (a) the [A-Z_]+:… catch-all strip later in this chain
- //   (b) markdown.ts:inlineFormat escapeHtml (only escapes < > & ")
+ // [VERIFIED:…] > unicode placeholder <<VERIFIED:…>> that survives both:
+ // (a) the [A-Z_]+:… catch-all strip later in this chain
+ // (b) markdown.ts:inlineFormat escapeHtml (only escapes < > & ")
  // Post-processed back to <span> AFTER markdownToHtml at render site.
- .replace(/\[VERIFIED:([^\]]+)\]/g, (_m: string, inner: string) => ` ‹‹VERIFIED:${inner.trim()}››`)
+ .replace(/\[VERIFIED:([^\]]+)\]/g, (_m: string, inner: string) => ` <<VERIFIED:${inner.trim()}>>`)
  .replace(/\[IMPACT:[^\]]+\]/g, '')
  .replace(/\[RELATED:[^\]]+\]/g, '')
  .replace(/\[VERDICT:[^\]]+\]/g, '')
@@ -152,6 +152,26 @@
  import type { Snippet } from 'svelte';
  import { markdownToHtml, formatInline, parseMarkdownTables, tableToCsv, hasNumericData, detectChartType, getAvailableTypes, parseChartHint, parseFreshness, parseLineage } from '$lib';
 import AnswerCard from './AnswerCard.svelte';
+import { costOf, fmtTokens, fmtCost, fmtDuration } from '../trace/cost';
+
+// Derive distinct source tables from the answer's SQL (FROM/JOIN clauses),
+// schema-stripped, for the SOURCES chip row. Data-grounded answers cite the
+// datasets they touched (CityPharma's analog of Aria's page citations).
+function sourcesFromSql(queries: string[] | undefined): string[] {
+  if (!Array.isArray(queries)) return [];
+  const tables = new Set<string>();
+  const re = /\b(?:FROM|JOIN)\s+([A-Za-z_][\w.]*)/gi;
+  for (const q of queries) {
+    if (typeof q !== 'string') continue;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(q))) {
+      let t = m[1].split('.').pop() || '';
+      t = t.replace(/[^\w].*$/, '').replace(/^_+/, '');
+      if (t && !['select', 'where', 'on', 'as'].includes(t.toLowerCase())) tables.add(t);
+    }
+  }
+  return [...tables].slice(0, 5);
+}
  import type { ToolCall } from '$lib/api';
  import EChartView from '$lib/echart.svelte';
  import {
@@ -211,7 +231,7 @@ import AnswerCard from './AnswerCard.svelte';
  chartsEnabled?: boolean;
  /** Agent label shown in SOURCES tab "AGENT" stat. */
  agentName?: string;
- /** Presentation variant: 'claude' (full-width, no avatar, ✻ thinking) or 'classic' (robot avatar + dots). */
+ /** Presentation variant: 'claude' (full-width, no avatar, * thinking) or 'classic' (robot avatar + dots). */
  chatStyle?: 'claude' | 'classic';
  /** Whether copy-message-N was just pressed (host owns the timer). */
  copiedIndex?: number;
@@ -222,6 +242,7 @@ import AnswerCard from './AnswerCard.svelte';
  onSend?: (text: string) => void;
  onFeedback?: (index: number, rating: 'up' | 'down') => void;
  onSaveMemory?: (index: number) => void;
+ onShare?: (index: number) => void;
  onExportCsv?: (index: number, tables: any[]) => void;
  onExportPdf?: (index: number) => void;
  onPin?: (index: number, tables: any[]) => void;
@@ -255,6 +276,7 @@ import AnswerCard from './AnswerCard.svelte';
  onSend,
  onFeedback,
  onSaveMemory,
+ onShare,
  onExportCsv,
  onExportPdf,
  onPin,
@@ -280,22 +302,22 @@ import AnswerCard from './AnswerCard.svelte';
  // On data-limitation answers, offer constructive PIVOTS (not nothing) — turn a
  // dead-end into actionable next steps.
  function fallbackRelated(msg: ChatMessage, hasData: boolean): string[] {
-  const c = (msg?.content || '').toLowerCase();
-  if (!c) return [];
-  const isLimited = /\b(cannot|unable|can'?t|does not contain|no shared|not possible|impossible|unavailable|data limitation|lacks|missing)\b/.test(c);
-  if (isLimited) {
-   // Pivot to what the answer references as possible alternatives.
-   const out: string[] = [];
-   if (/categor/.test(c)) out.push('Break down stock by therapeutic category');
-   if (/\bsite|location\b/.test(c)) out.push('Audit stock coverage by site');
-   if (/search/.test(c)) out.push('Show search demand trends by hour');
-   if (out.length === 0) out.push('What analysis can this data support?');
-   return out.slice(0, 3);
-  }
-  if (hasData) {
-   return ['Break this down by site', 'Show the trend over time', 'Compare the top and bottom performers'];
-  }
-  return ['Show me the data behind this', 'Break this down by category', 'What changed over time?'];
+ const c = (msg?.content || '').toLowerCase();
+ if (!c) return [];
+ const isLimited = /\b(cannot|unable|can'?t|does not contain|no shared|not possible|impossible|unavailable|data limitation|lacks|missing)\b/.test(c);
+ if (isLimited) {
+ // Pivot to what the answer references as possible alternatives.
+ const out: string[] = [];
+ if (/categor/.test(c)) out.push('Break down stock by therapeutic category');
+ if (/\bsite|location\b/.test(c)) out.push('Audit stock coverage by site');
+ if (/search/.test(c)) out.push('Show search demand trends by hour');
+ if (out.length === 0) out.push('What analysis can this data support?');
+ return out.slice(0, 3);
+ }
+ if (hasData) {
+ return ['Break this down by site', 'Show the trend over time', 'Compare the top and bottom performers'];
+ }
+ return ['Show me the data behind this', 'Break this down by category', 'What changed over time?'];
  }
 
  function toggleWorkflow(i: number) {
@@ -305,43 +327,43 @@ import AnswerCard from './AnswerCard.svelte';
  // Svelte action: mounts a 200x80 ECharts sparkline into a node from spec
  // spec shape: { chart_type: 'line'|'bar'|'area', sparkline_data: number[] | {value:number,label?:string}[] }
  function miniChart(node: HTMLElement, spec: any) {
-   let chart: any = null;
-   const mount = async (s: any) => {
-     try {
-       const echarts: any = await import('echarts');
-       if (chart) { chart.dispose(); chart = null; }
-       const raw = s?.sparkline_data || [];
-       const data = (Array.isArray(raw) ? raw : []).map((v: any) => typeof v === 'number' ? v : (v?.value ?? 0));
-       if (!data.length) return;
-       const ct = (s?.chart_type || 'line').toLowerCase();
-       chart = echarts.init(node);
-       const series: any = ct === 'bar'
-         ? [{ type: 'bar', data, itemStyle: { color: '#c96342' } }]
-         : [{ type: 'line', data, smooth: true, symbol: 'none', lineStyle: { color: '#c96342', width: 1.5 }, areaStyle: ct === 'area' ? { color: 'rgba(201,99,66,0.18)' } : undefined }];
-       chart.setOption({
-         grid: { left: 2, right: 2, top: 4, bottom: 4 },
-         xAxis: { type: 'category', show: false, data: data.map((_: any, i: number) => i) },
-         yAxis: { type: 'value', show: false },
-         series,
-         tooltip: { show: false },
-         animation: false,
-       });
-     } catch (_e) { /* fail-soft */ }
-   };
-   mount(spec);
-   return {
-     update(newSpec: any) { mount(newSpec); },
-     destroy() { try { chart?.dispose(); } catch (_e) {} },
-   };
+ let chart: any = null;
+ const mount = async (s: any) => {
+ try {
+ const echarts: any = await import('echarts');
+ if (chart) { chart.dispose(); chart = null; }
+ const raw = s?.sparkline_data || [];
+ const data = (Array.isArray(raw) ? raw : []).map((v: any) => typeof v === 'number' ? v : (v?.value ?? 0));
+ if (!data.length) return;
+ const ct = (s?.chart_type || 'line').toLowerCase();
+ chart = echarts.init(node);
+ const series: any = ct === 'bar'
+ ? [{ type: 'bar', data, itemStyle: { color: '#c96342' } }]
+ : [{ type: 'line', data, smooth: true, symbol: 'none', lineStyle: { color: '#c96342', width: 1.5 }, areaStyle: ct === 'area' ? { color: 'rgba(201,99,66,0.18)' } : undefined }];
+ chart.setOption({
+ grid: { left: 2, right: 2, top: 4, bottom: 4 },
+ xAxis: { type: 'category', show: false, data: data.map((_: any, i: number) => i) },
+ yAxis: { type: 'value', show: false },
+ series,
+ tooltip: { show: false },
+ animation: false,
+ });
+ } catch (_e) { /* fail-soft */ }
+ };
+ mount(spec);
+ return {
+ update(newSpec: any) { mount(newSpec); },
+ destroy() { try { chart?.dispose(); } catch (_e) {} },
+ };
  }
 
  function scrollToPanel(panelId: string) {
-   try {
-     const el = document.querySelector(`[data-panel-id="${CSS.escape(panelId)}"]`);
-     if (el && typeof (el as any).scrollIntoView === 'function') {
-       (el as any).scrollIntoView({ behavior: 'smooth', block: 'center' });
-     }
-   } catch (_e) { /* no-op */ }
+ try {
+ const el = document.querySelector(`[data-panel-id="${CSS.escape(panelId)}"]`);
+ if (el && typeof (el as any).scrollIntoView === 'function') {
+ (el as any).scrollIntoView({ behavior: 'smooth', block: 'center' });
+ }
+ } catch (_e) { /* no-op */ }
  }
 
  function mlToolMeta(name: string) {
@@ -360,7 +382,7 @@ import AnswerCard from './AnswerCard.svelte';
 
 {#snippet thinkingDots()}
   {#if chatStyle === 'claude'}
-    <div class="claude-think" style="margin-top: 8px;"><span class="ct-star">✻</span></div>
+    <div class="claude-think" style="margin-top: 8px;"><span class="ct-star">*</span></div>
   {:else}
     <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;"><RobotAvatar size={16} mood="thinking" /><div class="typing-indicator"><span></span><span></span><span></span></div></div>
   {/if}
@@ -376,18 +398,8 @@ import AnswerCard from './AnswerCard.svelte';
       {/if}
       <div style="flex: 1; min-width: 0;">
 
-        <!-- Complexity Router badge (Feature A) — tier · model · score -->
-        {#if (msg as any).routing?.tier}
-          {@const rd = (msg as any).routing}
-          {@const tColor = rd.tier === 'TRIVIAL' ? 'var(--pw-muted)' : rd.tier === 'LOOKUP' ? 'var(--pw-success)' : rd.tier === 'AGENTIC' ? '#6b21a8' : rd.tier === 'REASONING' ? '#4c1d95' : rd.tier === 'ULTRA' ? '#1e1b4b' : 'var(--pw-accent)'}
-          <div title={`${rd.reason || ''}${rd.cached ? ' · cached' : ''}${Array.isArray(rd.signals) ? '\n' + rd.signals.join(', ') : ''}`}
-               style="display:inline-flex; align-items:center; gap:6px; margin-bottom:6px; font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:0.06em; padding:2px 7px; border-radius: var(--pw-radius-sm); color:white; background:{tColor};">
-            <span>{rd.override ? 'MANUAL' : rd.tier}</span>
-            <span style="opacity:0.85; font-weight:700; text-transform:none;">{(rd.model || '').split('/').pop()}</span>
-            {#if rd.override && rd.suggested_tier}<span style="opacity:0.6; font-weight:700; text-transform:none;">· auto: {rd.suggested_tier.toLowerCase()}</span>{:else if typeof rd.score === 'number'}<span style="opacity:0.7; font-weight:700;">{rd.score.toFixed(2)}</span>{/if}
-            {#if rd.effort}<span style="opacity:0.6; font-weight:700; text-transform:none;">· {rd.effort}</span>{/if}
-          </div>
-        {/if}
+        <!-- Model badge removed — model/tier now shown in the run-meta line under
+             the answer actions (Aria-style), so the answer header stays clean. -->
 
         <!-- Legacy dark CLI route/exec terminal + standalone live-SQL tool-spinner
              REMOVED: ReasoningTrace (mounted via analysisExtras snippet) is now the
@@ -474,7 +486,7 @@ import AnswerCard from './AnswerCard.svelte';
           {#if currentTabA === 'insight'}
             <!-- Exec View — gated ONLY by featureConfig.tabs.exec_view. Always
                  renders when feature on, even for legacy assistant messages
-                 (AnswerCard maps legacy tags → exec blocks internally). -->
+                 (AnswerCard maps legacy tags -&gt; exec blocks internally). -->
             {@const _execEnabled = tabEnabled('exec_view')}
             {@const _execTier = ((msg as any)?.routing?.tier || (msg as any)?.routing?.reasoning_effort || (msg.reasoningUsed === 'fast' ? 'instant' : msg.reasoningUsed === 'deep' ? 'deep' : msg.reasoningUsed === 'ultra' ? 'ultra' : 'standard'))}
             {#if _execEnabled}
@@ -483,12 +495,12 @@ import AnswerCard from './AnswerCard.svelte';
                 tier={_execTier}
                 msg={msg}
                 onAction={(act, payload) => {
-                  // "Do it" on a recommendation → fire follow-up chat
+                  // "Do it" on a recommendation -&gt; fire follow-up chat
                   if (act === 'followup' && payload?.question) {
                     onSend?.(`How do I ${payload.question}? Give me a step-by-step plan with the SQL/data needed.`);
                     return;
                   }
-                  // Diary save → forward to parent
+                  // Diary save -&gt; forward to parent
                   if (act === 'diary') {
                     onAction?.(`save_decision:${JSON.stringify(payload || {})}`);
                     return;
@@ -499,7 +511,7 @@ import AnswerCard from './AnswerCard.svelte';
                   if (act === 'star' || act === 'save') { onAction?.('save'); return; }
                   if (act === 'excel') { onAction?.('csv'); return; }
                   if (act === 'email' || act === 'share') { onAction?.('share'); return; }
-                  // Related-question chip → re-ask. payload carries the question text.
+                  // Related-question chip -&gt; re-ask. payload carries the question text.
                   if (act === 'related') { onAction?.('related', payload); return; }
                   // Default — bubble up (forward payload so arg-aware handlers still work)
                   onAction?.(act, payload);
@@ -541,9 +553,9 @@ import AnswerCard from './AnswerCard.svelte';
                 return tail ? `**${val}** (${tail})` : `**${val}**`;
               })
               .replace(/\[CONFIDENCE:[^\]]+\]/g, '')
-              // [VERIFIED:…] → unicode placeholder; post-process to <span>
+              // [VERIFIED:…] -&gt; unicode placeholder; post-process to <span>
               // after markdownToHtml. Avoids escapeHtml + catch-all strip.
-              .replace(/\[VERIFIED:([^\]]+)\]/g, (_m: string, inner: string) => ` ‹‹VERIFIED:${inner.trim()}››`)
+              .replace(/\[VERIFIED:([^\]]+)\]/g, (_m: string, inner: string) => ` &lt;&lt;VERIFIED:${inner.trim()}&gt;&gt;`)
               .replace(/\[IMPACT:[^\]]+\]/g, '')
               .replace(/\[RELATED:[^\]]+\]/g, '')
               .replace(/\[CAMPAIGN_PROPOSAL:[^\]]+\]/g, '')
@@ -825,13 +837,13 @@ import AnswerCard from './AnswerCard.svelte';
                   .replace(/\[RISK:HIGH\]/g, '<span style="font-size: 11px;font-weight:900;padding:1px 6px;background:var(--pw-error);color:white;">&#9888; HIGH</span>')
                   .replace(/\[RISK:MEDIUM\]/g, '<span style="font-size: 11px;font-weight:900;padding:1px 6px;background:#a06000;color:var(--pw-ink);">&#9888; MEDIUM</span>')
                   .replace(/\[RISK:LOW\]/g, '<span style="font-size: 11px;font-weight:900;padding:1px 6px;background:var(--pw-success);color:white;">&#10003; LOW</span>')
-                  .replace(/(▲|↑)\s*\+?(\d+(?:\.\d+)?)\s*%/g, '<span style="color:var(--pw-success);font-weight:700;">▲ +$2%</span>')
-                  .replace(/(▼|↓)\s*-?(\d+(?:\.\d+)?)\s*%/g, '<span style="color:var(--pw-error);font-weight:700;">▼ -$2%</span>')
-                  .replace(/(━|→)\s*([+-]?\d+(?:\.\d+)?)\s*%/g, '<span style="color:#888;font-weight:700;">━ $2%</span>')
+                  .replace(/(▲|^)\s*\+?(\d+(?:\.\d+)?)\s*%/g, '<span style="color:var(--pw-success);font-weight:700;">▲ +$2%</span>')
+                  .replace(/(▼|v)\s*-?(\d+(?:\.\d+)?)\s*%/g, '<span style="color:var(--pw-error);font-weight:700;">▼ -$2%</span>')
+                  .replace(/(━|-&gt;)\s*([+-]?\d+(?:\.\d+)?)\s*%/g, '<span style="color:#888;font-weight:700;">━ $2%</span>')
                   .replace(/(?<![\d.])\+(\d+(?:\.\d+)?%)/g, '<span style="color:var(--pw-success);font-weight:700;">+$1</span>')
                   .replace(/(?<![\d.\w-])-(\d+(?:\.\d+)?%)/g, '<span style="color:var(--pw-error);font-weight:700;">-$1</span>')
-                  .replace(/‹‹VERIFIED:([^›]+)››/g, (_m: string, inner: string) =>
-                    `<span style="display:inline-block;background:rgba(22,163,74,0.12);color:#15803d;font-size:10px;font-weight:700;letter-spacing:0.04em;padding:2px 6px;border-radius:3px;margin-left:6px;text-transform:uppercase;vertical-align:middle;">✓ ${inner}</span>`)
+                  .replace(/&lt;&lt;VERIFIED:([^&gt;]+)&gt;&gt;/g, (_m: string, inner: string) =>
+                    `<span style="display:inline-block;background:rgba(22,163,74,0.12);color:#15803d;font-size:10px;font-weight:700;letter-spacing:0.04em;padding:2px 6px;border-radius:3px;margin-left:6px;text-transform:uppercase;vertical-align:middle;">OK ${inner}</span>`)
                 }
               </div>
 
@@ -989,7 +1001,7 @@ import AnswerCard from './AnswerCard.svelte';
                 {#each msg.sqlQueries || [] as sql, si}
                   <div style="border: 1px solid var(--pw-border); border-radius: var(--pw-radius-sm); overflow: hidden; background: var(--pw-surface);">
                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 14px; background: var(--pw-bg-alt); border-bottom: 1px solid var(--pw-border);">
-                      <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--pw-ink-soft); font-family: 'JetBrains Mono', ui-monospace, monospace;">▶ query {si + 1}</span>
+                      <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--pw-ink-soft); font-family: 'JetBrains Mono', ui-monospace, monospace;"> query {si + 1}</span>
                       <button class="feedback-btn" onclick={() => onCopySql ? onCopySql(sql) : navigator.clipboard.writeText(sql)} style="font-size: 10px; font-weight: 600; padding: 4px 12px; color: var(--pw-accent); background: transparent; border: 1px solid var(--pw-accent); border-radius: var(--pw-radius-pill); cursor: pointer;">Copy</button>
                     </div>
                     <pre style="margin: 0; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12.5px; color: #e0e0e0; white-space: pre-wrap; word-break: break-all; line-height: 1.55; background: #1a1a1a; padding: 14px 16px;"><code>{sql}</code></pre>
@@ -1106,7 +1118,7 @@ import AnswerCard from './AnswerCard.svelte';
                   {@const vcolor = vpass ? '#c96342' : '#c0392b'}
                   <div style="padding: 12px 14px; border: 2px solid {vcolor}; border-bottom-width: 3px; background: {vcolor}08;">
                     <div style="font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; color: var(--pw-muted); margin-bottom: 6px;">VERIFIED vs TRUTH</div>
-                    <div style="font-size: 13px; font-weight: 900; color: {vcolor};">{vpass ? '✓ Matches' : '✗ Differs'}</div>
+                    <div style="font-size: 13px; font-weight: 900; color: {vcolor};">{vpass ? 'OK Matches' : 'x Differs'}</div>
                     <div style="font-size: 11px; color: var(--pw-muted); margin-top: 4px;">
                       {#if vpass}matches pinned truth: {msg.verified.expected}{:else}got {msg.verified.got} · truth {msg.verified.expected}{/if}
                     </div>
@@ -1158,11 +1170,11 @@ import AnswerCard from './AnswerCard.svelte';
               {/if}
               {#if msg.sqlQueries?.length}
                 <div style="border: 1px solid var(--pw-border); border-radius: var(--pw-radius-sm); overflow: hidden;">
-                  <div style="padding: 9px 14px; background: var(--pw-bg-alt); color: var(--pw-ink); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; border-bottom: 1px solid var(--pw-border);">▶ sql queries</div>
+                  <div style="padding: 9px 14px; background: var(--pw-bg-alt); color: var(--pw-ink); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; border-bottom: 1px solid var(--pw-border);"> sql queries</div>
                   {#each msg.sqlQueries as sql, si}
                     <div style="background: #1a1a1a; padding: 12px 14px; border-bottom: 1px solid #2a2a2a;">
                       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <span style="font-size: 10px; font-weight: 600; color: var(--pw-accent); letter-spacing: 0.02em; font-family: 'JetBrains Mono', ui-monospace, monospace;">▶ query {si+1}</span>
+                        <span style="font-size: 10px; font-weight: 600; color: var(--pw-accent); letter-spacing: 0.02em; font-family: 'JetBrains Mono', ui-monospace, monospace;"> query {si+1}</span>
                         <button style="font-size: 10px; font-weight: 600; padding: 3px 10px; color: var(--pw-accent); border: 1px solid var(--pw-accent); background: transparent; border-radius: var(--pw-radius-pill); cursor: pointer;" onclick={() => onCopySql ? onCopySql(sql) : navigator.clipboard.writeText(sql)}>Copy</button>
                       </div>
                       <pre style="margin: 0; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11.5px; color: #e0e0e0; white-space: pre-wrap; word-break: break-all; line-height: 1.55;">{sql}</pre>
@@ -1197,7 +1209,7 @@ import AnswerCard from './AnswerCard.svelte';
               {/if}
               {/if}
 
-              <!-- Lineage sub-section: [LINEAGE: upstream→table] grouped by destination -->
+              <!-- Lineage sub-section: [LINEAGE: upstream&gt;table] grouped by destination -->
               {#if true}
               {@const _lineageParsed = parseLineage(msg.content || '')}
               {#if _lineageParsed.items.length > 0}
@@ -1221,7 +1233,7 @@ import AnswerCard from './AnswerCard.svelte';
                             <span style="color: var(--pw-ink-muted, var(--pw-muted)); font-weight: 700;">·</span>
                           {/if}
                         {/each}
-                        <span style="color: var(--pw-accent); font-weight: 700; font-size: 14px; margin: 0 4px;">→</span>
+                        <span style="color: var(--pw-accent); font-weight: 700; font-size: 14px; margin: 0 4px;">&gt;</span>
                         <span style="padding: 3px 10px; background: var(--pw-accent); color: #fff; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; font-weight: 700; border-radius: var(--pw-radius-pill);">{grp.table}</span>
                       </div>
                     {/each}
@@ -1237,7 +1249,7 @@ import AnswerCard from './AnswerCard.svelte';
             {@render thinkingDots()}
           {/if}
 
-          <!-- panel_announcement pills: mini-thumbnail + ✓ Added X (N rows). Click → scroll right pane to that panel. -->
+          <!-- panel_announcement pills: mini-thumbnail + OK Added X (N rows). Click &gt; scroll right pane to that panel. -->
           {#if Array.isArray((msg as any).panelAnnouncements) && (msg as any).panelAnnouncements.length > 0}
             <div class="panel-anno-list">
               {#each (msg as any).panelAnnouncements as anno (anno.panel_id || anno.id)}
@@ -1245,7 +1257,7 @@ import AnswerCard from './AnswerCard.svelte';
                         title={anno.message || 'View panel'}
                         onclick={() => scrollToPanel(anno.panel_id)}>
                   <span class="panel-anno-thumb" use:miniChart={anno.mini_thumbnail_spec || {}}></span>
-                  <span class="panel-anno-msg">{anno.message || '✓ Added panel'}</span>
+                  <span class="panel-anno-msg">{anno.message || 'OK Added panel'}</span>
                 </button>
               {/each}
             </div>
@@ -1256,13 +1268,39 @@ import AnswerCard from './AnswerCard.svelte';
           {#if analysisActions}
             {@render analysisActions({ msg, index: i, tables, hasTables })}
           {:else}
+            {@const _srcs = sourcesFromSql(msg.sqlQueries)}
+            {@const _u = (msg as any).usage}
+            {@const _tin = _u?.input_tokens || 0}
+            {@const _tout = _u?.output_tokens || 0}
+            {@const _tok = _tin + _tout}
+            {@const _cost = costOf(_tin, _tout, _u?.model)}
+            {@const _el = ((msg as any).traceDoneAt && (msg as any).traceStart) ? ((msg as any).traceDoneAt - (msg as any).traceStart) : 0}
+            {@const _mode = ((msg as any).reasoningUsed || 'auto')}
+            {#if _srcs.length}
+              <div class="msg-sources">
+                <span class="msg-sources-label">SOURCES</span>
+                {#each _srcs as s, si}
+                  <span class="msg-source-chip" title={s}><span class="msg-source-num">{si + 1}</span>{s}</span>
+                {/each}
+              </div>
+            {/if}
             <div class="msg-actions">
-              <button class="msg-action-icon" title="Helpful" aria-label="Helpful" onclick={() => onFeedback?.(i, 'up')}><Icon name="thumbs-up" size={15} /></button>
-              <button class="msg-action-icon" title="Not helpful" aria-label="Not helpful" onclick={() => onFeedback?.(i, 'down')}><Icon name="thumbs-down" size={15} /></button>
-              <button class="msg-action-icon" title={(typeof copiedIndex === 'number' && copiedIndex >= 0 && copiedIndex === i) ? 'Copied' : 'Copy'} aria-label="Copy" onclick={() => onCopy?.(i)}><Icon name={(typeof copiedIndex === 'number' && copiedIndex >= 0 && copiedIndex === i) ? 'check' : 'clipboard'} size={15} /></button>
-              {#if hasTables}<button class="msg-action-icon" title="Export CSV" aria-label="Export CSV" onclick={() => onExportCsv?.(i, tables)}><Icon name="download" size={15} /></button>{/if}
-              <button class="msg-action-icon" title="Save to memory" aria-label="Save" onclick={() => onSaveMemory?.(i)}><Icon name="star" size={15} /></button>
-              <button class="msg-action-icon" title="Export PDF" aria-label="Export PDF" onclick={() => onExportPdf?.(i)}><Icon name="file-text" size={15} /></button>
+              <div class="msg-act-left">
+                <button class="msg-action-icon" title="Helpful" aria-label="Helpful" onclick={() => onFeedback?.(i, 'up')}><Icon name="thumbs-up" size={15} /></button>
+                <button class="msg-action-icon" title="Not helpful" aria-label="Not helpful" onclick={() => onFeedback?.(i, 'down')}><Icon name="thumbs-down" size={15} /></button>
+                <button class="msg-action-icon" title={(typeof copiedIndex === 'number' && copiedIndex >= 0 && copiedIndex === i) ? 'Copied' : 'Copy'} aria-label="Copy" onclick={() => onCopy?.(i)}><Icon name={(typeof copiedIndex === 'number' && copiedIndex >= 0 && copiedIndex === i) ? 'check' : 'clipboard'} size={15} /></button>
+                {#if hasTables}<button class="msg-action-icon" title="Export CSV" aria-label="Export CSV" onclick={() => onExportCsv?.(i, tables)}><Icon name="download" size={15} /></button>{/if}
+                {#if onShare}<button class="msg-action-icon" title="Share — copy read-only link" aria-label="Share" onclick={() => onShare?.(i)}><Icon name="link" size={15} /></button>{/if}
+                <button class="msg-action-icon" title="Save to memory" aria-label="Save" onclick={() => onSaveMemory?.(i)}><Icon name="star" size={15} /></button>
+                <button class="msg-action-icon" title="Export PDF" aria-label="Export PDF" onclick={() => onExportPdf?.(i)}><Icon name="file-text" size={15} /></button>
+              </div>
+              <div class="msg-meta">
+                <span class="msg-meta-model">Dash 1.0</span>
+                <span class="msg-meta-sep">·</span><span>{_mode === 'fast' ? 'Quick' : _mode === 'reason' ? 'Deep' : 'Auto'}</span>
+                {#if _tok > 0}<span class="msg-meta-sep">·</span><span>{fmtTokens(_tok)} tok</span>{/if}
+                {#if _cost > 0}<span class="msg-meta-sep">·</span><span>{fmtCost(_cost)}</span>{/if}
+                {#if _el > 0}<span class="msg-meta-sep">·</span><span>{fmtDuration(_el)}</span>{/if}
+              </div>
             </div>
           {/if}
           {/if}
@@ -1275,8 +1313,8 @@ import AnswerCard from './AnswerCard.svelte';
           <div class="bubble-assistant">
             {#if streamProse}
               <div class="prose-chat">{@html markdownToHtml(streamProse)
-                .replace(/‹‹VERIFIED:([^›]+)››/g, (_m: string, inner: string) =>
-                  `<span style="display:inline-block;background:rgba(22,163,74,0.12);color:#15803d;font-size:10px;font-weight:700;letter-spacing:0.04em;padding:2px 6px;border-radius:3px;margin-left:6px;text-transform:uppercase;vertical-align:middle;">✓ ${inner}</span>`)
+                .replace(/&lt;&lt;VERIFIED:([^&gt;]+)&gt;&gt;/g, (_m: string, inner: string) =>
+                  `<span style="display:inline-block;background:rgba(22,163,74,0.12);color:#15803d;font-size:10px;font-weight:700;letter-spacing:0.04em;padding:2px 6px;border-radius:3px;margin-left:6px;text-transform:uppercase;vertical-align:middle;">OK ${inner}</span>`)
               }</div>
               {#if msg.status === 'streaming'}
                 {@render thinkingDots()}
@@ -1291,7 +1329,7 @@ import AnswerCard from './AnswerCard.svelte';
                           title={anno.message || 'View panel'}
                           onclick={() => scrollToPanel(anno.panel_id)}>
                     <span class="panel-anno-thumb" use:miniChart={anno.mini_thumbnail_spec || {}}></span>
-                    <span class="panel-anno-msg">{anno.message || '✓ Added panel'}</span>
+                    <span class="panel-anno-msg">{anno.message || 'OK Added panel'}</span>
                   </button>
                 {/each}
               </div>
@@ -1314,79 +1352,102 @@ import AnswerCard from './AnswerCard.svelte';
 {/each}
 
 <style>
- /* Claude-style thinking indicator: a single pulsing ✻ star (no robot, no dots) */
+ /* Claude-style thinking indicator: a single pulsing * star (no robot, no dots) */
  .claude-think { display: flex; align-items: center; }
  .claude-think .ct-star {
-   font-size: 18px;
-   line-height: 1;
-   color: var(--pw-accent, #c2683f);
-   animation: ctStarPulse 1.1s ease-in-out infinite;
+ font-size: 18px;
+ line-height: 1;
+ color: var(--pw-accent, #c2683f);
+ animation: ctStarPulse 1.1s ease-in-out infinite;
  }
  @keyframes ctStarPulse {
-   0%, 100% { opacity: 0.35; transform: rotate(0deg) scale(0.92); }
-   50%      { opacity: 1;    transform: rotate(45deg) scale(1.06); }
+ 0%, 100% { opacity: 0.35; transform: rotate(0deg) scale(0.92); }
+ 50% { opacity: 1; transform: rotate(45deg) scale(1.06); }
  }
 
  /* Legacy .trace-line / .trace-expanded / .mode-chip / .ana-chip / live-sql styles
-    REMOVED — that trace UI is now owned entirely by ReasoningTrace.svelte. */
+ REMOVED — that trace UI is now owned entirely by ReasoningTrace.svelte. */
 
  .panel-anno-list {
-   display: flex;
-   flex-direction: column;
-   gap: 6px;
-   margin-top: 8px;
+ display: flex;
+ flex-direction: column;
+ gap: 6px;
+ margin-top: 8px;
  }
  .panel-anno-pill {
-   display: inline-flex;
-   align-items: center;
-   gap: 10px;
-   padding: 6px 10px 6px 6px;
-   border: 1px solid rgba(201, 99, 66, 0.25);
-   background: rgba(201, 99, 66, 0.05);
-   border-radius: var(--pw-radius-sm);
-   cursor: pointer;
-   font-family: 'Inter', system-ui, sans-serif;
-   font-size: 12px;
-   color: var(--pw-ink, #1a1614);
-   transition: background 120ms, border-color 120ms;
-   text-align: left;
-   max-width: 100%;
-   align-self: flex-start;
+ display: inline-flex;
+ align-items: center;
+ gap: 10px;
+ padding: 6px 10px 6px 6px;
+ border: 1px solid rgba(201, 99, 66, 0.25);
+ background: rgba(201, 99, 66, 0.05);
+ border-radius: var(--pw-radius-sm);
+ cursor: pointer;
+ font-family: 'Inter', system-ui, sans-serif;
+ font-size: 12px;
+ color: var(--pw-ink, #1a1614);
+ transition: background 120ms, border-color 120ms;
+ text-align: left;
+ max-width: 100%;
+ align-self: flex-start;
  }
  .panel-anno-pill:hover {
-   background: rgba(201, 99, 66, 0.1);
-   border-color: rgba(201, 99, 66, 0.45);
+ background: rgba(201, 99, 66, 0.1);
+ border-color: rgba(201, 99, 66, 0.45);
  }
  .panel-anno-thumb {
-   display: inline-block;
-   width: 200px;
-   height: 80px;
-   flex-shrink: 0;
-   background: #fff;
-   border: 1px solid rgba(0,0,0,0.06);
+ display: inline-block;
+ width: 200px;
+ height: 80px;
+ flex-shrink: 0;
+ background: #fff;
+ border: 1px solid rgba(0,0,0,0.06);
  }
  .panel-anno-msg {
-   font-weight: 600;
-   color: #c96342;
-   white-space: nowrap;
-   overflow: hidden;
-   text-overflow: ellipsis;
+ font-weight: 600;
+ color: #c96342;
+ white-space: nowrap;
+ overflow: hidden;
+ text-overflow: ellipsis;
  }
 
- /* P8: Hover-reveal icon-only action row (Claude-style) */
+ /* P8: action row — icons left, meta right (Aria/Claude-style) */
  .msg-actions {
  display: flex;
- gap: 4px;
+ align-items: center;
+ justify-content: space-between;
+ gap: 12px;
  margin-top: 12px;
+ }
+ .msg-act-left {
+ display: flex;
+ gap: 4px;
  opacity: 0.3;
  transition: opacity 200ms;
  }
- :global(.bubble-assistant):hover .msg-actions,
- :global(.msg-row):hover .msg-actions,
- .msg-actions:hover,
- .msg-actions:focus-within {
+ :global(.bubble-assistant):hover .msg-act-left,
+ :global(.msg-row):hover .msg-act-left,
+ .msg-actions:hover .msg-act-left,
+ .msg-actions:focus-within .msg-act-left {
  opacity: 1;
  }
+ /* right-side run meta: model · mode · tokens · cost · time */
+ .msg-meta {
+ display: flex;
+ align-items: center;
+ gap: 6px;
+ font-size: 11.5px;
+ color: var(--pw-dim, #a8a195);
+ white-space: nowrap;
+ flex-shrink: 0;
+ }
+ .msg-meta-model { font-weight: 600; color: var(--pw-muted, #8a8175); }
+ .msg-meta-sep { color: var(--pw-border-strong, #d8d5cb); }
+ /* SOURCES chip row — datasets the answer drew from */
+ .msg-sources { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+ .msg-sources-label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; color: var(--pw-dim, #a8a195); margin-right: 2px; }
+ .msg-source-chip { display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px 4px 5px; border: 1px solid var(--pw-border, #e3e0d6); border-radius: 999px; background: var(--pw-bg, #fdfcf9); font-size: 12px; color: var(--pw-ink-soft, #57544d); font-family: var(--pw-mono, ui-monospace, monospace); max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ .msg-source-num { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--pw-accent, #c96342); color: #fff; font-size: 10.5px; font-weight: 700; font-family: var(--pw-sans, sans-serif); flex-shrink: 0; }
  .msg-action-icon {
  background: none;
  border: none;
@@ -1556,10 +1617,10 @@ import AnswerCard from './AnswerCard.svelte';
  .cp-conf-line { font-size: 12px; color: var(--pw-muted, #6f6e69); margin: 0 0 10px; }
  .cp-fold { margin: 0 0 12px; }
  .cp-fold-sum {
-  list-style: none; cursor: pointer; user-select: none;
-  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
-  color: var(--pw-muted, #6f6e69);
-  padding: 5px 0; display: flex; align-items: center; gap: 6px;
+ list-style: none; cursor: pointer; user-select: none;
+ font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+ color: var(--pw-muted, #6f6e69);
+ padding: 5px 0; display: flex; align-items: center; gap: 6px;
  }
  .cp-fold-sum::-webkit-details-marker { display: none; }
  .cp-fold-sum::before { content: '▸'; color: var(--pw-dim, #97968f); transition: transform 0.15s ease; }

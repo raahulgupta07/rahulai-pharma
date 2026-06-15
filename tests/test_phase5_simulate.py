@@ -8,7 +8,7 @@ pytestmark = pytest.mark.skip(reason="dash.policy.simulator removed in Phase I s
 try:
     from dash.policy import simulator as sim
     from dash.policy.schema import AudienceRules, FieldRule, VisibilityPolicy
-except Exception:  # module removed in Phase I sim refactor
+except Exception: # module removed in Phase I sim refactor
     sim = AudienceRules = FieldRule = VisibilityPolicy = None
 
 
@@ -117,7 +117,7 @@ def test_capped_intent_forces_lower_permissive(monkeypatch):
 
 
 def test_put_validation_failure_returns_422(monkeypatch):
-    """Mock validate_policy to return failures; PUT without force=true → 422."""
+    """Mock validate_policy to return failures; PUT without force=true > 422."""
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
     from fastapi import FastAPI
@@ -148,7 +148,7 @@ def test_put_validation_failure_returns_422(monkeypatch):
     app.include_router(learning_mod.router)
     client = TestClient(app)
 
-    # bad policy → 422
+    # bad policy > 422
     r = client.put("/api/projects/acme/visibility-policy",
                    json={"policy": {}})
     assert r.status_code == 422, r.text
@@ -156,7 +156,7 @@ def test_put_validation_failure_returns_422(monkeypatch):
     assert body["ok"] is False
     assert "failures" in body
 
-    # force=true → 200
+    # force=true > 200
     r2 = client.put("/api/projects/acme/visibility-policy?force=true",
                     json={"policy": {}})
     assert r2.status_code == 200, r2.text

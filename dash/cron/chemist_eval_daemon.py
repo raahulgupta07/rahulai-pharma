@@ -2,9 +2,9 @@
 
 Runs the data-grounded golden eval (forward / generic / substitute / inverse)
 against the chemist tools and persists accuracy into dash.dash_chemist_eval, so
-the Dashboard 🧪 card shows a fresh "Clinical accuracy %" without a manual click.
+the Dashboard card shows a fresh "Clinical accuracy %" without a manual click.
 
-Single-agent product → evaluates the locked project (LOCKED_PROJECT_SLUG,
+Single-agent product > evaluates the locked project (LOCKED_PROJECT_SLUG,
 default citypharma).
 
 Cadence: daily (24h). Disable: CHEMIST_EVAL_DISABLED=1.
@@ -19,7 +19,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_INTERVAL_S = 86400  # 24h
+_DEFAULT_INTERVAL_S = 86400 # 24h
 
 
 def _locked_slug() -> str:

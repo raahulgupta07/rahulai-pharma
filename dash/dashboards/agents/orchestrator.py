@@ -80,7 +80,7 @@ class DashboardOrchestrator:
             pass
 
         # ROUND 1 — Discovery
-        yield AgentEvent(type="scout_thinking", agent="scout", msg="🔍 surveying tables...").model_dump()
+        yield AgentEvent(type="scout_thinking", agent="scout", msg=" surveying tables...").model_dump()
         try:
             new_findings = await scout.discover(
                 self.project_slug, self.prompt, self.chat_context, self.persona,
@@ -89,7 +89,7 @@ class DashboardOrchestrator:
             for f in new_findings:
                 self.findings.append(f if isinstance(f, Finding) else Finding(**f))
                 yield AgentEvent(type="scout_finding", agent="scout",
-                                 msg=f"💡 {f.headline if isinstance(f, Finding) else f.get('headline','')}",
+                                 msg=f" {f.headline if isinstance(f, Finding) else f.get('headline','')}",
                                  data=(f.model_dump() if isinstance(f, Finding) else f)).model_dump()
         except Exception as e:
             logger.exception("scout discovery failed")
@@ -100,7 +100,7 @@ class DashboardOrchestrator:
             return
 
         # ROUND 2 — Design
-        yield AgentEvent(type="designer_thinking", agent="designer", msg="🎨 designing layout...").model_dump()
+        yield AgentEvent(type="designer_thinking", agent="designer", msg=" designing layout...").model_dump()
         try:
             decisions = await designer.design(self.findings, self.persona, self.prompt)
             for d in decisions:
@@ -109,7 +109,7 @@ class DashboardOrchestrator:
                 cell = self._decision_to_cell(dd)
                 self.spec["cells"].append(cell)
                 yield AgentEvent(type="cell_added", agent="designer",
-                                 msg=f"✓ {dd.title}", data={"cell": cell}).model_dump()
+                                 msg=f"OK {dd.title}", data={"cell": cell}).model_dump()
                 if self._should_stop(): break
         except Exception as e:
             logger.exception("designer failed")
@@ -121,14 +121,14 @@ class DashboardOrchestrator:
             for f in high:
                 if self._should_stop(): break
                 yield AgentEvent(type="scout_thinking", agent="scout",
-                                 msg=f"🔍 drilling: {f.headline[:50]}...").model_dump()
+                                 msg=f" drilling: {f.headline[:50]}...").model_dump()
                 try:
                     drills = await scout.drill(self.project_slug, f, self.persona)
                     for df in drills:
                         dfo = df if isinstance(df, Finding) else Finding(**df)
                         self.findings.append(dfo)
                         yield AgentEvent(type="scout_finding", agent="scout",
-                                         msg=f"  ↳ {dfo.headline}", data=dfo.model_dump()).model_dump()
+                                         msg=f" > {dfo.headline}", data=dfo.model_dump()).model_dump()
                     if drills:
                         ddrill = await designer.design([Finding(**df) if isinstance(df, dict) else df for df in drills], self.persona, self.prompt)
                         for d in ddrill:
@@ -136,7 +136,7 @@ class DashboardOrchestrator:
                             cell = self._decision_to_cell(dd)
                             self.spec["cells"].append(cell)
                             yield AgentEvent(type="cell_added", agent="designer",
-                                             msg=f"  ✓ {dd.title}", data={"cell": cell}).model_dump()
+                                             msg=f" OK {dd.title}", data={"cell": cell}).model_dump()
                             if self._should_stop(): break
                 except Exception as e:
                     logger.warning(f"drill failed: {e}")
@@ -144,19 +144,19 @@ class DashboardOrchestrator:
         # ROUND 4 — Critique
         if not self._should_stop():
             yield AgentEvent(type="scout_thinking", agent="scout",
-                             msg="🔍 reviewing dashboard for gaps...").model_dump()
+                             msg=" reviewing dashboard for gaps...").model_dump()
             try:
                 gaps = await scout.critique(self.findings, self.persona, self.prompt)
                 if gaps:
                     yield AgentEvent(type="scout_finding", agent="scout",
-                                     msg=f"📋 found {len(gaps)} gaps").model_dump()
+                                     msg=f" found {len(gaps)} gaps").model_dump()
                     decs = await designer.design([Finding(**g) if isinstance(g, dict) else g for g in gaps[:5]], self.persona, self.prompt)
                     for d in decs:
                         dd = d if isinstance(d, DesignDecision) else DesignDecision(**d)
                         cell = self._decision_to_cell(dd)
                         self.spec["cells"].append(cell)
                         yield AgentEvent(type="cell_added", agent="designer",
-                                         msg=f"  ✓ gap closed: {dd.title}", data={"cell": cell}).model_dump()
+                                         msg=f" OK gap closed: {dd.title}", data={"cell": cell}).model_dump()
                         if self._should_stop(): break
             except Exception as e:
                 logger.warning(f"critique failed: {e}")
@@ -164,7 +164,7 @@ class DashboardOrchestrator:
         # ROUND 5 — Enrich (per cell finding+cause+action text)
         if not self._should_stop():
             yield AgentEvent(type="designer_thinking", agent="designer",
-                             msg="🎨 enriching cells with insights...").model_dump()
+                             msg=" enriching cells with insights...").model_dump()
             try:
                 self.spec = await designer.enrich(self.spec, self.findings)
             except Exception as e:
@@ -178,7 +178,7 @@ class DashboardOrchestrator:
         except Exception:
             pass
         yield AgentEvent(type="done", agent="orchestrator",
-                         msg=f"✓ done. {len(self.spec['cells'])} cells in {elapsed}s",
+                         msg=f"OK done. {len(self.spec['cells'])} cells in {elapsed}s",
                          data={"spec": self.spec, "query_intent": self.query_intent}).model_dump()
 
     def _decision_to_cell(self, d: DesignDecision) -> dict:

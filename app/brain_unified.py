@@ -9,7 +9,7 @@ with a merge status (synced / conflict / agent_only / company_only).
 GET /api/brain/unified?category=<cat>&scope=<scope>&project_slug=<slug>
 
   category ∈ definitions | glossary | patterns | rules | graph | schema | org
-  scope    ∈ agent | company | personal | all   (default: all)
+  scope ∈ agent | company | personal | all (default: all)
 
 The merge modules are lazy-imported in try/except so a missing/broken merge
 module degrades to an empty list rather than 500-ing the whole hub.
@@ -98,7 +98,7 @@ def _run_merge(category: str, conn, slug: str) -> list[dict]:
         if category == "rules":
             from app.brain_merge_rules import merge_rules
             return merge_rules(conn, slug)
-    except Exception as e:  # noqa: BLE001 — fail-soft per category
+    except Exception as e: # noqa: BLE001 — fail-soft per category
         logger.warning("brain merge '%s' failed: %s", category, e)
     return []
 
@@ -141,7 +141,7 @@ def _passthrough_graph(conn, slug: str) -> list[dict]:
         out.append(
             {
                 "category": "graph",
-                "name": f"{r['subject']} → {r['predicate']} → {r['object']}",
+                "name": f"{r['subject']} > {r['predicate']} > {r['object']}",
                 "key": f"graph::{r['id']}",
                 "agent_value": f"{r['subject']} {r['predicate']} {r['object']}",
                 "company_value": None,
@@ -286,7 +286,7 @@ def unified(
             items = _passthrough_graph(conn, slug)
         elif category == "schema":
             items = _passthrough_schema(conn, slug)
-        else:  # org
+        else: # org
             items = _passthrough_org(conn, slug)
 
     # tag which items support promote/pull/resolve in the UI

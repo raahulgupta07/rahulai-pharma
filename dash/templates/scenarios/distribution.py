@@ -3,7 +3,7 @@ from __future__ import annotations
 
 SCENARIOS: list[dict] = [
     {
-        "name": "OTIF drop — 92% → 84% in 14 days",
+        "name": "OTIF drop — 92% > 84% in 14 days",
         "scenario_text": (
             "On-Time-In-Full drops from 92% to 84% over 14 days. Model root-cause "
             "split across pick-rate, dock-dwell, carrier on-time, and stockout. "

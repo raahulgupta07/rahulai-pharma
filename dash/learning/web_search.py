@@ -1,11 +1,11 @@
 """Web search provider — Tavily/Brave/Perplexity API w/ cache + PII scrub.
 
-Fallback chain: try TAVILY_API_KEY → BRAVE_API_KEY → PERPLEXITY_API_KEY
-→ skip if none configured.
+Fallback chain: try TAVILY_API_KEY > BRAVE_API_KEY > PERPLEXITY_API_KEY
+> skip if none configured.
 
 PII scrub: regex-strip email/phone/SSN/credit-card BEFORE sending.
 
-Cache: hash(query+source) → dash_external_facts. TTL default 7 days.
+Cache: hash(query+source) > dash_external_facts. TTL default 7 days.
 """
 from __future__ import annotations
 
@@ -45,8 +45,8 @@ class SearchResult:
 class SearchResponse:
     query: str
     results: list[SearchResult] = field(default_factory=list)
-    summary: str = ""             # if provider returns aggregate (Perplexity)
-    source_type: str = ""          # 'tavily'|'brave'|'perplexity'|'cache'|'none'
+    summary: str = "" # if provider returns aggregate (Perplexity)
+    source_type: str = "" # 'tavily'|'brave'|'perplexity'|'cache'|'none'
     cost_usd: float = 0.0
     error: Optional[str] = None
     from_cache: bool = False
@@ -56,7 +56,7 @@ def _scrub(query: str) -> str:
     """Remove PII before external send."""
     for pattern, replacement in _PII_PATTERNS:
         query = pattern.sub(replacement, query)
-    return query[:500]  # also length cap
+    return query[:500] # also length cap
 
 
 def _query_hash(query: str, source: str) -> str:
@@ -266,7 +266,7 @@ def search(query: str, *, max_results: int = 5, use_cache: bool = True,
     # 2. Provider chain
     chain = [prefer] if prefer else []
     chain.extend(["tavily", "brave", "perplexity"])
-    chain = [c for c in chain if c]  # remove None
+    chain = [c for c in chain if c] # remove None
     seen = set()
 
     for provider in chain:

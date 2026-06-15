@@ -5,7 +5,7 @@ Reads from `public.dash_traces` (span table), `public.dash_llm_costs` (cost
 ledger), `public.dash_chat_sessions` (session metadata), and `ai.agno_sessions`
 (runs JSONB) for tool/skill inference.
 
-Fail-soft: if trace tables missing or empty → returns graceful empty arrays +
+Fail-soft: if trace tables missing or empty > returns graceful empty arrays +
 warning banner. Never raises HTTP 5xx.
 
 All reads go through `db.session.get_sql_engine()` (cached shared engine,
@@ -62,11 +62,11 @@ class SpanRow(BaseModel):
 class SessionAuditResponse(BaseModel):
     session: SessionSummary
     timeline: list[SpanRow] = []
-    tables_touched: list[dict] = []  # [{table, count}]
-    skills_used: list[dict] = []     # [{skill_id, count, success_count}]
-    tools_called: list[dict] = []    # [{tool, count, error_count}]
-    rls_policies_fired: list[dict] = []  # [{policy, count}]
-    errors: list[dict] = []          # [{span_name, error, started_at}]
+    tables_touched: list[dict] = [] # [{table, count}]
+    skills_used: list[dict] = [] # [{skill_id, count, success_count}]
+    tools_called: list[dict] = [] # [{tool, count, error_count}]
+    rls_policies_fired: list[dict] = [] # [{policy, count}]
+    errors: list[dict] = [] # [{span_name, error, started_at}]
     total_cost_usd: float = 0.0
     total_tokens: int = 0
     warning: str | None = None
@@ -78,9 +78,9 @@ class SummaryResponse(BaseModel):
     session_count: int = 0
     total_cost_usd: float = 0.0
     error_rate: float = 0.0
-    top_tables: list[dict] = []      # [{table, count}]
-    top_skills: list[dict] = []      # [{skill_id, count}]
-    top_users: list[dict] = []       # [{user_id, username, session_count, cost_usd}]
+    top_tables: list[dict] = [] # [{table, count}]
+    top_skills: list[dict] = [] # [{skill_id, count}]
+    top_users: list[dict] = [] # [{user_id, username, session_count, cost_usd}]
     top_tools: list[dict] = []
     warning: str | None = None
 
@@ -93,7 +93,7 @@ class UserAuditResponse(BaseModel):
     project_count: int = 0
     total_cost_usd: float = 0.0
     recent_sessions: list[SessionSummary] = []
-    top_projects: list[dict] = []     # [{project_slug, session_count, cost_usd}]
+    top_projects: list[dict] = [] # [{project_slug, session_count, cost_usd}]
     top_tools: list[dict] = []
     warning: str | None = None
 
@@ -133,7 +133,7 @@ def _extract_tables_from_sql(sql: str) -> list[str]:
     found = []
     for m in _TABLE_RE.finditer(sql):
         t = m.group(1).strip().lower()
-        # skip CTE aliases / aggregates  (single-word, common aliases)
+        # skip CTE aliases / aggregates (single-word, common aliases)
         if t in {"select", "where", "group", "order", "limit", "values"}:
             continue
         found.append(t)
@@ -350,7 +350,7 @@ def session_audit(session_id: str, request: Request):
                             ["tool"], ["tool_name"], ["fn"]
                         ])
                         if not tool_name and "." in name:
-                            # e.g. chat.analyst.run_sql_query  → run_sql_query
+                            # e.g. chat.analyst.run_sql_query > run_sql_query
                             parts = name.split(".")
                             if len(parts) >= 3:
                                 tool_name = parts[-1]

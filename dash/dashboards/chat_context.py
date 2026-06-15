@@ -82,7 +82,7 @@ def _walk_for_results(obj: Any, out: list[dict], current_sql: str | None = None)
 
 
 def extract_context(thread_id: str, up_to_msg_id: str | None = None) -> dict:
-    """Pull chat thread → return dict for planner.generate_spec(chat_context=...).
+    """Pull chat thread > return dict for planner.generate_spec(chat_context=...).
 
     Returns: {questions, sqls, results, insights, filters_mentioned, persona}.
     `up_to_msg_id` truncates at that run id (best-effort, matches run.run_id).

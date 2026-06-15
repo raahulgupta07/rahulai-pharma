@@ -1,15 +1,15 @@
 """Pure-python entity + link extractors. NO LLM imports.
 
 Patterns supported:
-- @PersonName        → person
-- [[Concept]]        → concept
-- #tag               → tag
-- https?://...       → url
-- "Acme Inc" etc.    → company  (capitalized n-gram near corp keywords)
+- @PersonName > person
+- [[Concept]] > concept
+- #tag > tag
+- https?://... > url
+- "Acme Inc" etc. > company (capitalized n-gram near corp keywords)
 
 Page-role rules:
-- page_kind == 'meeting' + @X → link (meeting_page, attended, X)
-- page_kind == 'profile' + 'works_at: Company' line → link (person, works_at, company)
+- page_kind == 'meeting' + @X > link (meeting_page, attended, X)
+- page_kind == 'profile' + 'works_at: Company' line > link (person, works_at, company)
 """
 from __future__ import annotations
 
@@ -88,7 +88,7 @@ def extract_entities(text: str, page_kind: str | None = None) -> list[dict]:
     for m in _RE_COMPANY.finditer(text):
         _add(out, seen, "company", m.group(0), m.span(0))
 
-    # profile page: works_at line → company entity
+    # profile page: works_at line > company entity
     if page_kind == "profile":
         for m in _RE_WORKS_AT.finditer(text):
             comp = m.group(1).strip().rstrip(".,;")
@@ -152,7 +152,7 @@ def extract_links(
                 _emit(page_entity, "attended", e, 1.0)
 
     if page_kind == "profile":
-        # link extracted persons → companies via works_at: line
+        # link extracted persons > companies via works_at: line
         # The first person on the page (if any) is treated as the profile owner.
         owner = next((e for e in entities if e["kind"] == "person"), None)
         for m in _RE_WORKS_AT.finditer(text):

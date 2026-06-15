@@ -28,18 +28,18 @@ logger = logging.getLogger(__name__)
 # ── Observability (fail-soft) ─────────────────────────────────────────
 try:
     from dash.obs.trace import trace_span
-except Exception:  # noqa: BLE001
+except Exception: # noqa: BLE001
     from contextlib import contextmanager as _cm
 
     @_cm
-    def trace_span(*_a, **_k):  # type: ignore
+    def trace_span(*_a, **_k): # type: ignore
         yield None
 
 
 # ── Tunables ──────────────────────────────────────────────────────────
 
-DEFAULT_INTERVAL_SECONDS = 30 * 24 * 60 * 60  # 30 days
-MIN_INTERVAL_SECONDS = 3600  # floor
+DEFAULT_INTERVAL_SECONDS = 30 * 24 * 60 * 60 # 30 days
+MIN_INTERVAL_SECONDS = 3600 # floor
 
 # Verdict thresholds (same as venture_tools.dcf_irr scoring).
 IRR_GO = 0.25
@@ -113,7 +113,7 @@ def _ensure_table() -> bool:
 # ── Verdict logic ─────────────────────────────────────────────────────
 
 def _classify_verdict(irr: float | None, moic: float | None) -> str:
-    """irr ≥ 0.25 AND moic ≥ 3.0 → 'go'; irr ≥ 0.15 → 'hold'; else 'pass'."""
+    """irr ≥ 0.25 AND moic ≥ 3.0 > 'go'; irr ≥ 0.15 > 'hold'; else 'pass'."""
     try:
         i = float(irr) if irr is not None else None
         m = float(moic) if moic is not None else None
@@ -271,12 +271,12 @@ def _emit_insight(cn, slug: str, scenario: dict, new_verdict: str) -> None:
     old_v = scenario.get("verdict") or "—"
     msg = (
         f"Verdict drift on '{deal_name}': "
-        f"{old_v} → {new_verdict}. Review scenario before next IC."
+        f"{old_v} > {new_verdict}. Review scenario before next IC."
     )
     try:
         cn.execute(_t(
             "INSERT INTO public.dash_proactive_insights "
-            "  (project_slug, user_id, insight, severity, tables_involved) "
+            " (project_slug, user_id, insight, severity, tables_involved) "
             "VALUES (:s, NULL, :ins, 'warn', :tbl)"
         ), {
             "s": slug,
@@ -292,7 +292,7 @@ def _emit_insight(cn, slug: str, scenario: dict, new_verdict: str) -> None:
     try:
         cn.execute(_t(
             "INSERT INTO public.dash_proactive_insights "
-            "  (project_slug, title, insight, severity) "
+            " (project_slug, title, insight, severity) "
             "VALUES (:s, :t, :ins, 'warn')"
         ), {
             "s": slug,
@@ -348,7 +348,7 @@ async def run_once() -> dict[str, Any]:
         try:
             res = await asyncio.to_thread(_run_for_project, slug,
                                           sql_eng, write_eng)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc: # noqa: BLE001
             logger.exception("venture_rescore: project cycle crashed slug=%s",
                              slug)
             out["errors"].append({"slug": slug, "error": str(exc)})

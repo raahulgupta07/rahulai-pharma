@@ -13,7 +13,7 @@ Two pack formats coexist:
   (`customer_calls`) w/ virtual_columns + relationships. Workflows write
   SQL against logical names. Pack installer stamps the MDL into
   `dash_metric_definitions` (model_name + raw_table_ref + virtual_columns).
-  At runtime, `dash.semantic.compile_query` rewrites semantic SQL → raw SQL.
+  At runtime, `dash.semantic.compile_query` rewrites semantic SQL > raw SQL.
 
 Migration path: new pack installs use MDL_PACK. Existing PACK installs
 continue to work via legacy resolver. Both can coexist on same project.
@@ -24,7 +24,7 @@ PACK = {
     "description": "Call-tracking + retention + contact analytics for sales/support CRMs",
     "detect": {
         "required_tables_any": ["crm", "call", "contact", "interaction", "lead"],
-        "required_cols_any":   ["call_outcome", "call_type", "status",
+        "required_cols_any": ["call_outcome", "call_type", "status",
                                 "contact_name", "channel", "outcome"],
     },
     "workflows": [
@@ -55,7 +55,7 @@ PACK = {
                 },
             },
             "template_sql": "SELECT {ctype}, COUNT(*) AS calls, "
-                            "       COUNT(*) FILTER (WHERE {outcome} ILIKE '%success%') AS successful "
+                            " COUNT(*) FILTER (WHERE {outcome} ILIKE '%success%') AS successful "
                             "FROM {table} "
                             "GROUP BY 1 ORDER BY calls DESC LIMIT 50",
         },
@@ -71,8 +71,8 @@ PACK = {
                 },
             },
             "template_sql": "SELECT COALESCE({brand}, '(no brand)') AS brand, "
-                            "       COUNT(*) AS calls, "
-                            "       COUNT(*) FILTER (WHERE {outcome} ILIKE '%success%') AS won "
+                            " COUNT(*) AS calls, "
+                            " COUNT(*) FILTER (WHERE {outcome} ILIKE '%success%') AS won "
                             "FROM {table} "
                             "GROUP BY 1 ORDER BY calls DESC LIMIT 50",
         },
@@ -90,7 +90,7 @@ PACK = {
                 },
             },
             "template_sql": "SELECT COALESCE({reason}, '(none)') AS reason, "
-                            "       COUNT(*) AS n "
+                            " COUNT(*) AS n "
                             "FROM {table} "
                             "WHERE {outcome} NOT ILIKE '%success%' "
                             "GROUP BY 1 ORDER BY n DESC LIMIT 50",
@@ -107,8 +107,8 @@ PACK = {
                 },
             },
             "template_sql": "SELECT COALESCE({channel}, '(no channel)') AS channel, "
-                            "       COUNT(*) AS calls, "
-                            "       COUNT(*) FILTER (WHERE {outcome} ILIKE '%success%') AS won "
+                            " COUNT(*) AS calls, "
+                            " COUNT(*) FILTER (WHERE {outcome} ILIKE '%success%') AS won "
                             "FROM {table} "
                             "GROUP BY 1 ORDER BY calls DESC LIMIT 50",
         },
@@ -119,11 +119,11 @@ PACK = {
 # ───────────────────────── MDL FORMAT (Phase 3) ───────────────────────────
 # Logical model 'customer_calls' = clean names that survive across schemas.
 # Pack installer:
-#   1. Detects raw_table (alias scan)
-#   2. Maps each virtual_column to its raw expression (alias scan per col)
-#   3. INSERTs into dash_metric_definitions w/ model_name='customer_calls'
-#   4. Stamps workflows that reference 'customer_calls' — no further binding
-#      needed since `compile_query` rewrites at runtime.
+# 1. Detects raw_table (alias scan)
+# 2. Maps each virtual_column to its raw expression (alias scan per col)
+# 3. INSERTs into dash_metric_definitions w/ model_name='customer_calls'
+# 4. Stamps workflows that reference 'customer_calls' — no further binding
+# needed since `compile_query` rewrites at runtime.
 MDL_PACK = {
     "name": "crm_calls_mdl",
     "vertical": "CRM / call-center",
@@ -131,7 +131,7 @@ MDL_PACK = {
                    "virtual cols. Workflows portable across CRM schemas.",
     "detect": {
         "required_tables_any": ["crm", "call", "contact", "interaction", "lead"],
-        "required_cols_any":   ["call_outcome", "call_type", "status",
+        "required_cols_any": ["call_outcome", "call_type", "status",
                                 "contact_name", "channel", "outcome"],
     },
     "models": [
@@ -140,24 +140,24 @@ MDL_PACK = {
             "raw_table_aliases": ["crm", "calls", "interactions", "crm_jun_2025",
                                   "crm_data", "call_log"],
             "virtual_columns": [
-                # name → list of raw-column aliases (first match wins)
-                {"name": "call_id",       "aliases": ["id", "call_id", "interaction_id",
+                # name > list of raw-column aliases (first match wins)
+                {"name": "call_id", "aliases": ["id", "call_id", "interaction_id",
                                               "interaction_uid", "case_id",
                                               "record_id", "ticket_id",
                                               "session_id", "contact_id",
                                               "lead_id", "event_id"],
                  "type": "string"},
-                {"name": "outcome",       "aliases": ["call_outcome", "outcome", "result"],
+                {"name": "outcome", "aliases": ["call_outcome", "outcome", "result"],
                  "type": "string"},
-                {"name": "call_type",     "aliases": ["call_type", "type", "interaction_type"],
+                {"name": "call_type", "aliases": ["call_type", "type", "interaction_type"],
                  "type": "string"},
-                {"name": "channel",       "aliases": ["channel_type", "channel",
+                {"name": "channel", "aliases": ["channel_type", "channel",
                                                        "channel__channel_name"],
                  "type": "string"},
-                {"name": "brand",         "aliases": ["brand", "product_name",
+                {"name": "brand", "aliases": ["brand", "product_name",
                                                        "related_channel_response__brand"],
                  "type": "string"},
-                {"name": "status",        "aliases": ["status", "call_status"],
+                {"name": "status", "aliases": ["status", "call_status"],
                  "type": "string"},
                 {"name": "unsuccess_reason", "aliases": [
                     "unsuccessful_reason__affiliate_value_name",
@@ -192,7 +192,7 @@ MDL_PACK = {
             "action": "post_insight",
             "model": "customer_calls",
             "sql": "SELECT call_type, COUNT(*) AS calls, "
-                   "       COUNT(*) FILTER (WHERE was_successful) AS successful "
+                   " COUNT(*) FILTER (WHERE was_successful) AS successful "
                    "FROM customer_calls GROUP BY 1 ORDER BY calls DESC LIMIT 50",
         },
         {
@@ -201,8 +201,8 @@ MDL_PACK = {
             "action": "post_insight",
             "model": "customer_calls",
             "sql": "SELECT COALESCE(brand, '(no brand)') AS brand, "
-                   "       COUNT(*) AS calls, "
-                   "       COUNT(*) FILTER (WHERE was_successful) AS won "
+                   " COUNT(*) AS calls, "
+                   " COUNT(*) FILTER (WHERE was_successful) AS won "
                    "FROM customer_calls GROUP BY 1 ORDER BY calls DESC LIMIT 50",
         },
         {
@@ -211,7 +211,7 @@ MDL_PACK = {
             "action": "post_insight",
             "model": "customer_calls",
             "sql": "SELECT COALESCE(unsuccess_reason, '(none)') AS reason, "
-                   "       COUNT(*) AS n FROM customer_calls "
+                   " COUNT(*) AS n FROM customer_calls "
                    "WHERE NOT was_successful GROUP BY 1 ORDER BY n DESC LIMIT 50",
         },
         {
@@ -220,8 +220,8 @@ MDL_PACK = {
             "action": "post_insight",
             "model": "customer_calls",
             "sql": "SELECT COALESCE(channel, '(no channel)') AS channel, "
-                   "       COUNT(*) AS calls, "
-                   "       COUNT(*) FILTER (WHERE was_successful) AS won "
+                   " COUNT(*) AS calls, "
+                   " COUNT(*) FILTER (WHERE was_successful) AS won "
                    "FROM customer_calls GROUP BY 1 ORDER BY calls DESC LIMIT 50",
         },
     ],

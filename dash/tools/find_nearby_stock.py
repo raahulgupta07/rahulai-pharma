@@ -72,7 +72,7 @@ def find_nearby_stock(query: str = "", my_store: str = "", low_threshold: int = 
             # 1) matched articles in shop_flat (brand OR generic), distinct art_keys + labels
             cur.execute(
                 f"""SELECT art_key,
-                           MAX(brand)   AS brand,
+                           MAX(brand) AS brand,
                            MAX(generic) AS generic
                     FROM {FLAT}
                     WHERE brand ILIKE %s OR generic ILIKE %s
@@ -81,7 +81,7 @@ def find_nearby_stock(query: str = "", my_store: str = "", low_threshold: int = 
             arts = cur.fetchall()
             if not arts:
                 # Nothing matched by name. Use the shared 3-state resolver to tell
-                # a genuine not_found from a stock_only code (NULL brand → name
+                # a genuine not_found from a stock_only code (NULL brand > name
                 # ILIKE can't reach it).
                 from dash.tools.pharma_resolve import resolve_article
                 res = resolve_article(cur, SCHEMA, query)
@@ -100,7 +100,7 @@ def find_nearby_stock(query: str = "", my_store: str = "", low_threshold: int = 
 
             # link_status per matched art_key — a catalog_only item is in the
             # catalog but stocked at NO branch (honest framing, NOT "out of stock
-            # everywhere"). NULL/missing → 'both' (fail-soft pre-build).
+            # everywhere"). NULL/missing > 'both' (fail-soft pre-build).
             link_status = {}
             cur.execute(
                 f"""SELECT art_key,
@@ -124,7 +124,7 @@ def find_nearby_stock(query: str = "", my_store: str = "", low_threshold: int = 
                     your_qty[ak] = int(qty or 0)
 
             # 3) OTHER branches: sites NOT in your branch(es), stock_qty>0,
-            #    ranked stock_qty DESC, top 5 per article.
+            # ranked stock_qty DESC, top 5 per article.
             other: dict = {}
             if my_sites:
                 cur.execute(

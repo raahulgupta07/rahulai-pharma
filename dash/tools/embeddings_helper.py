@@ -2,14 +2,14 @@
 
 Public surface:
     async embed_batch(texts, model=None) -> list[list[float]]
-    async embed_text(text, model=None)   -> list[float]
-    vec_to_pg(v: list[float]) -> str   # pgvector literal "[0.1,0.2,...]"
-    text_hash(s: str) -> str           # sha256 hex
+    async embed_text(text, model=None) -> list[float]
+    vec_to_pg(v: list[float]) -> str # pgvector literal "[0.1,0.2,...]"
+    text_hash(s: str) -> str # sha256 hex
     EMBED_DIM (int)
 
 Provider: OpenRouter (`OPENROUTER_API_KEY`), default model `text-embedding-3-small`
 routed as `openai/text-embedding-3-small`. Output dim = 1536. Batches of 96.
-Single 1s backoff retry on HTTP 429. Deterministic sha256 → 1536 normalized
+Single 1s backoff retry on HTTP 429. Deterministic sha256 > 1536 normalized
 floats fallback when provider unavailable (tests / offline dev).
 """
 from __future__ import annotations
@@ -62,7 +62,7 @@ def _provider_model_id(model: str) -> str:
 def _deterministic_pseudo_vector(text: str, dim: int = EMBED_DIM) -> list[float]:
     """Stable, L2-normalized pseudo-vector from sha256 of text.
 
-    Same input → same output, so cosine similarity stays consistent across
+    Same input > same output, so cosine similarity stays consistent across
     test runs. Not semantically meaningful — only a fallback when no API.
     """
     seed = (text or "__empty__").encode("utf-8")
@@ -70,7 +70,7 @@ def _deterministic_pseudo_vector(text: str, dim: int = EMBED_DIM) -> list[float]
     counter = 0
     while len(out) < dim:
         h = hashlib.sha256(seed + counter.to_bytes(4, "little")).digest()
-        # 32 bytes → 8 float values via 4-byte unsigned ints mapped to [-1, 1).
+        # 32 bytes > 8 float values via 4-byte unsigned ints mapped to [-1, 1).
         for i in range(0, 32, 4):
             (u,) = struct.unpack("<I", h[i : i + 4])
             out.append((u / 2**32) * 2.0 - 1.0)
@@ -166,7 +166,7 @@ async def embed_batch(
             for i, v in enumerate(vectors):
                 out[start + i] = v
 
-    # Safety: any leftover None → deterministic fallback.
+    # Safety: any leftover None > deterministic fallback.
     return [
         v if v is not None else _deterministic_pseudo_vector(texts[i])
         for i, v in enumerate(out)

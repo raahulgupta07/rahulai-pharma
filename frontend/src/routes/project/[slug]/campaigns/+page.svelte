@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount, onDestroy, tick } from 'svelte';
  import { page } from '$app/stores';
  import { goto } from '$app/navigation';
@@ -463,7 +463,7 @@
  try {
  const echarts = await import('echarts');
  if (!metricsChart) metricsChart = echarts.init(metricsContainer);
- // Group metrics by name → sorted by recorded_at
+ // Group metrics by name > sorted by recorded_at
  const byName: Record<string, { x: string; y: number }[]> = {};
  for (const m of ms) {
  const name = m.metric_name;
@@ -543,7 +543,7 @@
   <!-- ─── Header ─── -->
   <header class="hdr">
     <div class="hdr-l">
-      <a href={`${base}/project/${slug}/settings`} class="back-btn" title="Back to settings">←</a>
+      <a href={`${base}/project/${slug}/settings`} class="back-btn" title="Back to settings"><Icon name="arrow-left" size={16} /></a>
       <span class="ico"><Icon name="megaphone" size={14} /></span>
       <span class="ttl">CAMPAIGNS</span>
       <span class="sep">·</span>
@@ -552,8 +552,8 @@
     </div>
     <div class="hdr-r">
       {#if lastFetched}<span class="muted small">{lastFetchedLabel}</span>{/if}
-      <button class="btn" onclick={() => loadAll()} title="refresh">↻ REFRESH</button>
-      <button class="btn" onclick={exportCSV} title="export">↓ CSV</button>
+      <button class="btn" onclick={() => loadAll()} title="refresh"><Icon name="refresh" size={16} /> REFRESH</button>
+      <button class="btn" onclick={exportCSV} title="export"><Icon name="arrow-down" size={16} /> CSV</button>
       <button class="btn auto-btn" onclick={runAutoCampaign} disabled={autoBusy} title="Run auto-campaign daemon now">
         {autoBusy ? '… RUNNING' : 'AUTO RUN'}
       </button>
@@ -616,7 +616,7 @@
   {#if selected.size > 0}
     <section class="bulk">
       <span class="bulk-count">{selected.size} selected</span>
-      <button class="btn small" onclick={() => bulkAction('launch')}>▶ LAUNCH ALL</button>
+      <button class="btn small" onclick={() => bulkAction('launch')}><Icon name="play" size={16} /> LAUNCH ALL</button>
       <button class="btn small" onclick={() => bulkAction('pause')}>‖ PAUSE ALL</button>
       <button class="btn small" onclick={() => { selected = new Set(); }}><Icon name="x" size={14} /> CLEAR</button>
     </section>
@@ -669,7 +669,7 @@
               <td class="num">{fmtMoney(c.cost_budget)}</td>
               <td onclick={(e) => e.stopPropagation()}>
                 <button class="ico-btn" title="copy id" onclick={() => copyText(String(c.id))}><Icon name="clipboard" size={14} /></button>
-                <button class="ico-btn" title="open" onclick={() => openDrawer(c)}>→</button>
+                <button class="ico-btn" title="open" onclick={() => openDrawer(c)}><Icon name="arrow-right" size={16} /></button>
               </td>
             </tr>
           {/each}
@@ -710,14 +710,14 @@
         <span class="status-pill big" style="background:{statusColor(drawerCampaign.status)}">{drawerCampaign.status.toUpperCase()}</span>
         <div class="drw-acts">
           {#if drawerCampaign.status === 'draft' || drawerCampaign.status === 'scheduled'}
-            <button class="btn small primary" onclick={() => transition('launch')}>▶ LAUNCH</button>
+            <button class="btn small primary" onclick={() => transition('launch')}><Icon name="play" size={16} /> LAUNCH</button>
           {/if}
           {#if drawerCampaign.status === 'active'}
             <button class="btn small" onclick={() => transition('pause')}>‖ PAUSE</button>
             <button class="btn small" onclick={() => transition('complete')}><Icon name="check" size={14} /> COMPLETE</button>
           {/if}
           {#if drawerCampaign.status === 'paused'}
-            <button class="btn small primary" onclick={() => transition('resume')}>▶ RESUME</button>
+            <button class="btn small primary" onclick={() => transition('resume')}><Icon name="play" size={16} /> RESUME</button>
             <button class="btn small" onclick={() => transition('complete')}><Icon name="check" size={14} /> COMPLETE</button>
           {/if}
           {#if drawerCampaign.status !== 'cancelled'}
@@ -836,7 +836,7 @@
           {/if}
         {:else if drawerTab === 'audience'}
           <div class="row-acts">
-            <button class="btn small" onclick={fetchAudience}>↻ RERUN AUDIENCE QUERY</button>
+            <button class="btn small" onclick={fetchAudience}><Icon name="refresh" size={16} /> RERUN AUDIENCE QUERY</button>
           </div>
           {#if audiencePreview}
             <div class="kv-grid">

@@ -1,4 +1,4 @@
-"""Designer — visual + layout specialist. Maps Findings → DesignDecisions.
+"""Designer — visual + layout specialist. Maps Findings > DesignDecisions.
 
 Knows: chart-type-by-data-shape rules, layout templates, color semantics,
        hierarchy (KPIs top, drills nested), Tufte/Munzner principles.
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # ───── chart picker rules ─────
 
 def pick_chart_type(finding: Finding) -> str:
-    """Heuristic: data shape → chart type."""
+    """Heuristic: data shape > chart type."""
     data = finding.data or []
     if not data: return "bar"
 
@@ -31,7 +31,7 @@ def pick_chart_type(finding: Finding) -> str:
     n_numeric = sum(1 for v in sample.values() if isinstance(v, (int, float)))
 
     if n_rows == 1 and n_numeric == 1:
-        return "kpi_only"  # not chart
+        return "kpi_only" # not chart
     if has_time and n_cols >= 2:
         return "line"
     if n_rows <= 5 and n_numeric == 1:
@@ -39,7 +39,7 @@ def pick_chart_type(finding: Finding) -> str:
     if n_rows > 5 and n_rows <= 20 and n_cols == 2:
         return "bar"
     if n_rows > 20 and n_cols == 2:
-        return "bar"  # sorted bar chart
+        return "bar" # sorted bar chart
     if n_cols >= 3 and n_numeric >= 2:
         return "scatter"
     return "bar"
@@ -115,7 +115,7 @@ LAYOUT_RULES = {
     },
     "operational": {
         "kpi_row_h": 2,
-        "kpi_w": 2,  # smaller, more tiles
+        "kpi_w": 2, # smaller, more tiles
         "chart_w": 4, "chart_h": 3,
         "table_w": 8, "table_h": 3,
     },
@@ -212,7 +212,7 @@ def assign_grid(decisions: list[DesignDecision], template: str) -> list[DesignDe
 # ───── public API ─────
 
 async def design(findings: list[Finding], persona: str = "", prompt: str = "") -> list[DesignDecision]:
-    """Map Findings → DesignDecisions. Pick chart, layout, color, title."""
+    """Map Findings > DesignDecisions. Pick chart, layout, color, title."""
     if not findings: return []
 
     template = pick_template(findings, persona, prompt)
@@ -270,7 +270,7 @@ async def design(findings: list[Finding], persona: str = "", prompt: str = "") -
                 "band_legend": [
                     {"name": "out", "color": "#c62828"},
                     {"name": "low", "color": "#e65100"},
-                    {"name": "ok",  "color": "#2e7d32"},
+                    {"name": "ok", "color": "#2e7d32"},
                 ],
                 "chart_type": None,
             })

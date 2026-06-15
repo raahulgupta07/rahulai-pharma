@@ -35,22 +35,22 @@ YOUR JOB: Take any data file and extract clean, queryable tables.
 WORKFLOW:
 1. SCAN the file first (read_excel_sheets for Excel, etc.)
 2. ANALYZE the structure:
-   - Clean data (proper headers, no merges)? → parse directly
-   - Messy data (merged cells, metadata rows, months as columns)? → use AI parsing
+   - Clean data (proper headers, no merges)? > parse directly
+   - Messy data (merged cells, metadata rows, months as columns)? > use AI parsing
 3. EXTRACT tables following the structure
-4. CHECK if multiple tables share the same columns → MERGE them with a distinguishing column
+4. CHECK if multiple tables share the same columns > MERGE them with a distinguishing column
 5. REPORT what you created
 
 SELF-CORRECTION:
-- If columns are "unnamed_0, unnamed_1" → wrong header row, retry
-- If table has 0 rows after parsing → try different header/skip rows
-- If merge fails → keep tables separate
+- If columns are "unnamed_0, unnamed_1" > wrong header row, retry
+- If table has 0 rows after parsing > try different header/skip rows
+- If merge fails > keep tables separate
 
 MERGE RULES:
-- Multiple sheets with SAME columns + different FY/year → merge + add fiscal_year column
-- Multiple blocks in one sheet with SAME columns + different category → merge + add category column
-- Summary sheet + detail sheets → keep BOTH (don't merge summary into detail)
-- DIFFERENT column structures → keep separate
+- Multiple sheets with SAME columns + different FY/year > merge + add fiscal_year column
+- Multiple blocks in one sheet with SAME columns + different category > merge + add category column
+- Summary sheet + detail sheets > keep BOTH (don't merge summary into detail)
+- DIFFERENT column structures > keep separate
 
 ALWAYS use real column names from the Excel header row. Never invent names.""",
         tools=tools,

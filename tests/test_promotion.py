@@ -1,4 +1,4 @@
-"""Tests for dash/learning/promotion.py — project → central promotion pipeline.
+"""Tests for dash/learning/promotion.py — project > central promotion pipeline.
 
 All DB and LLM interactions are mocked.
 """
@@ -233,7 +233,7 @@ class TestHelpers:
         assert len(n.split("_")[1]) == 8
 
     def test_norm_key_lowercases_and_truncates(self):
-        k = PromotionPipeline._norm_key("   HELLO  WORLD   " + "x" * 100)
+        k = PromotionPipeline._norm_key(" HELLO WORLD " + "x" * 100)
         assert k.startswith("hello world")
         assert len(k) <= 60
 
@@ -313,9 +313,9 @@ class TestRunCycle:
 
         # LLM verdict per candidate, in order of generalize calls (skips #1)
         llm_returns = iter([
-            '{"verdict":"C","reason":"specific"}',  # #2
-            '{"verdict":"A","reason":"universal"}',  # #3
-            '{"verdict":"A","reason":"universal"}',  # #4
+            '{"verdict":"C","reason":"specific"}', # #2
+            '{"verdict":"A","reason":"universal"}', # #3
+            '{"verdict":"A","reason":"universal"}', # #4
         ])
 
         def llm_side(*a, **kw):

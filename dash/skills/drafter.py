@@ -1,10 +1,10 @@
 """Skill drafter — LLM-powered SKILL.md author with Voyager-style iteration.
 
 Public API:
-- draft_skill(...)            — reads conversation, drafts SKILL.md, persists pending draft
-- parse_frontmatter(md)       — strict YAML frontmatter parser → (dict, body)
-- reject_draft(...)           — mark a draft rejected (idempotent)
-- approve_draft(...)          — approve + promote into dash.dash_skills via registry
+- draft_skill(...) — reads conversation, drafts SKILL.md, persists pending draft
+- parse_frontmatter(md) — strict YAML frontmatter parser > (dict, body)
+- reject_draft(...) — mark a draft rejected (idempotent)
+- approve_draft(...) — approve + promote into dash.dash_skills via registry
 
 All persistence goes through `dash.dash_skill_drafts`. Behind EXPERIMENTAL_AGI=1.
 When the flag is off, draft_skill returns {ok: False, reason: 'disabled'} and
@@ -34,7 +34,7 @@ def _get_engine():
         return get_sql_engine()
     except Exception:
         try:
-            from db import get_sql_engine  # type: ignore
+            from db import get_sql_engine # type: ignore
             return get_sql_engine()
         except Exception:
             return None
@@ -42,7 +42,7 @@ def _get_engine():
 
 # ── 4-tier JSON parse fallback ─────────────────────────────────────────────
 def _parse_json_robust(raw: str) -> Optional[Dict[str, Any]]:
-    """direct → strip ```fences → regex first {...} → trailing-comma repair."""
+    """direct > strip ```fences > regex first {...} > trailing-comma repair."""
     if not raw or not isinstance(raw, str):
         return None
     s = raw.strip()
@@ -94,7 +94,7 @@ _FM_BOUNDARY = re.compile(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", re.DOTALL)
 
 
 def parse_frontmatter(md: str) -> Tuple[Dict[str, Any], str]:
-    """Parse SKILL.md → (frontmatter_dict, body_text). Strict YAML between ---.
+    """Parse SKILL.md > (frontmatter_dict, body_text). Strict YAML between ---.
 
     Supports simple scalars (str/int/bool) and inline JSON-style lists like
     `trigger_keywords: [a, b, "c"]`. Returns ({}, md) when frontmatter
@@ -409,7 +409,7 @@ def draft_skill(
                 "trigger_keywords (list), allowed_tools (list), body_markdown."
             )
             continue
-        last_payload = payload  # type: ignore[assignment]
+        last_payload = payload # type: ignore[assignment]
 
         if verifier_callback is not None:
             try:

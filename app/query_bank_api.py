@@ -4,13 +4,13 @@ Super-admin gated (mirrors app/cache_curator_api.py). Surfaces the captured
 chat patterns, the review gate (approve/reject/promote/demote), the curator
 run, and the shadow-measurement stats.
 
-  GET  /api/projects/{slug}/query-bank/stats            — counts + shadow repeat-rate
-  GET  /api/projects/{slug}/query-bank/patterns         — list (filter ?status=)
-  POST /api/projects/{slug}/query-bank/{id}/approve     — pending -> candidate
-  POST /api/projects/{slug}/query-bank/{id}/reject      — -> demoted
-  POST /api/projects/{slug}/query-bank/{id}/promote     — verify + -> proven
-  POST /api/projects/{slug}/query-bank/{id}/demote      — -> demoted
-  POST /api/projects/{slug}/query-bank/curate           — run curator (dry_run default true)
+  GET /api/projects/{slug}/query-bank/stats — counts + shadow repeat-rate
+  GET /api/projects/{slug}/query-bank/patterns — list (filter ?status=)
+  POST /api/projects/{slug}/query-bank/{id}/approve — pending -> candidate
+  POST /api/projects/{slug}/query-bank/{id}/reject — -> demoted
+  POST /api/projects/{slug}/query-bank/{id}/promote — verify + -> proven
+  POST /api/projects/{slug}/query-bank/{id}/demote — -> demoted
+  POST /api/projects/{slug}/query-bank/curate — run curator (dry_run default true)
 """
 from __future__ import annotations
 
@@ -97,7 +97,7 @@ async def curate(slug: str, request: Request,
 async def generalize(slug: str, request: Request,
                      dry_run: bool = Query(True),
                      max_clusters: int = Query(10, le=50)):
-    """P5: cluster proven learned queries → propose ONE parameterized template
+    """P5: cluster proven learned queries > propose ONE parameterized template
     per family (review-gated as pending). dry_run=True returns proposals only."""
     _gate(request)
     from dash.learning.query_generalize import propose_generalizations

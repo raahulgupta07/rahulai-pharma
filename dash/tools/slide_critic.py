@@ -70,21 +70,21 @@ def critique_slide(slide_spec: Dict[str, Any], narrative: str,
         "You are a McKinsey partner reviewing a junior's slide. Be harsh but fair.\n\n"
         f"NARRATIVE ARC: {narrative}\n\n"
         f"SLIDE TO REVIEW{aud_clause}:\n"
-        f"  Title: {title}\n"
-        f"  Layout: {layout}\n"
-        f"  Bullets:\n" + "\n".join(f"    - {b}" for b in bullets) + "\n"
-        f"  Action line: {action_line}\n\n"
+        f" Title: {title}\n"
+        f" Layout: {layout}\n"
+        f" Bullets:\n" + "\n".join(f" - {b}" for b in bullets) + "\n"
+        f" Action line: {action_line}\n\n"
         "RUBRIC (1-5 each):\n"
         "1. Action title is a FULL SENTENCE stating insight (not a topic label)\n"
         "2. Bullets cite specific numbers WITH [Q1]..[QN] tag pointing to an executed query\n"
         "3. Action line tells audience what to DO\n"
-        "4. Slide fits narrative arc (situation → complication → resolution)\n"
+        "4. Slide fits narrative arc (situation > complication > resolution)\n"
         "5. No fabricated data, no vague filler\n\n"
         "HARD RULES — auto-fail if violated:\n"
         "- NO placeholder tokens: [X], [Y], [ERP System Name], [X]%, [X]M, $X, $XM, $[Y]M\n"
         "- NO fake citations: never write 'McKinsey', 'Gartner', 'Forrester', 'BCG', 'industry study',\n"
-        "  'benchmark report' etc unless the original chat data contained that exact source.\n"
-        "  Real citations look like (Source: [Q3]) referring to executed query #3, not paper titles.\n"
+        " 'benchmark report' etc unless the original chat data contained that exact source.\n"
+        " Real citations look like (Source: [Q3]) referring to executed query #3, not paper titles.\n"
         "- NO contradicting numbers: do not change a number that appeared elsewhere in the deck.\n"
         "- Correlation r in [-0.1, 0.1] means NO relationship — never call this a 'driver' or 'cause'.\n"
         "- If a number is unknown, DROP THE CLAIM entirely. Don't write [X] expecting a human fill.\n\n"
@@ -94,14 +94,14 @@ def critique_slide(slide_spec: Dict[str, Any], narrative: str,
         "- Prefer fewer strong bullets (2-3) over many weak ones.\n\n"
         "Output:\n"
         '{\n'
-        '  "score": 3.5,  // average of 5 dimensions\n'
-        '  "weaknesses": ["placeholder $X bleed", "fake McKinsey citation", ...],\n'
-        '  "suggested_rewrite": {\n'
-        '    "title": "<full-sentence insight, no [brackets]>",\n'
-        '    "bullets": ["...with real number + [Qn] citation", ...],\n'
-        '    "action_line": "→ specific action"\n'
-        '  },\n'
-        '  "verdict": "revise"  // "accept" if score >= 4.0\n'
+        ' "score": 3.5, // average of 5 dimensions\n'
+        ' "weaknesses": ["placeholder $X bleed", "fake McKinsey citation", ...],\n'
+        ' "suggested_rewrite": {\n'
+        ' "title": "<full-sentence insight, no [brackets]>",\n'
+        ' "bullets": ["...with real number + [Qn] citation", ...],\n'
+        ' "action_line": "> specific action"\n'
+        ' },\n'
+        ' "verdict": "revise" // "accept" if score >= 4.0\n'
         "}\n\n"
         "Return ONLY JSON."
     )
@@ -184,7 +184,7 @@ def critique_and_patch(slides: List[Dict[str, Any]], narrative: str,
                     any_patched = True
 
         if not any_patched:
-            break  # all accepted, stop early
+            break # all accepted, stop early
 
     return {
         "slides": patched,

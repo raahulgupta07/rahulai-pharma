@@ -40,7 +40,7 @@ def _ensure_agno_stub() -> None:
     except Exception:
         pass
     agno_pkg = ModuleType("agno")
-    agno_pkg.__path__ = []  # mark as package
+    agno_pkg.__path__ = [] # mark as package
     tools_mod = ModuleType("agno.tools")
 
     def _tool(*args: Any, **kwargs: Any):
@@ -66,9 +66,9 @@ _ensure_agno_stub()
 # Imports from the package under test (after the agno stub is in place).
 # ---------------------------------------------------------------------------
 
-from dash.providers.base import BaseProvider  # noqa: E402
-from dash.providers import registry as registry_mod  # noqa: E402
-from dash.providers.registry import (  # noqa: E402
+from dash.providers.base import BaseProvider # noqa: E402
+from dash.providers import registry as registry_mod # noqa: E402
+from dash.providers.registry import ( # noqa: E402
     ProviderRegistry,
     register_provider_class,
 )
@@ -116,7 +116,7 @@ class _ConcreteProvider(BaseProvider):
         self.degraded = degraded
         self.last_error = last_error
 
-    async def setup(self) -> None:  # pragma: no cover
+    async def setup(self) -> None: # pragma: no cover
         pass
 
     async def teardown(self) -> None:
@@ -148,7 +148,7 @@ def _run(coro):
 class TestBaseProviderAbstract:
     def test_cannot_instantiate_base_directly(self):
         with pytest.raises(TypeError):
-            BaseProvider(  # type: ignore[abstract]
+            BaseProvider( # type: ignore[abstract]
                 id="x", name="x", project_slug="p", dialect="postgresql"
             )
 
@@ -166,7 +166,7 @@ class TestBaseProviderAbstract:
             # Missing introspect + health_check
 
         with pytest.raises(TypeError):
-            Broken(  # type: ignore[abstract]
+            Broken( # type: ignore[abstract]
                 id="b", name="b", project_slug="p", dialect="postgresql"
             )
 
@@ -241,13 +241,13 @@ class TestProviderRegistry:
         ids = {p.id for p in reg.list_for_project("proj", agent_scope="analyst_only")}
         assert "analyst" in ids
         assert "shared" in ids
-        assert "proj_p" in ids  # project scope is broadly visible
+        assert "proj_p" in ids # project scope is broadly visible
         assert "researcher" not in ids
 
         # 'project' scope filter
         ids2 = {p.id for p in reg.list_for_project("proj", agent_scope="project")}
         # 'project' as the requested scope: rule keeps providers in
-        # {requested, "shared", "project"} → project, shared, but NOT analyst/researcher
+        # {requested, "shared", "project"} > project, shared, but NOT analyst/researcher
         assert "proj_p" in ids2
         assert "shared" in ids2
         assert "analyst" not in ids2
@@ -308,7 +308,7 @@ class TestProviderRegistry:
             pass
 
         with pytest.raises(TypeError):
-            register_provider_class("bad", NotAProvider)  # type: ignore[arg-type]
+            register_provider_class("bad", NotAProvider) # type: ignore[arg-type]
 
 
 # ===========================================================================
@@ -356,7 +356,7 @@ class TestDialectOverlay:
 # ===========================================================================
 
 
-from dash.providers.tool_factory import (  # noqa: E402
+from dash.providers.tool_factory import ( # noqa: E402
     _is_read_only,
     make_tools,
 )
@@ -368,10 +368,10 @@ class TestIsReadOnly:
         [
             "SELECT 1",
             "select * from t",
-            "  SELECT * FROM t  ",
+            " SELECT * FROM t ",
             "WITH x AS (SELECT 1) SELECT * FROM x",
             "with x as (select 1) select * from x",
-            "SELECT 1;",  # trailing semicolon ok
+            "SELECT 1;", # trailing semicolon ok
         ],
     )
     def test_allowed(self, sql):
@@ -393,13 +393,13 @@ class TestIsReadOnly:
             "CREATE TABLE t (id INT)",
             "",
             None,
-            "SELECT 1; DROP TABLE x",  # stacked
-            "SELECT 1; SELECT 2",  # stacked
-            "; SELECT 1",  # leading semicolon → fails leading-token rule
+            "SELECT 1; DROP TABLE x", # stacked
+            "SELECT 1; SELECT 2", # stacked
+            "; SELECT 1", # leading semicolon > fails leading-token rule
         ],
     )
     def test_blocked(self, sql):
-        assert _is_read_only(sql) is False  # type: ignore[arg-type]
+        assert _is_read_only(sql) is False # type: ignore[arg-type]
 
     def test_case_insensitive(self):
         assert _is_read_only("sElEcT 1") is True
@@ -434,7 +434,7 @@ class TestMakeTools:
         query_tool = tools[0]
         out = _call_tool(query_tool, "DROP TABLE x")
         assert "ERROR" in out
-        assert "SELECT" in out  # explanation references SELECT-only
+        assert "SELECT" in out # explanation references SELECT-only
 
     def test_query_tool_blocks_stacked(self):
         provider = _ConcreteProvider(id="t1")
@@ -459,7 +459,7 @@ class TestMakeTools:
 
     def test_query_tool_executes_select_via_engine(self):
         provider = _ConcreteProvider(id="ok")
-        # Wire up engine.connect() context manager → execute() → fetchmany()
+        # Wire up engine.connect() context manager > execute() > fetchmany()
         fake_row = SimpleNamespace(_fields=("a",))
         # Make it iterable like a SQLAlchemy Row
         fake_row_iter = (1,)
@@ -483,7 +483,7 @@ class TestMakeTools:
         query_tool = make_tools(provider)[0]
         out = _call_tool(query_tool, "SELECT 1")
         assert "ERROR" not in out
-        assert "a" in out  # header rendered
+        assert "a" in out # header rendered
 
 
 # ===========================================================================
@@ -564,10 +564,10 @@ class TestConcreteProviders:
 
     def test_register_provider_class_mapping_has_four_keys(self):
         # Force imports so each module's register_provider_class call runs.
-        import dash.providers.postgres_local  # noqa: F401
-        import dash.providers.postgres_remote  # noqa: F401
-        import dash.providers.mysql_remote  # noqa: F401
-        import dash.providers.fabric  # noqa: F401
+        import dash.providers.postgres_local # noqa: F401
+        import dash.providers.postgres_remote # noqa: F401
+        import dash.providers.mysql_remote # noqa: F401
+        import dash.providers.fabric # noqa: F401
 
         mapping = registry_mod._PROVIDER_CLASSES
         for key in ("postgres_local", "postgres_remote", "mysql_remote", "fabric"):

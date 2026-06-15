@@ -50,16 +50,16 @@ def auto_evolve_instructions(project_slug: str):
         ), {"s": project_slug}).scalar() or 0
 
     mem_text = "\n".join(f"- {r[0]}" for r in memories) if memories else "None"
-    good_text = "\n".join(f"- Q: {r[0]}\n  A: {(r[1] or '')[:150]}" for r in feedback_good) if feedback_good else "None"
+    good_text = "\n".join(f"- Q: {r[0]}\n A: {(r[1] or '')[:150]}" for r in feedback_good) if feedback_good else "None"
     def _bad_line(r):
         line = f"- Q: {r[0]}"
         if len(r) > 2 and r[2]:
-            line += f"\n  WHY WRONG (user): {str(r[2])[:200]}"
+            line += f"\n WHY WRONG (user): {str(r[2])[:200]}"
         if len(r) > 3 and r[3]:
-            line += f"\n  USER SAYS CORRECT: {str(r[3])[:200]}"
+            line += f"\n USER SAYS CORRECT: {str(r[3])[:200]}"
         return line
     bad_text = "\n".join(_bad_line(r) for r in feedback_bad) if feedback_bad else "None"
-    pattern_text = "\n".join(f"- {r[0]} → {r[1][:80]}" for r in patterns) if patterns else "None"
+    pattern_text = "\n".join(f"- {r[0]} > {r[1][:80]}" for r in patterns) if patterns else "None"
 
     prompt = f"""Generate concise supplementary instructions (max 400 words) for a data analyst agent based on its learnings.
 

@@ -1,7 +1,7 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
-  import AgentFlow from '$lib/AgentFlow.svelte';
-   import { onMount, onDestroy } from 'svelte';
+ import Icon from '$lib/Icon.svelte';
+ import AgentFlow from '$lib/AgentFlow.svelte';
+ import { onMount, onDestroy } from 'svelte';
  import { page } from '$app/state';
  import { base } from '$app/paths';
  import LineageTab from '$lib/components/settings/LineageTab.svelte';
@@ -27,7 +27,7 @@ import ColumnCard from '$lib/components/ColumnCard.svelte';
  if (!h || h === 'cockpit') return 'datasets';
  // RLS + Visibility merged into Embed/Sharing — redirect legacy hashes
  if (h === 'rls' || h === 'visibility') return 'embed';
- // Exploratory + Data Quality are their own screens now (legacy #quality → data-quality)
+ // Exploratory + Data Quality are their own screens now (legacy #quality > data-quality)
  if (h === 'eda') return 'eda';
  if (h === 'quality' || h === 'data-quality') return 'data-quality';
  if (h === 'upload-new') return 'upload';
@@ -84,223 +84,223 @@ $effect(() => {
  let stageResult = $state<any | null>(null);
  let stageBusy = $state(false);
  let stageInputEl: HTMLInputElement;
- let stageMapText = $state('');      // optional rename mapping for drift accept
- let stageUndoArm = $state(false);   // two-click undo confirm
+ let stageMapText = $state(''); // optional rename mapping for drift accept
+ let stageUndoArm = $state(false); // two-click undo confirm
 
- // All DATA uploads go through the staged pipeline (validate → contract → promote).
+ // All DATA uploads go through the staged pipeline (validate > contract > promote).
  // Docs (pdf/pptx/docx/…) keep the document path. No more direct immediate-load.
  async function routeUpload(files: FileList | File[]) {
-   const arr = Array.from(files);
-   if (!arr.length) return;
-   const dataExt = ['csv', 'xlsx', 'xls', 'json', 'parquet'];
-   const isData = (f: File) => dataExt.includes(f.name.split('.').pop()?.toLowerCase() || '');
-   const dataFiles = arr.filter(isData);
-   const docFiles = arr.filter((f) => !isData(f));
-   dsUploadOpen = true;
-   const _clog = (m: string) => { try { window.dispatchEvent(new CustomEvent('dash-cli-log', { detail: m })); } catch {} };
-   try {
-     // ── Data files: stage (upload, fast) → fire promote+train in BACKGROUND ──
-     // The upload returns as soon as the file is staged; the server then loads it
-     // into Postgres + runs the full pipeline (profile→train→Q&A→vectors→graph)
-     // while the UI just polls. No blocking on the 100k-row load.
-     if (dataFiles.length) {
-       dsUploadMsg = `Uploading ${dataFiles.length} data file(s)…`;
-       _clog(`▸ uploading ${dataFiles.map(f => f.name).join(', ')}`);
-       await stageUploadFiles(dataFiles);   // upload bytes to staging (fast)
-       if (stageBatchId) {
-         const bid = stageBatchId;
-         stageBatchId = null; stageFilesMeta = []; stagePlan = null;
-         dsUploadMsg = '✓ Uploaded — agents loading + training in background…';
-         _clog('▸ load + full training started (background)');
-         // fire-and-forget: don't await the 100k-row load + pipeline
-         fetch(`/api/ingest/${slug}/${bid}/promote?train=true&force=true`, { method: 'POST', headers: _h() })
-           .then(() => { loadDataSource(); })
-           .catch(() => { dsUploadMsg = '✗ load failed — check file'; });
-       } else {
-         dsUploadMsg = '✗ staging failed — check file format';
-       }
-     }
-     // ── Document files: upload-doc in BACKGROUND, then retrain ──
-     if (docFiles.length) {
-       dsUploadMsg = `Uploading ${docFiles.length} document(s)…`;
-       for (const f of docFiles) {
-         _clog(`▸ uploading ${f.name}`);
-         const fd = new FormData(); fd.append('file', f);
-         try { await fetch(`/api/upload-doc?project=${slug}`, { method: 'POST', body: fd, headers: _h() }); } catch {}
-       }
-       fetch(`/api/projects/${slug}/retrain`, { method: 'POST', headers: _h() }).catch(() => {});
-     }
-     // keep the strip "live" for ~20s while the background run spins up, then the
-     // poll syncs to the real run status.
-     dsTrainGraceUntil = Date.now() + 20000;
-     isTraining = true;
-     try { loadTrainingSteps(); } catch {}
-     if (!dsUploadMsg.startsWith('✗')) dsUploadMsg = '✓ Uploaded — agents working in background';
-     await loadDataSource();
-     if (!dsPollTimer) dsPollTimer = setInterval(loadDataSource, 5000);
-     setTimeout(() => { if (!dsUploadMsg.startsWith('✗')) dsUploadMsg = ''; }, 8000);
-   } catch (e: any) {
-     dsUploadMsg = '✗ Upload error: ' + (e?.message || e);
-   }
+ const arr = Array.from(files);
+ if (!arr.length) return;
+ const dataExt = ['csv', 'xlsx', 'xls', 'json', 'parquet'];
+ const isData = (f: File) => dataExt.includes(f.name.split('.').pop()?.toLowerCase() || '');
+ const dataFiles = arr.filter(isData);
+ const docFiles = arr.filter((f) => !isData(f));
+ dsUploadOpen = true;
+ const _clog = (m: string) => { try { window.dispatchEvent(new CustomEvent('dash-cli-log', { detail: m })); } catch {} };
+ try {
+ // ── Data files: stage (upload, fast) > fire promote+train in BACKGROUND ──
+ // The upload returns as soon as the file is staged; the server then loads it
+ // into Postgres + runs the full pipeline (profile>train>Q&A>vectors>graph)
+ // while the UI just polls. No blocking on the 100k-row load.
+ if (dataFiles.length) {
+ dsUploadMsg = `Uploading ${dataFiles.length} data file(s)…`;
+ _clog(`▸ uploading ${dataFiles.map(f => f.name).join(', ')}`);
+ await stageUploadFiles(dataFiles); // upload bytes to staging (fast)
+ if (stageBatchId) {
+ const bid = stageBatchId;
+ stageBatchId = null; stageFilesMeta = []; stagePlan = null;
+ dsUploadMsg = 'OK Uploaded — agents loading + training in background…';
+ _clog('▸ load + full training started (background)');
+ // fire-and-forget: don't await the 100k-row load + pipeline
+ fetch(`/api/ingest/${slug}/${bid}/promote?train=true&force=true`, { method: 'POST', headers: _h() })
+ .then(() => { loadDataSource(); })
+ .catch(() => { dsUploadMsg = 'x load failed — check file'; });
+ } else {
+ dsUploadMsg = 'x staging failed — check file format';
+ }
+ }
+ // ── Document files: upload-doc in BACKGROUND, then retrain ──
+ if (docFiles.length) {
+ dsUploadMsg = `Uploading ${docFiles.length} document(s)…`;
+ for (const f of docFiles) {
+ _clog(`▸ uploading ${f.name}`);
+ const fd = new FormData(); fd.append('file', f);
+ try { await fetch(`/api/upload-doc?project=${slug}`, { method: 'POST', body: fd, headers: _h() }); } catch {}
+ }
+ fetch(`/api/projects/${slug}/retrain`, { method: 'POST', headers: _h() }).catch(() => {});
+ }
+ // keep the strip "live" for ~20s while the background run spins up, then the
+ // poll syncs to the real run status.
+ dsTrainGraceUntil = Date.now() + 20000;
+ isTraining = true;
+ try { loadTrainingSteps(); } catch {}
+ if (!dsUploadMsg.startsWith('x')) dsUploadMsg = 'OK Uploaded — agents working in background';
+ await loadDataSource();
+ if (!dsPollTimer) dsPollTimer = setInterval(loadDataSource, 5000);
+ setTimeout(() => { if (!dsUploadMsg.startsWith('x')) dsUploadMsg = ''; }, 8000);
+ } catch (e: any) {
+ dsUploadMsg = 'x Upload error: ' + (e?.message || e);
+ }
  }
  // XHR upload with real % progress (fetch can't report upload progress).
  function xhrUpload(url: string, fd: FormData, onPct: (p: number) => void): Promise<any> {
-   return new Promise((resolve, reject) => {
-     const xhr = new XMLHttpRequest();
-     xhr.open('POST', url);
-     const h = _h();
-     for (const k in h) { if (k.toLowerCase() !== 'content-type') xhr.setRequestHeader(k, h[k]); }
-     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onPct(Math.round((e.loaded / e.total) * 100)); };
-     xhr.onload = () => {
-       if (xhr.status >= 200 && xhr.status < 300) { try { resolve(JSON.parse(xhr.responseText)); } catch { resolve({}); } }
-       else reject(new Error('HTTP ' + xhr.status));
-     };
-     xhr.onerror = () => reject(new Error('network'));
-     xhr.send(fd);
-   });
+ return new Promise((resolve, reject) => {
+ const xhr = new XMLHttpRequest();
+ xhr.open('POST', url);
+ const h = _h();
+ for (const k in h) { if (k.toLowerCase() !== 'content-type') xhr.setRequestHeader(k, h[k]); }
+ xhr.upload.onprogress = (e) => { if (e.lengthComputable) onPct(Math.round((e.loaded / e.total) * 100)); };
+ xhr.onload = () => {
+ if (xhr.status >= 200 && xhr.status < 300) { try { resolve(JSON.parse(xhr.responseText)); } catch { resolve({}); } }
+ else reject(new Error('HTTP ' + xhr.status));
+ };
+ xhr.onerror = () => reject(new Error('network'));
+ xhr.send(fd);
+ });
  }
- // Map a live training step → pipeline-strip stage index (0..6). -1 = none, 7 = all done.
+ // Map a live training step > pipeline-strip stage index (0..6). -1 = none, 7 = all done.
  function pipeStageIdx(step: string): number {
-   const s = (step || '').toLowerCase();
-   if (/done|complete|finished/.test(s)) return 6;
-   if (/graph|triple|knowledge_graph/.test(s)) return 5;
-   if (/vector|embed|backfill|knowledge index|reindex|\bindex\b/.test(s)) return 4;
-   if (/q&a|qa pair|experiment|eval/.test(s)) return 3;
-   if (/train|deep analysis|codex|brain|domain|persona|relationship|synth/.test(s)) return 2;
-   if (/profile|catalog|dimension|sample|hierarchy|sql_profil/.test(s)) return 1;
-   if (/upload|stag|load|promote|drift/.test(s)) return 0;
-   return 2; // mid-train default
+ const s = (step || '').toLowerCase();
+ if (/done|complete|finished/.test(s)) return 6;
+ if (/graph|triple|knowledge_graph/.test(s)) return 5;
+ if (/vector|embed|backfill|knowledge index|reindex|\bindex\b/.test(s)) return 4;
+ if (/q&a|qa pair|experiment|eval/.test(s)) return 3;
+ if (/train|deep analysis|codex|brain|domain|persona|relationship|synth/.test(s)) return 2;
+ if (/profile|catalog|dimension|sample|hierarchy|sql_profil/.test(s)) return 1;
+ if (/upload|stag|load|promote|drift/.test(s)) return 0;
+ return 2; // mid-train default
  }
  async function stageUploadFiles(files: FileList | File[]) {
-   stageBusy = true; stageResult = null;
-   try {
-     const list = Array.from(files);
-     let idx = 0;
-     for (const f of list) {
-       idx++;
-       const fd = new FormData(); fd.append('file', f);
-       let url = `/api/upload/stage?project=${slug}`;
-       if (stageBatchId) url += `&batch_id=${stageBatchId}`;
-       try {
-         const d = await xhrUpload(url, fd, (pct) => {
-           dsUploadMsg = `▸ uploading ${f.name}${list.length > 1 ? ` (${idx}/${list.length})` : ''} · ${pct}%`;
-         });
-         if (d && d.batch_id) stageBatchId = d.batch_id;
-       } catch {
-         // fallback to fetch if XHR path fails
-         const r = await fetch(url, { method: 'POST', body: fd, headers: _h() });
-         if (r.ok) { const d = await r.json(); stageBatchId = d.batch_id; }
-       }
-     }
-     await stageRefresh();
-   } finally { stageBusy = false; }
+ stageBusy = true; stageResult = null;
+ try {
+ const list = Array.from(files);
+ let idx = 0;
+ for (const f of list) {
+ idx++;
+ const fd = new FormData(); fd.append('file', f);
+ let url = `/api/upload/stage?project=${slug}`;
+ if (stageBatchId) url += `&batch_id=${stageBatchId}`;
+ try {
+ const d = await xhrUpload(url, fd, (pct) => {
+ dsUploadMsg = `▸ uploading ${f.name}${list.length > 1 ? ` (${idx}/${list.length})` : ''} · ${pct}%`;
+ });
+ if (d && d.batch_id) stageBatchId = d.batch_id;
+ } catch {
+ // fallback to fetch if XHR path fails
+ const r = await fetch(url, { method: 'POST', body: fd, headers: _h() });
+ if (r.ok) { const d = await r.json(); stageBatchId = d.batch_id; }
+ }
+ }
+ await stageRefresh();
+ } finally { stageBusy = false; }
  }
  async function stageRehydrate() {
-   // On page load: find latest non-promoted batch + restore staging UI.
-   try {
-     const rb = await fetch(`/api/ingest/${slug}/batches`, { headers: _h() });
-     if (!rb.ok) return;
-     const d = await rb.json();
-     const batches = Array.isArray(d.batches) ? d.batches : [];
-     // Pick newest batch w/ files still awaiting promote (status != 'promoted')
-     const pending = batches.find((b: any) => Array.isArray(b.files) && b.files.length && (b.status !== 'promoted' && b.status !== 'rejected'));
-     if (pending) {
-       stageBatchId = pending.batch_id;
-       stageFilesMeta = pending.files;
-     }
-   } catch {}
+ // On page load: find latest non-promoted batch + restore staging UI.
+ try {
+ const rb = await fetch(`/api/ingest/${slug}/batches`, { headers: _h() });
+ if (!rb.ok) return;
+ const d = await rb.json();
+ const batches = Array.isArray(d.batches) ? d.batches : [];
+ // Pick newest batch w/ files still awaiting promote (status != 'promoted')
+ const pending = batches.find((b: any) => Array.isArray(b.files) && b.files.length && (b.status !== 'promoted' && b.status !== 'rejected'));
+ if (pending) {
+ stageBatchId = pending.batch_id;
+ stageFilesMeta = pending.files;
+ }
+ } catch {}
  }
  async function stageRefresh() {
-   if (!stageBatchId) return;
-   try {
-     const r = await fetch(`/api/ingest/${slug}/${stageBatchId}/dry-run`, { headers: _h() });
-     if (r.ok) { const d = await r.json(); stagePlan = d.plan || []; }
-     const rb = await fetch(`/api/ingest/${slug}/batches`, { headers: _h() });
-     if (rb.ok) {
-       const d = await rb.json();
-       const b = (d.batches || []).find((x: any) => x.batch_id === stageBatchId);
-       stageFilesMeta = (b && Array.isArray(b.files)) ? b.files : [];
-     }
-   } catch {}
+ if (!stageBatchId) return;
+ try {
+ const r = await fetch(`/api/ingest/${slug}/${stageBatchId}/dry-run`, { headers: _h() });
+ if (r.ok) { const d = await r.json(); stagePlan = d.plan || []; }
+ const rb = await fetch(`/api/ingest/${slug}/batches`, { headers: _h() });
+ if (rb.ok) {
+ const d = await rb.json();
+ const b = (d.batches || []).find((x: any) => x.batch_id === stageBatchId);
+ stageFilesMeta = (b && Array.isArray(b.files)) ? b.files : [];
+ }
+ } catch {}
  }
  async function stagePromote(train: boolean, force: boolean = false) {
-   if (!stageBatchId) return;
-   stageBusy = true;
-   cLog(`${ts()} ▸ promoting batch ${stageBatchId}${force ? ' (force)' : ''}…`);
-   try {
-     const url = `/api/ingest/${slug}/${stageBatchId}/promote?train=${train}&force=${force}`;
-     const r = await fetch(url, { method: 'POST', headers: _h() });
-     if (r.ok) {
-       stageResult = await r.json();
-       const loaded = stageResult?.loaded_files || 0;
-       const quar = stageResult?.quarantined || 0;
-       cLog(`${ts()} ✓ promote done · loaded=${loaded} quarantined=${quar}`);
-       for (const f of (stageResult?.results || [])) {
-         cLog(`${ts()}   · ${f.filename} → ${f.action || 'ok'}${f.rows_loaded ? ` (${f.rows_loaded} rows)` : ''}`);
-       }
-       if (train) {
-         cLog(`${ts()} ▸ retrain triggered · streaming pipeline steps…`);
-         // Always fire retrain explicitly (belt + suspenders if promote skipped it)
-         try { await fetch(`/api/projects/${slug}/retrain`, { method: 'POST', headers: _h() }); } catch {}
-         // Kick off live progress poll so Cockpit + Training tab pill bar populate
-         isTraining = true;
-         try { startTrainingStepsPoll(); } catch {}
-         try { await loadTrainingRuns(); } catch {}
-         activeTab = 'cockpit';
-         window.location.hash = 'cockpit';
-       } else {
-         alert(`Promoted ${loaded} file(s)${quar ? `, ${quar} quarantined` : ''}.`);
-       }
-       stageBatchId = null; stageFilesMeta = []; stagePlan = null;
-       try { await stageRehydrate?.(); } catch {}
-     } else {
-       alert(`Promote failed: HTTP ${r.status}`);
-     }
-   } catch (e: any) {
-     alert(`Promote error: ${e?.message || e}`);
-   } finally { stageBusy = false; }
+ if (!stageBatchId) return;
+ stageBusy = true;
+ cLog(`${ts()} ▸ promoting batch ${stageBatchId}${force ? ' (force)' : ''}…`);
+ try {
+ const url = `/api/ingest/${slug}/${stageBatchId}/promote?train=${train}&force=${force}`;
+ const r = await fetch(url, { method: 'POST', headers: _h() });
+ if (r.ok) {
+ stageResult = await r.json();
+ const loaded = stageResult?.loaded_files || 0;
+ const quar = stageResult?.quarantined || 0;
+ cLog(`${ts()} OK promote done · loaded=${loaded} quarantined=${quar}`);
+ for (const f of (stageResult?.results || [])) {
+ cLog(`${ts()} · ${f.filename} > ${f.action || 'ok'}${f.rows_loaded ? ` (${f.rows_loaded} rows)` : ''}`);
+ }
+ if (train) {
+ cLog(`${ts()} ▸ retrain triggered · streaming pipeline steps…`);
+ // Always fire retrain explicitly (belt + suspenders if promote skipped it)
+ try { await fetch(`/api/projects/${slug}/retrain`, { method: 'POST', headers: _h() }); } catch {}
+ // Kick off live progress poll so Cockpit + Training tab pill bar populate
+ isTraining = true;
+ try { startTrainingStepsPoll(); } catch {}
+ try { await loadTrainingRuns(); } catch {}
+ activeTab = 'cockpit';
+ window.location.hash = 'cockpit';
+ } else {
+ alert(`Promoted ${loaded} file(s)${quar ? `, ${quar} quarantined` : ''}.`);
+ }
+ stageBatchId = null; stageFilesMeta = []; stagePlan = null;
+ try { await stageRehydrate?.(); } catch {}
+ } else {
+ alert(`Promote failed: HTTP ${r.status}`);
+ }
+ } catch (e: any) {
+ alert(`Promote error: ${e?.message || e}`);
+ } finally { stageBusy = false; }
  }
  async function stageReject() {
-   if (!stageBatchId) return;
-   stageBusy = true;
-   try { await fetch(`/api/ingest/${slug}/${stageBatchId}/reject`, { method: 'POST', headers: _h() }); } catch {}
-   stageBatchId = null; stageFilesMeta = []; stagePlan = null; stageResult = null; stageBusy = false;
+ if (!stageBatchId) return;
+ stageBusy = true;
+ try { await fetch(`/api/ingest/${slug}/${stageBatchId}/reject`, { method: 'POST', headers: _h() }); } catch {}
+ stageBatchId = null; stageFilesMeta = []; stagePlan = null; stageResult = null; stageBusy = false;
  }
  async function stageResolveDrift(filename: string) {
-   if (!stageBatchId) return;
-   const raw = (stageMapText || '').trim();   // optional "new=old,new2=old2" from inline input
-   const mapping: Record<string, string> = {};
-   if (raw) for (const pair of raw.split(',')) { const [a, b] = pair.split('='); if (a && b) mapping[a.trim()] = b.trim(); }
-   stageBusy = true;
-   try {
-     await fetch(`/api/ingest/${slug}/${stageBatchId}/resolve-drift`, { method: 'POST', headers: { 'Content-Type': 'application/json', ..._h() }, body: JSON.stringify({ filename, mapping }) });
-     await stageRefresh();
-   } finally { stageBusy = false; }
+ if (!stageBatchId) return;
+ const raw = (stageMapText || '').trim(); // optional "new=old,new2=old2" from inline input
+ const mapping: Record<string, string> = {};
+ if (raw) for (const pair of raw.split(',')) { const [a, b] = pair.split('='); if (a && b) mapping[a.trim()] = b.trim(); }
+ stageBusy = true;
+ try {
+ await fetch(`/api/ingest/${slug}/${stageBatchId}/resolve-drift`, { method: 'POST', headers: { 'Content-Type': 'application/json', ..._h() }, body: JSON.stringify({ filename, mapping }) });
+ await stageRefresh();
+ } finally { stageBusy = false; }
  }
  async function stageRecheckFile(filename: string) {
-   if (!stageBatchId) return;
-   stageBusy = true;
-   try {
-     await fetch(`/api/ingest/${slug}/${stageBatchId}/recheck`, { method: 'POST', headers: { 'Content-Type': 'application/json', ..._h() }, body: JSON.stringify({ filename }) });
-     await stageRefresh();
-   } finally { stageBusy = false; }
+ if (!stageBatchId) return;
+ stageBusy = true;
+ try {
+ await fetch(`/api/ingest/${slug}/${stageBatchId}/recheck`, { method: 'POST', headers: { 'Content-Type': 'application/json', ..._h() }, body: JSON.stringify({ filename }) });
+ await stageRefresh();
+ } finally { stageBusy = false; }
  }
  async function stageSetLoadKey(dataset: string, strategy: string, columns: string[]) {
-   stageBusy = true;
-   try {
-     await fetch(`/api/ingest/${slug}/${dataset}/load-key`, { method: 'POST', headers: { 'Content-Type': 'application/json', ..._h() }, body: JSON.stringify({ strategy, columns }) });
-     await stageRefresh();
-   } finally { stageBusy = false; }
+ stageBusy = true;
+ try {
+ await fetch(`/api/ingest/${slug}/${dataset}/load-key`, { method: 'POST', headers: { 'Content-Type': 'application/json', ..._h() }, body: JSON.stringify({ strategy, columns }) });
+ await stageRefresh();
+ } finally { stageBusy = false; }
  }
  async function stageUndo() {
-   if (!stageBatchId) return;
-   if (!stageUndoArm) { stageUndoArm = true; return; }   // two-click confirm (no blocking dialog)
-   stageUndoArm = false;
-   stageBusy = true;
-   try {
-     const r = await fetch(`/api/ingest/${slug}/${stageBatchId}/undo`, { method: 'POST', headers: _h() });
-     if (r.ok) { const d = await r.json(); stageResult = { status: 'undone', loaded_files: 0, quarantined: 0, results: Object.entries(d.deleted_rows || {}).map(([t, n]) => ({ filename: t, action: 'deleted', rows_loaded: n })) }; }
-   } finally { stageBusy = false; }
+ if (!stageBatchId) return;
+ if (!stageUndoArm) { stageUndoArm = true; return; } // two-click confirm (no blocking dialog)
+ stageUndoArm = false;
+ stageBusy = true;
+ try {
+ const r = await fetch(`/api/ingest/${slug}/${stageBatchId}/undo`, { method: 'POST', headers: _h() });
+ if (r.ok) { const d = await r.json(); stageResult = { status: 'undone', loaded_files: 0, quarantined: 0, results: Object.entries(d.deleted_rows || {}).map(([t, n]) => ({ filename: t, action: 'deleted', rows_loaded: n })) }; }
+ } finally { stageBusy = false; }
  }
 
  // Doc upload
@@ -698,112 +698,112 @@ $effect(() => {
  let colProtectActions = $state<Record<string, 'show'|'private'|'mask'|'hide'>>({});
  let colProtectClaim = $state<string>('');
  function openColProtector() {
-   colProtectActions = {};
-   colProtectClaim = (embedRlsClaims[0]?.key || 'store_id').trim();
-   colProtectTable = embedSchemaCatalog?.tables[0]?.name || '';
-   colProtectOpen = true;
+ colProtectActions = {};
+ colProtectClaim = (embedRlsClaims[0]?.key || 'store_id').trim();
+ colProtectTable = embedSchemaCatalog?.tables[0]?.name || '';
+ colProtectOpen = true;
  }
  function colProtectApply(embedId: string) {
-   if (!colProtectTable) return;
-   const newPolicies: any[] = embedRlsPolicies.filter(p => p.table !== colProtectTable);
-   for (const [col, act] of Object.entries(colProtectActions)) {
-     if (act === 'show') continue;  // skip — default visible
-     const pol: any = { table: colProtectTable, column: col, mode: 'private', filter: '', bypass_roles: 'admin,owner' };
-     if (act === 'private') { pol.mode = 'private'; pol.filter = colProtectClaim; pol.column = '*'; }
-     else if (act === 'mask') { pol.mode = 'redacted'; }
-     else if (act === 'hide') { pol.mode = 'hidden'; }
-     newPolicies.push(pol);
-   }
-   // dedupe by (table,column,mode)
-   const seen = new Set<string>();
-   embedRlsPolicies = newPolicies.filter(p => {
-     const k = `${p.table}|${p.column}|${p.mode}`;
-     if (seen.has(k)) return false;
-     seen.add(k);
-     return true;
-   });
-   saveEmbedRls(embedId, { rls_policies: true });
-   colProtectOpen = false;
-   showRlsToast(`✓ ${Object.keys(colProtectActions).filter(c => colProtectActions[c] !== 'show').length} column rule(s) applied to ${colProtectTable}`);
+ if (!colProtectTable) return;
+ const newPolicies: any[] = embedRlsPolicies.filter(p => p.table !== colProtectTable);
+ for (const [col, act] of Object.entries(colProtectActions)) {
+ if (act === 'show') continue; // skip — default visible
+ const pol: any = { table: colProtectTable, column: col, mode: 'private', filter: '', bypass_roles: 'admin,owner' };
+ if (act === 'private') { pol.mode = 'private'; pol.filter = colProtectClaim; pol.column = '*'; }
+ else if (act === 'mask') { pol.mode = 'redacted'; }
+ else if (act === 'hide') { pol.mode = 'hidden'; }
+ newPolicies.push(pol);
+ }
+ // dedupe by (table,column,mode)
+ const seen = new Set<string>();
+ embedRlsPolicies = newPolicies.filter(p => {
+ const k = `${p.table}|${p.column}|${p.mode}`;
+ if (seen.has(k)) return false;
+ seen.add(k);
+ return true;
+ });
+ saveEmbedRls(embedId, { rls_policies: true });
+ colProtectOpen = false;
+ showRlsToast(`OK ${Object.keys(colProtectActions).filter(c => colProtectActions[c] !== 'show').length} column rule(s) applied to ${colProtectTable}`);
  }
 
  // ── QUICK-START Industry Templates (1-click embed setup) ──
  // Loaded from API — includes system + user-created custom templates
  let INDUSTRY_TEMPLATES = $state<any[]>([
-   { slug: 'pharma_catalog_shared', name: 'Pharmacy — Catalog Shared, Stock Private', icon: '💊', desc: 'Each shop sees own stock + every medicine name. Stock + cost hidden across shops.', claim: 'site_id + role', best_for: 'CityPharma multi-shop network' },
-   { slug: 'pharmacy', name: 'Pharmacy / Multi-Site', icon: '💊', desc: 'Per-site stock visibility · cost hidden · catalog shared', claim: 'site_id', best_for: 'Generic pharmacy chains' },
-   { slug: 'banking_branch', name: 'Banking — Branch Scoped', icon: '🏦', desc: 'Branch-scoped accounts · txns · SSN hidden', claim: 'branch_id', best_for: 'Retail banking, credit unions' },
-   { slug: 'healthcare_clinic', name: 'Healthcare — Clinic Scoped', icon: '🏥', desc: 'Clinic patients · billing hidden from clinical roles', claim: 'clinic_id', best_for: 'Clinics, multi-location practices' },
-   { slug: 'hr_analytics', name: 'HR Analytics', icon: '👥', desc: 'Self · direct reports · HR full · salaries hidden', claim: 'employee_id + manager_id', best_for: 'Employee portals, HR dashboards' },
+ { slug: 'pharma_catalog_shared', name: 'Pharmacy — Catalog Shared, Stock Private', icon: '', desc: 'Each shop sees own stock + every medicine name. Stock + cost hidden across shops.', claim: 'site_id + role', best_for: 'CityPharma multi-shop network' },
+ { slug: 'pharmacy', name: 'Pharmacy / Multi-Site', icon: '', desc: 'Per-site stock visibility · cost hidden · catalog shared', claim: 'site_id', best_for: 'Generic pharmacy chains' },
+ { slug: 'banking_branch', name: 'Banking — Branch Scoped', icon: '', desc: 'Branch-scoped accounts · txns · SSN hidden', claim: 'branch_id', best_for: 'Retail banking, credit unions' },
+ { slug: 'healthcare_clinic', name: 'Healthcare — Clinic Scoped', icon: '', desc: 'Clinic patients · billing hidden from clinical roles', claim: 'clinic_id', best_for: 'Clinics, multi-location practices' },
+ { slug: 'hr_analytics', name: 'HR Analytics', icon: '', desc: 'Self · direct reports · HR full · salaries hidden', claim: 'employee_id + manager_id', best_for: 'Employee portals, HR dashboards' },
  ]);
  async function refreshIndustryTemplates() {
-   try {
-     const r = await fetch('/api/embed-rls-blueprints', { headers: _h() });
-     if (!r.ok) return;
-     const d = await r.json();
-     const live = (d.blueprints || []).map((b: any) => ({
-       slug: b.slug, name: b.name, icon: b.icon || '⚙️',
-       desc: b.description || '',
-       claim: (b.claim_count ? `${b.claim_count} claim${b.claim_count===1?'':'s'}` : 'none'),
-       best_for: b.industry || 'custom',
-       is_system: b.is_system,
-     }));
-     if (live.length > 0) INDUSTRY_TEMPLATES = live;
-   } catch {}
+ try {
+ const r = await fetch('/api/embed-rls-blueprints', { headers: _h() });
+ if (!r.ok) return;
+ const d = await r.json();
+ const live = (d.blueprints || []).map((b: any) => ({
+ slug: b.slug, name: b.name, icon: b.icon || '',
+ desc: b.description || '',
+ claim: (b.claim_count ? `${b.claim_count} claim${b.claim_count===1?'':'s'}` : 'none'),
+ best_for: b.industry || 'custom',
+ is_system: b.is_system,
+ }));
+ if (live.length > 0) INDUSTRY_TEMPLATES = live;
+ } catch {}
  }
  $effect(() => { if (activeTab === 'embed') refreshIndustryTemplates(); });
  let applyingTemplate = $state<string | null>(null);
  let templateAppliedFlash = $state<string | null>(null);
  async function applyEmbedTemplate(embedId: string, tplSlug: string) {
-   if (!embedId) return;
-   applyingTemplate = tplSlug;
-   try {
-     // 1. apply RLS blueprint (claims + policies + rls_enabled=true)
-     const r1 = await fetch(`/api/projects/${slug}/embeds/${embedId}/apply-blueprint`, {
-       method: 'POST', headers: { ..._h(), 'Content-Type': 'application/json' },
-       body: JSON.stringify({ blueprint_slug: tplSlug, mode: 'replace' }),
-     });
-     if (!r1.ok) { showRlsToast(`Template apply failed (http ${r1.status})`); return; }
+ if (!embedId) return;
+ applyingTemplate = tplSlug;
+ try {
+ // 1. apply RLS blueprint (claims + policies + rls_enabled=true)
+ const r1 = await fetch(`/api/projects/${slug}/embeds/${embedId}/apply-blueprint`, {
+ method: 'POST', headers: { ..._h(), 'Content-Type': 'application/json' },
+ body: JSON.stringify({ blueprint_slug: tplSlug, mode: 'replace' }),
+ });
+ if (!r1.ok) { showRlsToast(`Template apply failed (http ${r1.status})`); return; }
 
-     // 2. flip embed to SECURE-BY-DEFAULT config (full lockdown profile)
-     const r2 = await fetch(`/api/projects/${slug}/embeds/${embedId}`, {
-       method: 'PATCH', headers: { ..._h(), 'Content-Type': 'application/json' },
-       body: JSON.stringify({
-         // Auth tier
-         auth_mode: 'hmac',
-         user_id_required: true,
-         user_id_signed: true,
-         // Response sanity
-         response_style: 'analyst',
-         bound_intent: 'private',
-         // RLS layer
-         rls_enabled: true,
-         rls_claim_source: 'hmac',
-         // Hardening defaults
-         rate_limit_per_min: 60,
-         max_reply_chars: 4000,
-         access_mode: 'public',
-         // UX defaults
-         enabled: true,
-         position: 'bottom-right',
-         theme: 'auto',
-       }),
-     });
-     if (!r2.ok) { showRlsToast(`Embed config update failed (http ${r2.status})`); return; }
+ // 2. flip embed to SECURE-BY-DEFAULT config (full lockdown profile)
+ const r2 = await fetch(`/api/projects/${slug}/embeds/${embedId}`, {
+ method: 'PATCH', headers: { ..._h(), 'Content-Type': 'application/json' },
+ body: JSON.stringify({
+ // Auth tier
+ auth_mode: 'hmac',
+ user_id_required: true,
+ user_id_signed: true,
+ // Response sanity
+ response_style: 'analyst',
+ bound_intent: 'private',
+ // RLS layer
+ rls_enabled: true,
+ rls_claim_source: 'hmac',
+ // Hardening defaults
+ rate_limit_per_min: 60,
+ max_reply_chars: 4000,
+ access_mode: 'public',
+ // UX defaults
+ enabled: true,
+ position: 'bottom-right',
+ theme: 'auto',
+ }),
+ });
+ if (!r2.ok) { showRlsToast(`Embed config update failed (http ${r2.status})`); return; }
 
-     // 3. force-refresh ALL local state (defeat early-return caches)
-     await loadEmbeds();
-     embedRlsLoaded = null;
-     embedRlsEnabled = true;
-     embedRlsClaimSource = 'hmac';
-     embedRlsOpen = true;                  // auto-expand RLS section so user sees what was set
-     await loadEmbedRls(embedId);
+ // 3. force-refresh ALL local state (defeat early-return caches)
+ await loadEmbeds();
+ embedRlsLoaded = null;
+ embedRlsEnabled = true;
+ embedRlsClaimSource = 'hmac';
+ embedRlsOpen = true; // auto-expand RLS section so user sees what was set
+ await loadEmbedRls(embedId);
 
-     templateAppliedFlash = tplSlug;
-     setTimeout(() => { templateAppliedFlash = null; }, 4000);
-     showRlsToast(`✓ ${tplSlug} applied — RLS ON · HMAC · identity required · analyst mode · 60 req/min`);
-   } catch (e) { console.error('applyEmbedTemplate', e); showRlsToast('Apply failed'); }
-   finally { applyingTemplate = null; }
+ templateAppliedFlash = tplSlug;
+ setTimeout(() => { templateAppliedFlash = null; }, 4000);
+ showRlsToast(`OK ${tplSlug} applied — RLS ON · HMAC · identity required · analyst mode · 60 req/min`);
+ } catch (e) { console.error('applyEmbedTemplate', e); showRlsToast('Apply failed'); }
+ finally { applyingTemplate = null; }
  }
 
  // ── Wizard helpers ──
@@ -963,12 +963,12 @@ $effect(() => {
  const rls = raw?.rls ?? raw;
  let enabled: any, claims: any[] = [], policies: any[] = [], src: string = 'token';
  if (Array.isArray(rls)) {
-   enabled = rls[0]; claims = rls[1] || []; policies = rls[2] || []; src = rls[3] || 'token';
+ enabled = rls[0]; claims = rls[1] || []; policies = rls[2] || []; src = rls[3] || 'token';
  } else if (rls && typeof rls === 'object') {
-   enabled = rls.rls_enabled; claims = rls.rls_claims || []; policies = rls.rls_policies || []; src = rls.rls_claim_source || 'token';
+ enabled = rls.rls_enabled; claims = rls.rls_claims || []; policies = rls.rls_policies || []; src = rls.rls_claim_source || 'token';
  } else {
-   // legacy flat shape fallback
-   enabled = raw.rls_enabled; claims = raw.rls_claims || []; policies = raw.rls_policies || []; src = raw.rls_claim_source || 'token';
+ // legacy flat shape fallback
+ enabled = raw.rls_enabled; claims = raw.rls_claims || []; policies = raw.rls_policies || []; src = raw.rls_claim_source || 'token';
  }
  embedRlsEnabled = !!enabled;
  embedRlsClaimSource = src as any;
@@ -2066,7 +2066,7 @@ $effect(() => {
  visRoles = visRoles;
  }
 
- // colored gradient bar by band index (low=green → high=red)
+ // colored gradient bar by band index (low=green > high=red)
  function bandBarColor(idx: number, total: number): string {
  if (total <= 1) return 'var(--pw-success)';
  const t = idx / (total - 1);
@@ -2304,15 +2304,15 @@ $effect(() => {
  }
 
  function downloadSnippetFile(e: any, lang: string) {
-   const tier = e?.auth_mode || 'public';
-   const code = snippetCode(e, tier, lang);
-   const ext: Record<string, string> = { html: 'html', php: 'php', python: 'py', node: 'js' };
-   const name = `embed-${e?.embed_id || 'snippet'}.${ext[lang] || 'txt'}`;
-   const blob = new Blob([code], { type: 'text/plain' });
-   const url = URL.createObjectURL(blob);
-   const a = document.createElement('a');
-   a.href = url; a.download = name; a.click();
-   setTimeout(() => URL.revokeObjectURL(url), 1000);
+ const tier = e?.auth_mode || 'public';
+ const code = snippetCode(e, tier, lang);
+ const ext: Record<string, string> = { html: 'html', php: 'php', python: 'py', node: 'js' };
+ const name = `embed-${e?.embed_id || 'snippet'}.${ext[lang] || 'txt'}`;
+ const blob = new Blob([code], { type: 'text/plain' });
+ const url = URL.createObjectURL(blob);
+ const a = document.createElement('a');
+ a.href = url; a.download = name; a.click();
+ setTimeout(() => URL.revokeObjectURL(url), 1000);
  }
 
  function snippetCode(e: any, tier: string, lang: string): string {
@@ -2324,54 +2324,54 @@ $effect(() => {
  if (tier === 'public') {
  if (lang === 'html') {
  return `<!-- ───────────────────────────────────────────────────────────────
-  PUBLIC EMBED — save as index.html, open in browser, done.
-  No server step. No secret. Anyone can chat.
+ PUBLIC EMBED — save as index.html, open in browser, done.
+ No server step. No secret. Anyone can chat.
 ─────────────────────────────────────────────────────────────── -->
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>My Page · w/ AI Agent</title>
+ <meta charset="utf-8" />
+ <title>My Page · w/ AI Agent</title>
 </head>
 <body>
-  <h1>Your site content</h1>
-  <p>Widget loads bottom-right.</p>
+ <h1>Your site content</h1>
+ <p>Widget loads bottom-right.</p>
 
-  <scr` + `ipt
-    src="${host}/api/embed/widget.js"
-    data-embed-id="${eid}"
-    data-key="${pk}"
-    data-position="bottom-right"
-    data-theme="auto"
-    async
-  ></scr` + `ipt>
+ <scr` + `ipt
+ src="${host}/api/embed/widget.js"
+ data-embed-id="${eid}"
+ data-key="${pk}"
+ data-position="bottom-right"
+ data-theme="auto"
+ async
+ ></scr` + `ipt>
 </body>
 </html>`;
  }
  if (lang === 'php') {
  return `<?php
 // ────────────────────────────────────────────────────────────────
-//  PUBLIC EMBED — save as index.php, run \`php -S localhost:8080\`,
-//  open http://localhost:8080. No server-side auth needed.
+// PUBLIC EMBED — save as index.php, run \`php -S localhost:8080\`,
+// open http://localhost:8080. No server-side auth needed.
 // ────────────────────────────────────────────────────────────────
 ?>
 <!doctype html>
 <html><head><meta charset="utf-8"><title>My Page</title></head>
 <body>
-  <h1>Your site content</h1>
-  <scr` + `ipt
-    src="${host}/api/embed/widget.js"
-    data-embed-id="${eid}"
-    data-key="${pk}"
-    data-position="bottom-right"
-    async
-  ></scr` + `ipt>
+ <h1>Your site content</h1>
+ <scr` + `ipt
+ src="${host}/api/embed/widget.js"
+ data-embed-id="${eid}"
+ data-key="${pk}"
+ data-position="bottom-right"
+ async
+ ></scr` + `ipt>
 </body></html>`;
  }
  if (lang === 'python') {
  return `# ────────────────────────────────────────────────────────────────
-#  PUBLIC EMBED — Flask serves a page w/ the widget. No auth.
-#  pip install flask && python app.py
+# PUBLIC EMBED — Flask serves a page w/ the widget. No auth.
+# pip install flask && python app.py
 # ────────────────────────────────────────────────────────────────
 from flask import Flask
 app = Flask(__name__)
@@ -2380,14 +2380,14 @@ PAGE = """
 <!doctype html>
 <html><head><title>My Page</title></head>
 <body>
-  <h1>Your site content</h1>
-  <scr` + `ipt
-    src="${host}/api/embed/widget.js"
-    data-embed-id="${eid}"
-    data-key="${pk}"
-    data-position="bottom-right"
-    async
-  ></scr` + `ipt>
+ <h1>Your site content</h1>
+ <scr` + `ipt
+ src="${host}/api/embed/widget.js"
+ data-embed-id="${eid}"
+ data-key="${pk}"
+ data-position="bottom-right"
+ async
+ ></scr` + `ipt>
 </body></html>
 """
 
@@ -2395,12 +2395,12 @@ PAGE = """
 def home(): return PAGE
 
 if __name__ == "__main__":
-    app.run(port=8080, debug=True)`;
+ app.run(port=8080, debug=True)`;
  }
  if (lang === 'node') {
  return `// ────────────────────────────────────────────────────────────────
-//  PUBLIC EMBED — Express serves a page w/ the widget. No auth.
-//  npm i express && node server.js
+// PUBLIC EMBED — Express serves a page w/ the widget. No auth.
+// npm i express && node server.js
 // ────────────────────────────────────────────────────────────────
 const express = require('express');
 const app = express();
@@ -2408,14 +2408,14 @@ const app = express();
 const PAGE = \`<!doctype html>
 <html><head><title>My Page</title></head>
 <body>
-  <h1>Your site content</h1>
-  <scr\` + \`ipt
-    src="${host}/api/embed/widget.js"
-    data-embed-id="${eid}"
-    data-key="${pk}"
-    data-position="bottom-right"
-    async
-  ></scr\` + \`ipt>
+ <h1>Your site content</h1>
+ <scr\` + \`ipt
+ src="${host}/api/embed/widget.js"
+ data-embed-id="${eid}"
+ data-key="${pk}"
+ data-position="bottom-right"
+ async
+ ></scr\` + \`ipt>
 </body></html>\`;
 
 app.get('/', (_req, res) => res.send(PAGE));
@@ -2427,172 +2427,172 @@ app.listen(8080, () => console.log('http://localhost:8080'));`;
  if (tier === 'hmac') {
  if (lang === 'html') {
  return `<!-- ───────────────────────────────────────────────────────────────
-  HMAC EMBED (HTML template — your server must render user_json + user_sig).
-  See the PHP / Python / Node tabs for the full server-side example.
-  Required attrs:
-    data-user      : canonical JSON of {id, ...claims}, server-rendered
-    data-user-sig  : HMAC-SHA256 of canonical JSON using secret_key
+ HMAC EMBED (HTML template — your server must render user_json + user_sig).
+ See the PHP / Python / Node tabs for the full server-side example.
+ Required attrs:
+ data-user : canonical JSON of {id, ...claims}, server-rendered
+ data-user-sig : HMAC-SHA256 of canonical JSON using secret_key
 ─────────────────────────────────────────────────────────────── -->
 <scr` + `ipt
-  src="${host}/api/embed/widget.js"
-  data-embed-id="${eid}"
-  data-key="${pk}"
-  data-user='{{ user_json | safe }}'
-  data-user-sig="{{ user_sig }}"
-  async
+ src="${host}/api/embed/widget.js"
+ data-embed-id="${eid}"
+ data-key="${pk}"
+ data-user='{{ user_json | safe }}'
+ data-user-sig="{{ user_sig }}"
+ async
 ></scr` + `ipt>`;
  }
  if (lang === 'php') {
  return `<?php
 // ═══════════════════════════════════════════════════════════════════
-//  HMAC EMBED — full runnable PHP page
+// HMAC EMBED — full runnable PHP page
 //
-//  SETUP (one time):
-//    1. Put your secret_key in env: export DASH_EMBED_SECRET=sk_xxx
-//    2. Save as embed.php
-//    3. Run: php -S localhost:8080
-//    4. Open: http://localhost:8080/embed.php
+// SETUP (one time):
+// 1. Put your secret_key in env: export DASH_EMBED_SECRET=sk_xxx
+// 2. Save as embed.php
+// 3. Run: php -S localhost:8080
+// 4. Open: http://localhost:8080/embed.php
 //
-//  IN PRODUCTION:
-//    - Read user from your session/DB (replace fake $user below)
-//    - Add user's site_id / role / etc to \$claims
-//    - Add this domain to ALLOWED ORIGINS in Dash embed settings
+// IN PRODUCTION:
+// - Read user from your session/DB (replace fake $user below)
+// - Add user's site_id / role / etc to \$claims
+// - Add this domain to ALLOWED ORIGINS in Dash embed settings
 // ═══════════════════════════════════════════════════════════════════
 
-\$EMBED_ID     = '${eid}';
-\$PUBLIC_KEY   = '${pk}';
+\$EMBED_ID = '${eid}';
+\$PUBLIC_KEY = '${pk}';
 \$EMBED_SECRET = getenv('DASH_EMBED_SECRET') ?: die('Set DASH_EMBED_SECRET env var');
 
-// 🟡 Replace with your real auth/session lookup:
+// Replace with your real auth/session lookup:
 \$user = (object)[
-  'id'       => '\$_SESSION["user_id"]',   // unique user id
-  'site_id'  => '\$_SESSION["site_id"]',   // for RLS scoping
-  'role'     => '\$_SESSION["role"]',      // 'staff' | 'manager' | 'owner'
+ 'id' => '\$_SESSION["user_id"]', // unique user id
+ 'site_id' => '\$_SESSION["site_id"]', // for RLS scoping
+ 'role' => '\$_SESSION["role"]', // 'staff' | 'manager' | 'owner'
 ];
 
 // Build canonical JSON (sorted keys, no spaces)
 \$claims = ['id' => (string)\$user->id, 'site_id' => \$user->site_id, 'role' => \$user->role];
 ksort(\$claims);
 \$user_json = json_encode(\$claims, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-\$user_sig  = hash_hmac('sha256', \$user_json, \$EMBED_SECRET);
+\$user_sig = hash_hmac('sha256', \$user_json, \$EMBED_SECRET);
 ?>
 <!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>My Site · AI Agent</title></head>
 <body>
-  <h1>Welcome <?= htmlspecialchars(\$user->id) ?></h1>
-  <p>Ask the AI bottom-right.</p>
+ <h1>Welcome <?= htmlspecialchars(\$user->id) ?></h1>
+ <p>Ask the AI bottom-right.</p>
 
-  <scr` + `ipt
-    src="${host}/api/embed/widget.js"
-    data-embed-id="<?= htmlspecialchars(\$EMBED_ID) ?>"
-    data-key="<?= htmlspecialchars(\$PUBLIC_KEY) ?>"
-    data-user='<?= htmlspecialchars(\$user_json, ENT_QUOTES) ?>'
-    data-user-sig="<?= \$user_sig ?>"
-    data-position="bottom-right"
-    async
-  ></scr` + `ipt>
+ <scr` + `ipt
+ src="${host}/api/embed/widget.js"
+ data-embed-id="<?= htmlspecialchars(\$EMBED_ID) ?>"
+ data-key="<?= htmlspecialchars(\$PUBLIC_KEY) ?>"
+ data-user='<?= htmlspecialchars(\$user_json, ENT_QUOTES) ?>'
+ data-user-sig="<?= \$user_sig ?>"
+ data-position="bottom-right"
+ async
+ ></scr` + `ipt>
 </body>
 </html>`;
  }
  if (lang === 'python') {
  return `# ═══════════════════════════════════════════════════════════════════
-#  HMAC EMBED — full runnable Flask app
+# HMAC EMBED — full runnable Flask app
 #
-#  SETUP:
-#    pip install flask
-#    export DASH_EMBED_SECRET=sk_xxx
-#    python embed.py
-#    open http://localhost:8080
+# SETUP:
+# pip install flask
+# export DASH_EMBED_SECRET=sk_xxx
+# python embed.py
+# open http://localhost:8080
 # ═══════════════════════════════════════════════════════════════════
 import hmac, hashlib, json, os
 from flask import Flask, render_template_string
 
 app = Flask(__name__)
 
-EMBED_ID     = "${eid}"
-PUBLIC_KEY   = "${pk}"
-EMBED_SECRET = os.environ["DASH_EMBED_SECRET"]   # sk_xxx
+EMBED_ID = "${eid}"
+PUBLIC_KEY = "${pk}"
+EMBED_SECRET = os.environ["DASH_EMBED_SECRET"] # sk_xxx
 
 def sign_user(claims: dict) -> tuple[str, str]:
-    """Returns (canonical_json, hex_signature)."""
-    canon = json.dumps(claims, sort_keys=True, separators=(",", ":"))
-    sig   = hmac.new(EMBED_SECRET.encode(), canon.encode(), hashlib.sha256).hexdigest()
-    return canon, sig
+ """Returns (canonical_json, hex_signature)."""
+ canon = json.dumps(claims, sort_keys=True, separators=(",", ":"))
+ sig = hmac.new(EMBED_SECRET.encode(), canon.encode(), hashlib.sha256).hexdigest()
+ return canon, sig
 
 PAGE = """
 <!doctype html><html><head><title>My Site</title></head><body>
-  <h1>Welcome {{ user.id }}</h1>
-  <scr""" + """ipt
-    src="${host}/api/embed/widget.js"
-    data-embed-id="{{ embed_id }}"
-    data-key="{{ public_key }}"
-    data-user='{{ user_json | safe }}'
-    data-user-sig="{{ user_sig }}"
-    data-position="bottom-right"
-    async
-  ></scr""" + """ipt>
+ <h1>Welcome {{ user.id }}</h1>
+ <scr""" + """ipt
+ src="${host}/api/embed/widget.js"
+ data-embed-id="{{ embed_id }}"
+ data-key="{{ public_key }}"
+ data-user='{{ user_json | safe }}'
+ data-user-sig="{{ user_sig }}"
+ data-position="bottom-right"
+ async
+ ></scr""" + """ipt>
 </body></html>
 """
 
 @app.route("/")
 def home():
-    # 🟡 Replace with your real auth/session lookup:
-    user = {"id": "u_42", "site_id": "YGN-01", "role": "manager"}
-    user_json, user_sig = sign_user(user)
-    return render_template_string(PAGE,
-        user=user, embed_id=EMBED_ID, public_key=PUBLIC_KEY,
-        user_json=user_json, user_sig=user_sig)
+ # Replace with your real auth/session lookup:
+ user = {"id": "u_42", "site_id": "YGN-01", "role": "manager"}
+ user_json, user_sig = sign_user(user)
+ return render_template_string(PAGE,
+ user=user, embed_id=EMBED_ID, public_key=PUBLIC_KEY,
+ user_json=user_json, user_sig=user_sig)
 
 if __name__ == "__main__":
-    app.run(port=8080, debug=True)`;
+ app.run(port=8080, debug=True)`;
  }
  if (lang === 'node') {
  return `// ═══════════════════════════════════════════════════════════════════
-//  HMAC EMBED — full runnable Express app
+// HMAC EMBED — full runnable Express app
 //
-//  SETUP:
-//    npm i express
-//    export DASH_EMBED_SECRET=sk_xxx
-//    node embed.js
-//    open http://localhost:8080
+// SETUP:
+// npm i express
+// export DASH_EMBED_SECRET=sk_xxx
+// node embed.js
+// open http://localhost:8080
 // ═══════════════════════════════════════════════════════════════════
 const express = require('express');
-const crypto  = require('crypto');
+const crypto = require('crypto');
 const app = express();
 
-const EMBED_ID     = '${eid}';
-const PUBLIC_KEY   = '${pk}';
+const EMBED_ID = '${eid}';
+const PUBLIC_KEY = '${pk}';
 const EMBED_SECRET = process.env.DASH_EMBED_SECRET
-  || (() => { throw new Error('Set DASH_EMBED_SECRET env var'); })();
+ || (() => { throw new Error('Set DASH_EMBED_SECRET env var'); })();
 
 function signUser(claims) {
-  // Canonical JSON (sorted keys, no spaces)
-  const keys = Object.keys(claims).sort();
-  const ordered = {};
-  for (const k of keys) ordered[k] = claims[k];
-  const canon = JSON.stringify(ordered);
-  const sig   = crypto.createHmac('sha256', EMBED_SECRET).update(canon).digest('hex');
-  return { user_json: canon, user_sig: sig };
+ // Canonical JSON (sorted keys, no spaces)
+ const keys = Object.keys(claims).sort();
+ const ordered = {};
+ for (const k of keys) ordered[k] = claims[k];
+ const canon = JSON.stringify(ordered);
+ const sig = crypto.createHmac('sha256', EMBED_SECRET).update(canon).digest('hex');
+ return { user_json: canon, user_sig: sig };
 }
 
 app.get('/', (req, res) => {
-  // 🟡 Replace with your real auth/session lookup:
-  const user = { id: 'u_42', site_id: 'YGN-01', role: 'manager' };
-  const { user_json, user_sig } = signUser(user);
+ // Replace with your real auth/session lookup:
+ const user = { id: 'u_42', site_id: 'YGN-01', role: 'manager' };
+ const { user_json, user_sig } = signUser(user);
 
-  res.send(\`<!doctype html><html><head><title>My Site</title></head><body>
-    <h1>Welcome \${user.id}</h1>
-    <scr\` + \`ipt
-      src="${host}/api/embed/widget.js"
-      data-embed-id="\${EMBED_ID}"
-      data-key="\${PUBLIC_KEY}"
-      data-user='\${user_json.replace(/'/g, "&#39;")}'
-      data-user-sig="\${user_sig}"
-      data-position="bottom-right"
-      async
-    ></scr\` + \`ipt>
-  </body></html>\`);
+ res.send(\`<!doctype html><html><head><title>My Site</title></head><body>
+ <h1>Welcome \${user.id}</h1>
+ <scr\` + \`ipt
+ src="${host}/api/embed/widget.js"
+ data-embed-id="\${EMBED_ID}"
+ data-key="\${PUBLIC_KEY}"
+ data-user='\${user_json.replace(/'/g, "&#39;")}'
+ data-user-sig="\${user_sig}"
+ data-position="bottom-right"
+ async
+ ></scr\` + \`ipt>
+ </body></html>\`);
 });
 
 app.listen(8080, () => console.log('http://localhost:8080'));`;
@@ -2972,7 +2972,7 @@ function signUserJWT($user) {
  } catch {}
  }
 
- // Click card / RESET → applies + saves immediately, no dialog.
+ // Click card / RESET > applies + saves immediately, no dialog.
  async function applyFcPresetInstant(name: string) {
  try {
  const r = await fetch(`/api/projects/${slug}/feature-config/preset/${name}`, { method: 'POST', headers: _h() });
@@ -3007,70 +3007,70 @@ function signUserJWT($user) {
  // ── Outcome-based capability model (cascade over raw tools/agents/tabs) ──
  // One card = one switch; toggling cascades to its underlying flat flags.
  const CAP_MODEL: Array<{id:string;label:string;icon:string;tools?:string[];agents?:string[];tabs?:string[];needs?:string;lose:string}> = [
-  { id:'data',      label:'Answer from data (SQL)',      icon:'database',       tools:['sql'],                 agents:['analyst'],        tabs:['data','query'], lose:'agent can’t query tables — doc/text answers only' },
-  { id:'visualize', label:'Charts & dashboards',          icon:'bar-chart',      tools:['charts','dashboards'], agents:['engineer'],       tabs:['chart'],        lose:'no charts, no dashboard builder' },
-  { id:'forecast',  label:'Forecasting (time-series)',    icon:'trending-up',    tools:['forecast'],            needs:'data',                                     lose:'no predictions / projections' },
-  { id:'anomaly',   label:'Anomaly & diagnostics',        icon:'alert-triangle', tools:['anomaly'],             needs:'data',                                     lose:'no outlier detection, pareto, root-cause' },
-  { id:'research',  label:'Document research',            icon:'book-open',      agents:['researcher'],                                                            lose:'ignores uploaded PDFs / PPTX / docs' },
-  // Vertical agents — opt-in per project (default OFF)
-  { id:'deal',      label:'Deal Analyst (DCF/IRR/MOIC)',  icon:'briefcase',      agents:['deal_analyst'],                                                          lose:'no venture deal screening / IRR / sensitivity' },
-  { id:'market',    label:'Market Sentinel (intel)',      icon:'radio',          agents:['market_sentinel'],                                                       lose:'no competitor / sector / sentiment scanning' },
-  { id:'ops',       label:'Ops Optimizer (portfolio)',    icon:'activity',       agents:['ops_optimizer'],                                                         lose:'no post-investment KPI tracking / board reports' },
-  { id:'supply',    label:'Supply Sentry (risk)',         icon:'shield',         agents:['supply_sentry'],                                                         lose:'no supply-chain / single-source risk scanning' },
+ { id:'data', label:'Answer from data (SQL)', icon:'database', tools:['sql'], agents:['analyst'], tabs:['data','query'], lose:'agent can’t query tables — doc/text answers only' },
+ { id:'visualize', label:'Charts & dashboards', icon:'bar-chart', tools:['charts','dashboards'], agents:['engineer'], tabs:['chart'], lose:'no charts, no dashboard builder' },
+ { id:'forecast', label:'Forecasting (time-series)', icon:'trending-up', tools:['forecast'], needs:'data', lose:'no predictions / projections' },
+ { id:'anomaly', label:'Anomaly & diagnostics', icon:'alert-triangle', tools:['anomaly'], needs:'data', lose:'no outlier detection, pareto, root-cause' },
+ { id:'research', label:'Document research', icon:'book-open', agents:['researcher'], lose:'ignores uploaded PDFs / PPTX / docs' },
+ // Vertical agents — opt-in per project (default OFF)
+ { id:'deal', label:'Deal Analyst (DCF/IRR/MOIC)', icon:'briefcase', agents:['deal_analyst'], lose:'no venture deal screening / IRR / sensitivity' },
+ { id:'market', label:'Market Sentinel (intel)', icon:'radio', agents:['market_sentinel'], lose:'no competitor / sector / sentiment scanning' },
+ { id:'ops', label:'Ops Optimizer (portfolio)', icon:'activity', agents:['ops_optimizer'], lose:'no post-investment KPI tracking / board reports' },
+ { id:'supply', label:'Supply Sentry (risk)', icon:'shield', agents:['supply_sentry'], lose:'no supply-chain / single-source risk scanning' },
  ];
  function capOn(cap: any): boolean {
-  if (!featureConfig) return false;
-  const t = featureConfig.tools || {}, a = featureConfig.agents || {};
-  const tOk = (cap.tools || []).every((k: string) => t[k]);
-  const aOk = (cap.agents || []).every((k: string) => a[k]);
-  return tOk && aOk;
+ if (!featureConfig) return false;
+ const t = featureConfig.tools || {}, a = featureConfig.agents || {};
+ const tOk = (cap.tools || []).every((k: string) => t[k]);
+ const aOk = (cap.agents || []).every((k: string) => a[k]);
+ return tOk && aOk;
  }
  function capLocked(cap: any): boolean {
-  // forecast/anomaly are meaningless without SQL data access.
-  const dataOn = capOn(CAP_MODEL[0]);
-  return !!cap.needs && cap.needs === 'data' && !dataOn;
+ // forecast/anomaly are meaningless without SQL data access.
+ const dataOn = capOn(CAP_MODEL[0]);
+ return !!cap.needs && cap.needs === 'data' && !dataOn;
  }
  function toggleCap(cap: any) {
-  if (!featureConfig || capLocked(cap)) return;
-  const next = !capOn(cap);
-  const tools = { ...(featureConfig.tools || {}) };
-  const agents = { ...(featureConfig.agents || {}) };
-  const tabs = { ...(featureConfig.tabs || {}) };
-  (cap.tools || []).forEach((k: string) => tools[k] = next);
-  (cap.agents || []).forEach((k: string) => agents[k] = next);
-  (cap.tabs || []).forEach((k: string) => tabs[k] = next);
-  // Turning data OFF cascades its dependents off too.
-  if (cap.id === 'data' && !next) {
-   ['forecast','anomaly'].forEach((k) => tools[k] = false);
-   tabs['chart'] = false; tools['charts'] = false; tools['dashboards'] = false;
-  }
-  featureConfig = { ...featureConfig, tools, agents, tabs };
+ if (!featureConfig || capLocked(cap)) return;
+ const next = !capOn(cap);
+ const tools = { ...(featureConfig.tools || {}) };
+ const agents = { ...(featureConfig.agents || {}) };
+ const tabs = { ...(featureConfig.tabs || {}) };
+ (cap.tools || []).forEach((k: string) => tools[k] = next);
+ (cap.agents || []).forEach((k: string) => agents[k] = next);
+ (cap.tabs || []).forEach((k: string) => tabs[k] = next);
+ // Turning data OFF cascades its dependents off too.
+ if (cap.id === 'data' && !next) {
+ ['forecast','anomaly'].forEach((k) => tools[k] = false);
+ tabs['chart'] = false; tools['charts'] = false; tools['dashboards'] = false;
+ }
+ featureConfig = { ...featureConfig, tools, agents, tabs };
  }
 
  // Smart recommend from trained schema
  let recommend = $state<{config:any; reasons:string[]} | null>(null);
  let recommendLoading = $state(false);
  async function loadRecommend() {
-  recommendLoading = true;
-  try {
-   const r = await fetch(`/api/projects/${slug}/feature-config/recommend`, { headers: _h() });
-   if (r.ok) { const d = await r.json(); if (d.status === 'ok') recommend = { config: d.config, reasons: d.reasons || [] }; }
-  } catch {} finally { recommendLoading = false; }
+ recommendLoading = true;
+ try {
+ const r = await fetch(`/api/projects/${slug}/feature-config/recommend`, { headers: _h() });
+ if (r.ok) { const d = await r.json(); if (d.status === 'ok') recommend = { config: d.config, reasons: d.reasons || [] }; }
+ } catch {} finally { recommendLoading = false; }
  }
  function recommendDiffers(): boolean {
-  if (!recommend || !featureConfig) return false;
-  const eq = (a: Record<string,boolean> = {}, b: Record<string,boolean> = {}) => {
-   const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
-   for (const k of keys) { if (!!a[k] !== !!b[k]) return false; }
-   return true;
-  };
-  const a = recommend.config, b = featureConfig;
-  return !(eq(a.tools, b.tools) && eq(a.agents, b.agents));
+ if (!recommend || !featureConfig) return false;
+ const eq = (a: Record<string,boolean> = {}, b: Record<string,boolean> = {}) => {
+ const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+ for (const k of keys) { if (!!a[k] !== !!b[k]) return false; }
+ return true;
+ };
+ const a = recommend.config, b = featureConfig;
+ return !(eq(a.tools, b.tools) && eq(a.agents, b.agents));
  }
  async function applyRecommend() {
-  if (!recommend) return;
-  featureConfig = { ...featureConfig, tools: { ...recommend.config.tools }, agents: { ...recommend.config.agents }, tabs: { ...recommend.config.tabs, analysis:true, sources:true } };
-  await saveFeatureConfig();
+ if (!recommend) return;
+ featureConfig = { ...featureConfig, tools: { ...recommend.config.tools }, agents: { ...recommend.config.agents }, tabs: { ...recommend.config.tabs, analysis:true, sources:true } };
+ await saveFeatureConfig();
  }
  let showDisplayAdv = $state(false);
  let showAutomationAdv = $state(false);
@@ -3079,15 +3079,15 @@ function signUserJWT($user) {
  let appFlags = $state<{sim_lab_enabled:boolean; automl_enabled:boolean; investment_vertical_enabled:boolean}>({ sim_lab_enabled:false, automl_enabled:false, investment_vertical_enabled:false });
  async function loadFlags() { try { const r = await fetch('/api/flags', { headers: _h() }); if (r.ok) appFlags = await r.json(); } catch {} }
  async function resetFeatureConfigAll() {
-  if (!featureConfig) return;
-  const allOn = (o: Record<string,boolean>) => Object.fromEntries(Object.keys(o).map(k => [k, true]));
-  featureConfig = {
-   ...featureConfig,
-   tools: allOn(featureConfig.tools || {}),
-   agents: allOn(featureConfig.agents || {}),
-   tabs: allOn(featureConfig.tabs || {}),
-  };
-  await saveFeatureConfig();
+ if (!featureConfig) return;
+ const allOn = (o: Record<string,boolean>) => Object.fromEntries(Object.keys(o).map(k => [k, true]));
+ featureConfig = {
+ ...featureConfig,
+ tools: allOn(featureConfig.tools || {}),
+ agents: allOn(featureConfig.agents || {}),
+ tabs: allOn(featureConfig.tabs || {}),
+ };
+ await saveFeatureConfig();
  }
  let srTransferCandidates = $state<any[]>([]);
  let loadingTransfer = $state(false);
@@ -3275,95 +3275,95 @@ function signUserJWT($user) {
  // Per-table enriched column metadata: {table_name: {col_name: meta}}
  let columnMeta = $state<Record<string, Record<string, any>>>({});
  async function loadColumnMeta(tableName: string) {
-   if (!tableName || columnMeta[tableName]) return;
-   try {
-     const r = await fetch(`/api/projects/${slug}/columns/${tableName}`, { headers: _h() });
-     if (!r.ok) return;
-     const d = await r.json();
-     const map: Record<string, any> = {};
-     for (const c of (Array.isArray(d?.columns) ? d.columns : [])) {
-       if (c?.column_name) map[c.column_name] = c;
-     }
-     columnMeta = { ...columnMeta, [tableName]: map };
-   } catch (e) {
-     console.warn('col meta fetch failed', e);
-   }
+ if (!tableName || columnMeta[tableName]) return;
+ try {
+ const r = await fetch(`/api/projects/${slug}/columns/${tableName}`, { headers: _h() });
+ if (!r.ok) return;
+ const d = await r.json();
+ const map: Record<string, any> = {};
+ for (const c of (Array.isArray(d?.columns) ? d.columns : [])) {
+ if (c?.column_name) map[c.column_name] = c;
+ }
+ columnMeta = { ...columnMeta, [tableName]: map };
+ } catch (e) {
+ console.warn('col meta fetch failed', e);
+ }
  }
  function handleAskQuestion(q: string) {
-   try {
-     // Forward to chat if a global hook exists; otherwise log so caller sees it.
-     const w: any = typeof window !== 'undefined' ? (window as any) : null;
-     if (w && typeof w.__dashAskQuestion === 'function') {
-       w.__dashAskQuestion(q);
-     } else {
-       console.log('[settings] askQuestion (no chat hook):', q);
-     }
-   } catch (e) {
-     console.warn('askQuestion forward failed', e);
-   }
+ try {
+ // Forward to chat if a global hook exists; otherwise log so caller sees it.
+ const w: any = typeof window !== 'undefined' ? (window as any) : null;
+ if (w && typeof w.__dashAskQuestion === 'function') {
+ w.__dashAskQuestion(q);
+ } else {
+ console.log('[settings] askQuestion (no chat hook):', q);
+ }
+ } catch (e) {
+ console.warn('askQuestion forward failed', e);
+ }
  }
  // Extraction plans (P4) — indexed by table_name
  let extractionPlans = $state<Record<string, any>>({});
  let extractionPlansLoaded = $state(false);
  let extractionPlanEdits = $state<Record<string, { header_row: string; skip_rows: string; busy: boolean; saved: boolean; err?: string }>>({});
  async function loadExtractionPlans() {
-   try {
-     const r = await fetch(`/api/projects/${slug}/extraction-plans?limit=200`, { headers: _h() });
-     if (!r.ok) { extractionPlansLoaded = true; return; }
-     const j = await r.json();
-     const map: Record<string, any> = {};
-     for (const p of (j.plans || [])) {
-       // Keep newest per table (list is created_at DESC)
-       if (!map[p.table_name]) map[p.table_name] = p;
-     }
-     extractionPlans = map;
-     extractionPlansLoaded = true;
-   } catch {
-     extractionPlansLoaded = true;
-   }
+ try {
+ const r = await fetch(`/api/projects/${slug}/extraction-plans?limit=200`, { headers: _h() });
+ if (!r.ok) { extractionPlansLoaded = true; return; }
+ const j = await r.json();
+ const map: Record<string, any> = {};
+ for (const p of (j.plans || [])) {
+ // Keep newest per table (list is created_at DESC)
+ if (!map[p.table_name]) map[p.table_name] = p;
+ }
+ extractionPlans = map;
+ extractionPlansLoaded = true;
+ } catch {
+ extractionPlansLoaded = true;
+ }
  }
  async function reIngestExtractionPlan(tblName: string) {
-   const plan = extractionPlans[tblName];
-   if (!plan) return;
-   const edit = extractionPlanEdits[tblName] || { header_row: '', skip_rows: '', busy: false, saved: false };
-   const body: any = {};
-   const hr = (edit.header_row ?? '').trim();
-   if (hr !== '') {
-     const n = Number(hr);
-     if (Number.isFinite(n) && n >= 0) body.header_row = Math.floor(n);
-   }
-   const sk = (edit.skip_rows ?? '').trim();
-   if (sk !== '') {
-     const parts = sk.split(',').map(s => Number(s.trim())).filter(n => Number.isFinite(n) && n >= 0).map(n => Math.floor(n));
-     body.skip_rows = parts;
-   }
-   extractionPlanEdits = { ...extractionPlanEdits, [tblName]: { ...edit, busy: true, saved: false, err: undefined } };
-   try {
-     const r = await fetch(`/api/projects/${slug}/extraction-plans/${plan.id}/re-ingest`, {
-       method: 'POST',
-       headers: { ..._h(), 'Content-Type': 'application/json' },
-       body: JSON.stringify(body),
-     });
-     if (!r.ok) {
-       const t = await r.text();
-       throw new Error(t.slice(0, 200));
-     }
-     const j = await r.json();
-     extractionPlanEdits = { ...extractionPlanEdits, [tblName]: { ...edit, busy: false, saved: true } };
-     // Refresh plan + table detail
-     await loadExtractionPlans();
-     try { await loadDetail?.(); } catch {}
-   } catch (e: any) {
-     extractionPlanEdits = { ...extractionPlanEdits, [tblName]: { ...edit, busy: false, saved: false, err: String(e?.message || e) } };
-   }
+ const plan = extractionPlans[tblName];
+ if (!plan) return;
+ const edit = extractionPlanEdits[tblName] || { header_row: '', skip_rows: '', busy: false, saved: false };
+ const body: any = {};
+ const hr = (edit.header_row ?? '').trim();
+ if (hr !== '') {
+ const n = Number(hr);
+ if (Number.isFinite(n) && n >= 0) body.header_row = Math.floor(n);
+ }
+ const sk = (edit.skip_rows ?? '').trim();
+ if (sk !== '') {
+ const parts = sk.split(',').map(s => Number(s.trim())).filter(n => Number.isFinite(n) && n >= 0).map(n => Math.floor(n));
+ body.skip_rows = parts;
+ }
+ extractionPlanEdits = { ...extractionPlanEdits, [tblName]: { ...edit, busy: true, saved: false, err: undefined } };
+ try {
+ const r = await fetch(`/api/projects/${slug}/extraction-plans/${plan.id}/re-ingest`, {
+ method: 'POST',
+ headers: { ..._h(), 'Content-Type': 'application/json' },
+ body: JSON.stringify(body),
+ });
+ if (!r.ok) {
+ const t = await r.text();
+ throw new Error(t.slice(0, 200));
+ }
+ const j = await r.json();
+ extractionPlanEdits = { ...extractionPlanEdits, [tblName]: { ...edit, busy: false, saved: true } };
+ // Refresh plan + table detail
+ await loadExtractionPlans();
+ try { await loadDetail?.(); } catch {}
+ } catch (e: any) {
+ extractionPlanEdits = { ...extractionPlanEdits, [tblName]: { ...edit, busy: false, saved: false, err: String(e?.message || e) } };
+ }
  }
  // Codex code-enrichment: which tables have Layer-3 pipeline_logic (DB-sourced).
  let codexEnriched = $state<Set<string>>(new Set());
  async function loadCodexEnriched() {
-  try {
-   const r = await fetch(`/api/projects/${slug}/codex-enriched`, { headers: _h() });
-   if (r.ok) { const d = await r.json(); codexEnriched = new Set(Array.isArray(d.tables) ? d.tables : []); }
-  } catch {}
+ try {
+ const r = await fetch(`/api/projects/${slug}/codex-enriched`, { headers: _h() });
+ if (r.ok) { const d = await r.json(); codexEnriched = new Set(Array.isArray(d.tables) ? d.tables : []); }
+ } catch {}
  }
  let tableRelationships = $state<any[]>([]);
 
@@ -3443,7 +3443,7 @@ function signUserJWT($user) {
  $effect(() => {
  const _onDataTab = activeTab === 'datasets' || activeTab === 'upload';
  if (_onDataTab && !extractionPlansLoaded) {
-   loadExtractionPlans();
+ loadExtractionPlans();
  }
  if (_onDataTab && !inspectsBatchLoaded && (detail?.tables?.length || 0) > 0) {
  inspectsBatchLoaded = true;
@@ -3459,24 +3459,24 @@ function signUserJWT($user) {
  });
 
  $effect(() => {
-  if (activeTab === 'upload' || activeTab === 'datasets') {
-    loadAutoTrainStatus();
-    _autoTrainPollTimer = setInterval(loadAutoTrainStatus, 30_000);
-  } else {
-    if (_autoTrainPollTimer) { clearInterval(_autoTrainPollTimer); _autoTrainPollTimer = null; }
-  }
-  return () => {
-    if (_autoTrainPollTimer) { clearInterval(_autoTrainPollTimer); _autoTrainPollTimer = null; }
-  };
+ if (activeTab === 'upload' || activeTab === 'datasets') {
+ loadAutoTrainStatus();
+ _autoTrainPollTimer = setInterval(loadAutoTrainStatus, 30_000);
+ } else {
+ if (_autoTrainPollTimer) { clearInterval(_autoTrainPollTimer); _autoTrainPollTimer = null; }
+ }
+ return () => {
+ if (_autoTrainPollTimer) { clearInterval(_autoTrainPollTimer); _autoTrainPollTimer = null; }
+ };
  });
 
  $effect(() => {
-  if (isTraining || trainStepsRunStatus === 'running') {
-    autoTrainStatus = 'training';
-    const done = trainSteps ? trainSteps.filter((s: any) => s.status === 'done').length : 0;
-    autoTrainProgress = done;
-    autoTrainMessage = 'Training pipeline running…';
-  }
+ if (isTraining || trainStepsRunStatus === 'running') {
+ autoTrainStatus = 'training';
+ const done = trainSteps ? trainSteps.filter((s: any) => s.status === 'done').length : 0;
+ autoTrainProgress = done;
+ autoTrainMessage = 'Training pipeline running…';
+ }
  });
 
  async function loadTableDetail(tblName: string) {
@@ -3522,9 +3522,9 @@ function signUserJWT($user) {
  let evolvedInstructions = $state<any>({current: null, history: []});
  let resourceRegistry = $state<any[]>([]);
  let registryOverall = $state(0);
- let accuracy = $state<any>(null);  // verified-correctness (vs ground truth), not judge opinion
+ let accuracy = $state<any>(null); // verified-correctness (vs ground truth), not judge opinion
  async function loadAccuracy() {
-   try { const r = await fetch(`/api/projects/${slug}/accuracy`, { headers: _h() }); if (r.ok) accuracy = await r.json(); } catch {}
+ try { const r = await fetch(`/api/projects/${slug}/accuracy`, { headers: _h() }); if (r.ok) accuracy = await r.json(); } catch {}
  }
  // SQL safety telemetry — auto-fix / Q&A drop / cache hit stats
  let sqlStats = $state<any>(null);
@@ -3532,27 +3532,27 @@ function signUserJWT($user) {
  let qaDrops = $state<any[]>([]);
  let qaDropsExpanded = $state<Record<string, boolean>>({});
  async function loadSqlStats() {
-   try {
-     const r = await fetch(`/api/projects/${slug}/sql-validator/stats?days=7`, { headers: _h() });
-     if (r.ok) sqlStats = await r.json();
-     else sqlStats = null;
-   } catch (e) { console.warn('loadSqlStats failed', e); sqlStats = null; }
+ try {
+ const r = await fetch(`/api/projects/${slug}/sql-validator/stats?days=7`, { headers: _h() });
+ if (r.ok) sqlStats = await r.json();
+ else sqlStats = null;
+ } catch (e) { console.warn('loadSqlStats failed', e); sqlStats = null; }
  }
  async function loadSqlCacheStats() {
-   try {
-     const r = await fetch(`/api/projects/sql-validator/cache-stats`, { headers: _h() });
-     if (r.ok) sqlCacheStats = await r.json();
-     else sqlCacheStats = null;
-   } catch (e) { console.warn('loadSqlCacheStats failed', e); sqlCacheStats = null; }
+ try {
+ const r = await fetch(`/api/projects/sql-validator/cache-stats`, { headers: _h() });
+ if (r.ok) sqlCacheStats = await r.json();
+ else sqlCacheStats = null;
+ } catch (e) { console.warn('loadSqlCacheStats failed', e); sqlCacheStats = null; }
  }
  async function loadQaDrops() {
-   try {
-     const r = await fetch(`/api/projects/${slug}/sql-validator/qa-drops?days=30`, { headers: _h() });
-     if (r.ok) {
-       const d = await r.json();
-       qaDrops = Array.isArray(d) ? d : (Array.isArray(d?.drops) ? d.drops : []);
-     } else { qaDrops = []; }
-   } catch (e) { console.warn('loadQaDrops failed', e); qaDrops = []; }
+ try {
+ const r = await fetch(`/api/projects/${slug}/sql-validator/qa-drops?days=30`, { headers: _h() });
+ if (r.ok) {
+ const d = await r.json();
+ qaDrops = Array.isArray(d) ? d : (Array.isArray(d?.drops) ? d.drops : []);
+ } else { qaDrops = []; }
+ } catch (e) { console.warn('loadQaDrops failed', e); qaDrops = []; }
  }
  let evolutionHistory = $state<any[]>([]);
  let queryPlans = $state<any[]>([]);
@@ -4317,7 +4317,7 @@ function signUserJWT($user) {
  } catch {}
  }
 
- // OneDrive Sources (state machine: idle → connecting → connected → browsing → folder_picked → done)
+ // OneDrive Sources (state machine: idle > connecting > connected > browsing > folder_picked > done)
  let odConfigured = $state(false);
  let odSources = $state<any[]>([]);
  let odStep = $state<'idle' | 'connecting' | 'connected' | 'browsing' | 'folder_picked' | 'done'>('idle');
@@ -4657,7 +4657,7 @@ function signUserJWT($user) {
  { id: 'kg', label: 'KNOWLEDGE GRAPH', desc: 'Re-extract SPO triples + entity standardization' },
  { id: 'persona', label: 'PERSONA', desc: 'Regenerate persona from tables + rules' },
  { id: 'relationships', label: 'RELATIONSHIPS', desc: 'LLM rediscover joins/foreign keys' },
- { id: 'evolved_instructions', label: 'EVOLVED INSTRUCTIONS', desc: 'Auto-evolve pass over recent learnings → bump v_N' },
+ { id: 'evolved_instructions', label: 'EVOLVED INSTRUCTIONS', desc: 'Auto-evolve pass over recent learnings > bump v_N' },
  ];
  let stepRunning = $state<string>('');
  let stepResults = $state<Record<string, any>>({});
@@ -4894,7 +4894,7 @@ function signUserJWT($user) {
  { id: 'upload', label: 'DATA SOURCE' },
  { id: 'eda', label: 'EXPLORATORY' },
  { id: 'data-quality', label: 'DATA QUALITY' },
- { id: 'brain-cortex', label: '🧠 CORTEX' },
+ { id: 'brain-cortex', label: ' CORTEX' },
  { id: 'brain-definitions', label: 'DEFINITIONS' },
  { id: 'brain-glossary', label: 'GLOSSARY' },
  { id: 'brain-patterns', label: 'PATTERNS' },
@@ -5021,7 +5021,7 @@ function signUserJWT($user) {
  // Top-nav Upload link changes the hash while already on this page — switch tab.
  const _onHash = () => { let h = window.location.hash.slice(1); if (!h || h === 'cockpit') h = 'datasets'; if (h === 'upload-new') { dsView = 'overview'; dsUploadOpen = true; h = 'upload'; } else if (h === 'eda') { if (!Object.keys(edaAll).length && !edaAllLoading) loadEdaAll(); } else if (h === 'quality' || h === 'data-quality') { h = 'data-quality'; if (!dqLoaded) loadDataQuality(false); } else if (h === 'upload') { dsView = 'overview'; } if (h !== activeTab) activeTab = h; };
  window.addEventListener('hashchange', _onHash);
- _onHash();  // process initial hash on fresh load (e.g. #upload-new from Dashboard)
+ _onHash(); // process initial hash on fresh load (e.g. #upload-new from Dashboard)
  // Restore Data Source sub-view data when landing directly on #eda / #quality.
  if (activeTab === 'upload' && dsView !== 'overview') dsGoView(dsView);
  // Critical: wait only for project detail so shell + tabs render fast.
@@ -5029,7 +5029,7 @@ function signUserJWT($user) {
  loading = false;
  // Identity (drives super-admin-gated UI like API KEYS panel).
  fetch('/api/me', { headers: _h() }).then(r => r.ok ? r.json() : null).then(d => {
-   if (d) { isSuper = !!d.is_super; if (currentUserId === null && (d.user_id ?? d.id) != null) currentUserId = d.user_id ?? d.id; }
+ if (d) { isSuper = !!d.is_super; if (currentUserId === null && (d.user_id ?? d.id) != null) currentUserId = d.user_id ?? d.id; }
  }).catch(() => {});
  // Background: hydrate everything else without blocking first paint.
  // allSettled so one failure can't block others.
@@ -5055,15 +5055,15 @@ function signUserJWT($user) {
 
  // Auto-poll training runs every 5s while on Training tab + any run is active
  $effect(() => {
-   if (activeTab !== 'training') return;
-   // refresh Q&A drops on tab activate
-   loadQaDrops();
-   const id = setInterval(async () => {
-     try { await loadTrainingRuns(); } catch {}
-     try { await loadBrainData(); } catch {}
-     try { await loadQaDrops(); } catch {}
-   }, 5000);
-   return () => clearInterval(id);
+ if (activeTab !== 'training') return;
+ // refresh Q&A drops on tab activate
+ loadQaDrops();
+ const id = setInterval(async () => {
+ try { await loadTrainingRuns(); } catch {}
+ try { await loadBrainData(); } catch {}
+ try { await loadQaDrops(); } catch {}
+ }, 5000);
+ return () => clearInterval(id);
  });
  // Auto-load first table details
  if (detail?.tables?.length) {
@@ -5087,14 +5087,14 @@ function signUserJWT($user) {
  // timers, which left the pipeline + "Training…" button frozen in a stale state.
  function _onFocusHeal() { if (typeof document !== 'undefined' && !document.hidden) { try { loadDataSource(); } catch {} try { loadTrainingSteps(); } catch {} } }
  onMount(() => {
-   if (typeof document !== 'undefined') document.addEventListener('visibilitychange', _onFocusHeal);
-   if (typeof window !== 'undefined') window.addEventListener('focus', _onFocusHeal);
+ if (typeof document !== 'undefined') document.addEventListener('visibilitychange', _onFocusHeal);
+ if (typeof window !== 'undefined') window.addEventListener('focus', _onFocusHeal);
  });
  onDestroy(() => {
-   if (trainPollTimer) { clearInterval(trainPollTimer); trainPollTimer = null; }
-   stopTrainingStepsPoll();
-   if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', _onFocusHeal);
-   if (typeof window !== 'undefined') window.removeEventListener('focus', _onFocusHeal);
+ if (trainPollTimer) { clearInterval(trainPollTimer); trainPollTimer = null; }
+ stopTrainingStepsPoll();
+ if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', _onFocusHeal);
+ if (typeof window !== 'undefined') window.removeEventListener('focus', _onFocusHeal);
  });
 
  async function loadDetail() {
@@ -5529,43 +5529,43 @@ function signUserJWT($user) {
 
  // Data Source inner LEFT sub-rail: overview | eda | quality (persisted in URL hash)
  let dsView = $state<'overview'|'eda'|'quality'>((() => {
-   if (typeof window === 'undefined') return 'overview';
-   const h = window.location.hash.slice(1);
-   return h === 'eda' ? 'eda' : h === 'quality' ? 'quality' : 'overview';
+ if (typeof window === 'undefined') return 'overview';
+ const h = window.location.hash.slice(1);
+ return h === 'eda' ? 'eda' : h === 'quality' ? 'quality' : 'overview';
  })());
  let edaTable = $state('');
  let edaData = $state<any>(null);
  let edaLoading = $state(false);
- let edaCol = $state<string | null>(null);   // expanded column row
+ let edaCol = $state<string | null>(null); // expanded column row
  async function loadEda(tbl: string = '') {
-   edaLoading = true; edaCol = null;
-   try {
-     const qs = tbl ? `?table=${encodeURIComponent(tbl)}` : '';
-     const r = await fetch(`/api/projects/${slug}/eda${qs}`, { headers: _h() });
-     if (r.ok) {
-       edaData = await r.json();
-       edaTable = edaData?.table || tbl || '';
-     }
-   } catch {} finally { edaLoading = false; }
+ edaLoading = true; edaCol = null;
+ try {
+ const qs = tbl ? `?table=${encodeURIComponent(tbl)}` : '';
+ const r = await fetch(`/api/projects/${slug}/eda${qs}`, { headers: _h() });
+ if (r.ok) {
+ edaData = await r.json();
+ edaTable = edaData?.table || tbl || '';
+ }
+ } catch {} finally { edaLoading = false; }
  }
  function dsGoView(v: 'overview'|'eda'|'quality') {
-   dsView = v;
-   if (v === 'eda' && !edaData) loadEda(edaTable);
-   if (v === 'quality') { dqLoadMuted(); if (!dqLoaded) loadDataQuality(false); }
+ dsView = v;
+ if (v === 'eda' && !edaData) loadEda(edaTable);
+ if (v === 'quality') { dqLoadMuted(); if (!dqLoaded) loadDataQuality(false); }
  }
  // EDA column-role tally for one table's payload (id / measure / dimension / null cols)
  function edaRoleCountsFor(ed: any): { id: number; num: number; dim: number; nullcols: number } {
-   const cols = (ed?.columns || []) as any[];
-   const rows = ed?.rows || 0;
-   let id = 0, num = 0, dim = 0, nullcols = 0;
-   for (const c of cols) {
-     const isUnique = rows > 0 && c.distinct >= (rows > 50000 ? 20000 : rows);
-     if (c.mean !== null && c.mean !== undefined) num++;
-     else if (isUnique) id++;
-     else dim++;
-     if ((c.null_pct || 0) > 0) nullcols++;
-   }
-   return { id, num, dim, nullcols };
+ const cols = (ed?.columns || []) as any[];
+ const rows = ed?.rows || 0;
+ let id = 0, num = 0, dim = 0, nullcols = 0;
+ for (const c of cols) {
+ const isUnique = rows > 0 && c.distinct >= (rows > 50000 ? 20000 : rows);
+ if (c.mean !== null && c.mean !== undefined) num++;
+ else if (isUnique) id++;
+ else dim++;
+ if ((c.null_pct || 0) > 0) nullcols++;
+ }
+ return { id, num, dim, nullcols };
  }
 
  // ── EXPLORATORY: all tables profiled at once (no dropdown) ──
@@ -5577,78 +5577,78 @@ function signUserJWT($user) {
  function edaColToggle(key: string) { edaColOpen = { ...edaColOpen, [key]: edaColOpen[key] === false }; }
  function edaExpandAll() { edaColOpen = {}; }
  function edaCollapseAll() {
-   const m: Record<string, boolean> = {};
-   for (const tn of Object.keys(edaAll)) for (const c of (edaAll[tn]?.columns || [])) m[`${tn}::${c.name}`] = false;
-   edaColOpen = m;
+ const m: Record<string, boolean> = {};
+ for (const tn of Object.keys(edaAll)) for (const c of (edaAll[tn]?.columns || [])) m[`${tn}::${c.name}`] = false;
+ edaColOpen = m;
  }
  function edaAllNames(): string[] {
-   const fromData = Object.keys(edaAll);
-   if (fromData.length) return fromData;
-   // ordering hint before fetch completes
-   if (dsData?.tables?.length) return dsData.tables.map((t: any) => t.name);
-   if (detail?.tables?.length) return (detail.tables as any[]).map((t: any) => t.name);
-   return [];
+ const fromData = Object.keys(edaAll);
+ if (fromData.length) return fromData;
+ // ordering hint before fetch completes
+ if (dsData?.tables?.length) return dsData.tables.map((t: any) => t.name);
+ if (detail?.tables?.length) return (detail.tables as any[]).map((t: any) => t.name);
+ return [];
  }
  async function loadEdaAll() {
-   edaAllLoading = true;
-   try {
-     let names: string[] = [];
-     if (dsData?.tables?.length) names = dsData.tables.map((t: any) => t.name);
-     else if (detail?.tables?.length) names = (detail.tables as any[]).map((t: any) => t.name);
-     if (!names.length) {
-       try {
-         const r0 = await fetch(`/api/projects/${slug}/eda`, { headers: _h() });
-         if (r0.ok) { const d0 = await r0.json(); names = d0?.tables || []; }
-       } catch {}
-     }
-     const results = await Promise.all(names.map(async (n) => {
-       try {
-         const r = await fetch(`/api/projects/${slug}/eda?table=${encodeURIComponent(n)}`, { headers: _h() });
-         return [n, r.ok ? await r.json() : null] as [string, any];
-       } catch { return [n, null] as [string, any]; }
-     }));
-     const map: Record<string, any> = {};
-     for (const [n, d] of results) if (d) map[n] = d;
-     edaAll = map;
-   } catch {} finally { edaAllLoading = false; }
+ edaAllLoading = true;
+ try {
+ let names: string[] = [];
+ if (dsData?.tables?.length) names = dsData.tables.map((t: any) => t.name);
+ else if (detail?.tables?.length) names = (detail.tables as any[]).map((t: any) => t.name);
+ if (!names.length) {
+ try {
+ const r0 = await fetch(`/api/projects/${slug}/eda`, { headers: _h() });
+ if (r0.ok) { const d0 = await r0.json(); names = d0?.tables || []; }
+ } catch {}
+ }
+ const results = await Promise.all(names.map(async (n) => {
+ try {
+ const r = await fetch(`/api/projects/${slug}/eda?table=${encodeURIComponent(n)}`, { headers: _h() });
+ return [n, r.ok ? await r.json() : null] as [string, any];
+ } catch { return [n, null] as [string, any]; }
+ }));
+ const map: Record<string, any> = {};
+ for (const [n, d] of results) if (d) map[n] = d;
+ edaAll = map;
+ } catch {} finally { edaAllLoading = false; }
  }
  const edaAgg = $derived.by(() => {
-   const tbls = Object.values(edaAll) as any[];
-   let rows = 0, cols = 0, dup = 0, dim = 0, num = 0, id = 0, nullcols = 0;
-   for (const e of tbls) {
-     rows += e.rows || 0; dup += e.dup_rows || 0; cols += (e.columns || []).length;
-     const rc = edaRoleCountsFor(e); dim += rc.dim; num += rc.num; id += rc.id; nullcols += rc.nullcols;
-   }
-   return { tables: tbls.length, rows, cols, dup, dim, num, id, nullcols };
+ const tbls = Object.values(edaAll) as any[];
+ let rows = 0, cols = 0, dup = 0, dim = 0, num = 0, id = 0, nullcols = 0;
+ for (const e of tbls) {
+ rows += e.rows || 0; dup += e.dup_rows || 0; cols += (e.columns || []).length;
+ const rc = edaRoleCountsFor(e); dim += rc.dim; num += rc.num; id += rc.id; nullcols += rc.nullcols;
+ }
+ return { tables: tbls.length, rows, cols, dup, dim, num, id, nullcols };
  });
  // Quality roll-up across all tables (derived from dsData)
  const qualityRollup = $derived.by(() => {
-   const tables = (dsData?.tables || []) as any[];
-   const issues: any[] = [];
-   for (const t of tables) {
-     const q = t.quality || {};
-     for (const n of (q.notes || [])) {
-       const lc = String(n).toLowerCase();
-       const sev = (lc.includes('corrupt') || lc.includes('1e+12') || lc.includes('mismatch')) ? 'CRIT'
-                 : (lc.includes('null') || lc.includes('missing') || lc.includes('duplicate')) ? 'WARN' : 'INFO';
-       issues.push({ table: t.name, note: n, sev, rows: t.rows || 0 });
-     }
-   }
-   const sevRank: any = { CRIT: 0, WARN: 1, INFO: 2 };
-   issues.sort((a, b) => sevRank[a.sev] - sevRank[b.sev]);
-   const scores = tables.map(t => t.quality?.score ?? 0).filter((s: number) => s > 0);
-   const overall = scores.length ? Math.round(scores.reduce((a: number, b: number) => a + b, 0) / scores.length) : 0;
-   return { issues, overall, tables };
+ const tables = (dsData?.tables || []) as any[];
+ const issues: any[] = [];
+ for (const t of tables) {
+ const q = t.quality || {};
+ for (const n of (q.notes || [])) {
+ const lc = String(n).toLowerCase();
+ const sev = (lc.includes('corrupt') || lc.includes('1e+12') || lc.includes('mismatch')) ? 'CRIT'
+ : (lc.includes('null') || lc.includes('missing') || lc.includes('duplicate')) ? 'WARN' : 'INFO';
+ issues.push({ table: t.name, note: n, sev, rows: t.rows || 0 });
+ }
+ }
+ const sevRank: any = { CRIT: 0, WARN: 1, INFO: 2 };
+ issues.sort((a, b) => sevRank[a.sev] - sevRank[b.sev]);
+ const scores = tables.map(t => t.quality?.score ?? 0).filter((s: number) => s > 0);
+ const overall = scores.length ? Math.round(scores.reduce((a: number, b: number) => a + b, 0) / scores.length) : 0;
+ return { issues, overall, tables };
  });
 
  // ═══ NEW Data Source (mixed design: health rings + pipeline + expandable rows) ═══
  let dsData = $state<any>(null);
  let chemSubs = $state(0); // drugs-with-substitutes count for AgentFlow KG card (live, replaces hardcoded 41,042)
  async function loadChemStats() {
-   try {
-     const r = await fetch(`/api/projects/${slug}/chemist`, { headers: _h() });
-     if (r.ok) { const d = await r.json(); chemSubs = Number(d?.drugs_with_substitutes || 0); }
-   } catch {}
+ try {
+ const r = await fetch(`/api/projects/${slug}/chemist`, { headers: _h() });
+ if (r.ok) { const d = await r.json(); chemSubs = Number(d?.drugs_with_substitutes || 0); }
+ } catch {}
  }
  let dsLoading = $state(false);
  // per-row open state. DEFAULT OPEN: a table is expanded unless explicitly set false.
@@ -5657,9 +5657,9 @@ function signUserJWT($user) {
  function dsIsOpen(name: string) { return dsOpen[name] !== false; }
  function dsToggle(name: string) { dsOpen = { ...dsOpen, [name]: dsOpen[name] === false }; }
  function dsOriginMeta(o: string) {
-   if (o === 'ai') return { label: 'AI-created', icon: '🤖', cls: 'dsx-orig-ai' };
-   if (o === 'derived') return { label: 'Derived', icon: '⚙️', cls: 'dsx-orig-derived' };
-   return { label: 'Uploaded', icon: '📤', cls: 'dsx-orig-uploaded' };
+ if (o === 'ai') return { label: 'AI-created', icon: '', cls: 'dsx-orig-ai' };
+ if (o === 'derived') return { label: 'Derived', icon: '', cls: 'dsx-orig-derived' };
+ return { label: 'Uploaded', icon: '', cls: 'dsx-orig-uploaded' };
  }
  // Demo-data seeding removed 2026-06-11 — this is a clean tool; no synthetic
  // data path in the UI. Fresh installs stay empty (DEMO_SEED_ON_EMPTY off).
@@ -5677,10 +5677,10 @@ function signUserJWT($user) {
  let slData = $state<any>(null);
  let mvExpanded = $state<string | null>(null);
  async function loadSemanticLayer() {
-   try {
-     const r = await fetch(`/api/projects/${slug}/semantic-layer`, { headers: _h() });
-     if (r.ok) slData = await r.json();
-   } catch {}
+ try {
+ const r = await fetch(`/api/projects/${slug}/semantic-layer`, { headers: _h() });
+ if (r.ok) slData = await r.json();
+ } catch {}
  }
 
  // ═══ Catalog Gaps (LLM enrichment — suggestion-only, human-gated) ═══
@@ -5689,62 +5689,62 @@ function signUserJWT($user) {
  let gapBusy = $state(false);
  let gapMsg = $state('');
  async function loadGaps() {
-   try {
-     const r = await fetch(`/api/projects/${slug}/catalog-enrich/gaps`, { headers: _h() });
-     if (r.ok) gapData = await r.json();
-   } catch {}
+ try {
+ const r = await fetch(`/api/projects/${slug}/catalog-enrich/gaps`, { headers: _h() });
+ if (r.ok) gapData = await r.json();
+ } catch {}
  }
  async function loadGapSugs() {
-   try {
-     const r = await fetch(`/api/projects/${slug}/catalog-enrich/suggestions?status=pending&limit=300`, { headers: _h() });
-     if (r.ok) gapSugs = (await r.json()).suggestions || [];
-   } catch {}
+ try {
+ const r = await fetch(`/api/projects/${slug}/catalog-enrich/suggestions?status=pending&limit=300`, { headers: _h() });
+ if (r.ok) gapSugs = (await r.json()).suggestions || [];
+ } catch {}
  }
  async function gapRun(limit: number) {
-   if (gapBusy) return;
-   gapBusy = true; gapMsg = 'generating suggestions…';
-   try {
-     const r = await fetch(`/api/projects/${slug}/catalog-enrich/run?limit=${limit}`, { method: 'POST', headers: _h() });
-     const d = await r.json();
-     gapMsg = d.ok ? `✓ ${d.suggested} suggestions from ${d.processed} articles` : `✗ ${d.error || 'failed'}`;
-     await loadGaps(); await loadGapSugs();
-   } catch (e:any) { gapMsg = `✗ ${e?.message || 'error'}`; }
-   gapBusy = false;
+ if (gapBusy) return;
+ gapBusy = true; gapMsg = 'generating suggestions…';
+ try {
+ const r = await fetch(`/api/projects/${slug}/catalog-enrich/run?limit=${limit}`, { method: 'POST', headers: _h() });
+ const d = await r.json();
+ gapMsg = d.ok ? `OK ${d.suggested} suggestions from ${d.processed} articles` : `x ${d.error || 'failed'}`;
+ await loadGaps(); await loadGapSugs();
+ } catch (e:any) { gapMsg = `x ${e?.message || 'error'}`; }
+ gapBusy = false;
  }
  async function gapDecide(ids: number[], decision: string) {
-   if (!ids.length) return;
-   try {
-     await fetch(`/api/projects/${slug}/catalog-enrich/decide`, {
-       method: 'POST', headers: { ..._h(), 'Content-Type': 'application/json' },
-       body: JSON.stringify({ ids, decision }),
-     });
-     gapSugs = gapSugs.filter(s => !ids.includes(s.id));
-     await loadGaps();
-   } catch {}
+ if (!ids.length) return;
+ try {
+ await fetch(`/api/projects/${slug}/catalog-enrich/decide`, {
+ method: 'POST', headers: { ..._h(), 'Content-Type': 'application/json' },
+ body: JSON.stringify({ ids, decision }),
+ });
+ gapSugs = gapSugs.filter(s => !ids.includes(s.id));
+ await loadGaps();
+ } catch {}
  }
  const CLINICAL = ['generic_name','composition'];
 
  async function loadDataSource() {
-   if (dsLoading) return;
-   dsLoading = true;
-   try {
-     const r = await fetch(`/api/projects/${slug}/datasource`, { headers: _h() });
-     if (r.ok) dsData = await r.json();
-   } catch {}
-   dsLoading = false;
-   // sync the live-training flag to the REAL run status (dash_training_runs active_run).
-   // When the run finishes, this clears the pipeline strip + per-row ⟳ spinners.
-   const runLive = !!dsData?.summary?.is_training;
-   const inGrace = Date.now() < dsTrainGraceUntil; // just-uploaded, run spinning up
-   isTraining = runLive || inGrace;
-   if (!runLive && !inGrace) dsTrainingTables = {};
-   // keep polling while training is active (or within the post-upload grace)
-   const training = runLive || inGrace || Object.values(dsTrainingTables).some(Boolean);
-   if (training && !dsPollTimer) {
-     dsPollTimer = setInterval(loadDataSource, 5000);
-   } else if (!training && dsPollTimer) {
-     clearInterval(dsPollTimer); dsPollTimer = null;
-   }
+ if (dsLoading) return;
+ dsLoading = true;
+ try {
+ const r = await fetch(`/api/projects/${slug}/datasource`, { headers: _h() });
+ if (r.ok) dsData = await r.json();
+ } catch {}
+ dsLoading = false;
+ // sync the live-training flag to the REAL run status (dash_training_runs active_run).
+ // When the run finishes, this clears the pipeline strip + per-row > spinners.
+ const runLive = !!dsData?.summary?.is_training;
+ const inGrace = Date.now() < dsTrainGraceUntil; // just-uploaded, run spinning up
+ isTraining = runLive || inGrace;
+ if (!runLive && !inGrace) dsTrainingTables = {};
+ // keep polling while training is active (or within the post-upload grace)
+ const training = runLive || inGrace || Object.values(dsTrainingTables).some(Boolean);
+ if (training && !dsPollTimer) {
+ dsPollTimer = setInterval(loadDataSource, 5000);
+ } else if (!training && dsPollTimer) {
+ clearInterval(dsPollTimer); dsPollTimer = null;
+ }
  }
 
  // Load the Data Source aggregate whenever the upload tab is active — covers
@@ -5752,69 +5752,69 @@ function signUserJWT($user) {
  // ONLY trigger doesn't fire on hash-init, which left the rings showing 0/—
  // even though the data was fully trained).
  $effect(() => {
-   if (activeTab === 'upload' && !dsData && !dsLoading) {
-     loadDataSource();
-     try { if (!dqLoaded) loadDataQuality(false); } catch {}
-     // Overview/EDA/Quality now stack in one view → eagerly load EDA too.
-     try { if (!edaData && !edaLoading) loadEda(); } catch {}
-     try { if (!slData) loadSemanticLayer(); } catch {}
-     try { if (!gapData) { loadGaps(); loadGapSugs(); } } catch {}
-   }
+ if (activeTab === 'upload' && !dsData && !dsLoading) {
+ loadDataSource();
+ try { if (!dqLoaded) loadDataQuality(false); } catch {}
+ // Overview/EDA/Quality now stack in one view > eagerly load EDA too.
+ try { if (!edaData && !edaLoading) loadEda(); } catch {}
+ try { if (!slData) loadSemanticLayer(); } catch {}
+ try { if (!gapData) { loadGaps(); loadGapSugs(); } } catch {}
+ }
  });
 
  async function dsTrainTables(names: string[]) {
-   try {
-     for (const n of names) dsTrainingTables[n] = true;
-     dsTrainingTables = { ...dsTrainingTables };
-     try { window.dispatchEvent(new CustomEvent('dash-cli-log', { detail: `▸ training ${names.join(', ')}…` })); } catch {}
-     const r = await fetch(`/api/projects/${slug}/retrain?force=1`, {
-       method: 'POST', headers: { ..._h(), 'Content-Type': 'application/json' },
-       body: JSON.stringify({ table_names: names, force: true }),
-     });
-     if (r.ok) {
-       isTraining = true;
-       try { loadTrainingSteps(); } catch {}
-       if (!dsPollTimer) dsPollTimer = setInterval(loadDataSource, 5000);
-     }
-   } catch {}
+ try {
+ for (const n of names) dsTrainingTables[n] = true;
+ dsTrainingTables = { ...dsTrainingTables };
+ try { window.dispatchEvent(new CustomEvent('dash-cli-log', { detail: `▸ training ${names.join(', ')}…` })); } catch {}
+ const r = await fetch(`/api/projects/${slug}/retrain?force=1`, {
+ method: 'POST', headers: { ..._h(), 'Content-Type': 'application/json' },
+ body: JSON.stringify({ table_names: names, force: true }),
+ });
+ if (r.ok) {
+ isTraining = true;
+ try { loadTrainingSteps(); } catch {}
+ if (!dsPollTimer) dsPollTimer = setInterval(loadDataSource, 5000);
+ }
+ } catch {}
  }
 
  async function dsTrainAll() {
-   let names = (dsData?.tables || []).map((t: any) => t.name);
-   if (!names.length) {
-     // training tab may open before the data-source view loaded dsData — fetch table list now
-     try {
-       const r = await fetch(`/api/projects/${slug}/datasource`, { headers: _h() });
-       if (r.ok) { const d = await r.json(); names = (d?.tables || []).map((t: any) => t.name); }
-     } catch {}
-   }
-   if (names.length) dsTrainTables(names);
-   else alert('No data tables found to train.');
+ let names = (dsData?.tables || []).map((t: any) => t.name);
+ if (!names.length) {
+ // training tab may open before the data-source view loaded dsData — fetch table list now
+ try {
+ const r = await fetch(`/api/projects/${slug}/datasource`, { headers: _h() });
+ if (r.ok) { const d = await r.json(); names = (d?.tables || []).map((t: any) => t.name); }
+ } catch {}
+ }
+ if (names.length) dsTrainTables(names);
+ else alert('No data tables found to train.');
  }
 
  async function dsDeleteTable(name: string) {
-   if (!confirm(`Delete table "${name}"? Removes the data + its training artifacts. Cannot be undone.`)) return;
-   try {
-     await fetch(`/api/tables/${encodeURIComponent(name)}?project=${slug}`, { method: 'DELETE', headers: _h() });
-     try { window.dispatchEvent(new CustomEvent('dash-cli-log', { detail: `▸ deleted table ${name}` })); } catch {}
-     dsOpen = { ...dsOpen, [name]: false };
-     await loadDataSource();
-   } catch {}
+ if (!confirm(`Delete table "${name}"? Removes the data + its training artifacts. Cannot be undone.`)) return;
+ try {
+ await fetch(`/api/tables/${encodeURIComponent(name)}?project=${slug}`, { method: 'DELETE', headers: _h() });
+ try { window.dispatchEvent(new CustomEvent('dash-cli-log', { detail: `▸ deleted table ${name}` })); } catch {}
+ dsOpen = { ...dsOpen, [name]: false };
+ await loadDataSource();
+ } catch {}
  }
 
  const dsRingPct = (n: number, d: number) => (d > 0 ? Math.round((100 * n) / d) : 0);
 
  function dsSortedTables() {
-   let ts = [...(dsData?.tables || [])];
-   const f = dsFilter.trim().toLowerCase();
-   if (f) ts = ts.filter((t: any) => t.name.toLowerCase().includes(f));
-   ts.sort((a: any, b: any) => {
-     if (dsSort === 'rows') return (b.rows || 0) - (a.rows || 0);
-     if (dsSort === 'name') return a.name.localeCompare(b.name);
-     if (dsSort === 'trained') return (b.trained ? 1 : 0) - (a.trained ? 1 : 0);
-     return ((a.quality?.score ?? 100) - (b.quality?.score ?? 100)); // health asc (worst first)
-   });
-   return ts;
+ let ts = [...(dsData?.tables || [])];
+ const f = dsFilter.trim().toLowerCase();
+ if (f) ts = ts.filter((t: any) => t.name.toLowerCase().includes(f));
+ ts.sort((a: any, b: any) => {
+ if (dsSort === 'rows') return (b.rows || 0) - (a.rows || 0);
+ if (dsSort === 'name') return a.name.localeCompare(b.name);
+ if (dsSort === 'trained') return (b.trained ? 1 : 0) - (a.trained ? 1 : 0);
+ return ((a.quality?.score ?? 100) - (b.quality?.score ?? 100)); // health asc (worst first)
+ });
+ return ts;
  }
  // Auto-train robot state
  let autoTrainStatus = $state<'watching'|'detected'|'training'|'done'|'error'|'disabled'>('watching');
@@ -5845,7 +5845,7 @@ function signUserJWT($user) {
  let trainStepsDone = $derived(trainStepsList.filter(s => s.status === 'done').length);
  let trainStepsTotal = $derived(trainStepsList.length);
 
- // Pretty label for raw backend step keys (e.g. "vector_backfill" → "Vector Backfill").
+ // Pretty label for raw backend step keys (e.g. "vector_backfill" > "Vector Backfill").
  const _STEP_LABELS: Record<string, string> = {
  fingerprint: 'Fingerprint', drift: 'Drift Check', drift_detection: 'Drift Check',
  sql_profile: 'SQL Profile', profile: 'SQL Profile', dimension_catalog: 'Dimensions',
@@ -5874,7 +5874,7 @@ function signUserJWT($user) {
  if (s === 'failed') return 'error';
  return s; // done
  }
- // Full pipeline pills = per-table steps (legacy 10, drift→persona-enrich)
+ // Full pipeline pills = per-table steps (legacy 10, drift>persona-enrich)
  // THEN the backend-tracked tail steps (codex, vectors, KG, scope, ML, evals…),
  // deduped by label. Gives the complete flow, not just one phase.
  const pipelinePills = $derived.by(() => {
@@ -5896,7 +5896,7 @@ function signUserJWT($user) {
 
  // ── Step inspector (Pipeline page) ─────────────────────────────────────
  let inspectStepName = $state<string | null>(null);
- // Which run the inspector shows. null → auto-pick the best recent run
+ // Which run the inspector shows. null > auto-pick the best recent run
  // (prefer one with tables + logs, since 0-table tail runs have no detail).
  let inspectRunId = $state<number | null>(null);
  const inspectRun = $derived.by(() => {
@@ -5949,7 +5949,7 @@ function signUserJWT($user) {
  });
  const inspectSelected = $derived(inspectSteps.find((s) => s.name === inspectStepName) || null);
 
- // Keyword map → pull the log lines that belong to a step from the latest run.
+ // Keyword map > pull the log lines that belong to a step from the latest run.
  const _STEP_KEYWORDS: Record<string, string[]> = {
  'Drift Check': ['drift'], 'Deep Analysis': ['deep analysis', 'analyzing'],
  'Q&A Generation': ['q&a', 'qa pairs', 'verified with real'], 'Persona': ['persona'],
@@ -5969,17 +5969,17 @@ function signUserJWT($user) {
  .filter((l) => { const m = String(l?.msg ?? '').toLowerCase(); return words.some((w) => m.includes(w)); })
  .map((l) => ({ ts: String(l.ts || ''), msg: typeof l.msg === 'string' ? l.msg : JSON.stringify(l.msg) }));
  }
- // Map an inspector step → the RUN SINGLE STEP id (so we can offer a re-run).
+ // Map an inspector step > the RUN SINGLE STEP id (so we can offer a re-run).
  const _STEP_RERUN_ID: Record<string, string> = {
  'Knowledge Graph': 'kg', 'Derive Scope': 'scope', 'Scope': 'scope', 'Persona': 'persona',
  'Persona Enrich': 'persona', 'Relationships': 'relationships', 'Learning Goals': 'goals',
  };
 
  function _trainStepGlyph(status: string): string {
- if (status === 'done') return '✓';
+ if (status === 'done') return 'OK';
  if (status === 'skipped') return '⊘';
  if (status === 'running') return '●';
- if (status === 'failed') return '✗';
+ if (status === 'failed') return 'x';
  return '○'; // queued
  }
  function _fmtElapsed(ms?: number): string {
@@ -6002,8 +6002,8 @@ function signUserJWT($user) {
  // confusing "ML Models ⊘" badge. There is no machine-learning step. 2026-06-09.
  const _rawSteps = Array.isArray(d.steps) ? d.steps : [];
  const newSteps = _rawSteps.filter((s: any) => {
-   const n = String(s?.name || s?.step || '').toLowerCase().replace(/\s+/g, '_');
-   return n !== 'ml' && n !== 'ml_auto_create' && n !== 'ml_models';
+ const n = String(s?.name || s?.step || '').toLowerCase().replace(/\s+/g, '_');
+ return n !== 'ml' && n !== 'ml_auto_create' && n !== 'ml_models';
  });
  // Reset step log dedup on new run
  if (trainStepsRunId !== prevRunId) _cliLoggedSteps.clear();
@@ -6012,7 +6012,7 @@ function signUserJWT($user) {
  const key = `${trainStepsRunId}|${s.name || s.step}|${s.status}`;
  if (s.status && !_cliLoggedSteps.has(key)) {
  _cliLoggedSteps.add(key);
- const glyph = s.status === 'done' ? '✓' : s.status === 'running' ? '▸' : s.status === 'failed' ? '✗' : s.status === 'skipped' ? '⊘' : '○';
+ const glyph = s.status === 'done' ? 'OK' : s.status === 'running' ? '▸' : s.status === 'failed' ? 'x' : s.status === 'skipped' ? '⊘' : '○';
  const elapsed = s.elapsed_ms ? ` ${Math.round(s.elapsed_ms)}ms` : '';
  cLog(`${ts()} ${glyph} ${s.name || s.step}${elapsed}${s.status === 'failed' && s.error ? ` — ${s.error}` : ''}`);
  }
@@ -6048,68 +6048,68 @@ function signUserJWT($user) {
  }
 
  async function loadAutoTrainStatus() {
-  try {
-    const token = localStorage.getItem('dash_token') || '';
-    const r = await fetch(`/api/projects/${slug}/auto-train/status`, {
-      headers: { 'Authorization': `Bearer ${token}`, 'X-Scope-Id': slug }
-    });
-    if (!r.ok) return;
-    const d = await r.json();
+ try {
+ const token = localStorage.getItem('dash_token') || '';
+ const r = await fetch(`/api/projects/${slug}/auto-train/status`, {
+ headers: { 'Authorization': `Bearer ${token}`, 'X-Scope-Id': slug }
+ });
+ if (!r.ok) return;
+ const d = await r.json();
 
-    // Determine robot state from response
-    if (d.is_training || d.active_run) {
-      autoTrainStatus = 'training';
-      // Estimate progress from active run if possible
-      if (isTraining && trainStepsRunStatus === 'running') {
-        const done = trainSteps.filter((s: any) => s.status === 'done').length;
-        autoTrainProgress = done;
-      }
-      autoTrainMessage = d.active_run?.status === 'queued' ? 'Queued — waiting for worker…' : 'Training pipeline running…';
-    } else if (d.daemon?.last_check_result?.action === 'enqueued') {
-      autoTrainStatus = 'detected';
-      autoTrainMessage = 'Data change detected — training queued';
-    } else if (d.recent_runs?.[0]?.status === 'done') {
-      const lastRun = d.recent_runs[0];
-      if (lastRun.finished_at) {
-        const diff = Date.now() - _parseUtc(lastRun.finished_at);
-        const mins = Math.round(diff / 60000);
-        autoTrainLastTrained = mins < 60 ? `${mins}m ago` : `${Math.round(mins/60)}h ago`;
-      }
-      autoTrainStatus = isTraining ? 'training' : 'watching';
-      if (!isTraining) autoTrainMessage = 'Monitoring for changes';
-    } else if (!d.daemon?.enabled) {
-      autoTrainStatus = 'disabled';
-      autoTrainMessage = 'Auto-train paused';
-    } else {
-      autoTrainStatus = isTraining ? 'training' : 'watching';
-      autoTrainMessage = isTraining ? 'Training pipeline running…' : 'Monitoring for changes';
-    }
+ // Determine robot state from response
+ if (d.is_training || d.active_run) {
+ autoTrainStatus = 'training';
+ // Estimate progress from active run if possible
+ if (isTraining && trainStepsRunStatus === 'running') {
+ const done = trainSteps.filter((s: any) => s.status === 'done').length;
+ autoTrainProgress = done;
+ }
+ autoTrainMessage = d.active_run?.status === 'queued' ? 'Queued — waiting for worker…' : 'Training pipeline running…';
+ } else if (d.daemon?.last_check_result?.action === 'enqueued') {
+ autoTrainStatus = 'detected';
+ autoTrainMessage = 'Data change detected — training queued';
+ } else if (d.recent_runs?.[0]?.status === 'done') {
+ const lastRun = d.recent_runs[0];
+ if (lastRun.finished_at) {
+ const diff = Date.now() - _parseUtc(lastRun.finished_at);
+ const mins = Math.round(diff / 60000);
+ autoTrainLastTrained = mins < 60 ? `${mins}m ago` : `${Math.round(mins/60)}h ago`;
+ }
+ autoTrainStatus = isTraining ? 'training' : 'watching';
+ if (!isTraining) autoTrainMessage = 'Monitoring for changes';
+ } else if (!d.daemon?.enabled) {
+ autoTrainStatus = 'disabled';
+ autoTrainMessage = 'Auto-train paused';
+ } else {
+ autoTrainStatus = isTraining ? 'training' : 'watching';
+ autoTrainMessage = isTraining ? 'Training pipeline running…' : 'Monitoring for changes';
+ }
 
-    // Next check time from daemon
-    if (d.daemon?.poll_interval_s && d.daemon?.last_check_time) {
-      const nextMs = (d.daemon.last_check_time * 1000 + d.daemon.poll_interval_s * 1000) - Date.now();
-      if (nextMs > 0) {
-        const nextMins = Math.round(nextMs / 60000);
-        autoTrainNextCheck = nextMins <= 1 ? 'soon' : `in ${nextMins} min`;
-      }
-    }
-  } catch (e) {
-    // fail-soft — robot just shows watching
-  }
+ // Next check time from daemon
+ if (d.daemon?.poll_interval_s && d.daemon?.last_check_time) {
+ const nextMs = (d.daemon.last_check_time * 1000 + d.daemon.poll_interval_s * 1000) - Date.now();
+ if (nextMs > 0) {
+ const nextMins = Math.round(nextMs / 60000);
+ autoTrainNextCheck = nextMins <= 1 ? 'soon' : `in ${nextMins} min`;
+ }
+ }
+ } catch (e) {
+ // fail-soft — robot just shows watching
+ }
  }
 
  async function triggerTrainNow() {
-  try {
-    const token = localStorage.getItem('dash_token') || '';
-    await fetch(`/api/projects/${slug}/retrain`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'X-Scope-Id': slug }
-    });
-    autoTrainStatus = 'training';
-    autoTrainMessage = 'Training queued…';
-    // Also trigger the normal training UI flow
-    startTrainAll && startTrainAll();
-  } catch(e) {}
+ try {
+ const token = localStorage.getItem('dash_token') || '';
+ await fetch(`/api/projects/${slug}/retrain`, {
+ method: 'POST',
+ headers: { 'Authorization': `Bearer ${token}`, 'X-Scope-Id': slug }
+ });
+ autoTrainStatus = 'training';
+ autoTrainMessage = 'Training queued…';
+ // Also trigger the normal training UI flow
+ startTrainAll && startTrainAll();
+ } catch(e) {}
  }
 
  function cLog(text: string) {
@@ -6163,7 +6163,7 @@ function signUserJWT($user) {
  } finally {
  qualityLoading = false;
  }
- // No tables at all → fall straight through to normal train (doc-only project).
+ // No tables at all > fall straight through to normal train (doc-only project).
  if (qualityItems.length === 0) {
  showQualityReview = false;
  startTrainAll();
@@ -6587,7 +6587,7 @@ function signUserJWT($user) {
 
  // Log processing steps to CLI
  if (result?.processing_steps?.length) {
- if (result.agents_used?.length) cLog(`${ts()} │ agents: ${result.agents_used.join(' → ')}`);
+ if (result.agents_used?.length) cLog(`${ts()} │ agents: ${result.agents_used.join(' > ')}`);
  for (const step of result.processing_steps) {
  const icon = step.status === 'done' ? '' : step.status === 'warn' ? '' : '';
  cLog(`${ts()} │ ${icon} ${step.agent}: ${step.step} — ${step.detail}`);
@@ -6754,7 +6754,7 @@ function signUserJWT($user) {
         { id: 'knowledge', label: 'Files' },
       ]},
       { label: 'Brain', icon: 'brain', items: [
-        { id: 'brain-cortex', label: '🧠 Cortex' },
+        { id: 'brain-cortex', label: ' Cortex' },
         { id: 'brain-definitions', label: 'Definitions' },
         { id: 'brain-glossary', label: 'Glossary' },
         { id: 'brain-patterns', label: 'Patterns' },
@@ -6865,7 +6865,7 @@ function signUserJWT($user) {
       {#if canEdit}
         <button class="set-cta" disabled={isTraining} onclick={() => { if (!isTraining && confirm('Force-train ALL tables now? Re-runs the full pipeline (slow) and refreshes bilingual (EN+မြန်မာ) twins at the end.')) dsTrainAll(); }}><Icon name="zap" size={14} /> {isTraining ? 'Training…' : 'Force Train All'}</button>
       {/if}
-      <button class="set-ghost" onclick={() => { loadResourceRegistry(); loadRecentActivity(); }}>↻ Refresh</button>
+      <button class="set-ghost" onclick={() => { loadResourceRegistry(); loadRecentActivity(); }}>&gt; Refresh</button>
       <a class="set-ghost" href="{base}/project/{slug}" style="text-decoration: none;"><Icon name="message-circle" size={14} /> Chat</a>
     </div>
   </div>
@@ -7039,7 +7039,7 @@ function signUserJWT($user) {
             </button>
             <button onclick={runReconcile} disabled={agentTplReconciling}
               style="padding:5px 12px; background:var(--pw-ink); border:1px solid var(--pw-accent); color:var(--pw-accent); cursor:pointer; font-family:monospace; font-size:10px; font-weight:700; letter-spacing:0.05em;">
-              {agentTplReconciling ? 'RECONCILING…' : '↻ RECONCILE'}
+              {agentTplReconciling ? 'RECONCILING…' : '&gt; RECONCILE'}
             </button>
           {/if}
         </div>
@@ -7053,7 +7053,7 @@ function signUserJWT($user) {
           <div style="margin-top:14px; border-top:1px solid var(--pw-ink); padding-top:12px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
               <div style="font-size:11px; font-weight:900; letter-spacing:0.06em;"><Icon name="settings" size={14} /> AUTONOMOUS WORKFLOWS ({agentTplWorkflows.length})</div>
-              <button onclick={loadAgentTplInsights} style="padding:3px 10px; background:var(--pw-surface); border:1px solid var(--pw-dim); cursor:pointer; font-family:monospace; font-size:10px;">↻ REFRESH</button>
+              <button onclick={loadAgentTplInsights} style="padding:3px 10px; background:var(--pw-surface); border:1px solid var(--pw-dim); cursor:pointer; font-family:monospace; font-size:10px;">&gt; REFRESH</button>
             </div>
 
             {#if agentTplWorkflows.length === 0}
@@ -7090,7 +7090,7 @@ function signUserJWT($user) {
                             {#if w.status === 'active' && (!w.last_error)}
                               <button onclick={() => runWorkflowNow(w.id)} disabled={agentTplRunningWf === w.id}
                                 style="padding:2px 8px; background:var(--pw-accent); color:var(--pw-ink); border:1px solid var(--pw-ink); cursor:pointer; font-family:monospace; font-size:10px; font-weight:900;">
-                                {agentTplRunningWf === w.id ? '…' : '▶ RUN'}
+                                {agentTplRunningWf === w.id ? '…' : ' RUN'}
                               </button>
                               <button onclick={() => toggleWorkflow(w.id, true)} disabled={agentTplToggling === w.id}
                                 style="padding:2px 6px; background:var(--pw-surface); border:1px solid var(--pw-dim); cursor:pointer; font-family:monospace; font-size:10px; margin-left:3px;">
@@ -7099,7 +7099,7 @@ function signUserJWT($user) {
                             {:else if w.status === 'paused'}
                               <button onclick={() => toggleWorkflow(w.id, false)} disabled={agentTplToggling === w.id}
                                 style="padding:2px 8px; background:var(--pw-bg); color:var(--pw-ink); border:1px solid var(--pw-ink); cursor:pointer; font-family:monospace; font-size:10px;">
-                                {agentTplToggling === w.id ? '…' : '▶ RESUME'}
+                                {agentTplToggling === w.id ? '…' : ' RESUME'}
                               </button>
                             {:else}
                               <span style="font-size:10px; color:var(--pw-dim);">— bind columns first —</span>
@@ -7194,7 +7194,7 @@ function signUserJWT($user) {
     <section class="set-section">
       <div class="set-section-head">
         <h3 class="set-h3">Data tables</h3>
-        <button class="set-ghost" onclick={() => { activeTab = 'datasets'; }}>Manage →</button>
+        <button class="set-ghost" onclick={() => { activeTab = 'datasets'; }}>Manage &gt;</button>
       </div>
       {#if !detail?.tables || detail.tables.length === 0}
         <div class="set-empty">No tables yet. Drop files to get started.</div>
@@ -7226,7 +7226,7 @@ function signUserJWT($user) {
                 {@const health = t.health || (isTrained ? (qaCount > 0 ? 100 : 60) : 0)}
                 <tr>
                   <td style="font-weight: 700;">{t.name}</td>
-                  <td style="font-size: 11px; color: var(--pw-muted); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{t.source_file || ''}{t.source_detail ? ' → ' + t.source_detail : ''}{t.description ? ' — ' + t.description : ''}">
+                  <td style="font-size: 11px; color: var(--pw-muted); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{t.source_file || ''}{t.source_detail ? ' &gt; ' + t.source_detail : ''}{t.description ? ' — ' + t.description : ''}">
                     {#if t.source_file}
                       <span style="font-weight: 600; color: var(--pw-ink);">{t.source_file.split('.').pop()?.toUpperCase()}</span>
                       {#if t.source_detail}<span> {t.source_detail}</span>{/if}
@@ -7495,7 +7495,7 @@ function signUserJWT($user) {
               {key:'knowledge_index', label:'KNOWLEDGE'},
             ] as step}
               {@const done = trainingRuns[0]?.status === 'done' || (trainingRuns[0]?.steps_done ?? 0) >= 6}
-              <span class="cp-pipe-pill" class:cp-pipe-done={done} title={step.label}>{done ? '✓' : '○'}</span>
+              <span class="cp-pipe-pill" class:cp-pipe-done={done} title={step.label}>{done ? 'OK' : '○'}</span>
             {/each}
           </div>
           <button class="set-ghost" onclick={() => { loadResourceRegistry(); loadRecentActivity(); loadRecentChats(); loadTrainingRuns(); loadActivityMetrics(); loadTabCompletion(); loadSkillsSummary(); loadAntiPatternsSummary(); loadSqlStats(); loadSqlCacheStats(); }}>Refresh</button>
@@ -7526,7 +7526,7 @@ function signUserJWT($user) {
             <div class="set-trained-stat-head">Drift</div>
             <div class="set-trained-stat-row"><span>Alerts</span><b><span class="set-dot {_driftTotalCock === 0 ? 'trained' : 'warn'}"></span> {_driftTotalCock}</b></div>
             <div class="set-trained-stat-row"><span>Casted</span><b>{_castedCount}</b></div>
-            {#if _driftTotalCock > 0}<div style="margin-top: 8px;"><button class="set-ghost" onclick={openDriftDrawer}>Review →</button></div>{/if}
+            {#if _driftTotalCock > 0}<div style="margin-top: 8px;"><button class="set-ghost" onclick={openDriftDrawer}>Review &gt;</button></div>{/if}
           </div>
         </div>
       </section>
@@ -7578,14 +7578,14 @@ function signUserJWT($user) {
             <div class="set-trained-stat-row"><span>Knowledge files</span><b>{knowledgeFiles.length}</b></div>
             <div class="set-trained-stat-row"><span>KG triples</span><b>{_kgCount}</b></div>
             <div class="set-trained-stat-row"><span>Brain layers</span><b>{brainOk}/9</b></div>
-            <div style="margin-top: 8px;"><button class="set-ghost" onclick={() => { activeTab = 'knowledge'; }}>Open knowledge →</button></div>
+            <div style="margin-top: 8px;"><button class="set-ghost" onclick={() => { activeTab = 'knowledge'; }}>Open knowledge &gt;</button></div>
           </div>
           <div class="ds-card-flat">
             <div class="set-trained-stat-head">Agents</div>
             <div class="set-trained-stat-row"><span>Configured</span><b>{(project as any)?.agents_count ?? 41}</b></div>
             <div class="set-trained-stat-row"><span>Active workflows</span><b>{(agentTplWorkflows || []).filter((w: any) => w.status === 'active').length}</b></div>
             <div class="set-trained-stat-row"><span>Bindings</span><b>{(agentTplBindings || []).filter((b: any) => b.status === 'bound').length}/{(agentTplBindings || []).length}</b></div>
-            <div style="margin-top: 8px;"><button class="set-ghost" onclick={() => { activeTab = 'agents'; }}>Open agents →</button></div>
+            <div style="margin-top: 8px;"><button class="set-ghost" onclick={() => { activeTab = 'agents'; }}>Open agents &gt;</button></div>
           </div>
           <div class="ds-card-flat">
             <div class="set-trained-stat-head">Cost & quota</div>
@@ -7629,7 +7629,7 @@ function signUserJWT($user) {
                 <span class="set-activity-time">{c.updated_at ? formatRelTime(c.updated_at) : '—'}</span>
                 <span class="set-activity-msg" style="flex: 1;">{c.first_message ?? ((c.keywords||[]).join(' · ') || '(no preview)')}</span>
                 {#if c.score !== null && c.score !== undefined}<span style="font-size: 11px; color: var(--pw-muted);">{c.score}/5</span>{/if}
-                <a href="{base}/project/{slug}?session={c.session_id}" class="set-ghost" style="font-size: 11px;">Open →</a>
+                <a href="{base}/project/{slug}?session={c.session_id}" class="set-ghost" style="font-size: 11px;">Open &gt;</a>
               </div>
             {/each}
           </div>
@@ -7641,7 +7641,7 @@ function signUserJWT($user) {
     {#if activeTab === 'upload'}
     <input type="file" accept=".csv,.xlsx,.xls,.json,.sql,.md,.txt,.py,.pptx,.docx,.pdf,.jpg,.jpeg,.png,.tiff,.bmp,.gif,.webp,.parquet,.ods,.xml,.html,.htm,.zip,.eml" multiple onchange={(e) => { const files = (e.target as HTMLInputElement).files; if (files && files.length > 0) routeUpload(files); }} bind:this={fileInputEl} style="display: none;" />
 
-    <!-- Data Source: Overview → EDA → Quality, all stacked in one scroll (no sub-rail) -->
+    <!-- Data Source: Overview &gt; EDA &gt; Quality, all stacked in one scroll (no sub-rail) -->
     <div class="dsx-sechead">DATA SOURCE</div>
     <!-- ═══ HEALTH RINGS ═══ -->
     {#if true}
@@ -7660,17 +7660,17 @@ function signUserJWT($user) {
 
     {#if dsUploadOpen && canEdit}
       <button type="button" class="dsx-drop" ondragover={(e)=>{e.preventDefault();}} ondrop={(e)=>{e.preventDefault(); const fs=e.dataTransfer?.files; if(fs&&fs.length) routeUpload(fs);}} onclick={() => fileInputEl?.click()}>▸ drag files here · csv xlsx json pdf docx pptx png · or browse</button>
-      {#if dsUploadMsg}<div class="dsx-upmsg" class:dsx-upmsg-err={dsUploadMsg.startsWith('✗')}>{dsUploadMsg}</div>{/if}
+      {#if dsUploadMsg}<div class="dsx-upmsg" class:dsx-upmsg-err={dsUploadMsg.startsWith('x')}>{dsUploadMsg}</div>{/if}
     {/if}
 
     <!-- TRAINING PIPELINE moved to the Dashboard (overview) — see project/[slug]/overview -->
-    {#if isTraining}<div class="dsx-trainmsg">⟳ training… — live pipeline on the Dashboard</div>{/if}
+    {#if isTraining}<div class="dsx-trainmsg">&gt; training… — live pipeline on the Dashboard</div>{/if}
 
     <!-- ═══ TABLE ORIGINS — uploaded vs AI-created vs derived ═══ -->
     {#if dsData?.tables?.length}
     {@const _byO = (o) => (dsData.tables || []).filter((x) => (x.origin || 'uploaded') === o)}
     <div class="dsx-origins">
-      {#each [{k:'uploaded',icon:'📤',label:'Uploaded',hint:'source files you uploaded'},{k:'ai',icon:'🤖',label:'AI-created',hint:'generated by the LLM'},{k:'derived',icon:'⚙️',label:'Derived',hint:'built by the pipeline (pre-joined)'}] as g}
+      {#each [{k:'uploaded',icon:'',label:'Uploaded',hint:'source files you uploaded'},{k:'ai',icon:'',label:'AI-created',hint:'generated by the LLM'},{k:'derived',icon:'',label:'Derived',hint:'built by the pipeline (pre-joined)'}] as g}
         {@const list = _byO(g.k)}
         <div class="dsx-ocard">
           <div class="dsx-ocard-h"><span class="dsx-orig dsx-orig-{g.k}">{g.icon} {g.label}</span><span class="dsx-ocount">{list.length}</span></div>
@@ -7696,7 +7696,7 @@ function signUserJWT($user) {
       <div class="dsx-tb-sp"></div>
       <button class="dsx-btn" onclick={dsExpandAll}>⊕ expand all</button>
       <button class="dsx-btn" onclick={dsCollapseAll}>⊖ collapse all</button>
-      {#if canEdit}<button class="dsx-btn" onclick={dsTrainAll}>↻ retrain all</button>{/if}
+      {#if canEdit}<button class="dsx-btn" onclick={dsTrainAll}>&gt; retrain all</button>{/if}
       <select class="dsx-sortsel" bind:value={dsSort}>
         <option value="health">sort: health</option>
         <option value="rows">sort: rows</option>
@@ -7715,11 +7715,11 @@ function signUserJWT($user) {
         {@const training = dsTrainingTables[t.name] || (dsData?.summary?.is_training)}
         {@const om = dsOriginMeta(t.origin || 'uploaded')}
         <div class="dsx-row dsx-rowclk" onclick={() => dsToggle(t.name)}>
-          <span class="dsx-tname">{dsIsOpen(t.name) ? '▾' : '▸'} {t.name}{#if training}<span class="dsx-spin">⟳</span>{/if}</span>
+          <span class="dsx-tname">{dsIsOpen(t.name) ? '▾' : '▸'} {t.name}{#if training}<span class="dsx-spin">&gt;</span>{/if}</span>
           <span><span class="dsx-orig {om.cls}" title={om.label}>{om.icon} {om.label}</span></span>
           <span>{(t.rows||0).toLocaleString()}</span>
           <span>{t.cols}</span>
-          <span>{#if t.trained}<span class="dsx-ok">✓</span>{:else}<span class="dsx-no">○</span>{/if}</span>
+          <span>{#if t.trained}<span class="dsx-ok">OK</span>{:else}<span class="dsx-no">○</span>{/if}</span>
           <span>{t.qa_count||0}</span>
           <span>{t.vec ?? '—'}</span>
           <span><span class="dsx-health" class:dsx-health-lo={(q.score??0)<80}>{q.score??0}%</span></span>
@@ -7733,11 +7733,11 @@ function signUserJWT($user) {
                 <div class="dsx-qbar"><span>Validity</span><div class="dsx-qtrk"><div class="dsx-qfill" style="width:{q.validity??0}%"></div></div><i>{q.validity??0}%</i></div>
                 <div class="dsx-qbar"><span>Uniqueness</span><div class="dsx-qtrk"><div class="dsx-qfill" style="width:{q.uniqueness??0}%"></div></div><i>{q.uniqueness??0}%</i></div>
               </div>
-              {#if Array.isArray(q.notes) && q.notes.length}<div class="dsx-notes">⚠ {q.notes.join(' · ')}</div>{/if}
+              {#if Array.isArray(q.notes) && q.notes.length}<div class="dsx-notes"> {q.notes.join(' · ')}</div>{/if}
             </div>
             <div class="dsx-dsec"><b>COLUMNS</b> {#each (t.columns||[]) as c}<span class="dsx-col">{c.name}<i>{c.type}</i></span>{/each}</div>
             {#if Array.isArray(t.links) && t.links.length}
-              <div class="dsx-dsec"><b>LINKS</b> {#each t.links as l}<span class="dsx-link">🔗 {l.table} · {Array.isArray(l.on)?l.on.join(','):''}</span>{/each}</div>
+              <div class="dsx-dsec"><b>LINKS</b> {#each t.links as l}<span class="dsx-link"> {l.table} · {Array.isArray(l.on)?l.on.join(','):''}</span>{/each}</div>
             {/if}
             {#if Array.isArray(t.preview) && t.preview.length}
               <div class="dsx-dsec"><b>PREVIEW</b>
@@ -7746,9 +7746,9 @@ function signUserJWT($user) {
             {/if}
             {#if canEdit}
             <div class="dsx-dacts">
-              <button class="dsx-btn" onclick={(e)=>{e.stopPropagation(); dsTrainTables([t.name]);}}>↻ {t.trained ? 'retrain' : 'train now'}</button>
-              <a class="dsx-btn" href={`/api/projects/${slug}/tables/${t.name}/download?format=csv&project=${slug}`} onclick={(e)=>e.stopPropagation()}>↓ download</a>
-              <button class="dsx-btn dsx-btn-danger" onclick={(e)=>{e.stopPropagation(); dsDeleteTable(t.name);}}>✕ delete</button>
+              <button class="dsx-btn" onclick={(e)=>{e.stopPropagation(); dsTrainTables([t.name]);}}>&gt; {t.trained ? 'retrain' : 'train now'}</button>
+              <a class="dsx-btn" href={`/api/projects/${slug}/tables/${t.name}/download?format=csv&project=${slug}`} onclick={(e)=>e.stopPropagation()}>v download</a>
+              <button class="dsx-btn dsx-btn-danger" onclick={(e)=>{e.stopPropagation(); dsDeleteTable(t.name);}}>x delete</button>
             </div>
             {/if}
           </div>
@@ -7796,14 +7796,14 @@ function signUserJWT($user) {
       {#each Object.entries(gapData.gaps || {}) as [f, n]}
         <div class="gap-ring" class:gap-clin={CLINICAL.includes(f)}>
           <div class="gap-ring-n">{Number(n).toLocaleString()}</div>
-          <div class="gap-ring-l">{f}{#if CLINICAL.includes(f)} ⚕{/if}</div>
+          <div class="gap-ring-l">{f}{#if CLINICAL.includes(f)} {/if}</div>
         </div>
       {/each}
     </div>
     {#if canEdit}
     <div class="dsx-tb">
-      <button class="dsx-btn" disabled={gapBusy} onclick={() => gapRun(50)}>⚙ suggest 50</button>
-      <button class="dsx-btn" disabled={gapBusy} onclick={() => gapRun(200)}>⚙ suggest 200</button>
+      <button class="dsx-btn" disabled={gapBusy} onclick={() => gapRun(50)}> suggest 50</button>
+      <button class="dsx-btn" disabled={gapBusy} onclick={() => gapRun(200)}> suggest 200</button>
       <div class="dsx-tb-sp"></div>
       {#if gapMsg}<span class="gap-msg">{gapMsg}</span>{/if}
     </div>
@@ -7815,16 +7815,16 @@ function signUserJWT($user) {
       {#each gapSugs as s (s.id)}
         <div class="dsx-row gap-row">
           <span class="dsx-tname">{s.article_code}</span>
-          <span>{s.field}{#if CLINICAL.includes(s.field)}<span class="gap-clin-tag">⚕ clinical</span>{/if}</span>
+          <span>{s.field}{#if CLINICAL.includes(s.field)}<span class="gap-clin-tag"> clinical</span>{/if}</span>
           <span class="gap-sug" title={s.reason || ''}>{s.suggested_value}</span>
           <span><span class="gap-conf" class:gap-conf-lo={(s.confidence??0)<0.6}>{Math.round((s.confidence??0)*100)}%</span></span>
           <span class="gap-acts">
-            <button class="gap-ok" onclick={() => gapDecide([s.id],'approved')}>✓</button>
-            <button class="gap-no" onclick={() => gapDecide([s.id],'rejected')}>✕</button>
+            <button class="gap-ok" onclick={() => gapDecide([s.id],'approved')}>OK</button>
+            <button class="gap-no" onclick={() => gapDecide([s.id],'rejected')}>x</button>
           </span>
         </div>
       {/each}
-      {#if !gapSugs.length}<div class="dsx-empty">no pending suggestions — run ⚙ suggest to generate</div>{/if}
+      {#if !gapSugs.length}<div class="dsx-empty">no pending suggestions — run  suggest to generate</div>{/if}
     </div>
     {/if}
 
@@ -7838,7 +7838,7 @@ function signUserJWT($user) {
       <div class="dsx-tb-sp"></div>
       <button class="dsx-btn" onclick={edaExpandAll}>⊕ expand all</button>
       <button class="dsx-btn" onclick={edaCollapseAll}>⊖ collapse all</button>
-      <button class="dsx-btn" disabled={edaAllLoading} onclick={loadEdaAll}>{edaAllLoading ? '◐ scanning…' : '↻ rescan all'}</button>
+      <button class="dsx-btn" disabled={edaAllLoading} onclick={loadEdaAll}>{edaAllLoading ? '◐ scanning…' : '-&gt; rescan all'}</button>
     </div>
 
     {@const _agg = edaAgg}
@@ -7850,7 +7850,7 @@ function signUserJWT($user) {
       <div class="eda-ov-k"><b>{_agg.dim}</b><span>▦ dimensions</span></div>
       <div class="eda-ov-k"><b>{_agg.num}</b><span>∑ measures</span></div>
       <div class="eda-ov-k"><b>{_agg.id}</b><span># identifiers</span></div>
-      <div class="eda-ov-k" class:eda-ov-warn={_agg.nullcols>0}><b>{_agg.nullcols}</b><span>⚠ cols w/ nulls</span></div>
+      <div class="eda-ov-k" class:eda-ov-warn={_agg.nullcols>0}><b>{_agg.nullcols}</b><span> cols w/ nulls</span></div>
     </div>
 
     {#if _names.length}
@@ -7872,7 +7872,7 @@ function signUserJWT($user) {
         {@const _rc = edaRoleCountsFor(ed)}
         <div id={`eda-t-${tn}`} class="eda-sect">
           <div class="eda-sect-h">
-            <span class="eda-sect-name">⛁ {tn}</span>
+            <span class="eda-sect-name"> {tn}</span>
             <span class="eda-sect-meta">{(ed?.rows||0).toLocaleString()} rows · {(ed?.columns||[]).length} cols{#if ed?.dup_rows} · {ed.dup_rows.toLocaleString()} dup{/if} · ▦{_rc.dim} ∑{_rc.num} #{_rc.id}{#if (ed?.rows||0) > 50000} · <i title="profiled over a 20k-row sample">sampled 20k</i>{/if}</span>
           </div>
           {#if !ed || !(ed.columns||[]).length}
@@ -7957,7 +7957,7 @@ function signUserJWT($user) {
       <span class="dsx-eda-title">Issues</span>
       <div class="dsx-tb-sp"></div>
       {#if dqData?.last_scanned}<span class="dsx-eda-meta">last scan {new Date(dqData.last_scanned).toLocaleTimeString()}</span>{/if}
-      <button class="dsx-btn" disabled={dqRescanning} onclick={rescanDataQuality}>{dqRescanning ? '◐ scanning…' : '⟳ rescan'}</button>
+      <button class="dsx-btn" disabled={dqRescanning} onclick={rescanDataQuality}>{dqRescanning ? '◐ scanning…' : '-&gt; rescan'}</button>
     </div>
 
     {#if dqLoading && !dqData}
@@ -7969,7 +7969,7 @@ function signUserJWT($user) {
       <!-- blocking banner: unrecoverable data that breaks the product -->
       {#if _blockers.length}
         <div class="dq-blocker">
-          <div class="dq-blocker-h">⛔ {_blockers.length} blocking data issue{_blockers.length>1?'s':''} — answers will be wrong until fixed at source</div>
+          <div class="dq-blocker-h"> {_blockers.length} blocking data issue{_blockers.length>1?'s':''} — answers will be wrong until fixed at source</div>
           {#each _blockers as b}
             <div class="dq-blocker-row"><code>{b.table}{#if b.column}.{b.column}{/if}</code> — {dqTypeLabel(b.type).toLowerCase()}: must re-export from the source system (cannot be fixed in-place).</div>
           {/each}
@@ -8018,7 +8018,7 @@ function signUserJWT($user) {
                   <span class="dq-type">{dqTypeLabel(it.type)}</span>
                   <span class="dq-loc">{it.table}{#if it.column} · <b>{it.column}</b>{/if}</span>
                   <span class="dq-spacer"></span>
-                  {#if it.recoverable === false}<span class="dq-deadtag">⛔ unrecoverable</span>{/if}
+                  {#if it.recoverable === false}<span class="dq-deadtag"> unrecoverable</span>{/if}
                   {#if it.count}<span class="dq-count">{it.count > 100 ? it.count.toLocaleString() : it.count}{it.type==='high_null_pct'?'% null':(it.total_rows?` / ${it.total_rows.toLocaleString()}`:'')}</span>{/if}
                   {#if _muted}<span class="dq-mutedtag">muted</span>{/if}
                 </button>
@@ -8029,7 +8029,7 @@ function signUserJWT($user) {
                       <div class="dq-row"><span class="dq-rk">ROOT CAUSE</span><span class="dq-rootcause">{it.root_cause}</span></div>
                     {/if}
                     {#if it.recoverable === false}
-                      <div class="dq-deadbanner">⛔ Data is unrecoverable from this file — must re-export from the source system.</div>
+                      <div class="dq-deadbanner"> Data is unrecoverable from this file — must re-export from the source system.</div>
                     {/if}
                     {#if it.total_rows}
                       <div class="dq-row"><span class="dq-rk">AFFECTED</span><span>{(it.count||0).toLocaleString()} / {it.total_rows.toLocaleString()} rows{#if it.total_rows && it.type!=='high_null_pct'} ({Math.min(100,Math.round(100*(it.count||0)/it.total_rows))}%){/if}</span></div>
@@ -8041,15 +8041,15 @@ function signUserJWT($user) {
                       <div class="dq-row"><span class="dq-rk">IMPACT</span><span class="dq-impact">{it.impact}</span></div>
                     {/if}
                     {#if it.suggestion}
-                      <div class="dq-row dq-fix"><span class="dq-rk">⮑ FIX</span><span>{it.suggestion}</span></div>
+                      <div class="dq-row dq-fix"><span class="dq-rk">&gt; FIX</span><span>{it.suggestion}</span></div>
                     {/if}
                     <div class="dq-acts">
                       {#if it.type === 'low_codex_confidence' || it.type === 'opaque_columns'}
-                        <button class="dsx-btn dsx-btn-fix" disabled={isTraining} onclick={() => { if (!isTraining) dsTrainAll(); }}>▶ {isTraining ? 'training…' : 'Train all (fix)'}</button>
+                        <button class="dsx-btn dsx-btn-fix" disabled={isTraining} onclick={() => { if (!isTraining) dsTrainAll(); }}> {isTraining ? 'training…' : 'Train all (fix)'}</button>
                       {/if}
-                      <button class="dsx-btn" onclick={() => dqOpenTable(it.table)}>open table →</button>
+                      <button class="dsx-btn" onclick={() => dqOpenTable(it.table)}>open table &gt;</button>
                       {#if it.column}<button class="dsx-btn" onclick={() => dqOpenEda(it)}>open in Exploratory</button>{/if}
-                      <button class="dsx-btn" onclick={dqReupload}>{it.recoverable === false ? '↑ upload re-exported file' : '↑ re-upload'}</button>
+                      <button class="dsx-btn" onclick={dqReupload}>{it.recoverable === false ? '^ upload re-exported file' : '^ re-upload'}</button>
                       <button class="dsx-btn" onclick={() => dqToggleMute(it)}>{_muted ? 'unmute' : 'mute'}</button>
                     </div>
                   </div>
@@ -8059,7 +8059,7 @@ function signUserJWT($user) {
           </div>
         {/each}
       {:else}
-        <div class="dsx-empty">{_active === 0 && dqData.issue_count ? 'all issues muted — toggle “show muted”' : 'no issues — all tables pass quality checks ✓'}</div>
+        <div class="dsx-empty">{_active === 0 && dqData.issue_count ? 'all issues muted — toggle “show muted”' : 'no issues — all tables pass quality checks OK'}</div>
       {/if}
 
       <!-- by-type footer -->
@@ -8067,7 +8067,7 @@ function signUserJWT($user) {
         <div class="dq-bytype">BY TYPE&nbsp; {#each Object.entries(dqData.by_type) as [ty, n], i}{#if i}· {/if}{dqTypeLabel(ty).toLowerCase()} {n} {/each}</div>
       {/if}
     {:else}
-      <div class="dsx-empty">no scan yet — press ⟳ rescan</div>
+      <div class="dsx-empty">no scan yet — press &gt; rescan</div>
     {/if}
 
     {/if}<!-- end DATA QUALITY tab -->
@@ -8118,11 +8118,11 @@ function signUserJWT($user) {
                   {#if data.content.table_purpose}<div class="codex-row"><span class="codex-lbl">PURPOSE</span><span class="codex-val">{data.content.table_purpose}</span></div>{/if}
                   {#if data.content.grain}<div class="codex-row"><span class="codex-lbl">GRAIN</span><span class="codex-val">{data.content.grain}</span></div>{/if}
                   {#if Array.isArray(data.content.primary_keys) && data.content.primary_keys.length}<div class="codex-row"><span class="codex-lbl">PRIMARY KEYS</span><span class="codex-val">{data.content.primary_keys.join(', ')}</span></div>{/if}
-                  {#if Array.isArray(data.content.foreign_keys) && data.content.foreign_keys.length}<div class="codex-row"><span class="codex-lbl">FOREIGN KEYS</span><span class="codex-val">{data.content.foreign_keys.map((fk: any) => typeof fk === 'string' ? fk : `${fk.column || fk.from || ''} → ${fk.references || fk.to || ''}`).join(', ')}</span></div>{/if}
+                  {#if Array.isArray(data.content.foreign_keys) && data.content.foreign_keys.length}<div class="codex-row"><span class="codex-lbl">FOREIGN KEYS</span><span class="codex-val">{data.content.foreign_keys.map((fk: any) => typeof fk === 'string' ? fk : `${fk.column || fk.from || ''} &gt; ${fk.references || fk.to || ''}`).join(', ')}</span></div>{/if}
                   {#if Array.isArray(data.content.usage_patterns) && data.content.usage_patterns.length}<div class="codex-row"><span class="codex-lbl">USAGE PATTERNS</span><span class="codex-val">{data.content.usage_patterns.join('; ')}</span></div>{/if}
                   {#if data.content.freshness || data.content.refresh_cadence}<div class="codex-row"><span class="codex-lbl">FRESHNESS</span><span class="codex-val">{data.content.freshness || data.content.refresh_cadence}</span></div>{/if}
                   {#if Array.isArray(data.content.alternate_tables) && data.content.alternate_tables.length}<div class="codex-row"><span class="codex-lbl">ALTERNATE TABLES</span><span class="codex-val">{data.content.alternate_tables.join(', ')}</span></div>{/if}
-                  {#if Array.isArray(data.content.relationships) && data.content.relationships.length}<div class="codex-row"><span class="codex-lbl">RELATIONSHIPS</span><span class="codex-val">{data.content.relationships.map((r: any) => typeof r === 'string' ? r : `${r.from || r.source || ''} → ${r.to || r.target || ''}`).join(', ')}</span></div>{/if}
+                  {#if Array.isArray(data.content.relationships) && data.content.relationships.length}<div class="codex-row"><span class="codex-lbl">RELATIONSHIPS</span><span class="codex-val">{data.content.relationships.map((r: any) => typeof r === 'string' ? r : `${r.from || r.source || ''} &gt; ${r.to || r.target || ''}`).join(', ')}</span></div>{/if}
                 </div>
               {/if}
               {#if data.content.table_columns?.length}
@@ -8361,7 +8361,7 @@ function signUserJWT($user) {
     <details class="ds-card-flat" style="margin-bottom: 16px; padding: 12px 14px;" open={_qaDropTotal > 0}>
       <summary style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pw-ink);">
         <span>Q&amp;A Validation <span style="color: var(--pw-muted); font-weight: 400; letter-spacing: 0; text-transform: none;">({_qaDropTotal} dropped, last 30d)</span></span>
-        <button class="set-ghost" style="font-size: 10px;" onclick={(e) => { e.preventDefault(); e.stopPropagation(); loadQaDrops(); }}>↻ Refresh</button>
+        <button class="set-ghost" style="font-size: 10px;" onclick={(e) => { e.preventDefault(); e.stopPropagation(); loadQaDrops(); }}><Icon name="refresh" size={16} /> Refresh</button>
       </summary>
       <div style="margin-top: 10px;">
         {#if (qaDrops || []).length === 0}
@@ -8434,7 +8434,7 @@ function signUserJWT($user) {
               <span style="font-size:10px; font-weight:700; color:var(--pw-ink); letter-spacing:0.04em;">{st.label}</span>
               <button onclick={() => runStep(st.id, st.id === 'goals')} disabled={!!stepRunning}
                 style="padding:3px 10px; background:{isRunning ? 'var(--pw-dim)' : 'var(--pw-success)'}; color:var(--pw-surface); border:none; cursor:{stepRunning ? 'not-allowed' : 'pointer'}; font-family:inherit; font-size: 11px; font-weight:700;">
-                {isRunning ? 'RUNNING…' : '▶ RUN'}
+                {isRunning ? 'RUNNING…' : ' RUN'}
               </button>
             </div>
             <div style="font-size: 11px; color:var(--pw-muted); line-height:1.4;">{st.desc}</div>
@@ -8555,11 +8555,11 @@ function signUserJWT($user) {
             <div class="flex items-center justify-between">
               {#if p.question_my}
                 <div style="font-size: 11px; font-weight: 900; color: var(--pw-accent); display: flex; flex-direction: column; gap: 3px;">
-                  <span style="display: flex; align-items: baseline; gap: 6px;"><span class="bi-badge">1</span><span>Q: {p.question ?? ((p.keywords||[]).join(' · ') || '🔒 hidden')}</span></span>
+                  <span style="display: flex; align-items: baseline; gap: 6px;"><span class="bi-badge">1</span><span>Q: {p.question ?? ((p.keywords||[]).join(' · ') || ' hidden')}</span></span>
                   <span style="display: flex; align-items: baseline; gap: 6px;"><span class="bi-badge">2</span><span lang="my" style="color: var(--pw-muted); font-weight: 700;">{p.question_my ?? ''}</span></span>
                 </div>
               {:else}
-                <div style="font-size: 11px; font-weight: 900; color: var(--pw-accent);">Q: {p.question ?? ((p.keywords||[]).join(' · ') || '🔒 hidden')}</div>
+                <div style="font-size: 11px; font-weight: 900; color: var(--pw-accent);">Q: {p.question ?? ((p.keywords||[]).join(' · ') || ' hidden')}</div>
               {/if}
               <span style="font-size: 11px; color: var(--pw-muted);">used {p.uses}x</span>
             </div>
@@ -8577,7 +8577,7 @@ function signUserJWT($user) {
           <div class="ink-border" style="background: var(--pw-surface); padding: 10px 14px; border-left: 3px solid {f.rating === 'up' ? 'var(--pw-accent)' : 'var(--pw-error)'};">
             <div class="flex items-center gap-2">
               <span style="font-size: 13px;">{f.rating === 'up' ? '' : ''}</span>
-              <div style="font-size: 11px; font-weight: 700;">Q: {f.question ?? ((f.keywords||[]).join(' · ') || '🔒 hidden')}</div>
+              <div style="font-size: 11px; font-weight: 700;">Q: {f.question ?? ((f.keywords||[]).join(' · ') || ' hidden')}</div>
             </div>
             {#if f.answer}<div style="font-size: 10px; color: var(--pw-muted); margin-top: 2px;">{f.answer?.slice(0, 150)}...</div>{/if}
           </div>
@@ -8697,7 +8697,7 @@ function signUserJWT($user) {
         try {
           const r = await fetch(`/api/projects/${slug}/consolidate-knowledge`, { method: 'POST', headers: _h() });
           const d = await r.json();
-          if (d.status === 'ok') { cLog(`${ts()} │ ${d.archived} memories → ${d.consolidated} insights`); loadConsolidationStatus(); loadBrainData(); }
+          if (d.status === 'ok') { cLog(`${ts()} │ ${d.archived} memories &gt; ${d.consolidated} insights`); loadConsolidationStatus(); loadBrainData(); }
           else cLog(`${ts()} │ ${d.detail || 'failed'}`);
         } catch {} finally { consolidating = false; }
       }}>{consolidating ? 'CONSOLIDATING...' : 'CONSOLIDATE'}</button>
@@ -8745,7 +8745,7 @@ function signUserJWT($user) {
                       }
                     } catch { alert('Failed to extract workflow'); }
                     docToWorkflowLoading = null;
-                  }}>{docToWorkflowLoading === d.name ? 'EXTRACTING...' : '→ WORKFLOW'}</button>
+                  }}>{docToWorkflowLoading === d.name ? 'EXTRACTING...' : '&gt; WORKFLOW'}</button>
               {/if}
             {/if}
             <span style="color: var(--pw-muted); font-size: 10px;">{(d.size / 1024).toFixed(1)} KB</span>
@@ -8999,7 +8999,7 @@ function signUserJWT($user) {
                     <td style="padding:4px 6px; text-align:right; color:{scoreColor(p.confidence)}; font-weight:700;">{p.confidence}%</td>
                     <td style="padding:4px 6px; text-align:right; color:var(--pw-dim);">{p.shadow_pass_rate ? Number(p.shadow_pass_rate).toFixed(0) + '%' : '—'}</td>
                     <td style="padding:4px 6px; text-align:right; color:var(--pw-dim);">
-                      {#if p.score_before !== null}{Number(p.score_before).toFixed(0)}{p.score_after !== null ? '→' + Number(p.score_after).toFixed(0) : ''}{:else}—{/if}
+                      {#if p.score_before !== null}{Number(p.score_before).toFixed(0)}{p.score_after !== null ? '&gt;' + Number(p.score_after).toFixed(0) : ''}{:else}—{/if}
                     </td>
                     <td style="padding:4px 6px; color:var(--pw-dim); max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{(p.reason || '').slice(0,80)}</td>
                     <td style="padding:4px 6px; text-align:right;">
@@ -9108,13 +9108,13 @@ function signUserJWT($user) {
                                 <span class="cli-dim" style="margin-left:6px;">shadow {Number(p.shadow_pass_rate).toFixed(0)}%</span>
                               {/if}
                               {#if p.score_before !== null}
-                                <span class="cli-dim" style="margin-left:6px;">{Number(p.score_before).toFixed(0)}{p.score_after !== null ? '→' + Number(p.score_after).toFixed(0) : '→…'}</span>
+                                <span class="cli-dim" style="margin-left:6px;">{Number(p.score_before).toFixed(0)}{p.score_after !== null ? '&gt;' + Number(p.score_after).toFixed(0) : '&gt;…'}</span>
                               {/if}
                               {#if p.reason}
                                 <div style="color:var(--pw-dim); font-size: 11px; margin-top:2px; line-height:1.3;">{(p.reason || '').slice(0,120)}</div>
                               {/if}
                               {#if p.revert_reason}
-                                <div style="color:var(--pw-error); font-size: 11px; margin-top:2px;">↺ {p.revert_reason}</div>
+                                <div style="color:var(--pw-error); font-size: 11px; margin-top:2px;"><Icon name="refresh" size={16} /> {p.revert_reason}</div>
                               {/if}
                             </div>
                           {/each}
@@ -9193,7 +9193,7 @@ function signUserJWT($user) {
 <span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">drug_relationships</span>   <span style="color: #666;">relations</span>       <span style="color: #e8e3d6;">│</span>
 <span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">drug_profile</span>         <span style="color: #666;">comp/ind/dose</span>   <span style="color: #e8e3d6;">│</span>
 <span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">substitutes</span>          <span style="color: #666;">by generic</span>      <span style="color: #e8e3d6;">│</span>
-<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">indication_search</span>    <span style="color: #666;">symptom→drug</span>    <span style="color: #e8e3d6;">│</span>
+<span style="color: #e8e3d6;">  │</span> <span style="color: #f9a374;">indication_search</span>    <span style="color: #666;">symptom<Icon name="arrow-right" size={16} />drug</span>    <span style="color: #e8e3d6;">│</span>
 <span style="color: #e8e3d6;">  └─────────────────────────────────────┘</span>
 
 <span style="color: #e8e3d6;">  ┌─────────────────────────────────────┐</span>
@@ -9224,17 +9224,17 @@ function signUserJWT($user) {
 <span style="color: #666;">║</span>                                                                       <span style="color: #666;">║</span>
 <span style="color: #666;">║</span>  <span style="color: #888;">[chat ends]</span>                                                          <span style="color: #666;">║</span>
 <span style="color: #666;">║</span>      <span style="color: #555;">│</span>                                                                <span style="color: #666;">║</span>
-<span style="color: #666;">║</span>      <span style="color: #555;">├─▶</span> <span style="color: #a78bfa;">Judge</span> .............. quality 1-5 score                       <span style="color: #666;">║</span>
-<span style="color: #666;">║</span>      <span style="color: #555;">├─▶</span> <span style="color: #a78bfa;">Rule Suggester</span> ..... extract business rules                  <span style="color: #666;">║</span>
-<span style="color: #666;">║</span>      <span style="color: #555;">├─▶</span> <span style="color: #a78bfa;">Proactive Insights</span> . anomaly detect                          <span style="color: #666;">║</span>
-<span style="color: #666;">║</span>      <span style="color: #555;">├─▶</span> <span style="color: #a78bfa;">Query Plan</span> ......... save SQL joins/filters                  <span style="color: #666;">║</span>
-<span style="color: #666;">║</span>      <span style="color: #555;">├─▶</span> <span style="color: #a78bfa;">Meta Learner</span> ....... self-correction strategies              <span style="color: #666;">║</span>
-<span style="color: #666;">║</span>      <span style="color: #555;">├─▶</span> <span style="color: #a78bfa;">Auto Evolver</span> ....... every 20 chats → new instructions       <span style="color: #666;">║</span>
-<span style="color: #666;">║</span>      <span style="color: #555;">├─▶</span> <span style="color: #a78bfa;">Chat Triple Extr</span> ... SPO triples → KG                        <span style="color: #666;">║</span>
-<span style="color: #666;">║</span>      <span style="color: #555;">├─▶</span> <span style="color: #a78bfa;">Auto-Memory</span> ........ facts → dash_memories                   <span style="color: #666;">║</span>
-<span style="color: #666;">║</span>      <span style="color: #555;">├─▶</span> <span style="color: #a78bfa;">User Pref Tracker</span> .. chart prefs, style                      <span style="color: #666;">║</span>
-<span style="color: #666;">║</span>      <span style="color: #555;">├─▶</span> <span style="color: #a78bfa;">Episodic Memory</span> .... reactions, surprises                    <span style="color: #666;">║</span>
-<span style="color: #666;">║</span>      <span style="color: #555;">└─▶</span> <span style="color: #a78bfa;">Follow-up Suggest</span> .. KG-aware next questions                 <span style="color: #666;">║</span>
+<span style="color: #666;">║</span>      <span style="color: #555;">├─<Icon name="play" size={16} /></span> <span style="color: #a78bfa;">Judge</span> .............. quality 1-5 score                       <span style="color: #666;">║</span>
+<span style="color: #666;">║</span>      <span style="color: #555;">├─<Icon name="play" size={16} /></span> <span style="color: #a78bfa;">Rule Suggester</span> ..... extract business rules                  <span style="color: #666;">║</span>
+<span style="color: #666;">║</span>      <span style="color: #555;">├─<Icon name="play" size={16} /></span> <span style="color: #a78bfa;">Proactive Insights</span> . anomaly detect                          <span style="color: #666;">║</span>
+<span style="color: #666;">║</span>      <span style="color: #555;">├─<Icon name="play" size={16} /></span> <span style="color: #a78bfa;">Query Plan</span> ......... save SQL joins/filters                  <span style="color: #666;">║</span>
+<span style="color: #666;">║</span>      <span style="color: #555;">├─<Icon name="play" size={16} /></span> <span style="color: #a78bfa;">Meta Learner</span> ....... self-correction strategies              <span style="color: #666;">║</span>
+<span style="color: #666;">║</span>      <span style="color: #555;">├─<Icon name="play" size={16} /></span> <span style="color: #a78bfa;">Auto Evolver</span> ....... every 20 chats <Icon name="arrow-right" size={16} /> new instructions       <span style="color: #666;">║</span>
+<span style="color: #666;">║</span>      <span style="color: #555;">├─<Icon name="play" size={16} /></span> <span style="color: #a78bfa;">Chat Triple Extr</span> ... SPO triples <Icon name="arrow-right" size={16} /> KG                        <span style="color: #666;">║</span>
+<span style="color: #666;">║</span>      <span style="color: #555;">├─<Icon name="play" size={16} /></span> <span style="color: #a78bfa;">Auto-Memory</span> ........ facts <Icon name="arrow-right" size={16} /> dash_memories                   <span style="color: #666;">║</span>
+<span style="color: #666;">║</span>      <span style="color: #555;">├─<Icon name="play" size={16} /></span> <span style="color: #a78bfa;">User Pref Tracker</span> .. chart prefs, style                      <span style="color: #666;">║</span>
+<span style="color: #666;">║</span>      <span style="color: #555;">├─<Icon name="play" size={16} /></span> <span style="color: #a78bfa;">Episodic Memory</span> .... reactions, surprises                    <span style="color: #666;">║</span>
+<span style="color: #666;">║</span>      <span style="color: #555;">└─<Icon name="play" size={16} /></span> <span style="color: #a78bfa;">Follow-up Suggest</span> .. KG-aware next questions                 <span style="color: #666;">║</span>
 <span style="color: #666;">║</span>                                                                       <span style="color: #666;">║</span>
 <span style="color: #666;">║</span>  <span style="color: #666;">All run in parallel via asyncio.gather, non-blocking</span>                <span style="color: #666;">║</span>
 <span style="color: #666;">╚═══════════════════════════════════════════════════════════════════════╝</span>
@@ -9247,9 +9247,9 @@ function signUserJWT($user) {
 <span style="color: #666;">║</span>       <span style="color: #555;">▼</span>                                                               <span style="color: #666;">║</span>
 <span style="color: #666;">║</span>    <span style="color: #10b981;">Conductor</span> <span style="color: #666;">(orchestrator — plans, assigns, retries)</span>                 <span style="color: #666;">║</span>
 <span style="color: #666;">║</span>       <span style="color: #555;">│</span>                                                               <span style="color: #666;">║</span>
-<span style="color: #666;">║</span>       <span style="color: #555;">├─▶</span> <span style="color: #10b981;">Parser</span> ...... CSV/Excel/JSON  (data files)                  <span style="color: #666;">║</span>
-<span style="color: #666;">║</span>       <span style="color: #555;">├─▶</span> <span style="color: #10b981;">Scanner</span> ..... PDF/PPTX/DOCX  (doc files)                    <span style="color: #666;">║</span>
-<span style="color: #666;">║</span>       <span style="color: #555;">├─▶</span> <span style="color: #10b981;">Vision</span> ...... JPG/PNG/charts (image-only slides)             <span style="color: #666;">║</span>
+<span style="color: #666;">║</span>       <span style="color: #555;">├─<Icon name="play" size={16} /></span> <span style="color: #10b981;">Parser</span> ...... CSV/Excel/JSON  (data files)                  <span style="color: #666;">║</span>
+<span style="color: #666;">║</span>       <span style="color: #555;">├─<Icon name="play" size={16} /></span> <span style="color: #10b981;">Scanner</span> ..... PDF/PPTX/DOCX  (doc files)                    <span style="color: #666;">║</span>
+<span style="color: #666;">║</span>       <span style="color: #555;">├─<Icon name="play" size={16} /></span> <span style="color: #10b981;">Vision</span> ...... JPG/PNG/charts (image-only slides)             <span style="color: #666;">║</span>
 <span style="color: #666;">║</span>       <span style="color: #555;">▼</span>                                                               <span style="color: #666;">║</span>
 <span style="color: #666;">║</span>    <span style="color: #10b981;">Inspector</span> <span style="color: #666;">(validate: profile, dedup, health score)</span>                 <span style="color: #666;">║</span>
 <span style="color: #666;">║</span>       <span style="color: #555;">│</span>                                                               <span style="color: #666;">║</span>
@@ -9260,7 +9260,7 @@ function signUserJWT($user) {
 <span style="color: #888;">─────── </span><span style="color: #c96342;">WORKFLOWS</span><span style="color: #888;"> (orchestrated multi-agent, on cron or on-demand) ───────</span>
 
   <span style="color: #666;">Auto-workflows from training (3) — pharma analysis sequences run on demand.</span>
-  <span style="color: #666;">Manage in Settings → Schedules. (Generic ai_research / content_pipeline /</span>
+  <span style="color: #666;">Manage in Settings <Icon name="arrow-right" size={16} /> Schedules. (Generic ai_research / content_pipeline /</span>
   <span style="color: #666;">support_triage templates are inactive here — they need removed extended agents.)</span>
 
 <span style="color: #888;">─────── </span><span style="color: #c96342;">TOOLS REGISTRY</span><span style="color: #888;"> (per agent) ───────</span>
@@ -9337,7 +9337,7 @@ function signUserJWT($user) {
       {/each}
       {#if _specs.length > 0}
         <div style="padding: 6px 12px; background: var(--pw-bg-alt); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--pw-muted); border-bottom: 1px solid var(--pw-ink-soft);">
-          ↳ Specialists ({_specs.length}) — tools on Analyst, auto-fire by keyword
+          <Icon name="chevron-right" size={16} /> Specialists ({_specs.length}) — tools on Analyst, auto-fire by keyword
         </div>
         {#each _specs as a}
           {@const st = _stateOf(a)}
@@ -9355,7 +9355,7 @@ function signUserJWT($user) {
 
       {#if _extended.length > 0}
         <div role="button" tabindex="0" onclick={() => agentsExtendedCollapsed = !agentsExtendedCollapsed} onkeydown={(e:any) => { if (e.key === 'Enter' || e.key === ' ') agentsExtendedCollapsed = !agentsExtendedCollapsed; }} style="padding: 6px 12px; background: var(--pw-bg-alt); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--pw-muted); border-bottom: 1px solid var(--pw-ink-soft); cursor: pointer; user-select: none;">
-          {agentsExtendedCollapsed ? '▸' : '▾'} ↳ Extended ({_extended.length}) — full-spectrum agents (Docs, Helpdesk, Feedback, …)
+          {agentsExtendedCollapsed ? '▸' : '▾'} <Icon name="chevron-right" size={16} /> Extended ({_extended.length}) — full-spectrum agents (Docs, Helpdesk, Feedback, …)
         </div>
         {#if !agentsExtendedCollapsed}
           {#each _extended as a}
@@ -9376,7 +9376,7 @@ function signUserJWT($user) {
 
       {#if _investment.length > 0}
         <div role="button" tabindex="0" onclick={() => agentsInvestmentCollapsed = !agentsInvestmentCollapsed} onkeydown={(e:any) => { if (e.key === 'Enter' || e.key === ' ') agentsInvestmentCollapsed = !agentsInvestmentCollapsed; }} style="padding: 6px 12px; background: var(--pw-bg-alt); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--pw-muted); border-bottom: 1px solid var(--pw-ink-soft); cursor: pointer; user-select: none;">
-          {agentsInvestmentCollapsed ? '▸' : '▾'} <Icon name="briefcase" size={14} /> ↳ Investment ({_investment.length}) — acquisition DD committee (ACQUIRE/DEFER/PASS verdicts)
+          {agentsInvestmentCollapsed ? '▸' : '▾'} <Icon name="briefcase" size={14} /> <Icon name="chevron-right" size={16} /> Investment ({_investment.length}) — acquisition DD committee (ACQUIRE/DEFER/PASS verdicts)
         </div>
         {#if !agentsInvestmentCollapsed}
           {#each _investment as a}
@@ -9397,7 +9397,7 @@ function signUserJWT($user) {
 
       {#if _background.length > 0}
         <div role="button" tabindex="0" onclick={() => agentsBackgroundCollapsed = !agentsBackgroundCollapsed} onkeydown={(e:any) => { if (e.key === 'Enter' || e.key === ' ') agentsBackgroundCollapsed = !agentsBackgroundCollapsed; }} style="padding: 6px 12px; background: var(--pw-bg-alt); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--pw-muted); border-bottom: 1px solid var(--pw-ink-soft); cursor: pointer; user-select: none;">
-          {agentsBackgroundCollapsed ? '▸' : '▾'} ↳ Background ({_background.length}) — fire after every chat, non-blocking
+          {agentsBackgroundCollapsed ? '▸' : '▾'} <Icon name="chevron-right" size={16} /> Background ({_background.length}) — fire after every chat, non-blocking
         </div>
         {#if !agentsBackgroundCollapsed}
           {#each _background as a}
@@ -9417,7 +9417,7 @@ function signUserJWT($user) {
 
       {#if _upload.length > 0}
         <div role="button" tabindex="0" onclick={() => agentsUploadCollapsed = !agentsUploadCollapsed} onkeydown={(e:any) => { if (e.key === 'Enter' || e.key === ' ') agentsUploadCollapsed = !agentsUploadCollapsed; }} style="padding: 6px 12px; background: var(--pw-bg-alt); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--pw-muted); border-bottom: 1px solid var(--pw-ink-soft); cursor: pointer; user-select: none;">
-          {agentsUploadCollapsed ? '▸' : '▾'} ↳ Upload ({_upload.length}) — fire on file upload
+          {agentsUploadCollapsed ? '▸' : '▾'} <Icon name="chevron-right" size={16} /> Upload ({_upload.length}) — fire on file upload
         </div>
         {#if !agentsUploadCollapsed}
           {#each _upload as a}
@@ -9437,7 +9437,7 @@ function signUserJWT($user) {
 
       {#if _routing.length > 0}
         <div role="button" tabindex="0" onclick={() => agentsRoutingCollapsed = !agentsRoutingCollapsed} onkeydown={(e:any) => { if (e.key === 'Enter' || e.key === ' ') agentsRoutingCollapsed = !agentsRoutingCollapsed; }} style="padding: 6px 12px; background: var(--pw-bg-alt); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--pw-muted); border-bottom: 1px solid var(--pw-ink-soft); cursor: pointer; user-select: none;">
-          {agentsRoutingCollapsed ? '▸' : '▾'} ↳ Routing ({_routing.length}) — smart project routing + auto-visualization
+          {agentsRoutingCollapsed ? '▸' : '▾'} <Icon name="chevron-right" size={16} /> Routing ({_routing.length}) — smart project routing + auto-visualization
         </div>
         {#if !agentsRoutingCollapsed}
           {#each _routing as a}
@@ -9641,7 +9641,7 @@ function signUserJWT($user) {
     <div class="flex gap-2 mb-3">
       <button class="btn-primary btn-sm" disabled={evolving} onclick={async () => {
         evolving = true;
-        cLog(`${ts()} ── running evolution cycle (Reflect → Select → Improve → Evaluate → Commit)...`);
+        cLog(`${ts()} ── running evolution cycle (Reflect &gt; Select &gt; Improve &gt; Evaluate &gt; Commit)...`);
         try {
           const r = await fetch(`/api/projects/${slug}/evolve`, { method: 'POST', headers: _h() });
           const d = await r.json();
@@ -10027,7 +10027,7 @@ function signUserJWT($user) {
         {#each brainEvals as ev}
           <div class="ink-border" style="background: var(--pw-surface); padding: 10px 14px; border-left: 3px solid {ev.last_score === 'PASS' ? 'var(--pw-accent)' : ev.last_score === 'ERROR' ? 'var(--pw-error)' : 'var(--pw-muted)'};">
             <div class="flex items-center justify-between">
-              <div style="font-size: 11px; font-weight: 900;">Q: {ev.question ?? ((ev.keywords||[]).join(' · ') || '🔒 hidden')}</div>
+              <div style="font-size: 11px; font-weight: 900;">Q: {ev.question ?? ((ev.keywords||[]).join(' · ') || ' hidden')}</div>
               <div class="flex items-center gap-2">
                 {#if ev.last_score}
                   <span class="tag-label" style="font-size: 11px; background: {ev.last_score === 'PASS' ? 'var(--pw-accent)' : 'var(--pw-error)'}; color: white;">{ev.last_score}</span>
@@ -10208,26 +10208,26 @@ function signUserJWT($user) {
         <span style="color:#888; margin-left:8px;">— embed widget for external sites · 3-step setup</span>
       </span>
       <a href="{base}/embed-templates"
-        style="color:#c96342; text-decoration:none; font-size:11px; font-weight:700; letter-spacing:0.04em;">📚 MANAGE TEMPLATES →</a>
+        style="color:#c96342; text-decoration:none; font-size:11px; font-weight:700; letter-spacing:0.04em;"><Icon name="book" size={16} /> MANAGE TEMPLATES <Icon name="arrow-right" size={16} /></a>
     </div>
 
     <!-- 3-step linear pipeline -->
     <div style="display:flex; gap:0; margin-bottom:14px; align-items:stretch;">
       <div style="flex:1; padding:10px 14px; background:#fff; border:1px solid var(--pw-ink-soft); border-right:none; display:flex; flex-direction:column; gap:2px;">
         <div style="font-size:10px; color:var(--pw-muted); letter-spacing:0.05em; font-weight:700;">STEP 1</div>
-        <div style="font-size:12px; color:var(--pw-ink); font-weight:700;">📋 PICK USE CASE</div>
+        <div style="font-size:12px; color:var(--pw-ink); font-weight:700;"><Icon name="clipboard" size={16} /> PICK USE CASE</div>
         <div style="font-size:10px; color:var(--pw-muted);">choose template w/ ready-made rules</div>
       </div>
-      <div style="display:flex; align-items:center; padding:0 6px; background:#fff; border-top:1px solid var(--pw-ink-soft); border-bottom:1px solid var(--pw-ink-soft); color:var(--pw-ink-soft);">→</div>
+      <div style="display:flex; align-items:center; padding:0 6px; background:#fff; border-top:1px solid var(--pw-ink-soft); border-bottom:1px solid var(--pw-ink-soft); color:var(--pw-ink-soft);"><Icon name="arrow-right" size={16} /></div>
       <div style="flex:1; padding:10px 14px; background:#fff; border:1px solid var(--pw-ink-soft); border-right:none; display:flex; flex-direction:column; gap:2px;">
         <div style="font-size:10px; color:var(--pw-muted); letter-spacing:0.05em; font-weight:700;">STEP 2</div>
-        <div style="font-size:12px; color:var(--pw-ink); font-weight:700;">⚙️ CONFIGURE</div>
+        <div style="font-size:12px; color:var(--pw-ink); font-weight:700;"><Icon name="settings" size={16} /> CONFIGURE</div>
         <div style="font-size:10px; color:var(--pw-muted);">access · origins · brand · advanced</div>
       </div>
-      <div style="display:flex; align-items:center; padding:0 6px; background:#fff; border-top:1px solid var(--pw-ink-soft); border-bottom:1px solid var(--pw-ink-soft); color:var(--pw-ink-soft);">→</div>
+      <div style="display:flex; align-items:center; padding:0 6px; background:#fff; border-top:1px solid var(--pw-ink-soft); border-bottom:1px solid var(--pw-ink-soft); color:var(--pw-ink-soft);"><Icon name="arrow-right" size={16} /></div>
       <div style="flex:1; padding:10px 14px; background:#fff; border:1px solid var(--pw-ink-soft); display:flex; flex-direction:column; gap:2px;">
         <div style="font-size:10px; color:var(--pw-muted); letter-spacing:0.05em; font-weight:700;">STEP 3</div>
-        <div style="font-size:12px; color:var(--pw-ink); font-weight:700;">🚀 TEST & DEPLOY</div>
+        <div style="font-size:12px; color:var(--pw-ink); font-weight:700;"><Icon name="rocket" size={16} /> TEST & DEPLOY</div>
         <div style="font-size:10px; color:var(--pw-muted);">test as user · copy snippet · go live</div>
       </div>
     </div>
@@ -10236,7 +10236,7 @@ function signUserJWT($user) {
     {#if currentEmbed}
     <div style="margin-bottom:18px; padding:16px; background:var(--pw-surface); border:1px solid var(--pw-ink-soft);">
       <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;">
-        <div style="font-size:13px; font-weight:900; letter-spacing:0.05em; color:var(--pw-ink); text-transform:uppercase;">⚡ Pharmacy Setup — 1-Click RLS</div>
+        <div style="font-size:13px; font-weight:900; letter-spacing:0.05em; color:var(--pw-ink); text-transform:uppercase;"><Icon name="zap" size={16} /> Pharmacy Setup — 1-Click RLS</div>
         <div style="font-size:11px; color:var(--pw-muted);">click apply · sets RLS + HMAC + identity in one shot</div>
       </div>
       <div style="font-size:11px; color:var(--pw-muted); margin-bottom:12px;">PHP/external dev gets: signed user payload required · per-site stock scoping by claim · cost columns hidden · all enforced server-side.</div>
@@ -10251,7 +10251,7 @@ function signUserJWT($user) {
               <span style="font-size:22px;">{tpl.icon}</span>
               <span style="font-size:12px; font-weight:700; color:var(--pw-ink); flex:1;">{tpl.name}</span>
               {#if justApplied}
-                <span style="font-size:10px; padding:2px 6px; background:#10b981; color:#fff; font-weight:900; letter-spacing:0.05em;">✓ APPLIED</span>
+                <span style="font-size:10px; padding:2px 6px; background:#10b981; color:#fff; font-weight:900; letter-spacing:0.05em;"><Icon name="check" size={16} /> APPLIED</span>
               {:else if isApplying}
                 <span style="font-size:10px; color:var(--pw-muted);">applying…</span>
               {/if}
@@ -10265,7 +10265,7 @@ function signUserJWT($user) {
         {/each}
       </div>
       <div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--pw-ink-soft); font-size:10px; color:var(--pw-muted);">
-        ℹ️ Need custom rules? Scroll to RLS section below for manual claim/policy editor + Blueprint browser + Wizard.
+        <Icon name="info" size={16} /> Need custom rules? Scroll to RLS section below for manual claim/policy editor + Blueprint browser + Wizard.
       </div>
     </div>
     {/if}
@@ -10508,7 +10508,7 @@ function signUserJWT($user) {
                   {copiedField === 'pub_' + ce.embed_id ? '' : 'COPY'}
                 </button>
                 <button onclick={() => window.open(ceTryUrl, '_blank')}
-                  style="padding:5px 10px; background:var(--pw-bg); border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">OPEN ↗</button>
+                  style="padding:5px 10px; background:var(--pw-bg); border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">OPEN <Icon name="trending-up" size={16} /></button>
               </div>
             </div>
 
@@ -10529,9 +10529,9 @@ function signUserJWT($user) {
                       {copiedField === 'sig_' + ce.embed_id ? '' : 'COPY'}
                     </button>
                     <button onclick={() => window.open(ceSignedUrl, '_blank')}
-                      style="padding:5px 10px; background:var(--pw-bg); border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">OPEN ↗</button>
+                      style="padding:5px 10px; background:var(--pw-bg); border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">OPEN <Icon name="trending-up" size={16} /></button>
                     <button onclick={() => regenTestToken(ce.embed_id)}
-                      style="padding:5px 10px; background:#fff4d4; border:1px solid #cc7a00; color:#995e00; cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">↻ REGEN</button>
+                      style="padding:5px 10px; background:#fff4d4; border:1px solid #cc7a00; color:#995e00; cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;"><Icon name="refresh" size={16} /> REGEN</button>
                   </div>
                 {:else}
                   <button onclick={() => regenTestToken(ce.embed_id)}
@@ -10546,13 +10546,13 @@ function signUserJWT($user) {
           <!-- SNIPPET — dev quickstart -->
           <div style="background:var(--pw-surface); border:1px solid var(--pw-ink-soft); border-radius: var(--pw-radius-sm); padding:12px 14px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-              <div style="font-size: 11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--pw-muted);">📦 Snippet — give to your dev</div>
+              <div style="font-size: 11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--pw-muted);"><Icon name="package" size={16} /> Snippet — give to your dev</div>
               <div style="display:flex; gap:6px;">
                 <button onclick={() => downloadSnippetFile(ce, oneEmbedSnippetLang)}
-                  style="padding:4px 10px; background:#10b981; border:none; color:#fff; cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">↓ DOWNLOAD FILE</button>
+                  style="padding:4px 10px; background:#10b981; border:none; color:#fff; cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;"><Icon name="arrow-down" size={16} /> DOWNLOAD FILE</button>
                 <button onclick={() => copyText(snippetCode(ce, ce.auth_mode || 'public', oneEmbedSnippetLang), 'one_snip_' + ce.embed_id + '_' + oneEmbedSnippetLang)}
                   style="padding:4px 10px; background:var(--pw-ink); border:none; color:var(--pw-surface); cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">
-                  {copiedField === 'one_snip_' + ce.embed_id + '_' + oneEmbedSnippetLang ? 'COPIED ✓' : '📋 COPY'}
+                  {copiedField === 'one_snip_' + ce.embed_id + '_' + oneEmbedSnippetLang ? 'COPIED OK' : ' COPY'}
                 </button>
               </div>
             </div>
@@ -10589,7 +10589,7 @@ function signUserJWT($user) {
             <!-- Claims shape reference -->
             {#if embedRlsClaims.length > 0}
               <div style="margin-top:10px; padding:8px 10px; background:var(--pw-bg-alt); border:1px solid var(--pw-ink-soft); font-size:10.5px;">
-                <div style="font-weight:700; color:var(--pw-ink); margin-bottom:4px;">🎫 Required user claims (PHP must sign):</div>
+                <div style="font-weight:700; color:var(--pw-ink); margin-bottom:4px;"><Icon name="ticket" size={16} /> Required user claims (PHP must sign):</div>
                 <div style="display:flex; gap:8px; flex-wrap:wrap; font-family:monospace;">
                   {#each embedRlsClaims as c (c.key)}
                     <span style="padding:2px 6px; background:#fff; border:1px solid var(--pw-ink-soft); color:var(--pw-ink);">
@@ -10602,7 +10602,7 @@ function signUserJWT($user) {
 
             <!-- Common errors -->
             <details style="margin-top:10px; font-size:11px;">
-              <summary style="cursor:pointer; padding:4px 0; color:var(--pw-ink); font-weight:600;">⚠️ Common errors (click to expand)</summary>
+              <summary style="cursor:pointer; padding:4px 0; color:var(--pw-ink); font-weight:600;"><Icon name="alert-triangle" size={16} /> Common errors (click to expand)</summary>
               <div style="padding:8px 10px; background:var(--pw-bg-alt); margin-top:4px; line-height:1.6;">
                 <div><b style="color:#c0392b;">403 origin not allowed</b> — add your site's URL to <b>ALLOWED ORIGINS</b> above.</div>
                 <div><b style="color:#c0392b;">401 invalid signature</b> — DASH_EMBED_SECRET wrong, or JSON not canonical (sort keys, no spaces).</div>
@@ -10618,7 +10618,7 @@ function signUserJWT($user) {
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
               <div style="font-size: 11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--pw-muted);">Last 24h</div>
               <button onclick={() => openUsage(ce)}
-                style="padding:4px 10px; background:transparent; border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">USAGE DETAILS →</button>
+                style="padding:4px 10px; background:transparent; border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">USAGE DETAILS <Icon name="arrow-right" size={16} /></button>
             </div>
             <div style="display:flex; gap:18px; font-size:11px; color:var(--pw-ink);">
               <span><b>{ceCalls}</b> msgs</span>
@@ -10709,14 +10709,14 @@ function signUserJWT($user) {
 
           {#if !entryScreenVisible}
 
-          <!-- 💡 PLAIN-ENGLISH EXPLAINER BANNER -->
+          <!--  PLAIN-ENGLISH EXPLAINER BANNER -->
           <div style="margin:8px 0 14px 0; padding:12px 14px; background:linear-gradient(135deg, rgba(201,99,66,0.06), rgba(201,99,66,0.02)); border-left:3px solid var(--pw-accent); border-top:1px solid var(--pw-ink-soft); border-right:1px solid var(--pw-ink-soft); border-bottom:1px solid var(--pw-ink-soft);">
-            <div style="font-size:12px; font-weight:700; color:var(--pw-ink); margin-bottom:6px;">🔐 Think of this like a hotel with keycards.</div>
+            <div style="font-size:12px; font-weight:700; color:var(--pw-ink); margin-bottom:6px;"><Icon name="lock" size={16} /> Think of this like a hotel with keycards.</div>
             <div style="font-size:11px; color:var(--pw-ink); line-height:1.55;">
               Every person who chats with your agent has a <b>badge</b> (their store, region, role). Every table is like a <b>locked door</b>.<br/>
               <b>Claims</b> = what's printed on the badge.<br/>
               <b>Policies</b> = which doors check which badge.<br/>
-              <span style="color:var(--pw-muted); font-style:italic;">Result: Store-A manager asks "show stock" → sees only Store-A. Cannot trick the AI into seeing Store-B. Three locks stop them: prompt rule + SQL rewrite + database firewall.</span>
+              <span style="color:var(--pw-muted); font-style:italic;">Result: Store-A manager asks "show stock" <Icon name="arrow-right" size={16} /> sees only Store-A. Cannot trick the AI into seeing Store-B. Three locks stop them: prompt rule + SQL rewrite + database firewall.</span>
             </div>
           </div>
 
@@ -10737,7 +10737,7 @@ function signUserJWT($user) {
                 onchange={(ev: any) => { embedRlsClaimSource = ev.target.value; saveEmbedRls(ce.embed_id, { rls_claim_source: embedRlsClaimSource }); }}
                 style="padding:5px 8px; border:1px solid var(--pw-ink-soft); background:var(--pw-bg); color:var(--pw-ink); font-family:inherit; font-size:11px;">
                 <option value="token" title="from user's login token">token — from login</option>
-                <option value="hmac" title="signed by your server (safest)">hmac — server-signed ✓</option>
+                <option value="hmac" title="signed by your server (safest)">hmac — server-signed OK</option>
                 <option value="url" title="query string ?store_id=42 (testing only)">url — query string</option>
                 <option value="header" title="HTTP request header X-Store-Id">header — HTTP header</option>
               </select>
@@ -10752,14 +10752,14 @@ function signUserJWT($user) {
                 {#if embedSchemaCatalog && embedSchemaCatalog.suggested_claims.length > 0}
                   <button onclick={() => { claimsImportSelected = {}; claimsImportOpen = true; }}
                     title="Pick from columns the schema thinks are tenant/scope identifiers"
-                    style="padding:4px 10px; background:var(--pw-bg-alt); border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">↓ AUTO-DETECT CLAIMS FROM SCHEMA</button>
+                    style="padding:4px 10px; background:var(--pw-bg-alt); border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;"><Icon name="arrow-down" size={16} /> AUTO-DETECT CLAIMS FROM SCHEMA</button>
                 {/if}
                 <button onclick={addRlsClaim}
                   style="padding:4px 10px; background:var(--pw-bg); border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">+ ADD CLAIM</button>
               </div>
             </div>
             <div style="font-size:11px; color:var(--pw-muted); padding:2px 0 8px 0; font-style:italic;">
-              💡 <b>Claims</b> = the fields on the user's badge (what your auth system already knows about them). Each row = one badge field.
+              <Icon name="lightbulb" size={16} /> <b>Claims</b> = the fields on the user's badge (what your auth system already knows about them). Each row = one badge field.
             </div>
             <div style="display:grid; grid-template-columns: 1.2fr 1.2fr 0.9fr 0.6fr 1.5fr 32px; gap:6px; font-size: 11px; color:var(--pw-muted); text-transform:uppercase; letter-spacing:0.05em; padding:4px 0;">
               <span title="The field name on the badge. e.g. store_id, role, region. Must match what your login system sends.">Key <span style="text-transform:none; color:var(--pw-ink-soft); font-style:italic;">· badge field</span></span>
@@ -10819,25 +10819,25 @@ function signUserJWT($user) {
               </div>
             </div>
             <div style="font-size:11px; color:var(--pw-muted); padding:2px 0 8px 0; font-style:italic;">
-              💡 <b>Policies</b> = which doors check which badge. One row per table-or-column rule. Read left→right as: "On this <i>table</i>, the <i>column</i> uses <i>mode</i> with <i>filter</i>, unless user has <i>bypass role</i>."
+              <Icon name="lightbulb" size={16} /> <b>Policies</b> = which doors check which badge. One row per table-or-column rule. Read left<Icon name="arrow-right" size={16} />right as: "On this <i>table</i>, the <i>column</i> uses <i>mode</i> with <i>filter</i>, unless user has <i>bypass role</i>."
             </div>
             <!-- EASY COLUMN PICKER -->
             {#if embedSchemaCatalog && embedSchemaCatalog.tables.length > 0}
               <div style="margin:0 0 10px 0; padding:10px 12px; background:linear-gradient(135deg, rgba(16,185,129,0.06), rgba(16,185,129,0.02)); border-left:3px solid #10b981; border-top:1px solid var(--pw-ink-soft); border-right:1px solid var(--pw-ink-soft); border-bottom:1px solid var(--pw-ink-soft); display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-                <span style="font-size:18px;">🛡️</span>
+                <span style="font-size:18px;"><Icon name="shield" size={16} /></span>
                 <div style="flex:1; min-width:200px;">
                   <div style="font-size:12px; font-weight:700; color:var(--pw-ink);">Don't want to think about it?</div>
                   <div style="font-size:11px; color:var(--pw-muted); margin-top:2px;">Pick which columns to lock with checkboxes. Auto-builds rules. No claim names to type.</div>
                 </div>
                 <button type="button" onclick={openColProtector}
-                  style="padding:8px 16px; background:#10b981; border:none; color:#fff; cursor:pointer; font-family:inherit; font-size:11px; font-weight:700; letter-spacing:0.04em;">🛡️ PICK COLUMNS TO PROTECT →</button>
+                  style="padding:8px 16px; background:#10b981; border:none; color:#fff; cursor:pointer; font-family:inherit; font-size:11px; font-weight:700; letter-spacing:0.04em;"><Icon name="shield" size={16} /> PICK COLUMNS TO PROTECT <Icon name="arrow-right" size={16} /></button>
               </div>
             {/if}
             <div style="display:grid; grid-template-columns: 1.2fr 0.9fr 0.9fr 1.0fr 1.2fr 32px; gap:6px; font-size: 11px; color:var(--pw-muted); text-transform:uppercase; letter-spacing:0.05em; padding:4px 0;">
               <span title="Which table to lock. e.g. balance_stock, employees, transactions.">Table <span style="text-transform:none; color:var(--pw-ink-soft); font-style:italic;">· locked file cabinet</span></span>
               <span title="Which column. * means all columns. Specific column for redact/hide.">Column <span style="text-transform:none; color:var(--pw-ink-soft); font-style:italic;">· which drawer</span></span>
               <span title="HOW to lock. private=see own only · own_value=cell match · shared=everyone sees · redacted=masked · hidden=column doesn't exist for user.">Mode <span style="text-transform:none; color:var(--pw-ink-soft); font-style:italic;">· lock type</span></span>
-              <span title="Which badge field to match against the row. e.g. store_id → row.store_id must = badge.store_id.">Filter (claim) <span style="text-transform:none; color:var(--pw-ink-soft); font-style:italic;">· badge to match</span></span>
+              <span title="Which badge field to match against the row. e.g. store_id &gt; row.store_id must = badge.store_id.">Filter (claim) <span style="text-transform:none; color:var(--pw-ink-soft); font-style:italic;">· badge to match</span></span>
               <span title="Roles that skip this rule (see everything). Comma-separated. e.g. admin,owner.">Bypass Roles <span style="text-transform:none; color:var(--pw-ink-soft); font-style:italic;">· master keys</span></span>
               <span></span>
             </div>
@@ -10848,7 +10848,7 @@ function signUserJWT($user) {
                 <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
                   {#if embedSchemaCatalog && embedSchemaCatalog.suggested_policies.length > 0}
                     <button onclick={() => { policiesImportSelected = {}; policiesImportOpen = true; }}
-                      style="padding:6px 14px; background:var(--pw-accent); border:none; color:#fff; cursor:pointer; font-family:inherit; font-size:11px; font-weight:700;">↓ IMPORT FROM SCHEMA</button>
+                      style="padding:6px 14px; background:var(--pw-accent); border:none; color:#fff; cursor:pointer; font-family:inherit; font-size:11px; font-weight:700;"><Icon name="arrow-down" size={16} /> IMPORT FROM SCHEMA</button>
                   {/if}
                   <button onclick={addRlsPolicy}
                     style="padding:6px 14px; background:var(--pw-bg); border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:11px; font-weight:700;">+ ADD RULE</button>
@@ -10985,7 +10985,7 @@ function signUserJWT($user) {
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
               <button onclick={() => launchRlsTestChat(ce.embed_id)}
                 style="padding:6px 12px; background:var(--pw-accent); border:none; color:#fff; cursor:pointer; font-family:inherit; font-size:11px; font-weight:700;">
-                LAUNCH TEST CHAT ↗
+                LAUNCH TEST CHAT ^
               </button>
               <button onclick={() => copyRlsSignedUrl(ce.embed_id)}
                 style="padding:6px 12px; background:var(--pw-ink); border:none; color:var(--pw-surface); cursor:pointer; font-family:inherit; font-size:11px; font-weight:700;">
@@ -11063,13 +11063,13 @@ function signUserJWT($user) {
                 style="background:var(--pw-bg); border:1px solid var(--pw-ink); border-radius: var(--pw-radius-sm); width:780px; max-width:94vw; max-height:88vh; display:flex; flex-direction:column;">
                 <!-- Header -->
                 <div style="padding:14px 18px; border-bottom:1px solid var(--pw-ink-soft); display:flex; align-items:center; gap:10px;">
-                  <span style="font-size:20px;">🛡️</span>
+                  <span style="font-size:20px;"></span>
                   <div style="flex:1;">
                     <div style="font-size:14px; font-weight:900; letter-spacing:0.04em; color:var(--pw-ink);">PROTECT COLUMNS</div>
                     <div style="font-size:11px; color:var(--pw-muted);">Pick what each column should do. Auto-builds policies.</div>
                   </div>
                   <button onclick={() => colProtectOpen = false}
-                    style="background:transparent; border:1px solid var(--pw-ink-soft); color:var(--pw-ink); padding:4px 10px; cursor:pointer; font-family:inherit; font-size:11px;">✕ CLOSE</button>
+                    style="background:transparent; border:1px solid var(--pw-ink-soft); color:var(--pw-ink); padding:4px 10px; cursor:pointer; font-family:inherit; font-size:11px;">x CLOSE</button>
                 </div>
 
                 <!-- Controls -->
@@ -11103,7 +11103,7 @@ function signUserJWT($user) {
                   <span>·</span>
                   <span><b style="color:#c96342;">PRIVATE</b> — row's claim must match user's badge</span>
                   <span>·</span>
-                  <span><b style="color:#a06000;">MASK</b> — visible but redacted (★★★)</span>
+                  <span><b style="color:#a06000;">MASK</b> — visible but redacted (***)</span>
                   <span>·</span>
                   <span><b style="color:#c0392b;">HIDE</b> — column doesn't exist for user</span>
                 </div>
@@ -11159,7 +11159,7 @@ function signUserJWT($user) {
                       style="padding:8px 14px; background:var(--pw-bg); border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:11px; font-weight:700;">CANCEL</button>
                     <button onclick={() => colProtectApply(ce.embed_id)}
                       disabled={protected_count === 0}
-                      style="padding:8px 18px; background:{protected_count > 0 ? '#10b981' : 'var(--pw-bg-alt)'}; border:none; color:#fff; cursor:{protected_count > 0 ? 'pointer' : 'not-allowed'}; font-family:inherit; font-size:11px; font-weight:700; letter-spacing:0.04em;">✓ APPLY {protected_count} RULE{protected_count === 1 ? '' : 'S'}</button>
+                      style="padding:8px 18px; background:{protected_count > 0 ? '#10b981' : 'var(--pw-bg-alt)'}; border:none; color:#fff; cursor:{protected_count > 0 ? 'pointer' : 'not-allowed'}; font-family:inherit; font-size:11px; font-weight:700; letter-spacing:0.04em;">OK APPLY {protected_count} RULE{protected_count === 1 ? '' : 'S'}</button>
                   </div>
                 {/if}
               </div>
@@ -11261,7 +11261,7 @@ function signUserJWT($user) {
                 <div style="padding:14px 18px; border-bottom:1px solid var(--pw-ink-soft); display:flex; align-items:center; gap:12px;">
                   {#if blueprintDetail}
                     <button onclick={() => { blueprintDetail = null; blueprintCompat = null; }}
-                      style="padding:4px 9px; background:transparent; border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">← BACK</button>
+                      style="padding:4px 9px; background:transparent; border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">&lt;- BACK</button>
                   {/if}
                   <div style="font-size:13px; font-weight:900; letter-spacing:0.04em; color:var(--pw-ink);">{blueprintDetail ? blueprintDetail.name : 'BLUEPRINT LIBRARY'}</div>
                   <button onclick={() => blueprintModalOpen = false} style="margin-left:auto; padding:4px 10px; background:transparent; border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:11px; font-weight:700;"><Icon name="x" size={14} /></button>
@@ -11894,11 +11894,11 @@ function signUserJWT($user) {
                 <div style="padding:12px 18px; border-top:1px solid var(--pw-ink-soft); display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                   {#if wizardStep > 1 && wizardStep < 4}
                     <button onclick={() => wizardStep = wizardStep - 1}
-                      style="padding:7px 14px; background:transparent; border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:11px; font-weight:700;">← BACK</button>
+                      style="padding:7px 14px; background:transparent; border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:11px; font-weight:700;"><Icon name="arrow-left" size={16} /> BACK</button>
                   {/if}
                   {#if wizardStep === 4}
                     <button onclick={() => wizardStep = 3}
-                      style="padding:7px 14px; background:transparent; border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:11px; font-weight:700;">← BACK</button>
+                      style="padding:7px 14px; background:transparent; border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:11px; font-weight:700;"><Icon name="arrow-left" size={16} /> BACK</button>
                     <div style="display:flex; gap:10px; align-items:center; margin-left:14px;">
                       <span style="font-size: 11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--pw-muted);">Apply Mode</span>
                       <label style="display:flex; gap:5px; align-items:center; font-size:11px; cursor:pointer;">
@@ -11911,13 +11911,13 @@ function signUserJWT($user) {
                   {/if}
                   {#if wizardStep === 1}
                     <button onclick={() => wizardStep = 2} disabled={!wizardAnswers.audience}
-                      style="margin-left:auto; padding:7px 16px; background:var(--pw-accent); border:none; color:#fff; cursor:pointer; font-family:inherit; font-size:11px; font-weight:900; letter-spacing:0.05em; opacity:{!wizardAnswers.audience ? 0.5 : 1};">NEXT →</button>
+                      style="margin-left:auto; padding:7px 16px; background:var(--pw-accent); border:none; color:#fff; cursor:pointer; font-family:inherit; font-size:11px; font-weight:900; letter-spacing:0.05em; opacity:{!wizardAnswers.audience ? 0.5 : 1};">NEXT <Icon name="arrow-right" size={16} /></button>
                   {:else if wizardStep === 2}
                     <button onclick={() => wizardStep = 3} disabled={!wizardAnswers.scope}
-                      style="margin-left:auto; padding:7px 16px; background:var(--pw-accent); border:none; color:#fff; cursor:pointer; font-family:inherit; font-size:11px; font-weight:900; letter-spacing:0.05em; opacity:{!wizardAnswers.scope ? 0.5 : 1};">NEXT →</button>
+                      style="margin-left:auto; padding:7px 16px; background:var(--pw-accent); border:none; color:#fff; cursor:pointer; font-family:inherit; font-size:11px; font-weight:900; letter-spacing:0.05em; opacity:{!wizardAnswers.scope ? 0.5 : 1};">NEXT <Icon name="arrow-right" size={16} /></button>
                   {:else if wizardStep === 3}
                     <button onclick={() => generateWizardPreview(ce.embed_id)} disabled={wizardPreviewLoading}
-                      style="margin-left:auto; padding:7px 16px; background:var(--pw-accent); border:none; color:#fff; cursor:pointer; font-family:inherit; font-size:11px; font-weight:900; letter-spacing:0.05em; opacity:{wizardPreviewLoading ? 0.6 : 1};">{wizardPreviewLoading ? 'GENERATING…' : 'GENERATE →'}</button>
+                      style="margin-left:auto; padding:7px 16px; background:var(--pw-accent); border:none; color:#fff; cursor:pointer; font-family:inherit; font-size:11px; font-weight:900; letter-spacing:0.05em; opacity:{wizardPreviewLoading ? 0.6 : 1};">{wizardPreviewLoading ? 'GENERATING…' : 'GENERATE &gt;'}</button>
                   {:else if wizardStep === 4}
                     {@const keepCount = wizardPreview && Array.isArray(wizardPreview.policies) ? wizardPreview.policies.filter((_: any, i: number) => wizardPolicyEnabled[`p_${i}`] !== false).length : 0}
                     <button onclick={() => applyWizard(ce.embed_id)} disabled={wizardApplying || keepCount === 0}
@@ -12063,7 +12063,7 @@ function signUserJWT($user) {
           {#if snippetTier === 'public'}
             <span style="color:var(--pw-accent-ink);">●</span> <strong>Public mode</strong> — anonymous, no user identity. Use for marketing/docs sites where every visitor sees the same agent.
           {:else if snippetTier === 'hmac'}
-            <span style="color:#995e00;">●</span> <strong>HMAC mode</strong> — host server signs user_id with secret_key. Widget passes signed payload. {$brand.name} verifies → trusts user identity. Use for logged-in apps.
+            <span style="color:#995e00;">●</span> <strong>HMAC mode</strong> — host server signs user_id with secret_key. Widget passes signed payload. {$brand.name} verifies <Icon name="arrow-right" size={16} /> trusts user identity. Use for logged-in apps.
           {:else}
             <span style="color:#5b2d99;">●</span> <strong>JWT mode</strong> — host issues full JWT (RS256). {$brand.name} verifies via JWKS. Use for enterprise SSO. <em style="color:var(--pw-muted);">(Phase 10 — JWT verification not yet enabled)</em>
           {/if}
@@ -12237,7 +12237,7 @@ function signUserJWT($user) {
               <option value={90}>90 days</option>
             </select>
             <button onclick={loadUsage}
-              style="padding:3px 8px; background:var(--pw-ink); border:1px solid #cc99ff; color:#cc99ff; cursor:pointer; font-family:inherit; font-size: 11px;">↻</button>
+              style="padding:3px 8px; background:var(--pw-ink); border:1px solid #cc99ff; color:#cc99ff; cursor:pointer; font-family:inherit; font-size: 11px;"><Icon name="refresh" size={16} /></button>
           </div>
         </div>
 
@@ -12558,15 +12558,15 @@ function signUserJWT($user) {
           </ol>
           <p style="margin:0 0 6px 0;"><strong>Per-query flow (automatic, no work for you):</strong></p>
           <ol style="margin:0 0 10px 18px; padding:0;">
-            <li>Manager logs into portal → portal HMAC-signs <code>{`{store_id: 42}`}</code> → sends to widget.</li>
-            <li>{$brand.name} verifies signature → reads <code>store_id=42</code> → sets per-request scope.</li>
+            <li>Manager logs into portal <Icon name="arrow-right" size={16} /> portal HMAC-signs <code>{`{store_id: 42}`}</code> <Icon name="arrow-right" size={16} /> sends to widget.</li>
+            <li>{$brand.name} verifies signature <Icon name="arrow-right" size={16} /> reads <code>store_id=42</code> <Icon name="arrow-right" size={16} /> sets per-request scope.</li>
             <li>Layer 1: Analyst told "scoped to 42, refuse cross-shop questions".</li>
             <li>Layer 2: Every SQL gets <code>WHERE store_id = 42</code> auto-injected.</li>
             <li>Layer 3 (pg_rls only): Postgres policy double-checks at DB level.</li>
             <li>Manager sees only shop 42 rows. Audit log records the rewrite.</li>
           </ol>
-          <p style="margin:0 0 6px 0;"><strong>Test before going live:</strong> use <strong>TEST SANDBOX</strong> below — paste a SQL + JSON user_attrs → see what Analyst would actually run.</p>
-          <p style="margin:0;"><strong>4 tables, same column?</strong> Click <strong><Icon name="zap" size={14} /> QUICK ADD</strong> once → system finds all matching tables → adds all filters automatically. No per-table work.</p>
+          <p style="margin:0 0 6px 0;"><strong>Test before going live:</strong> use <strong>TEST SANDBOX</strong> below — paste a SQL + JSON user_attrs <Icon name="arrow-right" size={16} /> see what Analyst would actually run.</p>
+          <p style="margin:0;"><strong>4 tables, same column?</strong> Click <strong><Icon name="zap" size={14} /> QUICK ADD</strong> once <Icon name="arrow-right" size={16} /> system finds all matching tables <Icon name="arrow-right" size={16} /> adds all filters automatically. No per-table work.</p>
         </div>
       </details>
 
@@ -12920,7 +12920,7 @@ function signUserJWT($user) {
         <!-- ── AUDIT LOG SECTION ── -->
         <div class="rls-section" style="background:var(--pw-bg); border:1px solid var(--pw-border); padding:12px 14px; margin-bottom:14px;">
           <div class="rls-section-header" style="display:flex; align-items:center; cursor:pointer;" onclick={() => { rlsAuditExpanded = !rlsAuditExpanded; if (rlsAuditExpanded && rlsAuditEvents.length === 0) loadRlsAudit(); }}>
-            <span class="rls-toggle">{rlsAuditExpanded ? '▼' : '▶'}</span>
+            <span class="rls-toggle">{rlsAuditExpanded ? '▼' : ''}</span>
             <span class="rls-section-title" style="font-size:10px; font-weight:900; color:var(--pw-muted); margin-left:6px; letter-spacing:0.06em;">AUDIT LOG</span>
             <span class="rls-section-count">{rlsAuditEvents.length} events</span>
           </div>
@@ -12935,7 +12935,7 @@ function signUserJWT($user) {
                 <input type="checkbox" bind:checked={rlsAuditBlockedOnly} onchange={loadRlsAudit} />
                 BLOCKED ONLY
               </label>
-              <button class="btn-secondary-sm" onclick={loadRlsAudit} style="padding:4px 10px; background:var(--pw-surface); border:1px solid var(--pw-dim); color:var(--pw-ink-soft); cursor:pointer; font-family:monospace; font-size:10px;">↻ REFRESH</button>
+              <button class="btn-secondary-sm" onclick={loadRlsAudit} style="padding:4px 10px; background:var(--pw-surface); border:1px solid var(--pw-dim); color:var(--pw-ink-soft); cursor:pointer; font-family:monospace; font-size:10px;"><Icon name="refresh" size={16} /> REFRESH</button>
             </div>
 
             {#if rlsAuditLoading}
@@ -13017,7 +13017,7 @@ function signUserJWT($user) {
     <!-- Back to Sharing -->
     <div style="margin-bottom:10px;">
       <button onclick={() => { activeTab = 'embed'; }}
-        style="padding:6px 12px; background:var(--pw-bg-alt); border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:11px; font-weight:700;">← BACK TO SHARING</button>
+        style="padding:6px 12px; background:var(--pw-bg-alt); border:1px solid var(--pw-ink-soft); color:var(--pw-ink); cursor:pointer; font-family:inherit; font-size:11px; font-weight:700;"><Icon name="arrow-left" size={16} /> BACK TO SHARING</button>
       <span style="margin-left:10px; font-size:11px; color:var(--pw-muted); font-style:italic;">Section [3] Field Visibility — column-level masking · banding · hiding</span>
     </div>
     <div class="ink-border" style="margin-bottom:14px; padding:14px; background:var(--pw-surface);">
@@ -13157,7 +13157,7 @@ function signUserJWT($user) {
               {/each}
               <button onclick={testVisPolicy}
                 style="margin-left:auto; padding:5px 14px; background:var(--pw-ink); color:var(--color-primary,var(--pw-accent)); border:none; cursor:pointer; font-family:monospace; font-size:11px; font-weight:700; letter-spacing:0.05em;">
-                ▶ RUN TEST
+                <Icon name="play" size={16} /> RUN TEST
               </button>
             </div>
             {#if visTestResult}
@@ -13233,7 +13233,7 @@ function signUserJWT($user) {
             <div style="display:flex; margin-top:8px;">
               <button onclick={runVisPreview} disabled={visPreviewLoading}
                 style="margin-left:auto; padding:5px 14px; background:var(--pw-ink); color:var(--color-primary,var(--pw-accent)); border:none; cursor:pointer; font-family:monospace; font-size:11px; font-weight:700; letter-spacing:0.05em;">
-                {visPreviewLoading ? 'RUNNING…' : '▶ RUN PREVIEW'}
+                {visPreviewLoading ? 'RUNNING…' : ' RUN PREVIEW'}
               </button>
             </div>
             {#if visPreviewResult}
@@ -13600,7 +13600,7 @@ function signUserJWT($user) {
                 </button>
               </div>
 
-              <!-- USER ↔ ROLE assignments -->
+              <!-- USER &lt;-&gt; ROLE assignments -->
               <div style="font-size:11px; font-weight:700; color:var(--pw-ink); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px;">USER ASSIGNMENTS</div>
               {#if visUserRoles.length === 0}
                 <div style="font-size:11px; color:var(--pw-dim); font-style:italic;">no users found</div>
@@ -13665,7 +13665,7 @@ function signUserJWT($user) {
               </div>
               <button onclick={runTimeTravel} disabled={visTimeTravelLoading || !visTimeTravelDate}
                 style="margin-left:auto; padding:5px 14px; background:var(--pw-ink); color:var(--color-primary,var(--pw-accent)); border:none; cursor:pointer; font-family:monospace; font-size:11px; font-weight:700; letter-spacing:0.05em;">
-                {visTimeTravelLoading ? '…' : '▶ APPLY HISTORICAL POLICY'}
+                {visTimeTravelLoading ? '…' : ' APPLY HISTORICAL POLICY'}
               </button>
             </div>
             <div style="font-size:10px; font-weight:700; color:var(--pw-muted); margin-bottom:3px;">SQL</div>
@@ -13808,9 +13808,9 @@ function signUserJWT($user) {
                 </div>
                 <div style="display:flex; gap:6px;">
                   <button onclick={visAuditPrevPage} disabled={visAuditPage === 0 || visAuditLoading}
-                    style="padding:4px 10px; background:var(--pw-bg); border:1px solid var(--pw-dim); cursor:pointer; font-family:monospace; font-size:11px;">‹ PREV</button>
+                    style="padding:4px 10px; background:var(--pw-bg); border:1px solid var(--pw-dim); cursor:pointer; font-family:monospace; font-size:11px;">&lt; PREV</button>
                   <button onclick={visAuditNextPage} disabled={(visAuditPage + 1) * VIS_AUDIT_PAGE_SIZE >= visAuditTotal || visAuditLoading}
-                    style="padding:4px 10px; background:var(--pw-bg); border:1px solid var(--pw-dim); cursor:pointer; font-family:monospace; font-size:11px;">NEXT ›</button>
+                    style="padding:4px 10px; background:var(--pw-bg); border:1px solid var(--pw-dim); cursor:pointer; font-family:monospace; font-size:11px;">NEXT &gt;</button>
                 </div>
               </div>
             {/if}
@@ -13882,7 +13882,7 @@ function signUserJWT($user) {
 
             <div style="display:flex; justify-content:space-between; gap:8px;">
               <button onclick={() => { selectedVertical = null; verticalResult = null; }} disabled={verticalApplying}
-                style="padding:6px 14px; background:var(--pw-surface); border:1px solid var(--pw-dim); color:var(--pw-ink-soft); cursor:pointer; font-family:inherit; font-size:11px; font-weight:700;">← BACK</button>
+                style="padding:6px 14px; background:var(--pw-surface); border:1px solid var(--pw-dim); color:var(--pw-ink-soft); cursor:pointer; font-family:inherit; font-size:11px; font-weight:700;"><Icon name="arrow-left" size={16} /> BACK</button>
               <div style="display:flex; gap:8px;">
                 <button onclick={() => { showVerticalModal = false; selectedVertical = null; }} disabled={verticalApplying}
                   style="padding:6px 14px; background:var(--pw-surface); border:1px solid var(--pw-dim); color:var(--pw-ink-soft); cursor:pointer; font-family:inherit; font-size:11px; font-weight:700;">Cancel</button>
@@ -13948,7 +13948,7 @@ function signUserJWT($user) {
             <!-- ── DETAIL ── -->
             <div style="padding:14px 18px; border-bottom:2px solid var(--pw-ink); background:var(--pw-ink); color:var(--pw-accent); display:flex; justify-content:space-between; align-items:center; gap:10px;">
               <button onclick={() => { visSelectedTemplate = null; }}
-                style="padding:4px 10px; background:var(--pw-ink); border:1px solid var(--pw-dim); color:var(--pw-border-strong); cursor:pointer; font-family:monospace; font-size:10px;">← BACK</button>
+                style="padding:4px 10px; background:var(--pw-ink); border:1px solid var(--pw-dim); color:var(--pw-border-strong); cursor:pointer; font-family:monospace; font-size:10px;"><Icon name="arrow-left" size={16} /> BACK</button>
               <div style="flex:1; font-size:12px; font-weight:900; letter-spacing:0.06em; text-align:center;">
                 {visSelectedTemplate.icon || ''} {visSelectedTemplate.label || visSelectedTemplate.name}
               </div>
@@ -14063,11 +14063,11 @@ function signUserJWT($user) {
           Toggle which tabs, tools, and agents are active for this project. Disabled = tool not registered + tab not rendered. Backend gates take effect on next chat session.
         </div>
 
-        <!-- ★ Smart recommend banner (auto-derived from trained schema) -->
+        <!-- * Smart recommend banner (auto-derived from trained schema) -->
         {#if recommend && recommendDiffers()}
           <div style="margin-bottom:14px; padding:10px 12px; background:var(--pw-success-soft); border:1px solid var(--pw-success);">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px;">
-              <div style="font-size:11px; font-weight:900; color:var(--pw-success); letter-spacing:0.03em;">★ RECOMMENDED FOR THIS DATA</div>
+              <div style="font-size:11px; font-weight:900; color:var(--pw-success); letter-spacing:0.03em;">* RECOMMENDED FOR THIS DATA</div>
               <button onclick={applyRecommend}
                 style="padding:5px 14px; background:var(--pw-success); border:none; color:var(--pw-surface); cursor:pointer; font-family:inherit; font-size:10px; font-weight:700; white-space:nowrap;">APPLY + SAVE</button>
             </div>
@@ -14090,7 +14090,7 @@ function signUserJWT($user) {
                 <span style="font-weight:700; font-size:11px; color:{on ? 'var(--pw-success)' : 'var(--pw-ink)'};">{cap.label}</span>
                 {#if locked}<span style="margin-left:auto; font-size:9px; color:var(--pw-dim);">needs SQL</span>{/if}
               </div>
-              <div style="font-size:10px; line-height:1.4; color:var(--pw-muted);">{on ? 'off → ' : ''}{cap.lose}</div>
+              <div style="font-size:10px; line-height:1.4; color:var(--pw-muted);">{on ? 'off &gt; ' : ''}{cap.lose}</div>
             </button>
           {/each}
         </div>
@@ -14098,7 +14098,7 @@ function signUserJWT($user) {
         <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
           <button onclick={resetFeatureConfigAll}
             title="Turn everything back on"
-            style="padding:6px 12px; background:#fff4d4; border:1px solid #cc7a00; color:#cc7a00; cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">⟳ RESET TO DEFAULT</button>
+            style="padding:6px 12px; background:#fff4d4; border:1px solid #cc7a00; color:#cc7a00; cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">-&gt; RESET TO DEFAULT</button>
           <span style="font-size:10px; color:var(--pw-muted);">Cards cascade to underlying tools/agents. Save to apply on next chat.</span>
         </div>
 
@@ -14115,7 +14115,7 @@ function signUserJWT($user) {
                 <button type="button" onclick={() => { if (!locked) toggleFc('tabs', k); }} disabled={locked}
                   title={locked ? 'always on' : ''}
                   style="padding:5px 12px; background:{featureConfig.tabs[k] ? 'var(--pw-success-soft)' : 'var(--pw-surface)'}; border:1px solid {featureConfig.tabs[k] ? 'var(--pw-success)' : 'var(--pw-border-strong)'}; color:{featureConfig.tabs[k] ? 'var(--pw-success)' : 'var(--pw-dim)'}; cursor:{locked ? 'default' : 'pointer'}; opacity:{locked ? 0.6 : 1}; font-family:inherit; font-size:10px; display:inline-flex; align-items:center; gap:4px;">
-                  <span style="font-size:11px;">{featureConfig.tabs[k] ? '●' : '○'}</span><span>{k}{locked ? ' 🔒' : ''}</span>
+                  <span style="font-size:11px;">{featureConfig.tabs[k] ? '●' : '○'}</span><span>{k}{locked ? ' ' : ''}</span>
                 </button>
               {/each}
             </div>
@@ -14168,7 +14168,7 @@ function signUserJWT($user) {
                 style="padding:5px 12px; background:var(--pw-surface); border:1px solid var(--pw-muted); color:var(--pw-ink-soft); cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">Edit</button>
               <button onclick={deriveScope} disabled={scopeDeriving}
                 style="padding:5px 12px; background:#e0eeff; border:1px solid #66aaff; color:#0050aa; cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">
-                {scopeDeriving ? 'DERIVING…' : '↻ RE-DERIVE'}
+                {scopeDeriving ? 'DERIVING…' : '&gt; RE-DERIVE'}
               </button>
             {/if}
           </div>
@@ -14243,7 +14243,7 @@ function signUserJWT($user) {
         <div style="margin-top:14px; padding-top:10px; border-top:1px dashed var(--pw-border);">
           <button onclick={() => { if (!auditLoaded) loadGuardrailAudit(); else auditLoaded = !auditLoaded; }}
             style="background:transparent; border:none; color:#0050aa; cursor:pointer; font-family:inherit; font-size:11px; font-weight:700; padding:0;">
-            {auditLoaded ? '▼' : '▶'} REFUSAL AUDIT (last 14 days)
+            {auditLoaded ? '▼' : ''} REFUSAL AUDIT (last 14 days)
           </button>
           {#if auditLoaded}
             {#if guardrailAudit.length === 0}
@@ -15341,7 +15341,7 @@ function signUserJWT($user) {
           disabled={slRunning}
           style="font-size:10px; padding:6px 14px; font-weight:900; letter-spacing:0.06em; background:{slRunning ? 'var(--pw-muted)' : 'var(--pw-accent)'}; color:var(--pw-ink); border:1px solid var(--pw-ink); cursor:{slRunning ? 'not-allowed' : 'pointer'};"
         >
-          {slRunning ? `● RUNNING (${slElapsed})` : '▶ RUN CYCLE NOW'}
+          {slRunning ? `● RUNNING (${slElapsed})` : ' RUN CYCLE NOW'}
         </button>
         {#if slRunning && slCurrentRunId}
           <button
@@ -15446,7 +15446,7 @@ function signUserJWT($user) {
                     onclick={() => { slExpanded = { ...slExpanded, [ridKey]: !slExpanded[ridKey] }; }}
                     class="mini-btn"
                     style="font-size: 11px; padding:2px 8px;"
-                  >{slExpanded[ridKey] ? '▼ HIDE' : '▶ OPEN'}</button>
+                  >{slExpanded[ridKey] ? '▼ HIDE' : ' OPEN'}</button>
                 </td>
               </tr>
               {#if slExpanded[ridKey]}
@@ -15596,7 +15596,7 @@ function signUserJWT($user) {
         <div style="display:flex; justify-content:space-between; font-size:10px; margin-top:4px;">
           <span>min {minV.toFixed(0)}</span>
           <span style="color:{trend === 'up' ? 'var(--pw-accent)' : trend === 'down' ? 'var(--pw-error)' : 'var(--pw-dim)'};">
-            {trend === 'up' ? '↑' : trend === 'down' ? '↓' : '━'}
+            {trend === 'up' ? '^' : trend === 'down' ? 'v' : '━'}
             {delta >= 0 ? '+' : ''}{delta.toFixed(1)} over {iqHistory.length} cycles
           </span>
           <span>max {maxV.toFixed(0)} · current {current.toFixed(0)}</span>
@@ -15626,7 +15626,7 @@ function signUserJWT($user) {
           DRY RUN ($0, no LLM)
         </label>
         <button class="send-btn" style="font-size: 10px; padding: 6px 14px; background: var(--pw-accent-soft); color: var(--pw-ink); font-weight: 900;" disabled={runningCycle} onclick={runLearningCycle}>
-          {runningCycle ? '● RUNNING…' : (dryRun ? '▶ DRY RUN' : '▶ RUN CYCLE NOW')}
+          {runningCycle ? '● RUNNING…' : (dryRun ? ' DRY RUN' : ' RUN CYCLE NOW')}
         </button>
         <button class="feedback-btn" style="font-size: 10px; padding: 6px 14px; font-weight: 700;" onclick={loadSelfLearn}> DISABLE AUTO</button>
         <button class="feedback-btn" style="font-size: 10px; padding: 6px 14px; font-weight: 700;" onclick={loadSelfLearn}><Icon name="settings" size={14} /> SETTINGS</button>
@@ -15644,7 +15644,7 @@ function signUserJWT($user) {
           <button onclick={() => deriveGoals(false)} disabled={derivingGoals}
             title="Auto-generate from persona + tables + docs + KG + bad-feedback signals (LLM, ~$0.0002)"
             style="padding:5px 10px; background:#fff4d4; border:1px solid #cc7a00; color:#cc7a00; cursor:pointer; font-family:inherit; font-size:10px; font-weight:700;">
-            {derivingGoals ? 'DERIVING…' : '↺ AUTO-DERIVE'}
+            {derivingGoals ? 'DERIVING…' : '&lt; AUTO-DERIVE'}
           </button>
           <button onclick={() => deriveGoals(true)} disabled={derivingGoals}
             title="Overwrite even if you edited the file"
@@ -15737,7 +15737,7 @@ function signUserJWT($user) {
             </span>
             <span style="flex: 1; font-size: 11px;">{root.statement}</span>
             {#if root.child_count > 0}
-              <span style="color: var(--pw-accent); font-size: 10px; margin-left: 8px;">→ {root.child_count} children</span>
+              <span style="color: var(--pw-accent); font-size: 10px; margin-left: 8px;"><Icon name="arrow-right" size={16} /> {root.child_count} children</span>
             {/if}
           </div>
         {/each}
@@ -15805,7 +15805,7 @@ function signUserJWT($user) {
         <div style="font-size:16px; font-weight:900; text-transform:uppercase;">Training Pipeline</div>
         <div style="font-size:11px; color:var(--pw-muted);">click any step to see what happened — status, timing, logs and output</div>
       </div>
-      <button class="set-ghost" onclick={() => { loadTrainingSteps(); loadTrainingRuns(); }}>↻ Refresh</button>
+      <button class="set-ghost" onclick={() => { loadTrainingSteps(); loadTrainingRuns(); }}><Icon name="refresh" size={16} /> Refresh</button>
     </div>
 
     <!-- run history -->
@@ -15819,7 +15819,7 @@ function signUserJWT($user) {
             {@const isSel = (inspectRun?.id) === run.id}
             <button onclick={() => inspectRunId = run.id}
               style="display:flex; width:100%; align-items:center; gap:10px; padding:6px 8px; font-size:11px; border:none; border-bottom:1px dotted var(--pw-border); border-left:2px solid {isSel ? 'var(--pw-accent)' : 'transparent'}; background:{isSel ? 'rgba(201,99,66,0.06)' : 'transparent'}; cursor:pointer; text-align:left; font-family:inherit; color:var(--pw-ink);">
-              <span style="color:{rc}; font-weight:900;">{run.status === 'done' ? '✓' : run.status === 'failed' ? '✗' : '●'}</span>
+              <span style="color:{rc}; font-weight:900;">{run.status === 'done' ? 'OK' : run.status === 'failed' ? 'x' : '●'}</span>
               <span style="font-weight:700;">run #{run.id ?? '—'}</span>
               <span style="color:var(--pw-muted);">{run.started_at?.slice(0,16)}</span>
               <span style="color:var(--pw-muted);">· {run.tables ?? 1} table{run.tables !== 1 ? 's' : ''}</span>
@@ -15836,7 +15836,7 @@ function signUserJWT($user) {
     <div class="ink-border" style="margin-bottom:16px; background:#1a1614; color:#e8e3d6; font-family:var(--pw-font-mono,monospace); overflow:hidden;">
       <div style="padding:8px 14px; background:#241f1b; display:flex; align-items:center; justify-content:space-between; font-size:11px;">
         <span style="color:#e8e3d6;">$ dash training --inspect {inspectRun?.id ? `--run ${inspectRun.id}` : ''}</span>
-        <span style="color:#8a8378;">{inspectSteps.filter(s=>s.status==='done').length}/{inspectSteps.length} done · click a step ↓</span>
+        <span style="color:#8a8378;">{inspectSteps.filter(s=>s.status==='done').length}/{inspectSteps.length} done · click a step <Icon name="arrow-down" size={16} /></span>
       </div>
       <div style="display:grid; grid-template-columns: 240px 1fr; min-height:280px;">
         <!-- step list -->
@@ -15845,7 +15845,7 @@ function signUserJWT($user) {
             {@const c = st.status==='done' ? '#5fd38a' : st.status==='active' ? '#e6a700' : st.status==='skipped' ? '#8a8378' : st.status==='error' ? '#e06c5e' : '#6b645c'}
             <button onclick={() => inspectStepName = st.name}
               style="display:flex; width:100%; align-items:center; gap:8px; padding:5px 8px; background:{inspectStepName===st.name ? '#332b25' : 'transparent'}; border:none; border-left:2px solid {inspectStepName===st.name ? '#c96342' : 'transparent'}; color:#e8e3d6; cursor:pointer; font-family:inherit; font-size:11px; text-align:left;">
-              <span style="color:{c}; width:12px;">{st.status==='done'?'✓':st.status==='active'?'●':st.status==='skipped'?'⊘':st.status==='error'?'✗':'○'}</span>
+              <span style="color:{c}; width:12px;">{st.status==='done'?'OK':st.status==='active'?'●':st.status==='skipped'?'⊘':st.status==='error'?'x':'○'}</span>
               <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{st.name}</span>
               {#if st.elapsed_ms != null}<span style="color:#8a8378;">{st.elapsed_ms < 1000 ? `${st.elapsed_ms}ms` : `${(st.elapsed_ms/1000).toFixed(1)}s`}</span>{/if}
             </button>
@@ -15854,19 +15854,19 @@ function signUserJWT($user) {
         <!-- detail -->
         <div style="padding:12px 16px; overflow-y:auto; max-height:440px; font-size:11.5px; line-height:1.7;">
           {#if !inspectSelected}
-            <div style="color:#8a8378;">← pick a step to see status, timing, logs and what it produced.</div>
+            <div style="color:#8a8378;"><Icon name="arrow-left" size={16} /> pick a step to see status, timing, logs and what it produced.</div>
           {:else}
             {@const sel = inspectSelected}
             {@const logs = stepLogLines(sel.name)}
             <div style="font-size:13px; font-weight:700; color:#fff; margin-bottom:8px;">{sel.name}</div>
             <div style="display:grid; grid-template-columns:auto 1fr; gap:2px 14px; color:#cfc8bd;">
-              <span style="color:#8a8378;">status</span><span>{sel.status==='done'?'✓ done':sel.status==='active'?'● running':sel.status==='skipped'?'⊘ skipped (cache hit · unchanged)':sel.status==='error'?'✗ failed':'○ pending'}</span>
+              <span style="color:#8a8378;">status</span><span>{sel.status==='done'?'OK done':sel.status==='active'?'● running':sel.status==='skipped'?'⊘ skipped (cache hit · unchanged)':sel.status==='error'?'x failed':'○ pending'}</span>
               {#if sel.scope}<span style="color:#8a8378;">scope</span><span>{sel.scope}</span>{/if}
               {#if sel.elapsed_ms != null}<span style="color:#8a8378;">took</span><span>{sel.elapsed_ms < 1000 ? `${sel.elapsed_ms}ms` : `${(sel.elapsed_ms/1000).toFixed(1)}s`}</span>{/if}
               {#if sel.fp}<span style="color:#8a8378;">fingerprint</span><span style="color:#8a8378;">{String(sel.fp).slice(0,16)}</span>{/if}
             </div>
             {#if sel.error}
-              <div style="margin-top:8px; padding:6px 8px; background:rgba(224,108,94,0.12); border:1px solid #e06c5e; color:#e06c5e;">✗ {sel.error}</div>
+              <div style="margin-top:8px; padding:6px 8px; background:rgba(224,108,94,0.12); border:1px solid #e06c5e; color:#e06c5e;"><Icon name="x" size={16} /> {sel.error}</div>
             {/if}
             {#if sel.status === 'skipped'}
               <div style="margin-top:8px; color:#8a8378;">Skipped because inputs didn't change since the last run — the cached result is reused (saves time + cost).</div>
@@ -15886,7 +15886,7 @@ function signUserJWT($user) {
             {#if _STEP_RERUN_ID[sel.name]}
               <button onclick={() => runStep(_STEP_RERUN_ID[sel.name], _STEP_RERUN_ID[sel.name]==='goals')} disabled={!!stepRunning}
                 style="margin-top:12px; padding:4px 12px; background:{stepRunning ? '#3a322c' : '#c96342'}; color:#fff; border:none; cursor:{stepRunning ? 'not-allowed':'pointer'}; font-family:inherit; font-size:11px; font-weight:700;">
-                {stepRunning === _STEP_RERUN_ID[sel.name] ? 'RUNNING…' : '↻ re-run this step'}
+                {stepRunning === _STEP_RERUN_ID[sel.name] ? 'RUNNING…' : '&gt; re-run this step'}
               </button>
             {/if}
           {/if}
@@ -16014,7 +16014,7 @@ function signUserJWT($user) {
         {#if docFile}<span style="font-weight: 900;">{docFile.name}</span>{:else}<span style="font-size: 11px; text-transform: uppercase;">Drop .sql, .py, .txt, or .md</span>{/if}
       </div>
       {#if docFile}
-        <button class="send-btn mt-2" onclick={uploadDoc} disabled={docUploading} style="padding: 6px 14px; font-size: 10px; cursor: pointer;">{docUploading ? '...' : '▶ INDEX'}</button>
+        <button class="send-btn mt-2" onclick={uploadDoc} disabled={docUploading} style="padding: 6px 14px; font-size: 10px; cursor: pointer;">{docUploading ? '...' : ' INDEX'}</button>
       {/if}
       {#if docResult}<div style="margin-top: 8px; font-size: 11px; color: var(--pw-accent); font-weight: 700;"><Icon name="check" size={14} /> Indexed: {docResult.filename}</div>{/if}
     </div>
@@ -16094,7 +16094,7 @@ function signUserJWT($user) {
       <button
         onclick={loadDriftEvents}
         style="background: transparent; border: 1px solid #4cc9ff; color: #4cc9ff; padding: 3px 8px; cursor: pointer; font-family: var(--pw-font-body); font-size: 10px; font-weight: 900;"
-      >↻ RELOAD</button>
+      ><Icon name="refresh" size={16} /> RELOAD</button>
       <span style="margin-left: auto; color: var(--pw-muted);">{driftEvents.length} events</span>
     </div>
 
@@ -16146,26 +16146,26 @@ function signUserJWT($user) {
 <style>
  /* ─── Bilingual 1/2 badge (memories, etc.) ─── */
  .bi-badge {
-   flex-shrink: 0;
-   display: inline-flex;
-   align-items: center;
-   justify-content: center;
-   width: 14px;
-   height: 14px;
-   font-size: 9px;
-   font-weight: 700;
-   line-height: 1;
-   color: var(--pw-ink);
-   background: var(--pw-bg-alt);
-   border: 1px solid var(--pw-border);
-   border-radius: 50%;
+ flex-shrink: 0;
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ width: 14px;
+ height: 14px;
+ font-size: 9px;
+ font-weight: 700;
+ line-height: 1;
+ color: var(--pw-ink);
+ background: var(--pw-bg-alt);
+ border: 1px solid var(--pw-border);
+ border-radius: 50%;
  }
 
  /* ─── Auto-train robot wrapper ─── */
  .auto-robot-wrap {
-  margin: 12px 0 0;
-  display: flex;
-  justify-content: flex-start;
+ margin: 12px 0 0;
+ display: flex;
+ justify-content: flex-start;
  }
 
  /* ─── Cockpit modern redesign (CP-*) ─── */
@@ -16442,23 +16442,23 @@ function signUserJWT($user) {
 
  /* Data Source sub-tabs */
  .ds-subtabs {
-   display: flex; gap: 2px; margin: 14px 0 18px;
-   border-bottom: 2px solid var(--pw-border);
+ display: flex; gap: 2px; margin: 14px 0 18px;
+ border-bottom: 2px solid var(--pw-border);
  }
  .ds-subtab {
-   display: inline-flex; align-items: center; gap: 6px;
-   padding: 7px 14px; font-size: 12px; font-weight: 600;
-   color: var(--pw-muted); background: none; border: none;
-   cursor: pointer; border-bottom: 2px solid transparent;
-   margin-bottom: -2px; letter-spacing: 0.01em;
-   transition: color 0.12s;
+ display: inline-flex; align-items: center; gap: 6px;
+ padding: 7px 14px; font-size: 12px; font-weight: 600;
+ color: var(--pw-muted); background: none; border: none;
+ cursor: pointer; border-bottom: 2px solid transparent;
+ margin-bottom: -2px; letter-spacing: 0.01em;
+ transition: color 0.12s;
  }
  .ds-subtab:hover { color: var(--pw-ink); }
  .ds-subtab-on { color: var(--pw-accent) !important; border-bottom-color: var(--pw-accent) !important; }
  .ds-subtab-badge {
-   font-size: 10px; font-weight: 700; padding: 1px 5px;
-   background: var(--pw-bg-alt); color: var(--pw-muted);
-   border-radius: 8px; font-family: ui-monospace, monospace;
+ font-size: 10px; font-weight: 700; padding: 1px 5px;
+ background: var(--pw-bg-alt); color: var(--pw-muted);
+ border-radius: 8px; font-family: ui-monospace, monospace;
  }
  .ds-subtab-badge-err { background: rgba(192,57,43,0.12); color: #c0392b; }
  .ds-subtab-badge-run { background: rgba(201,99,66,0.15); color: var(--pw-accent); animation: pulse 1s ease-in-out infinite; }
@@ -18672,7 +18672,7 @@ function signUserJWT($user) {
 .dq-chip b { font-weight:800; margin-left:3px; color:var(--pw-ink,#2c2620); }
 .dq-chip.on { border-color:var(--pw-accent,#9a4a2f); background:var(--pw-accent-soft,#f3ece1); color:var(--pw-accent,#9a4a2f); }
 .dq-chip-high.on { border-color:#c0392b; background:rgba(192,57,43,0.08); color:#c0392b; }
-.dq-chip-med.on  { border-color:#cc7a00; background:rgba(204,122,0,0.08); color:#cc7a00; }
+.dq-chip-med.on { border-color:#cc7a00; background:rgba(204,122,0,0.08); color:#cc7a00; }
 .dq-filters { display:flex; align-items:center; gap:10px; margin:0 0 12px; }
 .dq-mutetoggle { font-size:12px; color:var(--pw-muted,#6b6052); display:flex; align-items:center; gap:5px; cursor:pointer; }
 .dq-grp { margin:0 0 14px; }

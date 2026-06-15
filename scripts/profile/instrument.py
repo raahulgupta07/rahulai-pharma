@@ -53,7 +53,7 @@ _log = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 1 — MAP: 35 V2 steps → real "module:function" targets.
+# STEP 1 — MAP: 35 V2 steps > real "module:function" targets.
 # Ordered by step_no 1..35.
 # ─────────────────────────────────────────────────────────────────────────────
 STEP_MAP: list[dict] = [
@@ -75,7 +75,7 @@ STEP_MAP: list[dict] = [
      "note": "separate fn; DISTINCT value catalog ($0)"},
     {"step_no": 6, "name": "detect_hierarchy", "phase": "A",
      "target": "app.upload:_detect_hierarchies", "wrappable": True,
-     "note": "separate fn; parent→child detection ($0)"},
+     "note": "separate fn; parent>child detection ($0)"},
     {"step_no": 7, "name": "smart_sample", "phase": "A",
      "target": "app.upload:_smart_sample_rows", "wrappable": True,
      "note": "separate fn; 20 diverse rows ($0)"},
@@ -193,8 +193,8 @@ _TIMINGS_LOCK = threading.Lock()
 
 # Threadlocal stack of (target, llm_accumulator_dict) frames. The innermost
 # wrapped fn currently executing on THIS thread is the top of the stack. The LLM
-# observer reads the top frame and attributes the call to it (innermost wins →
-# recursion/re-entrancy safe; a wrapped fn calling another wrapped fn → both are
+# observer reads the top frame and attributes the call to it (innermost wins >
+# recursion/re-entrancy safe; a wrapped fn calling another wrapped fn > both are
 # timed, the LLM call lands on the inner one).
 _CALLSTACK = threading.local()
 
@@ -220,7 +220,7 @@ def reset_timings() -> None:
 
 
 def _parse_target(target: str):
-    """'module:func' → (module_path, func_name). Raises ValueError on bad form."""
+    """'module:func' > (module_path, func_name). Raises ValueError on bad form."""
     if ":" not in target:
         raise ValueError(f"target must be 'module:function', got {target!r}")
     mod, fn = target.split(":", 1)
@@ -311,7 +311,7 @@ def profile_calls(targets: list[str]):
       not fatal.
     - Re-entrancy / recursion safe via the threadlocal frame stack.
     """
-    patched: list[tuple] = []  # (module_obj, func_name, original_callable)
+    patched: list[tuple] = [] # (module_obj, func_name, original_callable)
     obs_tag = None
 
     try:

@@ -1,5 +1,5 @@
 <script>
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onDestroy } from 'svelte';
  let { cell, data, ondrill, isNew = false } = $props();
  let chartEl = $state();
@@ -14,23 +14,23 @@
  return v.toFixed(v % 1 === 0 ? 0 : 1);
  }
 
- // Render-time decimal cleanup — strip "182.333333334" → "182"
+ // Render-time decimal cleanup — strip "182.333333334" > "182"
  // Applied to OLD specs that were persisted before backend narrator regex shipped.
  function cleanText(t) {
-   if (!t || typeof t !== 'string') return t;
-   return t.replace(/\b\d+\.\d{3,}\b/g, (m) => {
-     const n = parseFloat(m);
-     if (isNaN(n)) return m;
-     if (n === Math.floor(n)) return String(Math.floor(n));
-     if (Math.abs(n) >= 100) return String(Math.round(n));
-     if (Math.abs(n) >= 10) return n.toFixed(1);
-     return n.toFixed(2);
-   });
+ if (!t || typeof t !== 'string') return t;
+ return t.replace(/\b\d+\.\d{3,}\b/g, (m) => {
+ const n = parseFloat(m);
+ if (isNaN(n)) return m;
+ if (n === Math.floor(n)) return String(Math.floor(n));
+ if (Math.abs(n) >= 100) return String(Math.round(n));
+ if (Math.abs(n) >= 10) return n.toFixed(1);
+ return n.toFixed(2);
+ });
  }
 
  function renderPlaceholder() {
-   if (!chartEl) return;
-   chartEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#888;font-size:11px;font-style:italic;">no data</div>';
+ if (!chartEl) return;
+ chartEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#888;font-size:11px;font-style:italic;">no data</div>';
  }
 
  async function renderChart() {
@@ -49,127 +49,127 @@
  // Detect gauges with single-value baked in (eoHasData=false may still be valid gauge)
  const seriesArr0 = hasEo && Array.isArray(eo.series) ? eo.series : [];
  const hasGaugeValue = seriesArr0.some((s) =>
-   s?.type === 'gauge' && (
-     (Array.isArray(s.data) && s.data.length > 0) ||
-     s.value != null ||
-     (s.detail && s.detail.formatter)
-   )
+ s?.type === 'gauge' && (
+ (Array.isArray(s.data) && s.data.length > 0) ||
+ s.value != null ||
+ (s.detail && s.detail.formatter)
+ )
  );
  if (hasEo && (eoHasData || hasGaugeValue)) {
-   chart = echarts.init(chartEl);
-   // Beautify: detect chart type from series; apply clean overrides
-   const cleanEo = JSON.parse(JSON.stringify(eo)); // deep clone
-   const seriesArr = Array.isArray(cleanEo.series) ? cleanEo.series : [];
-   const isGauge = seriesArr.some((s) => s?.type === 'gauge');
-   const isPie = seriesArr.some((s) => s?.type === 'pie');
-   if (isGauge) {
-     // Force-rebuild gauge series w/ clean defaults — discard LLM's messy
-     // axisLabel/splitLine/pointer/title that overlap value
-     seriesArr.forEach((s) => {
-       if (s.type !== 'gauge') return;
-       // Extract value from any of the LLM's possible shapes
-       let val = null;
-       let label = cell.title || '';
-       if (Array.isArray(s.data) && s.data.length > 0) {
-         const d0 = s.data[0];
-         if (typeof d0 === 'object' && d0 !== null) {
-           val = d0.value ?? null;
-           if (d0.name) label = d0.name;
-         } else {
-           val = d0;
-         }
-       } else if (s.value != null) {
-         val = s.value;
-       }
-       // Discard ALL keys that cause label/value overlap
-       const cleanSeries = {
-         type: 'gauge',
-         radius: '85%',
-         center: ['50%', '58%'],
-         startAngle: 200,
-         endAngle: -20,
-         min: s.min ?? 0,
-         max: s.max ?? (typeof val === 'number' ? Math.max(100, val * 1.2) : 100),
-         axisLine: { lineStyle: { width: 14, color: [[1, '#e2ddd2']] } },
-         progress: { show: true, width: 14, itemStyle: { color: '#c96342' } },
-         pointer: { show: false },
-         anchor: { show: false },
-         axisTick: { show: false },
-         splitLine: { show: false },
-         axisLabel: { show: false },
-         title: { show: false },
-         detail: {
-           valueAnimation: true,
-           offsetCenter: [0, '5%'],
-           fontSize: 30,
-           fontWeight: 700,
-           color: '#2c2a26',
-           fontFamily: 'Source Serif Pro, Georgia, serif',
-           formatter: (v) => {
-             if (typeof v !== 'number' || isNaN(v)) return String(v ?? '—');
-             if (Math.abs(v) >= 1000) return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
-             if (v === Math.floor(v)) return String(v);
-             return v.toFixed(1);
-           },
-         },
-         data: val != null ? [{ value: val }] : [],
-       };
-       // Replace the entire series object
-       Object.keys(s).forEach((k) => delete s[k]);
-       Object.assign(s, cleanSeries);
-     });
-     // gauges typically don't need x/y axis or grid
-     delete cleanEo.xAxis;
-     delete cleanEo.yAxis;
-     delete cleanEo.grid;
-     delete cleanEo.legend;
-     delete cleanEo.title;  // suppress top-of-chart title — cell already has it
-   } else if (isPie) {
-     seriesArr.forEach((s) => {
-       if (s.type !== 'pie') return;
-       s.radius = s.radius || ['45%', '72%'];
-       s.center = s.center || ['50%', '52%'];
-       s.itemStyle = { ...(s.itemStyle || {}), borderColor: '#fdfaf5', borderWidth: 2 };
-       s.label = { ...(s.label || {}), fontSize: 11, color: '#6b6557' };
-       s.labelLine = { length: 8, length2: 6 };
-     });
-     cleanEo.legend = { ...(cleanEo.legend || {}), bottom: 0, type: 'scroll', textStyle: { fontSize: 11 } };
-     delete cleanEo.xAxis;
-     delete cleanEo.yAxis;
-     delete cleanEo.grid;
-   } else {
-     // default polish for bar/line/scatter
-     if (cleanEo.xAxis) {
-       const ax = Array.isArray(cleanEo.xAxis) ? cleanEo.xAxis[0] : cleanEo.xAxis;
-       ax.axisLabel = { ...(ax.axisLabel || {}), fontSize: 10, color: '#6b6557' };
-       ax.axisLine = { ...(ax.axisLine || {}), lineStyle: { color: '#c8c3b8' } };
-       ax.axisTick = { ...(ax.axisTick || {}), lineStyle: { color: '#c8c3b8' } };
-     }
-     if (cleanEo.yAxis) {
-       const ay = Array.isArray(cleanEo.yAxis) ? cleanEo.yAxis[0] : cleanEo.yAxis;
-       ay.axisLabel = { ...(ay.axisLabel || {}), fontSize: 10, color: '#6b6557' };
-       ay.splitLine = { ...(ay.splitLine || {}), lineStyle: { color: '#ece8de', type: 'dashed' } };
-     }
-     cleanEo.legend = cleanEo.legend ? { ...cleanEo.legend, top: 4, textStyle: { fontSize: 11 } } : undefined;
-   }
-   const opt = { grid: { left: 48, right: 16, top: 32, bottom: 32, containLabel: true }, ...cleanEo };
-   chart.setOption(opt);
-   return;
+ chart = echarts.init(chartEl);
+ // Beautify: detect chart type from series; apply clean overrides
+ const cleanEo = JSON.parse(JSON.stringify(eo)); // deep clone
+ const seriesArr = Array.isArray(cleanEo.series) ? cleanEo.series : [];
+ const isGauge = seriesArr.some((s) => s?.type === 'gauge');
+ const isPie = seriesArr.some((s) => s?.type === 'pie');
+ if (isGauge) {
+ // Force-rebuild gauge series w/ clean defaults — discard LLM's messy
+ // axisLabel/splitLine/pointer/title that overlap value
+ seriesArr.forEach((s) => {
+ if (s.type !== 'gauge') return;
+ // Extract value from any of the LLM's possible shapes
+ let val = null;
+ let label = cell.title || '';
+ if (Array.isArray(s.data) && s.data.length > 0) {
+ const d0 = s.data[0];
+ if (typeof d0 === 'object' && d0 !== null) {
+ val = d0.value ?? null;
+ if (d0.name) label = d0.name;
+ } else {
+ val = d0;
+ }
+ } else if (s.value != null) {
+ val = s.value;
+ }
+ // Discard ALL keys that cause label/value overlap
+ const cleanSeries = {
+ type: 'gauge',
+ radius: '85%',
+ center: ['50%', '58%'],
+ startAngle: 200,
+ endAngle: -20,
+ min: s.min ?? 0,
+ max: s.max ?? (typeof val === 'number' ? Math.max(100, val * 1.2) : 100),
+ axisLine: { lineStyle: { width: 14, color: [[1, '#e2ddd2']] } },
+ progress: { show: true, width: 14, itemStyle: { color: '#c96342' } },
+ pointer: { show: false },
+ anchor: { show: false },
+ axisTick: { show: false },
+ splitLine: { show: false },
+ axisLabel: { show: false },
+ title: { show: false },
+ detail: {
+ valueAnimation: true,
+ offsetCenter: [0, '5%'],
+ fontSize: 30,
+ fontWeight: 700,
+ color: '#2c2a26',
+ fontFamily: 'Source Serif Pro, Georgia, serif',
+ formatter: (v) => {
+ if (typeof v !== 'number' || isNaN(v)) return String(v ?? '—');
+ if (Math.abs(v) >= 1000) return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
+ if (v === Math.floor(v)) return String(v);
+ return v.toFixed(1);
+ },
+ },
+ data: val != null ? [{ value: val }] : [],
+ };
+ // Replace the entire series object
+ Object.keys(s).forEach((k) => delete s[k]);
+ Object.assign(s, cleanSeries);
+ });
+ // gauges typically don't need x/y axis or grid
+ delete cleanEo.xAxis;
+ delete cleanEo.yAxis;
+ delete cleanEo.grid;
+ delete cleanEo.legend;
+ delete cleanEo.title; // suppress top-of-chart title — cell already has it
+ } else if (isPie) {
+ seriesArr.forEach((s) => {
+ if (s.type !== 'pie') return;
+ s.radius = s.radius || ['45%', '72%'];
+ s.center = s.center || ['50%', '52%'];
+ s.itemStyle = { ...(s.itemStyle || {}), borderColor: '#fdfaf5', borderWidth: 2 };
+ s.label = { ...(s.label || {}), fontSize: 11, color: '#6b6557' };
+ s.labelLine = { length: 8, length2: 6 };
+ });
+ cleanEo.legend = { ...(cleanEo.legend || {}), bottom: 0, type: 'scroll', textStyle: { fontSize: 11 } };
+ delete cleanEo.xAxis;
+ delete cleanEo.yAxis;
+ delete cleanEo.grid;
+ } else {
+ // default polish for bar/line/scatter
+ if (cleanEo.xAxis) {
+ const ax = Array.isArray(cleanEo.xAxis) ? cleanEo.xAxis[0] : cleanEo.xAxis;
+ ax.axisLabel = { ...(ax.axisLabel || {}), fontSize: 10, color: '#6b6557' };
+ ax.axisLine = { ...(ax.axisLine || {}), lineStyle: { color: '#c8c3b8' } };
+ ax.axisTick = { ...(ax.axisTick || {}), lineStyle: { color: '#c8c3b8' } };
+ }
+ if (cleanEo.yAxis) {
+ const ay = Array.isArray(cleanEo.yAxis) ? cleanEo.yAxis[0] : cleanEo.yAxis;
+ ay.axisLabel = { ...(ay.axisLabel || {}), fontSize: 10, color: '#6b6557' };
+ ay.splitLine = { ...(ay.splitLine || {}), lineStyle: { color: '#ece8de', type: 'dashed' } };
+ }
+ cleanEo.legend = cleanEo.legend ? { ...cleanEo.legend, top: 4, textStyle: { fontSize: 11 } } : undefined;
+ }
+ const opt = { grid: { left: 48, right: 16, top: 32, bottom: 32, containLabel: true }, ...cleanEo };
+ chart.setOption(opt);
+ return;
  }
 
  // Legacy path: rebuild options from rows + x_col/y_col + chart_type.
  // Allow rows to be sourced from echarts_options.series[0].data if data prop missing.
  let rows = data?.rows;
  if ((!rows || !rows.length) && eoSeries && Array.isArray(eoSeries[0]?.data) && eoSeries[0].data.length) {
-   const sd = eoSeries[0].data;
-   const xAxisData = (eo.xAxis && (Array.isArray(eo.xAxis) ? eo.xAxis[0]?.data : eo.xAxis.data)) || null;
-   rows = sd.map((v, i) => {
-     if (v && typeof v === 'object' && !Array.isArray(v)) {
-       return { name: v.name ?? i, value: v.value ?? v };
-     }
-     if (Array.isArray(v)) return { name: v[0], value: v[1] };
-     return { name: xAxisData ? xAxisData[i] : i, value: v };
-   });
+ const sd = eoSeries[0].data;
+ const xAxisData = (eo.xAxis && (Array.isArray(eo.xAxis) ? eo.xAxis[0]?.data : eo.xAxis.data)) || null;
+ rows = sd.map((v, i) => {
+ if (v && typeof v === 'object' && !Array.isArray(v)) {
+ return { name: v.name ?? i, value: v.value ?? v };
+ }
+ if (Array.isArray(v)) return { name: v[0], value: v[1] };
+ return { name: xAxisData ? xAxisData[i] : i, value: v };
+ });
  }
  if (!rows || !rows.length) { renderPlaceholder(); return; }
  chart = echarts.init(chartEl);
@@ -244,7 +244,7 @@
             onmouseleave={() => showInsight = false}
             onclick={() => showInsight = !showInsight}
             title="Insight"
-            aria-label="Insight">ℹ</button>
+            aria-label="Insight"><Icon name="info" size={16} /></button>
     {#if showInsight}
       <div class="insight-overlay" class:high={cell.config?.severity === 'high'}>
         {#if cell.config?.headline}
@@ -262,7 +262,7 @@
         {#if cell.config?.action}
           <div class="ov-section">
             <span class="ov-label">ACTION</span>
-            <div>→ {cell.config.action}</div>
+            <div><Icon name="arrow-right" size={16} /> {cell.config.action}</div>
           </div>
         {/if}
       </div>
@@ -293,7 +293,7 @@
 
 {#snippet verifiedBadge()}
   {#if cell.verified === true}
-    <span class="verified-badge" title="verified vs pinned metric">✓ verified vs pinned metric</span>
+    <span class="verified-badge" title="verified vs pinned metric"><Icon name="check" size={16} /> verified vs pinned metric</span>
   {/if}
 {/snippet}
 
@@ -313,7 +313,7 @@
     <div class="lbl" title={cell.title}>{cleanText(cell.title)}</div>
     <div class="val">{fmtNum(_kpiVal)}</div>
     {#if data?.delta != null}
-      <div class="delta" class:bad={data.delta < 0}>{data.delta > 0 ? '↑' : '↓'} {fmtNum(Math.abs(data.delta))}</div>
+      <div class="delta" class:bad={data.delta < 0}>{data.delta > 0 ? '^' : 'v'} {fmtNum(Math.abs(data.delta))}</div>
     {/if}
     {@render narrativeBlock()}
     {@render sourcesFooter()}
@@ -395,12 +395,12 @@
                 <button
                   class="ng-cell"
                   style="background:{c}"
-                  title="{y}: {x} → {v}"
+                  title="{y}: {x} &gt; {v}"
                   aria-label="{y} {x} {v}"
                   onclick={() => ondrill?.(cell, {x, y})}
                 ></button>
               {:else}
-                <div class="ng-cell empty-cell" title="{y}: {x} → no data"></div>
+                <div class="ng-cell empty-cell" title="{y}: {x} &gt; no data"></div>
               {/if}
             {/each}
           {/each}
@@ -429,16 +429,16 @@
 
 <style>
  :global(.cell) {
-   display: flex;
-   background: var(--pw-bg, #fdfaf5);
-   border: 1px solid var(--pw-border, #e2ddd2);
-   border-radius: 4px;
-   overflow: hidden;
-   transition: box-shadow 0.18s ease, transform 0.18s ease;
+ display: flex;
+ background: var(--pw-bg, #fdfaf5);
+ border: 1px solid var(--pw-border, #e2ddd2);
+ border-radius: 4px;
+ overflow: hidden;
+ transition: box-shadow 0.18s ease, transform 0.18s ease;
  }
  :global(.cell:hover) {
-   box-shadow: 0 4px 14px rgba(44, 42, 38, 0.06);
-   transform: translateY(-1px);
+ box-shadow: 0 4px 14px rgba(44, 42, 38, 0.06);
+ transform: translateY(-1px);
  }
  .cell-inner { width: 100%; height: 100%; box-sizing: border-box; overflow: hidden; position: relative; }
  .kpi { padding: 18px 16px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
@@ -497,66 +497,66 @@
  .ng-leg-item { display: inline-flex; align-items: center; gap: 4px; }
  .ng-swatch { width: 10px; height: 10px; border-radius: var(--pw-radius-sm); border: 1px solid rgba(0,0,0,0.1); display: inline-block; }
  .narrative {
-   font-family: 'Source Serif 4', Georgia, serif;
-   font-style: italic;
-   font-size: 11.5px;
-   color: #5a554d;
-   line-height: 1.45;
-   margin-top: 8px;
-   padding: 6px 8px 0;
-   border-top: 1px solid rgba(201, 99, 66, 0.12);
+ font-family: 'Source Serif 4', Georgia, serif;
+ font-style: italic;
+ font-size: 11.5px;
+ color: #5a554d;
+ line-height: 1.45;
+ margin-top: 8px;
+ padding: 6px 8px 0;
+ border-top: 1px solid rgba(201, 99, 66, 0.12);
  }
  .confidence-badge {
-   position: absolute;
-   top: 4px;
-   right: 4px;
-   font-size: 9px;
-   font-weight: 600;
-   letter-spacing: 0.4px;
-   text-transform: uppercase;
-   padding: 2px 6px;
-   border-radius: var(--pw-radius-sm);
-   z-index: 2;
-   font-family: 'Inter', system-ui, sans-serif;
+ position: absolute;
+ top: 4px;
+ right: 4px;
+ font-size: 9px;
+ font-weight: 600;
+ letter-spacing: 0.4px;
+ text-transform: uppercase;
+ padding: 2px 6px;
+ border-radius: var(--pw-radius-sm);
+ z-index: 2;
+ font-family: 'Inter', system-ui, sans-serif;
  }
  .confidence-badge.conf-low { background: #ececec; color: #6b6b6b; }
  .confidence-badge.conf-medium { background: rgba(46, 109, 192, 0.12); color: #2e6dc0; }
  .confidence-badge.conf-high { background: rgba(46, 125, 50, 0.14); color: #2e7d32; }
  .sources-footer {
-   font-size: 10px;
-   color: #8a8378;
-   margin-top: 4px;
-   padding: 0 8px 4px;
-   font-family: 'Inter', system-ui, sans-serif;
-   letter-spacing: 0.2px;
-   white-space: nowrap;
-   overflow: hidden;
-   text-overflow: ellipsis;
+ font-size: 10px;
+ color: #8a8378;
+ margin-top: 4px;
+ padding: 0 8px 4px;
+ font-family: 'Inter', system-ui, sans-serif;
+ letter-spacing: 0.2px;
+ white-space: nowrap;
+ overflow: hidden;
+ text-overflow: ellipsis;
  }
  /* When confidence badge present, nudge drill button left to avoid overlap */
  .cell-inner:has(.confidence-badge) .drill-btn { right: 56px; }
  .verified-badge {
-   position: absolute;
-   bottom: 4px;
-   right: 4px;
-   font-size: 9px;
-   font-weight: 600;
-   letter-spacing: 0.3px;
-   padding: 2px 6px;
-   border-radius: var(--pw-radius-sm);
-   background: rgba(201, 99, 66, 0.12);
-   color: #c96342;
-   border: 1px solid rgba(201, 99, 66, 0.3);
-   font-family: 'Inter', system-ui, sans-serif;
-   z-index: 3;
-   pointer-events: none;
-   white-space: nowrap;
+ position: absolute;
+ bottom: 4px;
+ right: 4px;
+ font-size: 9px;
+ font-weight: 600;
+ letter-spacing: 0.3px;
+ padding: 2px 6px;
+ border-radius: var(--pw-radius-sm);
+ background: rgba(201, 99, 66, 0.12);
+ color: #c96342;
+ border: 1px solid rgba(201, 99, 66, 0.3);
+ font-family: 'Inter', system-ui, sans-serif;
+ z-index: 3;
+ pointer-events: none;
+ white-space: nowrap;
  }
  /* When verified badge present, nudge info-btn up to avoid overlap */
  .cell-inner:has(.verified-badge) .info-btn { bottom: 26px; }
  .cell-highlight {
-   border: 2px solid var(--pw-accent, #c96342) !important;
-   box-shadow: 0 0 24px rgba(201, 99, 66, 0.25);
-   transition: border-color 1.5s ease-out 0.4s, box-shadow 1.5s ease-out 0.4s;
+ border: 2px solid var(--pw-accent, #c96342) !important;
+ box-shadow: 0 0 24px rgba(201, 99, 66, 0.25);
+ transition: border-color 1.5s ease-out 0.4s, box-shadow 1.5s ease-out 0.4s;
  }
 </style>

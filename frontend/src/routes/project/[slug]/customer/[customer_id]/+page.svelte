@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount, onDestroy } from 'svelte';
  import { page } from '$app/stores';
  import { goto } from '$app/navigation';
@@ -329,7 +329,7 @@
       {#if lastFetched}
         <span class="meta">{lastFetched.toLocaleTimeString()}</span>
       {/if}
-      <button class="btn" onclick={refreshAll} disabled={loading}>↻ REFRESH</button>
+      <button class="btn" onclick={refreshAll} disabled={loading}><Icon name="refresh" size={16} /> REFRESH</button>
     </div>
   </header>
 
@@ -410,7 +410,7 @@
             <text x={28 + (mi - 1) * 28 + 14} y="12" text-anchor="middle"
                   font-size="8" font-family="monospace" fill="#888">M={mi}</text>
           {/each}
-          <!-- R row headers + cells (R=5 at top → R=1 at bottom) -->
+          <!-- R row headers + cells (R=5 at top -&gt; R=1 at bottom) -->
           {#each [5, 4, 3, 2, 1] as ri, rowIdx}
             <text x="20" y={32 + rowIdx * 26} text-anchor="end"
                   font-size="8" font-family="monospace" fill="#888">R={ri}</text>
@@ -501,7 +501,7 @@
                 {m}
               </button>
             {/each}
-            <button onclick={loadJourney} style="padding:6px 12px;font-family:monospace;font-size:10px;font-weight:900;cursor:pointer;border:2px solid #1a1a1a;background:#fafaf5;color:#1a1a1a;">↻ REFRESH</button>
+            <button onclick={loadJourney} style="padding:6px 12px;font-family:monospace;font-size:10px;font-weight:900;cursor:pointer;border:2px solid #1a1a1a;background:#fafaf5;color:#1a1a1a;"><Icon name="refresh" size={16} /> REFRESH</button>
           </div>
           {#if journeyLoading}
             <div class="empty">Loading…</div>

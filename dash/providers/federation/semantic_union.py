@@ -6,7 +6,7 @@ For each source in project:
 
 Then suggest cross-source JOIN keys:
   - explicit FKs (from each source's FK metadata)
-  - implicit by column name match (fuzzy: customer_id ↔ cust_id ↔ id_customer)
+  - implicit by column name match (fuzzy: customer_id <> cust_id <> id_customer)
   - LLM-confirmed (Phase 2 — stub for now)
 
 Inject into Analyst prompt: "DATA SOURCES UNIFIED" block listing
@@ -25,23 +25,23 @@ logger = logging.getLogger(__name__)
 class TableEntry:
     provider_id: str
     table_name: str
-    full_address: str         # "provider_id.table_name"
+    full_address: str # "provider_id.table_name"
     columns: list[str] = field(default_factory=list)
     row_count: int = 0
     dialect: str = ""
-    source_type: str = ""     # 'sql' | 'file'
+    source_type: str = "" # 'sql' | 'file'
     primary_keys: list[str] = field(default_factory=list)
     foreign_keys: list[dict] = field(default_factory=list)
 
 
 @dataclass
 class JoinSuggestion:
-    left_table: str          # full_address
+    left_table: str # full_address
     left_column: str
     right_table: str
     right_column: str
-    confidence: float        # 0.0-1.0
-    reason: str              # 'explicit_fk' | 'name_match' | 'fuzzy_match' | 'llm'
+    confidence: float # 0.0-1.0
+    reason: str # 'explicit_fk' | 'name_match' | 'fuzzy_match' | 'llm'
 
 
 @dataclass
@@ -167,7 +167,7 @@ def _suggest_joins(tables: list[TableEntry]) -> list[JoinSuggestion]:
                 continue
             for target in addr_by_table.get(ref_table, []):
                 if target.provider_id == t.provider_id:
-                    continue   # same source — not federation-relevant
+                    continue # same source — not federation-relevant
                 key = (t.full_address, from_col, target.full_address, ref_col)
                 if key in seen:
                     continue
@@ -234,7 +234,7 @@ def _suggest_joins(tables: list[TableEntry]) -> list[JoinSuggestion]:
                 if t_a.provider_id == t_b.provider_id:
                     continue
                 if c_a.lower() == c_b.lower():
-                    continue   # already covered by exact match
+                    continue # already covered by exact match
                 key = tuple(sorted([
                     (t_a.full_address, c_a),
                     (t_b.full_address, c_b),
@@ -270,7 +270,7 @@ def render_for_analyst(project_slug: str, *, max_chars: int = 4000) -> str:
     """Build the DATA SOURCES UNIFIED prompt block. Capped to fit context budget."""
     catalog = build(project_slug)
     if catalog.source_count <= 1:
-        return ""  # No federation needed for single-source projects
+        return "" # No federation needed for single-source projects
 
     lines = [f"## DATA SOURCES UNIFIED — {catalog.source_count} sources, {catalog.table_count} tables"]
 
@@ -280,12 +280,12 @@ def render_for_analyst(project_slug: str, *, max_chars: int = 4000) -> str:
         by_provider.setdefault(t.provider_id, []).append(t)
 
     for pid, tables in by_provider.items():
-        lines.append(f"\n### {pid}  ({tables[0].dialect}, {tables[0].source_type})")
+        lines.append(f"\n### {pid} ({tables[0].dialect}, {tables[0].source_type})")
         for t in tables[:15]:
             cols_summary = ", ".join(t.columns[:8])
             if len(t.columns) > 8:
                 cols_summary += f", ... ({len(t.columns)} cols)"
-            lines.append(f"  {t.table_name}({cols_summary})")
+            lines.append(f" {t.table_name}({cols_summary})")
 
     # Suggested JOINs
     if catalog.join_suggestions:
@@ -293,8 +293,8 @@ def render_for_analyst(project_slug: str, *, max_chars: int = 4000) -> str:
         for s in catalog.join_suggestions[:15]:
             conf_label = "high" if s.confidence > 0.8 else "med" if s.confidence > 0.6 else "low"
             lines.append(
-                f"  {s.left_table}.{s.left_column} = {s.right_table}.{s.right_column} "
-                f"  [{conf_label} · {s.reason}]"
+                f" {s.left_table}.{s.left_column} = {s.right_table}.{s.right_column} "
+                f" [{conf_label} · {s.reason}]"
             )
 
     out = "\n".join(lines)

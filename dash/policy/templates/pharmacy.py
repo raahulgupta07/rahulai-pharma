@@ -2,7 +2,7 @@ TEMPLATE = {
     "label": "Pharmacy",
     "description": "Multi-store pharmacy network — protect sensitive Rx + commercial fields",
     "scope_keyword": "store",
-    "icon": "💊",
+    "icon": "",
     "policy": {
         "version": 1,
         "private": {"fields": {}},

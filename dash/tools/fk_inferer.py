@@ -7,10 +7,10 @@ via NAME MATCH + NAME ALIAS + VALUE OVERLAP, persist the top-N matches into
 
 Schema (Agent A's migration 154) of ``public.dash_column_meta``:
     project_slug TEXT
-    table_name   TEXT
-    column_name  TEXT
+    table_name TEXT
+    column_name TEXT
     semantic_type TEXT
-    description  TEXT
+    description TEXT
     relationships JSONB DEFAULT '[]'::jsonb
     -- + (project_slug, table_name, column_name) unique
 
@@ -80,7 +80,7 @@ def _pluralize_candidates(name: str) -> list[str]:
 
 
 def _strip_id_suffix(col: str) -> str | None:
-    """For column ``customer_id`` → return ``customer`` (the inferred entity).
+    """For column ``customer_id`` > return ``customer`` (the inferred entity).
 
     Returns None if no recognizable id-suffix pattern.
     """
@@ -347,7 +347,7 @@ def infer_fks(project_slug: str) -> dict[str, Any]:
     # Step 2: build name-match + alias candidates (cheap, in-memory)
     name_candidates = _build_name_match_candidates(schema_map)
 
-    # Step 3: per src column → measure overlap for each candidate
+    # Step 3: per src column > measure overlap for each candidate
     # Use a fresh autocommit connection on the READ engine for cross-table queries.
     rels_per_column: dict[tuple[str, str], list[dict[str, Any]]] = {}
     try:

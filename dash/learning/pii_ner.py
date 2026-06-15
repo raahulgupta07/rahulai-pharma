@@ -8,7 +8,7 @@ Usage:
     from dash.learning.pii_ner import detect_pii, scrub_pii, is_safe
 
     findings = detect_pii("Email me at john@x.com or call +1-415-555-1212")
-    safe_text = scrub_pii(text, mode='mask')   # mask | redact | hash | token
+    safe_text = scrub_pii(text, mode='mask') # mask | redact | hash | token
     ok = is_safe(text, allowlist=['acme corp'])
 
 Each finding: {type, value, span: (start, end), confidence, source}
@@ -35,7 +35,7 @@ def _get_nlp():
         return _NLP
     _NLP_TRIED = True
     try:
-        import spacy  # type: ignore
+        import spacy # type: ignore
         try:
             _NLP = spacy.load("en_core_web_sm")
             logger.info("pii_ner: loaded spaCy en_core_web_sm")
@@ -52,19 +52,19 @@ def _get_nlp():
 # Regex catalog (enhanced beyond promotion._PII_BLOCKERS)
 # ----------------------------------------------------------------------------
 _REGEX_PATTERNS: list[tuple[str, re.Pattern, float]] = [
-    ("EMAIL",   re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"), 0.99),
-    ("PHONE",   re.compile(r"\+?\d{1,3}[\s\-.]?\(?\d{2,4}\)?[\s\-.]?\d{3,4}[\s\-.]?\d{3,4}"), 0.85),
-    ("SSN",     re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), 0.97),
-    ("CC_RAW",  re.compile(r"\b(?:\d[ -]*?){13,19}\b"), 0.60),  # Luhn-validated below
-    ("IBAN",    re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b"), 0.92),
+    ("EMAIL", re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"), 0.99),
+    ("PHONE", re.compile(r"\+?\d{1,3}[\s\-.]?\(?\d{2,4}\)?[\s\-.]?\d{3,4}[\s\-.]?\d{3,4}"), 0.85),
+    ("SSN", re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), 0.97),
+    ("CC_RAW", re.compile(r"\b(?:\d[ -]*?){13,19}\b"), 0.60), # Luhn-validated below
+    ("IBAN", re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b"), 0.92),
     ("PASSPORT", re.compile(r"\b[A-Z]{1,2}\d{6,9}\b"), 0.55),
-    ("MRN",     re.compile(r"\b(?:MRN|mrn|Medical\s+Record(?:\s+#)?)[:\s#]*([A-Z0-9-]{4,15})\b"), 0.90),
-    ("IP",      re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\b"), 0.95),
-    ("IPV6",    re.compile(r"\b(?:[A-Fa-f0-9]{1,4}:){7}[A-Fa-f0-9]{1,4}\b"), 0.90),
+    ("MRN", re.compile(r"\b(?:MRN|mrn|Medical\s+Record(?:\s+#)?)[:\s#]*([A-Z0-9-]{4,15})\b"), 0.90),
+    ("IP", re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\b"), 0.95),
+    ("IPV6", re.compile(r"\b(?:[A-Fa-f0-9]{1,4}:){7}[A-Fa-f0-9]{1,4}\b"), 0.90),
     ("DATE_OF_BIRTH", re.compile(r"\b(?:DOB|dob|D\.O\.B\.?|born)[:\s]*\d{1,4}[-/]\d{1,2}[-/]\d{1,4}\b"), 0.90),
-    ("DATE",    re.compile(r"\b\d{4}-\d{2}-\d{2}\b"), 0.50),
+    ("DATE", re.compile(r"\b\d{4}-\d{2}-\d{2}\b"), 0.50),
     ("ADDRESS", re.compile(r"\b\d{1,6}\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\s+(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Boulevard|Ln|Lane|Dr|Drive|Way|Ct|Court|Pl|Place)\b\.?", re.IGNORECASE), 0.75),
-    ("ZIP_US",  re.compile(r"\b\d{5}(?:-\d{4})?\b"), 0.40),
+    ("ZIP_US", re.compile(r"\b\d{5}(?:-\d{4})?\b"), 0.40),
     ("PERSON_LIKELY", re.compile(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b"), 0.50),
 ]
 
@@ -84,17 +84,17 @@ def _luhn_ok(num: str) -> bool:
     return checksum % 10 == 0
 
 
-# spaCy entity label → our normalized type
+# spaCy entity label > our normalized type
 _SPACY_MAP = {
-    "PERSON":  "PERSON",
-    "ORG":     "ORG",
-    "GPE":     "LOC",
-    "LOC":     "LOC",
-    "FAC":     "LOC",
-    "DATE":    "DATE",
-    "TIME":    "DATE",
-    "MONEY":   "MONEY",
-    "NORP":    "ORG",
+    "PERSON": "PERSON",
+    "ORG": "ORG",
+    "GPE": "LOC",
+    "LOC": "LOC",
+    "FAC": "LOC",
+    "DATE": "DATE",
+    "TIME": "DATE",
+    "MONEY": "MONEY",
+    "NORP": "ORG",
 }
 
 
@@ -109,7 +109,7 @@ def detect_pii(text: str, lang: str = "en") -> list[dict[str, Any]]:
     nlp = _get_nlp()
     if nlp is not None:
         try:
-            doc = nlp(text[:100_000])  # cap to 100K chars
+            doc = nlp(text[:100_000]) # cap to 100K chars
             for ent in doc.ents:
                 t = _SPACY_MAP.get(ent.label_)
                 if not t:
@@ -184,7 +184,7 @@ def scrub_pii(text: str, mode: str = "mask", findings: list[dict] | None = None)
         elif mode == "token":
             counters[t] = counters.get(t, 0) + 1
             repl = f"{t}_{counters[t]}"
-        else:  # mask
+        else: # mask
             repl = "*" * max(3, min(len(val), 8))
         out = out[:s] + repl + out[e:]
     return out
@@ -210,15 +210,15 @@ def is_safe(text: str, allowlist: list[str] | None = None) -> bool:
 # whether *any* char from a non-Latin block appears.
 _SCRIPT_BLOCKS: list[tuple[int, int, str]] = [
     (0x1000, 0x109F, "myanmar"),
-    (0xAA60, 0xAA7F, "myanmar"),        # Myanmar Extended-A
-    (0xA9E0, 0xA9FF, "myanmar"),        # Myanmar Extended-B
-    (0x4E00, 0x9FFF, "chinese"),        # CJK Unified Ideographs
-    (0x3400, 0x4DBF, "chinese"),        # CJK Extension A
-    (0x3040, 0x309F, "japanese"),       # Hiragana
-    (0x30A0, 0x30FF, "japanese"),       # Katakana
-    (0xAC00, 0xD7AF, "korean"),         # Hangul Syllables
+    (0xAA60, 0xAA7F, "myanmar"), # Myanmar Extended-A
+    (0xA9E0, 0xA9FF, "myanmar"), # Myanmar Extended-B
+    (0x4E00, 0x9FFF, "chinese"), # CJK Unified Ideographs
+    (0x3400, 0x4DBF, "chinese"), # CJK Extension A
+    (0x3040, 0x309F, "japanese"), # Hiragana
+    (0x30A0, 0x30FF, "japanese"), # Katakana
+    (0xAC00, 0xD7AF, "korean"), # Hangul Syllables
     (0x0600, 0x06FF, "arabic"),
-    (0x0750, 0x077F, "arabic"),         # Arabic Supplement
+    (0x0750, 0x077F, "arabic"), # Arabic Supplement
     (0x0900, 0x097F, "devanagari"),
     (0x0E00, 0x0E7F, "thai"),
     (0x0590, 0x05FF, "hebrew"),
@@ -287,7 +287,7 @@ def warn_non_latin_if_needed(
     _WARN_CACHE[key] = now
 
     msg = (
-        f"⚠ Non-Latin text detected ({script}) — PII scan may miss names. "
+        f" Non-Latin text detected ({script}) — PII scan may miss names. "
         f"Install spaCy multilingual model for full coverage "
         f"(`python -m spacy download xx_ent_wiki_sm`)."
     )

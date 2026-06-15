@@ -2,7 +2,7 @@ TEMPLATE = {
     "label": "Hotel",
     "description": "Multi-property hotel group — share occupancy bands, mask rates and guest IDs",
     "scope_keyword": "property",
-    "icon": "🏨",
+    "icon": "",
     "policy": {
         "version": 1,
         "private": {"fields": {}},

@@ -220,7 +220,7 @@ def _dedupe_spans(entities: list[dict]) -> list[dict]:
         s, e = ent["span"]
         overlaps = False
         for us, ue in used_ranges:
-            # If this span is fully inside an existing one → drop
+            # If this span is fully inside an existing one > drop
             if s >= us and e <= ue:
                 overlaps = True
                 break

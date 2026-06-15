@@ -3,11 +3,11 @@
 Core principle: DETECTION IS FREE, THINKING IS PAID AND RARE.
 
 Each tick:
-  T0  resolve the locked slug + load the last signal snapshot.
-  T1  collect_signals(slug)  — PURE SQL, ZERO tokens.
-  T2  diff(old, new). NOT tripped → save snapshot (if changed) + sleep.
+  T0 resolve the locked slug + load the last signal snapshot.
+  T1 collect_signals(slug) — PURE SQL, ZERO tokens.
+  T2 diff(old, new). NOT tripped > save snapshot (if changed) + sleep.
       A quiet tick writes ZERO tokens and NO journal row.
-  T3  tripped → dispatch each tripped key to a STUB handler that journals ONE
+  T3 tripped > dispatch each tripped key to a STUB handler that journals ONE
       intent row (tier='T3', tokens=0). No LLM / training is run yet — real
       handlers land later. Then save the new snapshot.
 
@@ -36,7 +36,7 @@ _DISABLED = os.getenv("AUTONOMY_HEARTBEAT_DISABLED", "0").strip().lower() in ("1
 _POLL_INTERVAL = int(os.getenv("AUTONOMY_POLL_INTERVAL_S", "300"))
 _DAILY_TOKEN_CAP = int(os.getenv("AUTONOMY_DAILY_TOKEN_CAP", "50000"))
 
-# T3 real-action gate. Default OFF → handlers only journal the detected intent
+# T3 real-action gate. Default OFF > handlers only journal the detected intent
 # (the original stub behaviour, zero side effects). Flip AUTONOMY_T3_ACTIONS=1
 # to let data-change signals trigger a real (free) retrain enqueue. Kept off by
 # default so enabling autonomy is an explicit operator decision, never a
@@ -53,7 +53,7 @@ def _t3_actions_on() -> bool:
         pass
     return os.getenv("AUTONOMY_T3_ACTIONS", "0").strip().lower() in ("1", "true", "yes")
 
-# Signals whose trip means "the underlying data/schema moved" → a retrain is the
+# Signals whose trip means "the underlying data/schema moved" > a retrain is the
 # meaningful autonomous response. Any other signal stays a journal-only stub.
 _T3_RETRAIN_SIGNALS = {"table_fingerprints", "schema_hash", "shop_flat"}
 
@@ -73,7 +73,7 @@ def _get_locked_slug() -> Optional[str]:
 
 
 def _tokens_today(slug: str) -> int:
-    """Sum of tokens journalled for this slug since midnight (DB time). Fail-soft → 0."""
+    """Sum of tokens journalled for this slug since midnight (DB time). Fail-soft > 0."""
     from sqlalchemy import text
     try:
         from db.session import get_write_engine
@@ -114,7 +114,7 @@ def _dispatch_t3(slug: str, signal: str, new: dict) -> None:
         queued = _enqueue_retrain(slug, reason=f"heartbeat:{signal}")
         action = "retrain enqueued" if queued else "no tables need retrain"
         journal(slug, "T3", signal, action, detail=detail, tokens=0)
-        log.info("heartbeat: T3 action for %s signal=%s → %s", slug, signal, action)
+        log.info("heartbeat: T3 action for %s signal=%s > %s", slug, signal, action)
     except Exception as e:
         journal(slug, "T3", signal, "action failed — journalled intent",
                 detail={**detail, "error": str(e)}, tokens=0)
@@ -136,9 +136,9 @@ async def _tick() -> None:
     # T1 — FREE
     new = collect_signals(slug)
     if not new:
-        return  # collection failed entirely; nothing to compare
+        return # collection failed entirely; nothing to compare
 
-    # First-ever tick: no prior state → record a silent baseline, do NOT trip
+    # First-ever tick: no prior state > record a silent baseline, do NOT trip
     # every signal (avoids cold-start journal noise). One 'initialized' row only.
     if not old:
         save_state(slug, new)
@@ -151,7 +151,7 @@ async def _tick() -> None:
     if not tripped:
         if new != old:
             save_state(slug, new)
-        return  # quiet tick — ZERO tokens, NO journal row
+        return # quiet tick — ZERO tokens, NO journal row
 
     # Budget guard
     spent = _tokens_today(slug)

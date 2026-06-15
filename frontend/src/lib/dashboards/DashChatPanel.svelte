@@ -1,60 +1,61 @@
 <script lang="ts">
-  let { dashboardId, projectSlug, panels = [], onCitePanel = (_n: number) => {} } = $props<{
-    dashboardId: string;
-    projectSlug: string;
-    panels?: any[];
-    onCitePanel?: (n: number) => void;
-  }>();
+  import Icon from '$lib/Icon.svelte';
+ let { dashboardId, projectSlug, panels = [], onCitePanel = (_n: number) => {} } = $props<{
+ dashboardId: string;
+ projectSlug: string;
+ panels?: any[];
+ onCitePanel?: (n: number) => void;
+ }>();
 
-  function _headers(): Record<string, string> {
-    const t = localStorage.getItem('dash_token');
-    const h: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (t) h.Authorization = `Bearer ${t}`;
-    return h;
-  }
+ function _headers(): Record<string, string> {
+ const t = localStorage.getItem('dash_token');
+ const h: Record<string, string> = { 'Content-Type': 'application/json' };
+ if (t) h.Authorization = `Bearer ${t}`;
+ return h;
+ }
 
-  let messages = $state<{role:'user'|'assistant'; content:string; cited?: number[]}[]>([]);
-  let input = $state('');
-  let busy = $state(false);
+ let messages = $state<{role:'user'|'assistant'; content:string; cited?: number[]}[]>([]);
+ let input = $state('');
+ let busy = $state(false);
 
-  async function send() {
-    if (!input.trim() || busy) return;
-    const q = input.trim();
-    input = '';
-    messages = [...messages, { role: 'user', content: q }];
-    busy = true;
-    try {
-      const r = await fetch(`/api/dashboards/${encodeURIComponent(dashboardId)}/chat`, {
-        method: 'POST',
-        headers: _headers(),
-        body: JSON.stringify({
-          question: q,
-          history: messages.slice(-10).map(m => ({ role: m.role, content: m.content })),
-        }),
-      });
-      if (r.ok) {
-        const j = await r.json();
-        messages = [...messages, { role: 'assistant', content: j.answer || '(no answer)', cited: j.cited_panels || [] }];
-      } else {
-        messages = [...messages, { role: 'assistant', content: 'Error contacting agent.' }];
-      }
-    } catch (e: any) {
-      messages = [...messages, { role: 'assistant', content: `Error: ${e?.message || 'network'}` }];
-    }
-    busy = false;
-  }
+ async function send() {
+ if (!input.trim() || busy) return;
+ const q = input.trim();
+ input = '';
+ messages = [...messages, { role: 'user', content: q }];
+ busy = true;
+ try {
+ const r = await fetch(`/api/dashboards/${encodeURIComponent(dashboardId)}/chat`, {
+ method: 'POST',
+ headers: _headers(),
+ body: JSON.stringify({
+ question: q,
+ history: messages.slice(-10).map(m => ({ role: m.role, content: m.content })),
+ }),
+ });
+ if (r.ok) {
+ const j = await r.json();
+ messages = [...messages, { role: 'assistant', content: j.answer || '(no answer)', cited: j.cited_panels || [] }];
+ } else {
+ messages = [...messages, { role: 'assistant', content: 'Error contacting agent.' }];
+ }
+ } catch (e: any) {
+ messages = [...messages, { role: 'assistant', content: `Error: ${e?.message || 'network'}` }];
+ }
+ busy = false;
+ }
 
-  function onKey(e: KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
-  }
+ function onKey(e: KeyboardEvent) {
+ if (e.key === 'Enter' && !e.shiftKey) {
+ e.preventDefault();
+ send();
+ }
+ }
 </script>
 
 <div style="display: flex; flex-direction: column; height: 100%; background: var(--pw-bg, #fdfaf5);">
   <div style="padding: 10px 12px; border-bottom: 1px solid var(--pw-border, #e2ddd2); display: flex; align-items: center; gap: 8px;">
-    <span style="font-size: 14px;">🗨</span>
+    <span style="font-size: 14px;"><Icon name="message-square" size={16} /></span>
     <span style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--pw-accent, #c96342);">Ask this dashboard</span>
   </div>
 

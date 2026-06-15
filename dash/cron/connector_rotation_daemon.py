@@ -19,20 +19,20 @@ logger = logging.getLogger(__name__)
 # Observability tracing (fail-soft; no-op if unavailable or TRACING_DISABLED).
 try:
     from dash.obs.trace import trace_span
-except Exception:  # noqa: BLE001
+except Exception: # noqa: BLE001
     from contextlib import contextmanager as _cm
 
     @_cm
-    def trace_span(*_a, **_k):  # type: ignore
+    def trace_span(*_a, **_k): # type: ignore
         yield None
 
 
 # ── Tunables ──────────────────────────────────────────────────────────
 
-DEFAULT_INTERVAL_SECONDS = 24 * 60 * 60  # 24 h
-ROTATION_WARN_DAYS = 90   # ≥ 90d since rotation → "warn"
-ROTATION_CRITICAL_DAYS = 120  # ≥ 120d → "critical"
-WARNING_COOLDOWN_DAYS = 7  # suppress repeat warning within 7d
+DEFAULT_INTERVAL_SECONDS = 24 * 60 * 60 # 24 h
+ROTATION_WARN_DAYS = 90 # ≥ 90d since rotation > "warn"
+ROTATION_CRITICAL_DAYS = 120 # ≥ 120d > "critical"
+WARNING_COOLDOWN_DAYS = 7 # suppress repeat warning within 7d
 
 
 # ── Helpers ───────────────────────────────────────────────────────────
@@ -42,7 +42,7 @@ def _engine():
     try:
         from db.session import get_sql_engine
     except Exception:
-        from db import get_sql_engine  # type: ignore[no-redef]
+        from db import get_sql_engine # type: ignore[no-redef]
     return get_sql_engine()
 
 
@@ -143,18 +143,18 @@ def run_cycle() -> dict:
     # Each row has columns (id, name, connector_type, owner_user_id, ...).
     # Look up project_slug via owner if available; otherwise apply globally.
     # If feature flag tools.external_connectors is False for a project, skip its
-    # connectors. Fail-soft on any flag-lookup error → process as before (warn-only).
+    # connectors. Fail-soft on any flag-lookup error > process as before (warn-only).
     try:
-        from dash.feature_config import get_feature_config  # noqa: F401  (lazy use below)
+        from dash.feature_config import get_feature_config # noqa: F401 (lazy use below)
     except Exception:
-        get_feature_config = None  # type: ignore[assignment]
+        get_feature_config = None # type: ignore[assignment]
 
     def _flag_enabled_for_owner(owner_id) -> bool:
         if get_feature_config is None or owner_id is None:
             return True
         try:
             # Best-effort: look up any project owned by this user and read its
-            # feature_config.tools.external_connectors. If not found → allow.
+            # feature_config.tools.external_connectors. If not found > allow.
             from sqlalchemy import text as _t
             with eng.connect() as c:
                 pr = c.execute(
@@ -166,7 +166,7 @@ def run_cycle() -> dict:
                 return True
             cfg = get_feature_config(slug) or {}
             return bool((cfg.get("tools") or {}).get("external_connectors", True))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e: # noqa: BLE001
             logger.warning("connector_rotation: feature-flag lookup failed: %s", e)
             return True
 
@@ -190,7 +190,7 @@ def run_cycle() -> dict:
                 has_notif_table=has_notif_table,
             )
             out["warned"] += 1
-        except Exception as e:  # noqa: BLE001
+        except Exception as e: # noqa: BLE001
             logger.warning(
                 "connector_rotation: error processing connection id=%s: %s",
                 conn_id, e, exc_info=True,

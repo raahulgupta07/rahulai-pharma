@@ -34,7 +34,7 @@ def _api_base() -> str:
 
 def _probe_container() -> bool:
     try:
-        import requests  # type: ignore
+        import requests # type: ignore
     except Exception:
         return False
     try:
@@ -45,7 +45,7 @@ def _probe_container() -> bool:
 
 
 def _register_or_login(session, username: str, password: str) -> str:
-    """Register a user (idempotent — 409 → login), return JWT token."""
+    """Register a user (idempotent — 409 > login), return JWT token."""
     base = _api_base()
     # Try register first
     r = session.post(
@@ -73,7 +73,7 @@ def _register_or_login(session, username: str, password: str) -> str:
 
 def _create_project(session, token: str, slug: str, name: str) -> bool:
     """POST /api/projects?name=...&slug=... — returns True on success."""
-    import requests  # type: ignore
+    import requests # type: ignore
     headers = {"Authorization": f"Bearer {token}"}
     # projects POST uses query-param signature (see app/projects.py)
     r = session.post(
@@ -101,7 +101,7 @@ def _delete_project(session, token: str, slug: str) -> None:
 def http():
     if not _probe_container():
         pytest.skip("container not reachable on /api/health — skipping RLS suite")
-    import requests  # type: ignore
+    import requests # type: ignore
     return requests.Session()
 
 

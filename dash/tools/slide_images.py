@@ -34,7 +34,7 @@ def _extract_topic(slide_title: str) -> str:
     """Strip filler so query matches Pexels stock library well.
 
     "Bakery drives 69% of revenue with 28% YoY growth"
-    → "bakery revenue growth"
+    > "bakery revenue growth"
     """
     if not slide_title:
         return ""

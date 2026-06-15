@@ -1,5 +1,5 @@
 """Self-distill daemon (#5) — periodically distil pending memory facts from
-recent 👎 corrections (dash.learning.distiller).
+recent corrections (dash.learning.distiller).
 
 DEFAULT OFF — opt in with DISTILLER_ENABLED=1. Hard off: DISTILLER_DISABLED=1.
 Leader-gated at the lifespan call site. Cadence 24h, staggered. Reads only
@@ -15,7 +15,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_INTERVAL_S = 86400  # 24h
+_DEFAULT_INTERVAL_S = 86400 # 24h
 
 
 def _slugs() -> list[str]:
@@ -35,7 +35,7 @@ async def distiller_loop(interval_seconds: int = _DEFAULT_INTERVAL_S):
         logger.info("distiller_loop disabled via DISTILLER_DISABLED=1")
         return
     logger.info(f"distiller_loop started (interval {interval_seconds}s)")
-    await asyncio.sleep(210)  # stagger (after insight daemon's 180s)
+    await asyncio.sleep(210) # stagger (after insight daemon's 180s)
     from dash.learning.distiller import run_distiller
     while True:
         try:
@@ -46,9 +46,9 @@ async def distiller_loop(interval_seconds: int = _DEFAULT_INTERVAL_S):
                     # Off the event loop — blocking SQL+LLM; leader is also a chat worker.
                     res = await asyncio.to_thread(run_distiller, slug, False)
                     written += res.get("written", 0)
-                except Exception as e:  # noqa: BLE001
+                except Exception as e: # noqa: BLE001
                     logger.exception(f"distiller crashed for {slug}: {e}")
             logger.info(f"distiller_cycle done in {int(time.time()-t0)}s: written={written}")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e: # noqa: BLE001
             logger.exception(f"distiller cycle error: {e}")
         await asyncio.sleep(interval_seconds)

@@ -15,7 +15,7 @@ BUILTINS = [
     {
         "id": "wf_morning_brief",
         "name": "Morning Brief",
-        "description": "Parallel gather (KPI changes + new docs + drift alerts) → Synthesizer → email/Slack.",
+        "description": "Parallel gather (KPI changes + new docs + drift alerts) > Synthesizer > email/Slack.",
         "category": "ops",
         "trigger_kind": "cron",
         "cron_expr": "0 8 * * 1-5",
@@ -40,7 +40,7 @@ BUILTINS = [
     {
         "id": "wf_daily_research",
         "name": "Daily Research",
-        "description": "4 parallel Researcher forks on curiosity questions → Hypothesis → Verifier → Brain promotion.",
+        "description": "4 parallel Researcher forks on curiosity questions > Hypothesis > Verifier > Brain promotion.",
         "category": "research",
         "trigger_kind": "cron",
         "cron_expr": "0 7 * * *",
@@ -73,7 +73,7 @@ BUILTINS = [
     {
         "id": "wf_content_pipeline",
         "name": "Content Pipeline",
-        "description": "Research + outline → Draft/Review loop (max 3 iter) → publish dashboard.",
+        "description": "Research + outline > Draft/Review loop (max 3 iter) > publish dashboard.",
         "category": "content",
         "trigger_kind": "manual",
         "spec": {
@@ -100,7 +100,7 @@ BUILTINS = [
     {
         "id": "wf_doc_walkthrough",
         "name": "Document Walkthrough",
-        "description": "Parse uploaded doc → script → assemble written walkthrough.",
+        "description": "Parse uploaded doc > script > assemble written walkthrough.",
         "category": "content",
         "trigger_kind": "manual",
         "spec": {
@@ -120,7 +120,7 @@ BUILTINS = [
     {
         "id": "wf_support_triage",
         "name": "Support Triage",
-        "description": "Classify ticket → route by severity → escalate (HITL) if critical.",
+        "description": "Classify ticket > route by severity > escalate (HITL) if critical.",
         "category": "support",
         "trigger_kind": "event",
         "spec": {
@@ -159,7 +159,7 @@ def register_builtins() -> int:
         eng = get_sql_engine()
     except Exception:
         try:
-            from db import get_sql_engine  # type: ignore
+            from db import get_sql_engine # type: ignore
             eng = get_sql_engine()
         except Exception:
             return 0

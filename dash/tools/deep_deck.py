@@ -1,12 +1,12 @@
 """Deep Deck — 6-stage research-then-present pipeline.
 
 Pipeline:
-    1. INGEST       extract chat history + persona + KG + table catalog
-    2. GAPS         DEEP_MODEL identifies 5-8 missing analysis angles
-    3. PLAN         LITE_MODEL writes SQL per gap (reuses semantic model)
-    4. EXECUTE      run_sql_query each plan (read-only, capped, self-correcting)
-    5. SYNTHESIZE   DEEP_MODEL combines chat + enriched data → insight pack
-    6. BUILD        passes insight pack to legacy /slides-agent → deck saved
+    1. INGEST extract chat history + persona + KG + table catalog
+    2. GAPS DEEP_MODEL identifies 5-8 missing analysis angles
+    3. PLAN LITE_MODEL writes SQL per gap (reuses semantic model)
+    4. EXECUTE run_sql_query each plan (read-only, capped, self-correcting)
+    5. SYNTHESIZE DEEP_MODEL combines chat + enriched data > insight pack
+    6. BUILD passes insight pack to legacy /slides-agent > deck saved
 
 All stages yield SSE events: {stage, status, message, data}.
 Streamed via asyncio generator from app/deep_deck_api.py.
@@ -142,7 +142,7 @@ def _mark_verified_slides(spec: Optional[Dict[str, Any]],
                           executed: List[Dict[str, Any]]) -> int:
     """Walk slides; if a slide's text contains a verified_value, mark it.
 
-    Returns count of slides tagged verified. Fail-soft: any error → 0.
+    Returns count of slides tagged verified. Fail-soft: any error > 0.
     """
     if not spec or not isinstance(spec, dict):
         return 0
@@ -195,7 +195,7 @@ def _mark_verified_slides(spec: Optional[Dict[str, Any]],
 
 
 def _run_qa_loop(pptx_path: str) -> Dict[str, Any]:
-    """PPTX → PDF (soffice) → JPG (pdftoppm). Fail-soft."""
+    """PPTX > PDF (soffice) > JPG (pdftoppm). Fail-soft."""
     import os
     import shutil
     import subprocess
@@ -214,7 +214,7 @@ def _run_qa_loop(pptx_path: str) -> Dict[str, Any]:
     pdf_path = os.path.join(pptx_dir, f"{pptx_name}.pdf")
 
     try:
-        # soffice headless convert → PDF
+        # soffice headless convert > PDF
         subprocess.run(
             [soffice, "--headless", "--convert-to", "pdf", "--outdir", pptx_dir, pptx_path],
             capture_output=True, timeout=120, check=False,
@@ -222,7 +222,7 @@ def _run_qa_loop(pptx_path: str) -> Dict[str, Any]:
         if not os.path.exists(pdf_path):
             return {"pages": 0, "dir": out_dir, "error": "soffice produced no pdf"}
 
-        # pdftoppm → JPGs (slide-1.jpg, slide-2.jpg, ...)
+        # pdftoppm > JPGs (slide-1.jpg, slide-2.jpg, ...)
         subprocess.run(
             [pdftoppm, "-jpeg", "-r", "120", pdf_path, os.path.join(out_dir, "slide")],
             capture_output=True, timeout=60, check=False,
@@ -243,7 +243,7 @@ def _get_engine():
         return get_sql_engine()
     except Exception:
         try:
-            from db import get_sql_engine  # type: ignore
+            from db import get_sql_engine # type: ignore
             return get_sql_engine()
         except Exception:
             return None
@@ -288,7 +288,7 @@ def _event(stage: str, status: str, message: str = "", data: Any = None) -> Dict
 # abandoned runs don't leak memory).
 _APPROVAL_EVENTS: Dict[int, "asyncio.Event"] = {}
 _APPROVAL_PAYLOADS: Dict[int, Dict[str, Any]] = {}
-_APPROVAL_TIMEOUT_S = 300  # 5 min
+_APPROVAL_TIMEOUT_S = 300 # 5 min
 
 
 def signal_approval(run_id: int, payload: Optional[Dict[str, Any]] = None) -> bool:
@@ -313,14 +313,14 @@ def signal_approval(run_id: int, payload: Optional[Dict[str, Any]] = None) -> bo
                 return False
             state = row[0]
             if state == "approved":
-                return True  # idempotent — already approved
+                return True # idempotent — already approved
             if state != "awaiting":
-                return False  # not waiting (done, failed, never reached gate)
+                return False # not waiting (done, failed, never reached gate)
             conn.execute(
                 text(
                     "UPDATE dash.dash_deep_deck_runs "
                     "SET approval_state = 'approved', "
-                    "    approval_payload = CAST(:p AS jsonb) "
+                    " approval_payload = CAST(:p AS jsonb) "
                     "WHERE id = :id"
                 ),
                 {"id": int(run_id), "p": json.dumps(payload or {})},
@@ -598,7 +598,7 @@ def stage_gaps(ingest: Dict[str, Any]) -> List[Dict[str, Any]]:
     schema_lines = []
     for tn in (ingest.get("table_catalog") or [])[:15]:
         cols = table_columns.get(tn, [])[:25]
-        schema_lines.append(f"  {tn}({', '.join(cols)})")
+        schema_lines.append(f" {tn}({', '.join(cols)})")
     schema_block = "\n".join(schema_lines) if schema_lines else "(no schema available)"
     seen = ", ".join((ingest.get("tables_seen") or [])[:15])
     persona = ingest.get("persona", "")[:800]
@@ -647,8 +647,8 @@ def stage_plan(gaps: List[Dict[str, Any]], ingest: Dict[str, Any],
     table_columns = ingest.get("table_columns") or {}
     schema_lines: List[str] = []
     for tn in (ingest.get("table_catalog") or [])[:15]:
-        cols = table_columns.get(tn, [])[:30]   # cap cols / table
-        schema_lines.append(f"  {tn}({', '.join(cols)})")
+        cols = table_columns.get(tn, [])[:30] # cap cols / table
+        schema_lines.append(f" {tn}({', '.join(cols)})")
     schema_block = "\n".join(schema_lines) if schema_lines else "(no tables — empty schema)"
 
     # skl_deck_orchestrator = pipeline-side instructions (separate from skl_pptx_builder
@@ -675,20 +675,20 @@ def stage_plan(gaps: List[Dict[str, Any]], ingest: Dict[str, Any],
     # Phase 2 hook: verified-metric truth oracle (per-gap, $0, ~30ms)
     try:
         from dash.learning.verified_reward import try_metric_shortcut
-    except Exception as _exc:  # noqa: BLE001
-        try_metric_shortcut = None  # type: ignore
+    except Exception as _exc: # noqa: BLE001
+        try_metric_shortcut = None # type: ignore
         logger.debug("try_metric_shortcut unavailable: %s", _exc)
 
     plan: List[Dict[str, Any]] = []
     for g in gaps[:6]:
         # ── Phase 2: verified-metric shortcut ──────────────────────────
-        # Build slide-question from gap fields; high-confidence pin → use
+        # Build slide-question from gap fields; high-confidence pin > use
         # the verified SQL verbatim, mark slide as verified, skip LLM SQL.
         slide_question = f"{g.get('question', '')} {g.get('rationale', '')}".strip()
         if project_slug and try_metric_shortcut and slide_question:
             try:
                 shortcut = try_metric_shortcut(project_slug, slide_question)
-            except Exception as _exc:  # noqa: BLE001
+            except Exception as _exc: # noqa: BLE001
                 logger.debug("try_metric_shortcut raised: %s", _exc)
                 shortcut = None
             if (shortcut and shortcut.get("matched")
@@ -697,7 +697,7 @@ def stage_plan(gaps: List[Dict[str, Any]], ingest: Dict[str, Any],
                 source_q = (shortcut.get("source_q") or "")[:80]
                 verified_value = shortcut.get("value")
                 logger.info(
-                    "stage_plan verified-metric hit project=%s gap=%r → metric=%r value=%s",
+                    "stage_plan verified-metric hit project=%s gap=%r > metric=%r value=%s",
                     project_slug, slide_question[:80], source_q, verified_value,
                 )
                 plan.append({
@@ -744,15 +744,15 @@ def stage_plan(gaps: List[Dict[str, Any]], ingest: Dict[str, Any],
 
 
 # ── STAGE 4: EXECUTE ────────────────────────────────────────────────────
-# Errors that indicate schema-mismatch (column/table doesn't exist).  When the
+# Errors that indicate schema-mismatch (column/table doesn't exist). When the
 # raw SQL fast-path fails with one of these, we fall back to the Analyst
 # agent which carries 13-layer context + introspect_schema and can self-correct.
 _SCHEMA_GAP_MARKERS = (
     "undefinedtable",
     "undefinedcolumn",
     "does not exist",
-    "relation",  # "relation X does not exist"
-    "column",    # "column X does not exist"
+    "relation", # "relation X does not exist"
+    "column", # "column X does not exist"
 )
 
 
@@ -824,7 +824,7 @@ def _execute_via_analyst(
     except Exception as e:
         # Some agents may need arun; try once before giving up.
         try:
-            run = asyncio.run(analyst.arun(prompt))  # type: ignore[attr-defined]
+            run = asyncio.run(analyst.arun(prompt)) # type: ignore[attr-defined]
             raw = getattr(run, "content", None) or str(run)
         except Exception as e2:
             return {"ok": False, "error": f"analyst_run_failed: {str(e2)[:300]}"}
@@ -971,7 +971,7 @@ def _to_json_safe(v: Any) -> Any:
 
 # ── STAGE 5: SYNTHESIZE ─────────────────────────────────────────────────
 def stage_synthesize(ingest: Dict[str, Any], gaps: List[Dict[str, Any]], executed: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """DEEP_MODEL: combine chat + enriched data → insight pack for slide build."""
+    """DEEP_MODEL: combine chat + enriched data > insight pack for slide build."""
     persona = ingest.get("persona", "")[:800]
     chat_qs = "\n".join(f"- {q}" for q in (ingest.get("user_questions") or [])[:8])
 
@@ -983,7 +983,7 @@ def stage_synthesize(ingest: Dict[str, Any], gaps: List[Dict[str, Any]], execute
         verified_hint = ""
         if e.get("verified") and e.get("verified_value") is not None:
             verified_hint = (
-                f"  ⚑ VERIFIED METRIC — USE THIS NUMBER VERBATIM: {e['verified_value']} "
+                f" VERIFIED METRIC — USE THIS NUMBER VERBATIM: {e['verified_value']} "
                 f"(from pinned metric '{(e.get('source_metric') or '')[:80]}'). "
                 f"Do NOT recompute or round.\n"
             )
@@ -1002,26 +1002,26 @@ def stage_synthesize(ingest: Dict[str, Any], gaps: List[Dict[str, Any]], execute
         + "\n".join(enriched)
         + "\n\nProduce a synthesis pack the slide-builder can consume:\n"
         '{\n'
-        '  "narrative": "one-sentence story arc",\n'
-        '  "key_insight": "the ONE surprising finding",\n'
-        '  "supporting_evidence": [{"claim": "...", "value": "...", "source_query_id": 1}, ...],\n'
-        '  "recommendations": [{"action": "...", "owner": "Data Ops|Finance|...", "effort": "1d|1wk|1mo", "risk": "low|med|high"}, ...],\n'
-        '  "risks": ["...", "..."],\n'
-        '  "audience_action": "ONE specific action this audience should take"\n'
+        ' "narrative": "one-sentence story arc",\n'
+        ' "key_insight": "the ONE surprising finding",\n'
+        ' "supporting_evidence": [{"claim": "...", "value": "...", "source_query_id": 1}, ...],\n'
+        ' "recommendations": [{"action": "...", "owner": "Data Ops|Finance|...", "effort": "1d|1wk|1mo", "risk": "low|med|high"}, ...],\n'
+        ' "risks": ["...", "..."],\n'
+        ' "audience_action": "ONE specific action this audience should take"\n'
         "}\n\n"
         "HARD RULES — auto-fail if violated:\n"
         "- Every numeric claim MUST cite source_query_id (1-indexed by FINDING above).\n"
         "- Numbers MUST appear in the FINDING data shown above — do NOT invent.\n"
         "- NEVER name external sources you weren't given:\n"
-        "  Forbidden: 'McKinsey', 'Gartner', 'Forrester', 'BCG', 'Bain', 'industry benchmark',\n"
-        "  'McKinsey Operational Excellence Study', 'McKinsey Benchmarking', any made-up paper title.\n"
-        "  Allowed: '(Source: [Q3])' pointing to an actual FINDING above, or 'Internal data' / 'Project data'.\n"
+        " Forbidden: 'McKinsey', 'Gartner', 'Forrester', 'BCG', 'Bain', 'industry benchmark',\n"
+        " 'McKinsey Operational Excellence Study', 'McKinsey Benchmarking', any made-up paper title.\n"
+        " Allowed: '(Source: [Q3])' pointing to an actual FINDING above, or 'Internal data' / 'Project data'.\n"
         "- NEVER use placeholder tokens: [X], [Y], [ERP System Name], $X, $XM, $[Y]M, [X]%.\n"
-        "  If a number is unknown, DROP the claim. Don't write [X] expecting a human fill.\n"
+        " If a number is unknown, DROP the claim. Don't write [X] expecting a human fill.\n"
         "- Correlation r in [-0.1, 0.1] means NO relationship. Never call this a 'driver' or 'cause'.\n"
-        "  If r is near zero, write 'no measurable correlation' and move on — don't manufacture insight.\n"
+        " If r is near zero, write 'no measurable correlation' and move on — don't manufacture insight.\n"
         "- Numbers must agree across the pack. If FINDING 1 says 1,614 unclassified, every claim about\n"
-        "  unclassified count uses 1,614 — no other number.\n"
+        " unclassified count uses 1,614 — no other number.\n"
         "- 3-5 recommendations, each with owner + effort + risk.\n"
         "- Return ONLY JSON."
     )
@@ -1058,8 +1058,8 @@ def stage_build(project_slug: str, agent_name: str, messages: List[Dict[str, Any
             continue
         enriched_summary.append(
             f"[Q{i}] {e['question']}\n"
-            f"   {e.get('row_count', 0)} rows, cols={e.get('columns')}\n"
-            f"   sample={json.dumps(e.get('rows_preview', [])[:5], default=str)[:600]}"
+            f" {e.get('row_count', 0)} rows, cols={e.get('columns')}\n"
+            f" sample={json.dumps(e.get('rows_preview', [])[:5], default=str)[:600]}"
         )
 
     # Audience tuning
@@ -1078,23 +1078,23 @@ def stage_build(project_slug: str, agent_name: str, messages: List[Dict[str, Any
         "HARD RULES — auto-fail if violated:\n"
         "- Numbers MUST come from the ENRICHED QUERY RESULTS below. Never invent.\n"
         "- Citations: only '(Source: [Q1])' or '(Source: Internal data)'. NEVER write\n"
-        "  'McKinsey', 'Gartner', 'Forrester', 'BCG', 'Bain', 'industry study',\n"
-        "  'benchmark report', or any external paper/firm name not in this pack.\n"
+        " 'McKinsey', 'Gartner', 'Forrester', 'BCG', 'Bain', 'industry study',\n"
+        " 'benchmark report', or any external paper/firm name not in this pack.\n"
         "- NEVER use placeholder tokens [X] / [Y] / $X / $XM / $[Y]M / [X]% / [ERP System Name].\n"
-        "  If a number is unknown, drop the claim entirely.\n"
+        " If a number is unknown, drop the claim entirely.\n"
         "- Numbers must agree across slides. Pick ONE canonical value per metric.\n"
         "- Correlation r between -0.1 and 0.1 means NO relationship. Never call that a 'driver'.\n\n"
         f"Narrative: {insight_pack.get('narrative', '')}\n"
         f"Key insight: {insight_pack.get('key_insight', '')}\n"
         f"Audience action: {insight_pack.get('audience_action', '')}\n\n"
         "Supporting evidence:\n"
-        + "\n".join(f"  - {ev.get('claim')} = {ev.get('value')} (src=Q{ev.get('source_query_id')})"
+        + "\n".join(f" - {ev.get('claim')} = {ev.get('value')} (src=Q{ev.get('source_query_id')})"
                     for ev in (insight_pack.get('supporting_evidence') or [])[:10])
         + "\n\nRecommendations:\n"
-        + "\n".join(f"  - {r.get('action')} (owner={r.get('owner')}, effort={r.get('effort')}, risk={r.get('risk')})"
+        + "\n".join(f" - {r.get('action')} (owner={r.get('owner')}, effort={r.get('effort')}, risk={r.get('risk')})"
                     for r in (insight_pack.get('recommendations') or [])[:6])
         + "\n\nRisks:\n"
-        + "\n".join(f"  - {x}" for x in (insight_pack.get('risks') or [])[:4])
+        + "\n".join(f" - {x}" for x in (insight_pack.get('risks') or [])[:4])
         + "\n\nEnriched query results:\n"
         + "\n\n".join(enriched_summary)
     )
@@ -1157,12 +1157,12 @@ def stage_build(project_slug: str, agent_name: str, messages: List[Dict[str, Any
 # which routes to DEEP_MODEL via TRAINING_CONFIGS).
 #
 # PNG vs text fallback: stage_vision_judge prefers real rendered slide PNGs
-# from the existing _run_qa_loop output (qa/*.jpg, produced via pptx → pdf →
+# from the existing _run_qa_loop output (qa/*.jpg, produced via pptx > pdf >
 # jpg). If those are unavailable (renderer offline, qa.sh missing,
 # LibreOffice/pdftoppm not installed), judge_slide degrades to text-only
 # LLM judgment of the slide JSON — still on DEEP_MODEL, just blind.
 #
-# Kill switch: env DEEP_DECK_V2_DISABLED=1 → orchestrator skips stages 8+9
+# Kill switch: env DEEP_DECK_V2_DISABLED=1 > orchestrator skips stages 8+9
 # (falls back to the existing 7-stage flow).
 
 _V2_VISUAL_LAYOUTS = {
@@ -1208,9 +1208,9 @@ def _v2_cost_guard_blocked(project_slug: str) -> bool:
 
 
 def _v2_find_slide_pngs(qa_dir: Optional[str], n_slides: int) -> List[Optional[str]]:
-    """Map slide index → rendered preview PNG/JPG path produced by _run_qa_loop.
+    """Map slide index > rendered preview PNG/JPG path produced by _run_qa_loop.
 
-    qa.sh runs pptx → pdf → jpg, dropping page-N.jpg into qa_dir. We return a
+    qa.sh runs pptx > pdf > jpg, dropping page-N.jpg into qa_dir. We return a
     list aligned to spec['slides']; entries can be None when a corresponding
     image is missing (text-fallback then kicks in in judge_slide)."""
     out: List[Optional[str]] = [None] * n_slides
@@ -1344,7 +1344,7 @@ def _regenerate_slide(
             return None
         if not isinstance(new_slide, dict):
             return None
-        # Preserve verified-metric tags so we don't drop the ✓ badge
+        # Preserve verified-metric tags so we don't drop the OK badge
         for k in ("verified", "source_metric", "verified_value", "layout"):
             if k in slide and k not in new_slide:
                 new_slide[k] = slide[k]
@@ -1441,7 +1441,7 @@ def _update_pres_judge_scores(
                 text(
                     "UPDATE public.dash_presentations "
                     "SET thinking = COALESCE(thinking, CAST('{}' AS jsonb)) "
-                    "               || CAST(:m AS jsonb) "
+                    " || CAST(:m AS jsonb) "
                     "WHERE id = :id"
                 ),
                 {"id": int(pres_id), "m": json.dumps(meta, default=str)},
@@ -1758,7 +1758,7 @@ async def orchestrate_deep_deck(
         if pres_id and pptxgenjs_spec and (pptxgenjs_spec.get("slides") or []):
             try:
                 yield emit("render", "running", "Rendering rich .pptx (Node)")
-                from dash.tools.render_pptxgenjs import render_pptx_via_js  # phase-2 file
+                from dash.tools.render_pptxgenjs import render_pptx_via_js # phase-2 file
                 import os
                 out_dir = f"/app/knowledge/{project_slug}/decks/{pres_id}"
                 os.makedirs(out_dir, exist_ok=True)
@@ -1776,12 +1776,12 @@ async def orchestrate_deep_deck(
                     yield emit("render", "done",
                                f"Rendered: {rendered_pptx_path}",
                                {"rendered_pptx_path": rendered_pptx_path})
-                    # QA: pptx → pdf → jpgs (non-blocking, fail-soft)
+                    # QA: pptx > pdf > jpgs (non-blocking, fail-soft)
                     try:
                         qa_info = await asyncio.to_thread(_run_qa_loop, rendered_pptx_path)
                         if qa_info.get("pages", 0) > 0:
                             yield emit("render", "info",
-                                       f"QA: {qa_info['pages']} page(s) → {qa_info['dir']}",
+                                       f"QA: {qa_info['pages']} page(s) > {qa_info['dir']}",
                                        qa_info)
                     except Exception as e:
                         logger.warning("qa loop failed: %s", e)
@@ -2022,8 +2022,8 @@ def _update_pres_spec(pres_id: int, spec: Dict[str, Any],
                 text(
                     "UPDATE public.dash_presentations "
                     "SET pptxgenjs_spec = CAST(:s AS jsonb), "
-                    "    thinking = COALESCE(thinking, CAST('{}' AS jsonb)) "
-                    "               || CAST(:m AS jsonb) "
+                    " thinking = COALESCE(thinking, CAST('{}' AS jsonb)) "
+                    " || CAST(:m AS jsonb) "
                     "WHERE id = :id"
                 ),
                 {

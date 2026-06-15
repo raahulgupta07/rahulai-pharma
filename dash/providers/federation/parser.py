@@ -1,4 +1,4 @@
-"""Parse federated SQL → identify source prefixes.
+"""Parse federated SQL > identify source prefixes.
 
 Convention: source prefix = provider id (e.g. `fabric_42` or `pg_local`).
 Tables addressed as `<provider_id>.<table_name>`.
@@ -20,10 +20,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TableRef:
-    provider_id: str          # "fabric_42", "pg_local", "file_doc_77"
-    table_name: str           # "orders"
+    provider_id: str # "fabric_42", "pg_local", "file_doc_77"
+    table_name: str # "orders"
     alias: Optional[str] = None
-    full: str = ""            # original "fabric_42.orders"
+    full: str = "" # original "fabric_42.orders"
 
 
 @dataclass
@@ -31,7 +31,7 @@ class ParsedFederatedSQL:
     raw_sql: str
     table_refs: list[TableRef] = field(default_factory=list)
     provider_ids: set[str] = field(default_factory=set)
-    is_federated: bool = False    # True if multi-source
+    is_federated: bool = False # True if multi-source
     ast: Optional[object] = None
     error: Optional[str] = None
 

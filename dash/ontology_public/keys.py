@@ -102,10 +102,10 @@ def create_key(
             "(name, public_key, secret_key_hash, project_slug, scope, "
             " rate_limit_per_min, status, allowed_origins, created_by) "
             "VALUES (:name, :pub, :hsh, :slug, CAST(:scope AS jsonb), "
-            "        :rl, 'active', :origins, :uid) "
+            " :rl, 'active', :origins, :uid) "
             "RETURNING id, name, public_key, project_slug, scope, "
-            "          rate_limit_per_min, status, allowed_origins, "
-            "          created_by, created_at"
+            " rate_limit_per_min, status, allowed_origins, "
+            " created_by, created_at"
         ), {
             "name": name.strip(),
             "pub": public,
@@ -117,7 +117,7 @@ def create_key(
             "uid": user_id,
         }).first()
     out = _row_to_dict(row)
-    out["secret"] = secret  # plaintext, ONCE
+    out["secret"] = secret # plaintext, ONCE
     return out
 
 
@@ -126,8 +126,8 @@ def list_keys(project_slug: str | None = None) -> list[dict]:
     eng = _engine()
     sql = (
         "SELECT id, name, public_key, project_slug, scope, "
-        "       rate_limit_per_min, status, allowed_origins, "
-        "       created_by, created_at, last_used_at "
+        " rate_limit_per_min, status, allowed_origins, "
+        " created_by, created_at, last_used_at "
         "FROM public.dash_ontology_api_keys "
     )
     params: dict[str, Any] = {}
@@ -145,8 +145,8 @@ def get_key(key_id: int) -> dict | None:
     with eng.connect() as cn:
         row = cn.execute(text(
             "SELECT id, name, public_key, project_slug, scope, "
-            "       rate_limit_per_min, status, allowed_origins, "
-            "       created_by, created_at, last_used_at "
+            " rate_limit_per_min, status, allowed_origins, "
+            " created_by, created_at, last_used_at "
             "FROM public.dash_ontology_api_keys WHERE id = :id"
         ), {"id": int(key_id)}).first()
     return _row_to_dict(row) if row else None
@@ -206,8 +206,8 @@ def verify_bearer(authorization_header: str | None) -> dict | None:
         with eng.begin() as cn:
             row = cn.execute(text(
                 "SELECT id, name, public_key, project_slug, scope, "
-                "       rate_limit_per_min, status, allowed_origins, "
-                "       created_by, created_at, last_used_at "
+                " rate_limit_per_min, status, allowed_origins, "
+                " created_by, created_at, last_used_at "
                 "FROM public.dash_ontology_api_keys "
                 "WHERE secret_key_hash = :h"
             ), {"h": h_hash}).first()
@@ -267,22 +267,22 @@ def usage_stats(key_id: int, days: int = 14) -> dict:
     with eng.connect() as cn:
         totals = cn.execute(text(
             "SELECT COUNT(*) AS calls, "
-            "       SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) AS errors, "
-            "       AVG(latency_ms)::int AS avg_ms "
+            " SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) AS errors, "
+            " AVG(latency_ms)::int AS avg_ms "
             "FROM public.dash_ontology_api_calls "
             "WHERE key_id = :k "
-            "  AND created_at > now() - (:d || ' days')::interval"
+            " AND created_at > now() - (:d || ' days')::interval"
         ), {"k": int(key_id), "d": days}).first()
 
         # PERCENTILE_CONT for p50 / p95.
         try:
             pct = cn.execute(text(
                 "SELECT "
-                "  PERCENTILE_CONT(0.5)  WITHIN GROUP (ORDER BY latency_ms) AS p50, "
-                "  PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95 "
+                " PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms) AS p50, "
+                " PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95 "
                 "FROM public.dash_ontology_api_calls "
                 "WHERE key_id = :k "
-                "  AND created_at > now() - (:d || ' days')::interval"
+                " AND created_at > now() - (:d || ' days')::interval"
             ), {"k": int(key_id), "d": days}).first()
             p50 = int(pct[0]) if pct and pct[0] is not None else None
             p95 = int(pct[1]) if pct and pct[1] is not None else None
@@ -293,25 +293,25 @@ def usage_stats(key_id: int, days: int = 14) -> dict:
             "SELECT endpoint, COUNT(*) AS c "
             "FROM public.dash_ontology_api_calls "
             "WHERE key_id = :k "
-            "  AND created_at > now() - (:d || ' days')::interval "
+            " AND created_at > now() - (:d || ' days')::interval "
             "GROUP BY endpoint ORDER BY c DESC LIMIT 10"
         ), {"k": int(key_id), "d": days}).fetchall()
 
         daily = cn.execute(text(
             "WITH d AS ("
-            "  SELECT generate_series("
-            "    date_trunc('day', now() - (:d || ' days')::interval),"
-            "    date_trunc('day', now()),"
-            "    '1 day'"
-            "  )::date AS day"
+            " SELECT generate_series("
+            " date_trunc('day', now() - (:d || ' days')::interval),"
+            " date_trunc('day', now()),"
+            " '1 day'"
+            " )::date AS day"
             ") "
             "SELECT d.day, COALESCE(c.cnt, 0) "
             "FROM d LEFT JOIN ("
-            "  SELECT date_trunc('day', created_at)::date AS day, COUNT(*) AS cnt "
-            "  FROM public.dash_ontology_api_calls "
-            "  WHERE key_id = :k "
-            "    AND created_at > now() - (:d || ' days')::interval "
-            "  GROUP BY 1"
+            " SELECT date_trunc('day', created_at)::date AS day, COUNT(*) AS cnt "
+            " FROM public.dash_ontology_api_calls "
+            " WHERE key_id = :k "
+            " AND created_at > now() - (:d || ' days')::interval "
+            " GROUP BY 1"
             ") c ON c.day = d.day "
             "ORDER BY d.day"
         ), {"k": int(key_id), "d": days}).fetchall()
@@ -329,7 +329,7 @@ def usage_stats(key_id: int, days: int = 14) -> dict:
     }
 
 
-# ── Internal: row → dict ──────────────────────────────────────────────────
+# ── Internal: row > dict ──────────────────────────────────────────────────
 
 def _row_to_dict(row) -> dict[str, Any]:
     if row is None:

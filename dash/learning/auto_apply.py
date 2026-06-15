@@ -3,18 +3,18 @@
 After a classifier picks a vertical (e.g. "pharmacy" with confidence 0.93),
 this module applies the full vertical pack in a single orchestrated call:
 
-  1. snapshot               -- pre-apply state for REVERT
-  2. apply_agent_template   -- dash.templates.apply + reconcile
-  3. apply_vertical         -- brain seeds + workflows from dash/verticals/<v>/
-  4. apply_template         -- dash.learning.template_generator (LLM-driven;
+  1. snapshot -- pre-apply state for REVERT
+  2. apply_agent_template -- dash.templates.apply + reconcile
+  3. apply_vertical -- brain seeds + workflows from dash/verticals/<v>/
+  4. apply_template -- dash.learning.template_generator (LLM-driven;
                                 falls back to dash.feature_config.apply_preset
                                 when generator returns _degraded)
   5. apply_visibility_template -- dash/policy/templates/<v>.py
-  6. seed_roles             -- replace_roles from policy template suggested_roles
+  6. seed_roles -- replace_roles from policy template suggested_roles
   7. derive_scope_guardrail -- dash.scope_deriver.derive_scope (best-effort)
   8. import_marketplace_skills -- up to 5 tagged skills (best-effort)
-  9. activate_workflows     -- flip pending -> active for this project
- 10. record_event           -- final history row
+  9. activate_workflows -- flip pending -> active for this project
+ 10. record_event -- final history row
 
 Each step is wrapped in try/except. Individual step failures are recorded in
 ``applied_steps`` but do NOT abort the whole apply (fail-soft). If more than
@@ -266,7 +266,7 @@ def _build_profile(slug: str) -> dict:
     eng = _engine()
     if eng is None:
         return {"tables": []}
-    schema = slug  # Dash convention: project slug == schema name
+    schema = slug # Dash convention: project slug == schema name
     ident = _re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
     if not ident.fullmatch(schema or ""):
         return {"tables": []}
@@ -369,7 +369,7 @@ def _step_apply_visibility_template(slug: str, vertical_name: str, user_id: str)
         from dash.policy.loader import save_policy
         from dash.policy.schema import VisibilityPolicy
 
-        # Try direct vertical → fall back to "generic"
+        # Try direct vertical > fall back to "generic"
         tpl = get_vis_tpl(vertical_name) or get_vis_tpl("generic")
         if not tpl:
             return _step("apply_visibility_template", True,
@@ -570,18 +570,18 @@ def auto_apply_vertical(
 
     # ── Phase 1 (PARALLEL) — independent steps ─────────────────────────────
     # Each opens its own DB connection / does its own work and is internally
-    # fail-soft (try/except → _step dict). We run them concurrently.
+    # fail-soft (try/except > _step dict). We run them concurrently.
     #
     # Ordering caveat: _step_apply_vertical and _step_apply_template both write
     # the SHARED tables dash_company_brain + dash_autonomous_workflows.
     # _step_apply_vertical uses INSERT ... ON CONFLICT DO NOTHING (idempotent),
     # but _step_apply_template delegates to apply_generated_template whose write
     # strategy is opaque from here. To stay correct-over-fast, we keep those two
-    # SERIAL relative to each other (apply_vertical → apply_template) inside a
+    # SERIAL relative to each other (apply_vertical > apply_template) inside a
     # single parallel task, while everything else runs fully parallel.
     #
     # _step_activate_workflows is NOT here — it flips dash_autonomous_workflows
-    # rows from 'pending'→'active', and those pending rows are INSERTED by
+    # rows from 'pending'>'active', and those pending rows are INSERTED by
     # apply_vertical / apply_template. It MUST run after Phase 1 (see Phase 2).
 
     def _vertical_then_template() -> list[dict]:
@@ -641,7 +641,7 @@ def auto_apply_vertical(
     # Determine overall success: applied=True unless MORE THAN HALF failed
     total = len(applied_steps)
     failed = sum(1 for s in applied_steps if not s.get("ok"))
-    applied = failed * 2 <= total  # majority succeeded
+    applied = failed * 2 <= total # majority succeeded
     errors = [f"{s['step']}: {s.get('error')}" for s in applied_steps if not s.get("ok") and s.get("error")]
 
     # Step 10 — record event
@@ -796,9 +796,9 @@ def revert_auto_apply(slug: str, history_id: int, user_id: str = "auto") -> dict
                     "(project_slug, version, policy_json, updated_at) "
                     "VALUES (:s, :v, CAST(:p AS jsonb), now()) "
                     "ON CONFLICT (project_slug) DO UPDATE "
-                    "  SET version=EXCLUDED.version, "
-                    "      policy_json=EXCLUDED.policy_json, "
-                    "      updated_at=now()"
+                    " SET version=EXCLUDED.version, "
+                    " policy_json=EXCLUDED.policy_json, "
+                    " updated_at=now()"
                 ), {"s": slug, "v": ver, "p": json.dumps(pj)})
         restored.append(_step("restore_visibility_policy", True))
     except Exception as e:

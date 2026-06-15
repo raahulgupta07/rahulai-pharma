@@ -7,7 +7,7 @@ Methods:
    if results agree, +confidence; if disagree, -confidence.
 3. LLM review: send hypothesis + evidence to DEEP_MODEL with high-reasoning
    for sanity check. LLM returns 'agree'|'disagree'|'inconclusive'.
-4. Eval-pipeline integration: add hypothesis as a Q&A pair → existing eval.
+4. Eval-pipeline integration: add hypothesis as a Q&A pair > existing eval.
 
 Updates dash_hypotheses.verification_status + confidence per outcome.
 Returns VerificationResult dataclass.
@@ -132,7 +132,7 @@ Limit results to 100 rows. Use TOP for tsql, LIMIT for postgres/mysql.
                 # (Edits 1-3) to enforce statement_timeout server-side.
                 try:
                     conn.execution_options(timeout=110)
-                except Exception:  # noqa: BLE001
+                except Exception: # noqa: BLE001
                     pass
                 result = conn.execute(text(sql))
                 rows = result.fetchmany(100)
@@ -276,7 +276,7 @@ Respond JSON: {{"verdict": "agree|disagree|inconclusive", "reason": "..."}}
     # -----------------------------------------------------------------
 
     def eval_pipeline_check(self, hypothesis: Hypothesis) -> VerificationResult:
-        """Add hypothesis as a Q&A eval pair → existing eval pipeline.
+        """Add hypothesis as a Q&A eval pair > existing eval pipeline.
 
         Phase 2: integrates with dash_evals. For now, returns PENDING.
         """

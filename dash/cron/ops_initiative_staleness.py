@@ -3,8 +3,8 @@ Ops Initiative Staleness daemon — flags in_progress initiatives w/ no update
 in 90 days. Writes brain rows category='ops_alert' key='stale_initiative:{id}'.
 
 Tunables:
-  OPS_STALENESS_DAEMON_DISABLED=1 → skip
-  OPS_STALENESS_INTERVAL_SECONDS  → default 604800 (7d), floor 3600
+  OPS_STALENESS_DAEMON_DISABLED=1 > skip
+  OPS_STALENESS_INTERVAL_SECONDS > default 604800 (7d), floor 3600
 """
 from __future__ import annotations
 
@@ -18,11 +18,11 @@ logger = logging.getLogger(__name__)
 
 try:
     from dash.obs.trace import trace_span
-except Exception:  # noqa: BLE001
+except Exception: # noqa: BLE001
     from contextlib import contextmanager as _cm
 
     @_cm
-    def trace_span(*_a, **_k):  # type: ignore
+    def trace_span(*_a, **_k): # type: ignore
         yield None
 
 
@@ -167,7 +167,7 @@ async def run_once() -> dict[str, Any]:
             ok = await asyncio.to_thread(_write_brain_row, item)
             if ok:
                 out["alerted"] += 1
-        except Exception as e:  # noqa: BLE001
+        except Exception as e: # noqa: BLE001
             out["errors"].append({"id": item.get("id"), "error": str(e)})
 
     logger.info(

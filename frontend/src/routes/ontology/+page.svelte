@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount, onDestroy } from 'svelte';
 
  /* ─── auth helper ─── */
@@ -174,20 +174,20 @@
  function parsePromoteDiff(p: any): { left: string; right: string } | null {
  const def = String(p?.definition || '');
  // patterns: "merge X with Y", "X <-> Y", "X => Y", "left: X right: Y"
- let m = def.match(/(?:merge|alias)\s+["']?([^"'<=>]+?)["']?\s+(?:with|to|=>|<->|→|->)\s+["']?([^"'\n]+?)["']?(?:\s|$)/i);
+ let m = def.match(/(?:merge|alias)\s+["']?([^"'<=>]+?)["']?\s+(?:with|to|=>|<->|>|->)\s+["']?([^"'\n]+?)["']?(?:\s|$)/i);
  if (m) return { left: m[1].trim(), right: m[2].trim() };
  m = def.match(/^([^|]+)\|([^|]+)$/);
  if (m) return { left: m[1].trim(), right: m[2].trim() };
  const name = String(p?.name || '');
- m = name.match(/(?:merge candidate:\s*)?([^→<=>]+?)\s*(?:→|<->|=>|with|to)\s*(.+?)(?:\s*\(|$)/i);
+ m = name.match(/(?:merge candidate:\s*)?([^><=>]+?)\s*(?:>|<->|=>|with|to)\s*(.+?)(?:\s*\(|$)/i);
  if (m) return { left: m[1].trim(), right: m[2].trim() };
  return null;
  }
 
  const allStats = $derived([
  { label: 'Types', val: summary.types_total, icon: '⊞' },
- { label: 'Links', val: summary.links_total, icon: '↔' },
- { label: 'Actions', val: summary.actions_total, icon: '▶' },
+ { label: 'Links', val: summary.links_total, icon: '<>' },
+ { label: 'Actions', val: summary.actions_total, icon: '' },
  { label: 'Formulas', val: summary.formulas, icon: 'ƒ' },
  { label: 'Glossary', val: summary.glossary, icon: 'Aa' },
  { label: 'Aliases', val: summary.aliases, icon: '≡' },
@@ -1532,7 +1532,7 @@
       <div class="ds-page-sub">Unified entity, link, action and glossary catalog · v2026.05</div>
     </div>
     <button class="btn-primary" onclick={refreshAll}>
-      ↻ Refresh{#if lastFetched}&nbsp;·&nbsp;<span style="font-weight: 400; opacity: 0.85;">{lastFetchedLabel}</span>{/if}
+      <Icon name="refresh" size={16} /> Refresh{#if lastFetched}&nbsp;·&nbsp;<span style="font-weight: 400; opacity: 0.85;">{lastFetchedLabel}</span>{/if}
     </button>
   </div>
 
@@ -1601,7 +1601,7 @@
             class="btn-ghost"
             onclick={exportTypesCsv}
             disabled={typesData.length === 0}
-          >↓ CSV</button>
+          ><Icon name="arrow-down" size={16} /> CSV</button>
         </div>
       </div>
 
@@ -1696,7 +1696,7 @@
         </div>
         <div class="ds-toolbar-group">
           <span style="font-size: var(--fs-sm); color: var(--pw-muted);">{linksData.length} links</span>
-          <button class="btn-ghost" onclick={exportLinksCsv} disabled={linksData.length === 0}>↓ CSV</button>
+          <button class="btn-ghost" onclick={exportLinksCsv} disabled={linksData.length === 0}><Icon name="arrow-down" size={16} /> CSV</button>
         </div>
       </div>
 
@@ -1753,7 +1753,7 @@
         <div class="ds-toolbar-group"></div>
         <div class="ds-toolbar-group">
           <span style="font-size: var(--fs-sm); color: var(--pw-muted);">{actionsData.length} actions</span>
-          <button class="btn-ghost" onclick={exportActionsCsv} disabled={actionsData.length === 0}>↓ CSV</button>
+          <button class="btn-ghost" onclick={exportActionsCsv} disabled={actionsData.length === 0}><Icon name="arrow-down" size={16} /> CSV</button>
         </div>
       </div>
 
@@ -1822,7 +1822,7 @@
           {/each}
         </div>
         <div class="ds-toolbar-group">
-          <button class="btn-ghost" onclick={exportGlossaryCsv} disabled={glossaryData.length === 0}>↓ CSV</button>
+          <button class="btn-ghost" onclick={exportGlossaryCsv} disabled={glossaryData.length === 0}><Icon name="arrow-down" size={16} /> CSV</button>
         </div>
       </div>
       <div class="ds-toolbar">
@@ -2128,7 +2128,7 @@
                             <div style="font-size: 11px; color: #dc2626; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 4px;">LEFT</div>
                             {diff.left}
                           </div>
-                          <div style="text-align: center; color: var(--pw-accent); font-weight: 700; font-size: 12px;">→</div>
+                          <div style="text-align: center; color: var(--pw-accent); font-weight: 700; font-size: 12px;"><Icon name="arrow-right" size={16} /></div>
                           <div style="background: #fff; border: 1px solid var(--pw-border); border-left: 3px solid var(--ds-success); padding: 8px 12px; border-radius: var(--pw-radius-sm); font-family: var(--pw-mono, monospace); font-size: 11px;">
                             <div style="font-size: 11px; color: var(--ds-success); font-weight: 700; letter-spacing: 0.08em; margin-bottom: 4px;">RIGHT (canonical)</div>
                             {diff.right}
@@ -2531,7 +2531,7 @@
               {#each drillDetail.links_out as l}
                 <div style="background: #fff; border: 1.5px solid var(--pw-ink); padding: 5px 9px; font-size: 10px; display: flex; align-items: center; gap: 6px;">
                   <span style="font-weight: 700;">{l.from}</span>
-                  <span style="color: #d97706; font-weight: 700;">→{l.rel}→</span>
+                  <span style="color: #d97706; font-weight: 700;"><Icon name="arrow-right" size={16} />{l.rel}<Icon name="arrow-right" size={16} /></span>
                   <span style="font-weight: 700;">{l.to}</span>
                   <span style="margin-left: auto; color: #555; font-size: 11px;">{l.count ?? ''}</span>
                 </div>

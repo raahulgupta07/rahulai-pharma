@@ -14,7 +14,7 @@ def list_verticals() -> list[dict]:
             "name": k,
             "label": v["label"],
             "description": v["description"],
-            "icon": v.get("icon", "🏷"),
+            "icon": v.get("icon", ""),
             "brain_count": len(v.get("brain_entries", [])),
             "workflow_count": len(v.get("workflows", [])),
         }

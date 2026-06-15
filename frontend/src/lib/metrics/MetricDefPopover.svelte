@@ -1,54 +1,55 @@
 <script lang="ts">
-  // MetricDefPopover.svelte — A4: view metric definition inline popover
-  let {
-    slug,
-    name,
-    onclose
-  }: {
-    slug: string;
-    name: string;
-    onclose: () => void;
-  } = $props();
+  import Icon from '$lib/Icon.svelte';
+ // MetricDefPopover.svelte — A4: view metric definition inline popover
+ let {
+ slug,
+ name,
+ onclose
+ }: {
+ slug: string;
+ name: string;
+ onclose: () => void;
+ } = $props();
 
-  function _headers(): Record<string, string> {
-    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
-    const scopeId = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_scope_id') : null;
-    const h: Record<string, string> = {};
-    if (token) h['Authorization'] = `Bearer ${token}`;
-    if (scopeId) h['X-Scope-Id'] = scopeId;
-    return h;
-  }
+ function _headers(): Record<string, string> {
+ const token = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
+ const scopeId = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_scope_id') : null;
+ const h: Record<string, string> = {};
+ if (token) h['Authorization'] = `Bearer ${token}`;
+ if (scopeId) h['X-Scope-Id'] = scopeId;
+ return h;
+ }
 
-  let spec = $state<any>(null);
-  let loading = $state(true);
-  let error = $state('');
+ let spec = $state<any>(null);
+ let loading = $state(true);
+ let error = $state('');
 
-  import { onMount } from 'svelte';
-  onMount(async () => {
-    try {
-      const res = await fetch(`/api/projects/${slug}/metrics/${encodeURIComponent(name)}`, {
-        headers: _headers()
-      });
-      if (res.ok) {
-        spec = await res.json().catch(() => null);
-      } else {
-        error = `HTTP ${res.status}`;
-      }
-    } catch (e: any) {
-      error = e?.message || 'Network error';
-    }
-    loading = false;
-  });
+ import { onMount } from 'svelte';
+ onMount(async () => {
+ try {
+ const res = await fetch(`/api/projects/${slug}/metrics/${encodeURIComponent(name)}`, {
+ headers: _headers()
+ });
+ if (res.ok) {
+ spec = await res.json().catch(() => null);
+ } else {
+ error = `HTTP ${res.status}`;
+ }
+ } catch (e: any) {
+ error = e?.message || 'Network error';
+ }
+ loading = false;
+ });
 
-  function statusColor(s: string) {
-    if (s === 'verified') return '#2e7d32';
-    if (s === 'deprecated') return '#c62828';
-    return '#a06000';
-  }
+ function statusColor(s: string) {
+ if (s === 'verified') return '#2e7d32';
+ if (s === 'deprecated') return '#c62828';
+ return '#a06000';
+ }
 
-  function onKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') onclose();
-  }
+ function onKeydown(e: KeyboardEvent) {
+ if (e.key === 'Escape') onclose();
+ }
 </script>
 
 <svelte:window onkeydown={onKeydown} />
@@ -80,16 +81,16 @@
       display: flex; align-items: center; gap: 8px;
       font-size: 11px; font-weight: 900; letter-spacing: 0.07em;
     ">
-      <span style="flex:1;">📐 {name}</span>
+      <span style="flex:1;"><Icon name="ruler" size={16} /> {name}</span>
       <button onclick={() => onclose()} style="
         background:none; border:1px solid rgba(255,255,255,0.3);
         color:inherit; cursor:pointer; padding:1px 6px; font-size:10px;
-      ">✕</button>
+      "><Icon name="x" size={16} /></button>
     </div>
 
     <div style="padding: 12px; font-size: 11px; color: var(--pw-ink, #1a1614);">
       {#if loading}
-        <div style="color:var(--pw-muted,#888);">⟳ Loading…</div>
+        <div style="color:var(--pw-muted,#888);">-&gt; Loading…</div>
       {:else if error}
         <div style="color:#c62828;">{error}</div>
       {:else if !spec}
@@ -128,7 +129,7 @@
             border: 2px solid #2e7d32; background: #f1f8e9;
             padding: 6px 10px; margin-bottom: 8px;
           ">
-            <div style="font-size:9px; font-weight:900; letter-spacing:0.06em; color:#2e7d32; margin-bottom:2px;">✓ VERIFIED TOTAL</div>
+            <div style="font-size:9px; font-weight:900; letter-spacing:0.06em; color:#2e7d32; margin-bottom:2px;"><Icon name="check" size={16} /> VERIFIED TOTAL</div>
             <div style="font-size:16px; font-weight:900; color:#2e7d32;">{spec.verified_answer}</div>
           </div>
         {/if}

@@ -2,9 +2,9 @@
 Daily journal generator — Obsidian-style daily notes per project.
 
 Usage:
-    python -m scripts.daily_journal                          # yesterday, all projects
-    python -m scripts.daily_journal --date 2026-05-25        # specific date, all projects
-    python -m scripts.daily_journal --project proj_demo_x    # yesterday, one project
+    python -m scripts.daily_journal # yesterday, all projects
+    python -m scripts.daily_journal --date 2026-05-25 # specific date, all projects
+    python -m scripts.daily_journal --project proj_demo_x # yesterday, one project
     python -m scripts.daily_journal --date 2026-05-25 --project proj_demo_x
 
 Counts:
@@ -35,15 +35,15 @@ logging.basicConfig(
 
 def _write_engine():
     try:
-        from db.session import get_write_engine  # type: ignore
+        from db.session import get_write_engine # type: ignore
         return get_write_engine()
     except Exception:
-        from db.session import get_sql_engine  # type: ignore
+        from db.session import get_sql_engine # type: ignore
         return get_sql_engine()
 
 
 def _read_engine():
-    from db.session import get_sql_engine  # type: ignore
+    from db.session import get_sql_engine # type: ignore
     return get_sql_engine()
 
 
@@ -51,7 +51,7 @@ def _llm_call(prompt: str) -> str | None:
     """Wrap LLM client w/ fallback. Returns text or None."""
     # Preferred: dash.settings.training_llm_call (per CLAUDE.md).
     try:
-        from dash.settings import training_llm_call  # type: ignore
+        from dash.settings import training_llm_call # type: ignore
         return training_llm_call(prompt, task="extraction")
     except Exception as e:
         logger.warning(f"training_llm_call unavailable: {e}")
@@ -90,8 +90,8 @@ def _count_queries(conn, slug: str, d: date_cls) -> int:
         row = conn.execute(text(
             "SELECT COUNT(*) FROM ai.agno_sessions "
             "WHERE team_id = 'dash' "
-            "  AND (user_id = :slug OR session_id LIKE :pat) "
-            "  AND updated_at::date = :d"
+            " AND (user_id = :slug OR session_id LIKE :pat) "
+            " AND updated_at::date = :d"
         ), {"slug": slug, "pat": f"%{slug}%", "d": d}).fetchone()
         return int(row[0]) if row else 0
     except Exception as e:
@@ -132,7 +132,7 @@ def _kpi_diff(conn, slug: str, d: date_cls) -> dict[str, Any]:
             "ORDER BY snapshot_date"
         ), {"s": slug, "d": d, "d2": d - timedelta(days=1)}).fetchall()
     except Exception:
-        return {}  # table doesn't exist
+        return {} # table doesn't exist
     if not rows:
         return {}
 
@@ -192,7 +192,7 @@ def _detect_anomalies(conn, slug: str, d: date_cls) -> list[dict[str, Any]]:
             ccol = conn.execute(text(
                 "SELECT column_name FROM information_schema.columns "
                 "WHERE table_schema = :sch AND table_name = :t "
-                "  AND column_name IN ('created_at','inserted_at','ingested_at') "
+                " AND column_name IN ('created_at','inserted_at','ingested_at') "
                 "LIMIT 1"
             ), {"sch": schema, "t": tname}).fetchone()
         except Exception:
@@ -337,10 +337,10 @@ def main() -> int:
     for slug in slugs:
         try:
             res = generate_for_project(slug, d)
-            logger.info(f"  ✓ {slug}: {res}")
+            logger.info(f" OK {slug}: {res}")
             ok += 1
         except Exception as e:
-            logger.exception(f"  ✗ {slug}: {e}")
+            logger.exception(f" x {slug}: {e}")
     logger.info(f"done — {ok}/{len(slugs)} succeeded")
     return 0 if ok == len(slugs) else 1
 

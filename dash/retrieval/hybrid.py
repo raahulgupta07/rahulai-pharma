@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 # Cache the usage map briefly so we don't hammer the MV per query.
 _USAGE_CACHE: dict[str, Any] = {"data": None, "expires": 0.0}
-_USAGE_TTL_S = 300.0  # 5 min
+_USAGE_TTL_S = 300.0 # 5 min
 
 
 def _load_table_usage_map() -> dict[str, int]:
@@ -87,7 +87,7 @@ def _apply_table_usage_boost(
                 continue
             q30 = usage.get(fqn)
             if q30 is None:
-                # Try schema-stripped fallback ("public.foo" → "foo")
+                # Try schema-stripped fallback ("public.foo" > "foo")
                 if "." in fqn:
                     alt = fqn.split(".", 1)[1]
                     for k in usage:
@@ -122,7 +122,7 @@ def _engine():
 def _embed_query(query: str) -> list[float] | None:
     """Embed a single query string. Returns None on failure (caller falls back)."""
     try:
-        from dash.tools.embeddings_helper import embed_batch  # type: ignore
+        from dash.tools.embeddings_helper import embed_batch # type: ignore
     except Exception as e:
         logger.warning("retrieval: embeddings_helper unavailable: %s", e)
         return None
@@ -139,7 +139,7 @@ def _embed_query(query: str) -> list[float] | None:
 
 def _vec_to_pg(v: list[float]) -> str:
     try:
-        from dash.tools.embeddings_helper import vec_to_pg  # type: ignore
+        from dash.tools.embeddings_helper import vec_to_pg # type: ignore
         return vec_to_pg(v)
     except Exception:
         return "[" + ",".join(f"{float(x):.6f}" for x in v) + "]"
@@ -226,8 +226,8 @@ def multi_query_expand(
 
     Modes:
       conservative — skip expansion, return [query] only
-      balanced     — 3 variants
-      tokenmax     — 5 variants
+      balanced — 3 variants
+      tokenmax — 5 variants
     """
     q = (query or "").strip()
     if not q:
@@ -298,7 +298,7 @@ def hybrid_search(
     mode: str = "balanced",
     k: int = 10,
 ) -> list[dict]:
-    """Run multi-query expansion → BM25+vector per query → RRF → top-k.
+    """Run multi-query expansion > BM25+vector per query > RRF > top-k.
 
     Returns list of {chunk_id, content, score, source, debug}.
     Also writes a row to dash.dash_search_log.

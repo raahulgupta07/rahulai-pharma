@@ -3,9 +3,9 @@
 Captured chat patterns land as status='pending' (unverified). This module moves
 them through the trust lifecycle:
 
-    pending  --admin approve-->  candidate  --verified + used-->  proven
-       |                              |                              |
-       +--admin reject-->  demoted    +--re-verify fails-->  demoted  +--👎/correction-->  demoted
+    pending --admin approve--> candidate --verified + used--> proven
+       | | |
+       +--admin reject--> demoted +--re-verify fails--> demoted +--/correction--> demoted
 
 Verification = re-run the stored SQL READ-ONLY and confirm it still executes and
 returns data (schema may have drifted). Promotion to 'proven' requires it to be a
@@ -58,7 +58,7 @@ def _independent_value(slug: str, question: str):
     not trustworthy enough to grant zero-LLM serve on a pharma agent. By deriving
     the answer a SECOND, independent way and requiring agreement, a wrong stored
     SQL is caught (its number won't match a fresh derivation). Returns None if it
-    can't derive one (→ caller HOLDS rather than promotes — fail-safe)."""
+    can't derive one (> caller HOLDS rather than promotes — fail-safe)."""
     try:
         from dash.tools.llm_sql_helper import generate_sql_safe
         from dash.learning import verified_reward as _vr
@@ -75,13 +75,13 @@ def _independent_value(slug: str, question: str):
         if not run:
             return None
         return run.get("value")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("independent_value failed: %s", exc)
         return None
 
 
 def _downvoted_norms(slug: str) -> set[str]:
-    """Normalized questions that ever got a 👎 (any down rating). Auto-promote is
+    """Normalized questions that ever got a (any down rating). Auto-promote is
     BLOCKED for these — a thumbs-down is enough to withhold zero-LLM trust until
     a human reviews. Best-effort (empty set on error)."""
     from sqlalchemy import text as _text
@@ -94,7 +94,7 @@ def _downvoted_norms(slug: str) -> set[str]:
                 "WHERE (rating = 'down' OR rating LIKE '-%') AND COALESCE(question,'') <> ''"
             )).fetchall()
         return {r[0] for r in rows if r[0]}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("downvoted_norms failed: %s", exc)
         return set()
 
@@ -107,7 +107,7 @@ def _exec(slug: str, sql: str):
             return None
         from dash.learning import verified_reward as _vr
         return _vr._run_rows(slug, sql, limit=20)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("query_curator exec failed: %s", exc)
         return None
 
@@ -138,7 +138,7 @@ def _set_status(slug: str, pattern_id: int, status: str, *, refresh_hash: bool =
                     "UPDATE public.dash_query_patterns SET status = :st WHERE id = :id AND project_slug = :s"
                 ), {"st": status, "id": pattern_id, "s": slug})
         return True
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.warning("set_status(%s->%s) failed: %s", pattern_id, status, exc)
         return False
 
@@ -146,14 +146,14 @@ def _set_status(slug: str, pattern_id: int, status: str, *, refresh_hash: bool =
 # ── Review-gate admin actions ────────────────────────────────────────────────
 
 def approve_pattern(slug: str, pattern_id: int) -> dict:
-    """Admin approves a pending capture → candidate (eligible for serve as a
+    """Admin approves a pending capture > candidate (eligible for serve as a
     Mode-2 hint; Mode-1 bypass still needs proven). Re-stamps schema_hash."""
     ok = _set_status(slug, pattern_id, "candidate", refresh_hash=True)
     return {"ok": ok, "status": "candidate"}
 
 
 def reject_pattern(slug: str, pattern_id: int) -> dict:
-    """Admin rejects a pattern → demoted (kept for audit, never served)."""
+    """Admin rejects a pattern > demoted (kept for audit, never served)."""
     ok = _set_status(slug, pattern_id, "demoted")
     return {"ok": ok, "status": "demoted"}
 
@@ -174,7 +174,7 @@ def promote_pattern(slug: str, pattern_id: int) -> dict:
             return {"ok": False, "error": "verify failed — SQL returned no data"}
         ok = _set_status(slug, pattern_id, "proven", refresh_hash=True)
         return {"ok": ok, "status": "proven", "verified_value": run.get("value")}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         return {"ok": False, "error": str(exc)}
 
 
@@ -217,7 +217,7 @@ def run_query_curator(slug: str, *, limit: int = 50, dry_run: bool = False) -> d
                 if not dry_run:
                     _set_status(slug, pid, "demoted")
                 continue
-            # SAFETY GATE 1 — never auto-promote a pattern that ever got a 👎.
+            # SAFETY GATE 1 — never auto-promote a pattern that ever got a .
             if qnorm and qnorm in downvoted:
                 summary["kept"] += 1
                 summary["details"].append({"id": pid, "action": "hold",
@@ -259,14 +259,14 @@ def run_query_curator(slug: str, *, limit: int = 50, dry_run: bool = False) -> d
                 summary["details"].append({"id": pid, "action": "keep",
                                            "reason": f"verified, uses={uses}<{min_uses}"})
         return summary
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.warning("run_query_curator failed for %s: %s", slug, exc)
         summary["error"] = str(exc)
         return summary
 
 
 def demote_on_negative_feedback(slug: str) -> dict:
-    """Demote proven/candidate patterns whose matched question got a 👎 with a
+    """Demote proven/candidate patterns whose matched question got a with a
     correction. Best-effort link via normalized question text in dash_feedback."""
     from sqlalchemy import text as _text
     from db.session import get_write_engine
@@ -277,14 +277,14 @@ def demote_on_negative_feedback(slug: str) -> dict:
                 "UPDATE public.dash_query_patterns p SET status = 'demoted' "
                 "FROM public.dash_feedback f "
                 "WHERE p.project_slug = :s AND p.source = 'chat' "
-                "  AND p.status IN ('candidate','proven') "
+                " AND p.status IN ('candidate','proven') "
                 # rating is TEXT: negative = 'down' / '-1' / any leading-minus value
-                "  AND (f.rating = 'down' OR f.rating LIKE '-%') "
-                "  AND f.correction IS NOT NULL AND f.correction <> '' "
-                "  AND lower(regexp_replace(COALESCE(f.question,''),'\\s+',' ','g')) = p.question_norm"
+                " AND (f.rating = 'down' OR f.rating LIKE '-%') "
+                " AND f.correction IS NOT NULL AND f.correction <> '' "
+                " AND lower(regexp_replace(COALESCE(f.question,''),'\\s+',' ','g')) = p.question_norm"
             ), {"s": slug}).rowcount
         return {"ok": True, "demoted": int(n or 0)}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("demote_on_negative_feedback failed: %s", exc)
         return {"ok": False, "error": str(exc)}
 
@@ -303,19 +303,19 @@ def fold_proven_into_training(slug: str) -> dict:
         with eng.begin() as conn:
             n = conn.execute(_text(
                 "INSERT INTO public.dash_training_qa "
-                "  (project_slug, table_name, question, sql, created_at) "
+                " (project_slug, table_name, question, sql, created_at) "
                 "SELECT p.project_slug, "
-                "       COALESCE(split_part(p.tables_used, ',', 1), 'learned') AS table_name, "
-                "       p.question, p.sql, now() "
+                " COALESCE(split_part(p.tables_used, ',', 1), 'learned') AS table_name, "
+                " p.question, p.sql, now() "
                 "FROM public.dash_query_patterns p "
                 "WHERE p.project_slug = :s AND p.source = 'chat' AND p.status = 'proven' "
-                "  AND NOT EXISTS ("
-                "    SELECT 1 FROM public.dash_training_qa t "
-                "    WHERE t.project_slug = p.project_slug "
-                "      AND lower(t.question) = lower(p.question))"
+                " AND NOT EXISTS ("
+                " SELECT 1 FROM public.dash_training_qa t "
+                " WHERE t.project_slug = p.project_slug "
+                " AND lower(t.question) = lower(p.question))"
             ), {"s": slug}).rowcount
         return {"ok": True, "folded": int(n or 0)}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("fold_proven_into_training failed: %s", exc)
         return {"ok": False, "error": str(exc)}
 
@@ -340,11 +340,11 @@ def bank_stats(slug: str) -> dict:
                     out["total_training"] += n
             sh = conn.execute(_text(
                 "SELECT count(*) AS total, "
-                "       count(*) FILTER (WHERE matched_id IS NOT NULL) AS near, "
-                "       count(*) FILTER (WHERE would_serve) AS would_serve, "
-                "       round(avg(sim) FILTER (WHERE matched_id IS NOT NULL), 3) AS avg_sim "
+                " count(*) FILTER (WHERE matched_id IS NOT NULL) AS near, "
+                " count(*) FILTER (WHERE would_serve) AS would_serve, "
+                " round(avg(sim) FILTER (WHERE matched_id IS NOT NULL), 3) AS avg_sim "
                 "FROM public.dash_query_bank_shadow WHERE project_slug = :s "
-                "  AND created_at > now() - interval '30 days'"
+                " AND created_at > now() - interval '30 days'"
             ), {"s": slug}).first()
             if sh:
                 total = int(sh[0] or 0)
@@ -356,7 +356,7 @@ def bank_stats(slug: str) -> dict:
                     "repeat_rate": round(near / total, 3) if total else 0.0,
                     "serve_rate": round(int(sh[2] or 0) / total, 3) if total else 0.0,
                 }
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         out["error"] = str(exc)
     return out
 
@@ -374,7 +374,7 @@ def list_patterns(slug: str, *, source: str = "chat", status: str | None = None,
         with get_sql_engine().connect() as conn:
             rows = conn.execute(_text(
                 "SELECT id, question, sql, status, uses, rows_returned, last_latency_ms, "
-                "       schema_hash, tables_used, last_used "
+                " schema_hash, tables_used, last_used "
                 "FROM public.dash_query_patterns " + clause +
                 " ORDER BY uses DESC, last_used DESC NULLS LAST LIMIT :k"
             ), params).fetchall()
@@ -390,6 +390,6 @@ def list_patterns(slug: str, *, source: str = "chat", status: str | None = None,
                 "last_used": r[9].isoformat() if r[9] else None,
             })
         return out
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.debug("list_patterns failed: %s", exc)
         return []

@@ -1,4 +1,4 @@
-"""Admin API for S3 auto-sync sources (Integrations → S3 Sync).
+"""Admin API for S3 auto-sync sources (Integrations > S3 Sync).
 
 Gated to the 'integration' surface (admin + super only — a plain chat user can't
 reach it). Credentials are write-only: never returned in GET responses.
@@ -37,8 +37,8 @@ class SourceIn(BaseModel):
     prefix: str = ""
     region: str = "us-east-1"
     endpoint_url: str | None = None
-    access_key: str | None = None      # write-only
-    secret_key: str | None = None      # write-only
+    access_key: str | None = None # write-only
+    secret_key: str | None = None # write-only
     file_map: list[FileRule] = []
     schedule_seconds: int = 300
     retrain_after: bool = True

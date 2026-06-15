@@ -4,7 +4,7 @@ Semantic Search Layer
 Unified search across all knowledge sources with reranking.
 
 Sources: PgVector KB, Company Brain, Knowledge Graph, Grounded Facts
-Reranking: Cohere via OpenRouter → keyword fallback → raw fallback
+Reranking: Cohere via OpenRouter > keyword fallback > raw fallback
 """
 
 import os
@@ -66,11 +66,11 @@ def _keyword_rerank(query: str, documents: list[dict], top_n: int = 5) -> list[d
 
 
 def _rerank(query: str, documents: list[dict], top_n: int = 5) -> list[dict]:
-    """3-tier reranking: Cohere models → keyword → raw."""
+    """3-tier reranking: Cohere models > keyword > raw."""
     if not documents:
         return []
 
-    doc_texts = [d.get("text", "")[:500] for d in documents]  # cap length for reranker
+    doc_texts = [d.get("text", "")[:500] for d in documents] # cap length for reranker
     api_key = os.getenv("OPENROUTER_API_KEY", "")
 
     if api_key:
@@ -93,13 +93,13 @@ def _rerank(query: str, documents: list[dict], top_n: int = 5) -> list[dict]:
                             doc = documents[idx].copy()
                             doc["relevance_score"] = r.get("relevance_score", 0)
                             ranked.append(doc)
-                    logger.info(f"Reranked {len(documents)} → {len(ranked)} with {model}")
+                    logger.info(f"Reranked {len(documents)} > {len(ranked)} with {model}")
                     return [d for d in ranked if d.get("relevance_score", 0) > 0.1]
             except Exception as e:
                 logger.warning(f"Rerank {model} failed: {e}")
                 continue
 
-    # All API models failed → keyword fallback
+    # All API models failed > keyword fallback
     logger.info("Rerank API unavailable, using keyword fallback")
     return _keyword_rerank(query, documents, top_n)
 
@@ -208,7 +208,7 @@ def _search_kg(query: str, project_slug: str | None = None) -> list[dict]:
 
             for r in rows:
                 results.append({
-                    "text": f"{r[0]} → {r[1]} → {r[2]} (source: {r[3]})",
+                    "text": f"{r[0]} > {r[1]} > {r[2]} (source: {r[3]})",
                     "source_type": "kg",
                     "source": f"kg:{r[3]}",
                 })
@@ -226,7 +226,7 @@ def _search_facts(query: str, project_slug: str | None = None) -> list[dict]:
         if facts_path and facts_path.exists():
             facts = json.loads(facts_path.read_text())
             query_lower = query.lower()
-            for fact in facts[:50]:  # Cap at 50
+            for fact in facts[:50]: # Cap at 50
                 text_val = fact.get("text", "") or fact.get("fact", "") or str(fact)
                 if any(w.lower() in text_val.lower() for w in query.split() if len(w) > 2):
                     results.append({
@@ -268,7 +268,7 @@ def create_search_all_tool(project_slug: str | None = None):
         if not all_results:
             return "No relevant knowledge found across any source."
 
-        # Rerank (Cohere → keyword → raw)
+        # Rerank (Cohere > keyword > raw)
         ranked = _rerank(query, all_results, top_n=7)
 
         if not ranked:
@@ -278,7 +278,7 @@ def create_search_all_tool(project_slug: str | None = None):
         lines = [f"SEMANTIC SEARCH RESULTS ({len(ranked)} relevant from {len(all_results)} total):"]
         for i, r in enumerate(ranked):
             score = f" (relevance: {r['relevance_score']:.2f})" if 'relevance_score' in r else ""
-            lines.append(f"\n{i+1}. [{r.get('source_type', '?').upper()}]{score}\n   {r['text']}")
+            lines.append(f"\n{i+1}. [{r.get('source_type', '?').upper()}]{score}\n {r['text']}")
 
         return "\n".join(lines)
 

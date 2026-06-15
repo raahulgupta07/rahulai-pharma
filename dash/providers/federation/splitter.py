@@ -1,16 +1,16 @@
 """SQL splitter — build per-source subqueries from federated AST.
 
 Strategy:
-  Input:  SELECT cols FROM source_a.t1 a JOIN source_b.t2 b ON a.x = b.y
+  Input: SELECT cols FROM source_a.t1 a JOIN source_b.t2 b ON a.x = b.y
           WHERE a.created > '2026-01-01' AND b.region = 'NA'
 
   Output: per-source subqueries with pushed-down WHERE clauses
           + list of join keys for in-memory merge.
 
-  source_a:  SELECT a.x, a.created, a.<other_used_cols>
+  source_a: SELECT a.x, a.created, a.<other_used_cols>
               FROM t1 a
               WHERE a.created > '2026-01-01'
-  source_b:  SELECT b.y, b.region, b.<other_used_cols>
+  source_b: SELECT b.y, b.region, b.<other_used_cols>
               FROM t2 b
               WHERE b.region = 'NA'
 
@@ -31,27 +31,27 @@ logger = logging.getLogger(__name__)
 @dataclass
 class JoinKey:
     left_provider: str
-    left_column: str          # qualified or alias.col
+    left_column: str # qualified or alias.col
     right_provider: str
     right_column: str
-    op: str = "="              # could be != / > / etc.
+    op: str = "=" # could be != / > / etc.
 
 
 @dataclass
 class SourceSubquery:
     provider_id: str
-    sql: str                  # subquery in canonical dialect (postgres)
+    sql: str # subquery in canonical dialect (postgres)
     columns_needed: list[str] = field(default_factory=list)
     pushed_filters: list[str] = field(default_factory=list)
-    estimated_rows: int = 0    # set later by executor
+    estimated_rows: int = 0 # set later by executor
 
 
 @dataclass
 class SplitPlan:
     subqueries: list[SourceSubquery] = field(default_factory=list)
     join_keys: list[JoinKey] = field(default_factory=list)
-    final_select: str = ""    # SELECT clause for final merge
-    final_where: str = ""      # cross-source WHERE filters
+    final_select: str = "" # SELECT clause for final merge
+    final_where: str = "" # cross-source WHERE filters
     final_order_by: str = ""
     final_limit: Optional[int] = None
     error: Optional[str] = None
@@ -90,7 +90,7 @@ def split(parsed) -> SplitPlan:
 
     ast = parsed.ast
 
-    # 1. Build alias → provider_id map
+    # 1. Build alias > provider_id map
     alias_to_provider: dict[str, str] = {}
     alias_to_table: dict[str, str] = {}
     for ref in parsed.table_refs:
@@ -133,7 +133,7 @@ def split(parsed) -> SplitPlan:
             else:
                 cross_source_filters.append(cond_sql)
 
-    # 4. Walk JOIN ON clauses → JoinKeys
+    # 4. Walk JOIN ON clauses > JoinKeys
     join_clauses = list(ast.find_all(exp.Join))
     for j in join_clauses:
         on_clause = j.args.get("on")
@@ -153,7 +153,7 @@ def split(parsed) -> SplitPlan:
             if not (l_pid and r_pid):
                 continue
             if l_pid == r_pid:
-                continue   # same-source join, push down (handled in WHERE-style)
+                continue # same-source join, push down (handled in WHERE-style)
             plan.join_keys.append(JoinKey(
                 left_provider=l_pid, left_column=left.name,
                 right_provider=r_pid, right_column=right.name,

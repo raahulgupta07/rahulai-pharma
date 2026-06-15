@@ -1,7 +1,7 @@
 """Rate-limit middleware regression test (Track C3).
 
 Verifies:
-1. Default route limit (120/min) enforced — 121st req in 60s → 429
+1. Default route limit (120/min) enforced — 121st req in 60s > 429
 2. 429 response includes `Retry-After` header (RFC 6585)
 3. Whitelisted paths (/api/health) NEVER rate-limited
 4. Per-route override (chat=60/min, upload=10/min)
@@ -55,7 +55,7 @@ def _build_client(reload_env: bool = False) -> TestClient:
         importlib.reload(rl_mod)
     from app.rate_limit import RateLimitMiddleware
 
-    async def ok(request):  # noqa: ARG001
+    async def ok(request): # noqa: ARG001
         return JSONResponse({"ok": True})
 
     app = Starlette(routes=[
@@ -79,7 +79,7 @@ def test_health_never_rate_limited():
 
 
 def test_default_route_429_after_threshold():
-    """Default route limit is 120/min; 121st req → 429 with Retry-After."""
+    """Default route limit is 120/min; 121st req > 429 with Retry-After."""
     os.environ.pop("RATE_LIMIT_DEFAULT", None)
     client = _build_client(reload_env=True)
     for i in range(120):
@@ -92,7 +92,7 @@ def test_default_route_429_after_threshold():
 
 
 def test_chat_route_429_at_61():
-    """Chat limit is 60/min — 61st req → 429."""
+    """Chat limit is 60/min — 61st req > 429."""
     os.environ["RATE_LIMIT_CHAT"] = "60/minute"
     client = _build_client(reload_env=True)
     for i in range(60):
@@ -104,7 +104,7 @@ def test_chat_route_429_at_61():
 
 
 def test_upload_route_429_at_11():
-    """Upload limit is 10/min — 11th req → 429."""
+    """Upload limit is 10/min — 11th req > 429."""
     os.environ["RATE_LIMIT_UPLOAD"] = "10/minute"
     client = _build_client(reload_env=True)
     for i in range(10):
@@ -116,7 +116,7 @@ def test_upload_route_429_at_11():
 
 
 def test_training_route_429_at_21():
-    """Training limit is 20/min — 21st req → 429."""
+    """Training limit is 20/min — 21st req > 429."""
     os.environ["RATE_LIMIT_TRAINING"] = "20/minute"
     client = _build_client(reload_env=True)
     for i in range(20):
@@ -128,7 +128,7 @@ def test_training_route_429_at_21():
 
 
 def test_disabled_via_env(monkeypatch):
-    """RATE_LIMIT_DISABLED=1 → no requests are limited."""
+    """RATE_LIMIT_DISABLED=1 > no requests are limited."""
     _ensure_testclient_works()
     monkeypatch.setenv("RATE_LIMIT_DISABLED", "1")
     client = _build_client()

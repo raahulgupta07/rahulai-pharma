@@ -3,8 +3,8 @@
 Migration 079 adds `tenant_namespace TEXT NOT NULL DEFAULT 'default'` +
 partial unique index for dedup within tenant. This module:
 
-  • derive_tenant_ns(project_slug, user_attrs) → canonical ns string
-  • vector_search_isolated(...) → cosine search WHERE tenant_namespace=:ns
+  • derive_tenant_ns(project_slug, user_attrs) > canonical ns string
+  • vector_search_isolated(...) > cosine search WHERE tenant_namespace=:ns
   • Audits cross-tenant attempts to dash_rls_audit
 
 Usage:
@@ -31,8 +31,8 @@ _eng = create_engine(db_url, poolclass=NullPool)
 def derive_tenant_ns(project_slug: str, user_attrs: dict | None = None) -> str:
     """Derive canonical tenant namespace.
 
-    - No user_attrs → return project_slug (project-wide tenant).
-    - user_attrs.tenant_id present → `{slug}::{tenant_id}` for multi-tenant-
+    - No user_attrs > return project_slug (project-wide tenant).
+    - user_attrs.tenant_id present > `{slug}::{tenant_id}` for multi-tenant-
       within-project isolation.
     """
     if not project_slug:

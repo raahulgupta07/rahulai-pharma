@@ -2,12 +2,12 @@
 Data Upload & Auto-Onboarding
 ==============================
 
-Upload CSV/Excel/JSON files → AI auto-generates metadata → loads into knowledge base.
+Upload CSV/Excel/JSON files > AI auto-generates metadata > loads into knowledge base.
 
 Usage:
-    POST /api/upload  (multipart/form-data with file + optional table_name)
-    GET  /api/tables   (list all tables with row counts)
-    DELETE /api/tables/{table_name}  (drop a user-uploaded table)
+    POST /api/upload (multipart/form-data with file + optional table_name)
+    GET /api/tables (list all tables with row counts)
+    DELETE /api/tables/{table_name} (drop a user-uploaded table)
 """
 
 import json
@@ -84,17 +84,17 @@ try:
         trace_span as _trace_span,
         end_trace as _trace_end,
     )
-except Exception:  # noqa: BLE001
+except Exception: # noqa: BLE001
     from contextlib import contextmanager as _trace_cm
 
-    def _trace_start(*_a, **_k):  # type: ignore
+    def _trace_start(*_a, **_k): # type: ignore
         return ""
 
-    def _trace_end(*_a, **_k):  # type: ignore
+    def _trace_end(*_a, **_k): # type: ignore
         return None
 
     @_trace_cm
-    def _trace_span(*_a, **_k):  # type: ignore
+    def _trace_span(*_a, **_k): # type: ignore
         yield None
 
 
@@ -105,7 +105,7 @@ def _safe_write_json(path: Path, data) -> None:
     try:
         with os.fdopen(tmp_fd, "w") as f:
             json.dump(data, f, indent=2, default=str)
-        os.replace(tmp_path, str(path))  # Atomic rename
+        os.replace(tmp_path, str(path)) # Atomic rename
     except Exception:
         try:
             os.unlink(tmp_path)
@@ -212,28 +212,28 @@ _engine = create_engine(db_url)
 # ---------------------------------------------------------------------------
 # Central column classifier — replaces inline heuristics across the pipeline.
 # Returns dict[col_name] -> role, where role ∈ {
-#   "pk"          — declared primary key (information_schema)
-#   "id"          — name-pattern key (ends _id/_code/_key) or 100% unique numeric
-#   "fk"          — declared foreign key
-#   "constant"    — DISTINCT(col) == 1
-#   "enum"        — adaptive low-cardinality: distinct ≤ max(20, rows*0.001) AND ratio < 0.05
-#   "date_dim"    — date/timestamp col w/ ≥2 distinct values
-#   "measure"     — numeric, not id/pk/fk/enum, has variance
-#   "free_text"   — high-cardinality text (ratio > 0.5)
-#   "dimension"   — text w/ moderate cardinality (default text bucket)
+# "pk" — declared primary key (information_schema)
+# "id" — name-pattern key (ends _id/_code/_key) or 100% unique numeric
+# "fk" — declared foreign key
+# "constant" — DISTINCT(col) == 1
+# "enum" — adaptive low-cardinality: distinct ≤ max(20, rows*0.001) AND ratio < 0.05
+# "date_dim" — date/timestamp col w/ ≥2 distinct values
+# "measure" — numeric, not id/pk/fk/enum, has variance
+# "free_text" — high-cardinality text (ratio > 0.5)
+# "dimension" — text w/ moderate cardinality (default text bucket)
 # }
 # Adaptive thresholds derived from REAL row count, not sample. Per-project
 # override hook reads dash_projects.feature_config['pipeline_thresholds'].
 # ---------------------------------------------------------------------------
 
 _DEFAULT_THRESHOLDS = {
-    "enum_max_distinct": 20,          # absolute cap on enum distinct
-    "enum_ratio_max": 0.05,           # distinct/rows < this → enum candidate
-    "enum_ratio_strong": 0.001,       # below this → always enum
-    "pk_min_rows": 100,               # row count floor before claiming PK by uniqueness
-    "free_text_ratio": 0.5,           # distinct/rows > this → free-text
-    "null_alert_floor_pct": 5.0,      # absolute floor (% of nulls)
-    "null_alert_stddev_mult": 1.5,    # alert if null_pct > median + N*stddev
+    "enum_max_distinct": 20, # absolute cap on enum distinct
+    "enum_ratio_max": 0.05, # distinct/rows < this > enum candidate
+    "enum_ratio_strong": 0.001, # below this > always enum
+    "pk_min_rows": 100, # row count floor before claiming PK by uniqueness
+    "free_text_ratio": 0.5, # distinct/rows > this > free-text
+    "null_alert_floor_pct": 5.0, # absolute floor (% of nulls)
+    "null_alert_stddev_mult": 1.5, # alert if null_pct > median + N*stddev
 }
 
 
@@ -312,8 +312,8 @@ def classify_columns(
     real_pks, real_fks = _get_real_pk_fk(schema, table)
     roles: dict[str, str] = {}
 
-    # adaptive enum cap based on row count: small tables → fixed cap;
-    # large tables → up to 0.1% of rows distinct
+    # adaptive enum cap based on row count: small tables > fixed cap;
+    # large tables > up to 0.1% of rows distinct
     enum_cap = max(th["enum_max_distinct"], int(row_count * th["enum_ratio_strong"]))
 
     for ca in col_stats:
@@ -352,7 +352,7 @@ def classify_columns(
             roles[name] = "constant"
             continue
 
-        # 4. Date/datetime → date_dim (multi-value) or constant (single)
+        # 4. Date/datetime > date_dim (multi-value) or constant (single)
         if col_type == "datetime" or "date" in n_lower or "time" in n_lower:
             roles[name] = "date_dim" if uc > 1 else "constant"
             continue
@@ -376,7 +376,7 @@ def classify_columns(
                 roles[name] = "free_text"
                 continue
 
-        # 8. Numeric not flagged above → real measure
+        # 8. Numeric not flagged above > real measure
         if col_type == "numeric":
             roles[name] = "measure"
         else:
@@ -400,9 +400,9 @@ def detect_composite_pk(schema: str, table: str, roles: dict[str, str], row_coun
     if row_count < 100:
         return None
     if any(r == "pk" for r in roles.values()):
-        return None  # single-col PK already declared
+        return None # single-col PK already declared
     if any(r == "id" for r in roles.values()):
-        return None  # uniqueness-based id already found
+        return None # uniqueness-based id already found
 
     candidates = [n for n, r in roles.items() if r in ("fk", "id", "enum", "dimension")]
     if len(candidates) < 2:
@@ -411,7 +411,7 @@ def detect_composite_pk(schema: str, table: str, roles: dict[str, str], row_coun
     try:
         eng = create_engine(db_url, poolclass=NullPool)
         with eng.connect() as c:
-            # Try first 6 pairs (12 cols max → 66 probes, but capped at 6)
+            # Try first 6 pairs (12 cols max > 66 probes, but capped at 6)
             from itertools import combinations
             for a, b in list(combinations(candidates[:8], 2))[:12]:
                 try:
@@ -668,11 +668,11 @@ def _run_investment_training_steps(slug: str, master_engine, master_run_id, tota
         if detected:
             _save_brain("financial_statement", "Detected financial tables",
                         f"Project contains: {', '.join(detected)}")
-            _log(f"✓ 15a: financial detection — {len(detected)} table(s)", "", total_tables)
+            _log(f"OK 15a: financial detection — {len(detected)} table(s)", "", total_tables)
         else:
             _log("· 15a: no financial tables detected (skipping)", "", total_tables)
     except Exception as _e:
-        _log(f"⚠ 15a failed: {str(_e)[:80]}", "", total_tables)
+        _log(f" 15a failed: {str(_e)[:80]}", "", total_tables)
 
     # ── 15b: Pitch Deck Section Extraction ──
     _step("pitch_deck_extract", 2)
@@ -686,9 +686,9 @@ def _run_investment_training_steps(slug: str, master_engine, master_run_id, tota
                     pptx_count += 1
                     _save_brain("pitch_deck_section", f"Deck: {f.name}",
                                 f"Uploaded pitch deck (.pptx). Run RAG via search_pitch_deck.")
-        _log(f"✓ 15b: pitch decks indexed — {pptx_count} file(s)", "", total_tables)
+        _log(f"OK 15b: pitch decks indexed — {pptx_count} file(s)", "", total_tables)
     except Exception as _e:
-        _log(f"⚠ 15b failed: {str(_e)[:80]}", "", total_tables)
+        _log(f" 15b failed: {str(_e)[:80]}", "", total_tables)
 
     # ── 15c: Comparable Deals Cross-Project Lookup ──
     _step("comp_deals", 3)
@@ -715,9 +715,9 @@ def _run_investment_training_steps(slug: str, master_engine, master_run_id, tota
         for c in comps:
             _save_brain("comp_deal", f"{c['project_slug']}: {c['name']}",
                         str(c['value'])[:1000])
-        _log(f"✓ 15c: comparable deals — {len(comps)} memos federated", "", total_tables)
+        _log(f"OK 15c: comparable deals — {len(comps)} memos federated", "", total_tables)
     except Exception as _e:
-        _log(f"⚠ 15c failed: {str(_e)[:80]}", "", total_tables)
+        _log(f" 15c failed: {str(_e)[:80]}", "", total_tables)
 
     # ── 15e: Investment Q&A Generation ──
     _step("investment_qa", 5)
@@ -757,16 +757,16 @@ def _run_investment_training_steps(slug: str, master_engine, master_run_id, tota
         try:
             with open(out_path, "w") as fh:
                 json.dump(investment_qa, fh, indent=2)
-            _log(f"✓ 15e: investment Q&A — {len(investment_qa)} pairs written", "", total_tables)
+            _log(f"OK 15e: investment Q&A — {len(investment_qa)} pairs written", "", total_tables)
         except Exception as _e3:
-            _log(f"⚠ 15e write failed: {str(_e3)[:80]}", "", total_tables)
+            _log(f" 15e write failed: {str(_e3)[:80]}", "", total_tables)
     except Exception as _e:
-        _log(f"⚠ 15e failed: {str(_e)[:80]}", "", total_tables)
+        _log(f" 15e failed: {str(_e)[:80]}", "", total_tables)
 
 # Tables that ship with the demo — protected from deletion
 PROTECTED_TABLES = {"customers", "subscriptions", "plan_changes", "invoices", "usage_metrics", "support_tickets", "dash_users", "dash_tokens", "dash_projects", "shared_results"}
 
-MAX_FILE_SIZE = 200 * 1024 * 1024  # 200 MB
+MAX_FILE_SIZE = 200 * 1024 * 1024 # 200 MB
 ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".json", ".sql", ".py", ".txt", ".md", ".pptx", ".docx", ".pdf", ".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".gif", ".webp"}
 
 # Universal vision prompt — handles charts, scanned docs, photos, diagrams in one call
@@ -791,11 +791,11 @@ def classify_file(filename: str, headers: list[str] | None = None, content_sampl
     """Classify uploaded file: data, column_definition, business_rules, sql_patterns, documentation."""
     ext = Path(filename).suffix.lower()
 
-    # SQL files → query patterns
+    # SQL files > query patterns
     if ext == ".sql":
         return "sql_patterns"
 
-    # Documents → check content for rules vs general docs
+    # Documents > check content for rules vs general docs
     if ext in (".md", ".txt", ".pdf", ".docx", ".pptx"):
         lower = content_sample.lower()
         rule_signals = ["rule:", "must be", "should be", "always", "never", "constraint", "formula", "calculation"]
@@ -967,7 +967,7 @@ def compute_fingerprint(row_count: int, col_names: list[str]) -> str:
 def save_fingerprint(project_slug: str, table_name: str, row_count: int, col_names: list[str]):
     """Save fingerprint to dash_table_metadata."""
     fp = compute_fingerprint(row_count, col_names)
-    col_hash = compute_fingerprint(0, col_names)  # cols only, no row count
+    col_hash = compute_fingerprint(0, col_names) # cols only, no row count
     try:
         with _engine.connect() as conn:
             conn.execute(text(
@@ -1017,7 +1017,7 @@ def check_fingerprint_changed(project_slug: str, table_name: str, row_count: int
 
 
 def process_column_definitions(project_slug: str, df) -> dict:
-    """Process a column definition file → save annotations + memories + rules.
+    """Process a column definition file > save annotations + memories + rules.
     Works with ANY format — detects column name and description columns automatically."""
 
     # Method 1: Try header-based detection (Format A: has Column Name, Description headers)
@@ -1043,8 +1043,8 @@ def process_column_definitions(project_slug: str, df) -> dict:
                         text_cols.append((c, avg_len))
                 text_cols.sort(key=lambda x: x[1])
                 if len(text_cols) >= 2:
-                    col_col = text_cols[0][0]  # shorter = column names
-                    def_col = text_cols[-1][0]  # longer = descriptions
+                    col_col = text_cols[0][0] # shorter = column names
+                    def_col = text_cols[-1][0] # longer = descriptions
 
     if not col_col or not def_col:
         return {"saved": 0, "error": "Could not detect column name and description columns"}
@@ -1058,7 +1058,7 @@ def process_column_definitions(project_slug: str, df) -> dict:
             schema = re.sub(r"[^a-z0-9_]", "_", project_slug.lower())[:63]
             tables = insp.get_table_names(schema=schema)
             if tables:
-                default_table = tables[0]  # use first table
+                default_table = tables[0] # use first table
         except Exception:
             pass
 
@@ -1197,7 +1197,7 @@ def _sanitize_table_name(name: str) -> str:
     name = re.sub(r"_+", "_", name).strip("_")
     if not name or name[0].isdigit():
         name = "t_" + name
-    return name[:63]  # PG identifier limit
+    return name[:63] # PG identifier limit
 
 
 def _find_header_row(file_path: str, ext: str) -> int:
@@ -1297,7 +1297,7 @@ Return JSON array of context strings (same order, same count):
 
         return enriched
     except Exception:
-        return chunks  # fallback: return original chunks unchanged
+        return chunks # fallback: return original chunks unchanged
 
 
 def _filter_junk_chunks(chunks: list[str]) -> list[str]:
@@ -1313,7 +1313,7 @@ def _filter_junk_chunks(chunks: list[str]) -> list[str]:
         if len(text) < 20:
             continue
         # Skip pure formatting/headers
-        if text.count('\n') > len(text) / 10:  # mostly newlines
+        if text.count('\n') > len(text) / 10: # mostly newlines
             continue
         # Skip near-duplicates (first 50 chars as key)
         key = text[:50].lower()
@@ -1349,7 +1349,7 @@ def _extract_document_structure(file_path: str, ext: str, text: str = "") -> dic
                         for line in block.get("lines", []):
                             for span in line.get("spans", []):
                                 # Large font or bold = likely heading
-                                if span.get("size", 0) > 14 or (span.get("flags", 0) & 2**4):  # bold flag
+                                if span.get("size", 0) > 14 or (span.get("flags", 0) & 2**4): # bold flag
                                     txt = span.get("text", "").strip()
                                     if txt and len(txt) > 3 and len(txt) < 200:
                                         level = 1 if span.get("size", 0) > 18 else (2 if span.get("size", 0) > 14 else 3)
@@ -1398,7 +1398,7 @@ def _extract_document_structure(file_path: str, ext: str, text: str = "") -> dic
         for s in structure["sections"][1:]:
             if s["title"] != deduped[-1]["title"]:
                 deduped.append(s)
-        structure["sections"] = deduped[:100]  # Cap at 100 sections
+        structure["sections"] = deduped[:100] # Cap at 100 sections
 
     return structure
 
@@ -1474,7 +1474,7 @@ def _section_aware_chunks(text: str, structure: dict, max_chunk_size: int = 1500
 
 
 def _hierarchical_summarize(chunks: list[dict], filename: str) -> dict:
-    """Summarize document hierarchically: section summaries → doc summary.
+    """Summarize document hierarchically: section summaries > doc summary.
     For big docs (5+ sections), 77% cheaper than enriching every chunk."""
     if not chunks:
         return {"doc_summary": "", "section_summaries": []}
@@ -1502,7 +1502,7 @@ def _hierarchical_summarize(chunks: list[dict], filename: str) -> dict:
     try:
         from dash.settings import training_llm_call
 
-        for sec_name, sec_chunks in list(sections.items())[:20]:  # Cap at 20 sections
+        for sec_name, sec_chunks in list(sections.items())[:20]: # Cap at 20 sections
             sec_text = "\n".join(sec_chunks)[:3000]
             if len(sec_text) < 50:
                 continue
@@ -1527,7 +1527,7 @@ def _hierarchical_summarize(chunks: list[dict], filename: str) -> dict:
 
 def _clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """Smart cleanup: normalize nulls, drop empty rows/columns, rename unnamed, clean column names."""
-    # 0. Normalize null representations → NaN
+    # 0. Normalize null representations > NaN
     _null_strings = {"N/A", "n/a", "#N/A", "NA", "na", "NULL", "null", "None", "none", "NONE",
                      "N/a", "#NA", "NaN", "nan", "-", "?", ".", "—", "–", ""}
     for col in df.columns:
@@ -1575,7 +1575,7 @@ def _clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         df = df.rename(columns=renamed)
 
     # 4b. Currency/comma/percentage cleanup — coerce text columns to numeric.
-    # P1: NEVER coerce ID/code columns (would re-float a large code → precision loss).
+    # P1: NEVER coerce ID/code columns (would re-float a large code > precision loss).
     _CURRENCY_RE = re.compile(r'^[\s$€£¥₹]*([-+]?[\d,]+\.?\d*)\s*%?\s*$')
     for col in df.columns:
         if _is_id_colname(col):
@@ -1596,7 +1596,7 @@ def _clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
                 df[col] = df[col] / 100.0
 
     # 4c. P1 — repair ID/code columns that slipped in as float (e.g. NaN forced
-    # float64): cast whole-valued floats → nullable Int64 so the DB column is
+    # float64): cast whole-valued floats > nullable Int64 so the DB column is
     # bigint, not double precision (no silent rounding of large codes downstream).
     for col in df.columns:
         if not _is_id_colname(col):
@@ -1648,7 +1648,7 @@ def _detect_delimiter(file_path: str) -> str:
 
 
 # P1 — ID/code columns must NEVER be read as float (large codes lose precision,
-# e.g. "1E+12" or a 13-digit barcode → silently rounded, join key destroyed).
+# e.g. "1E+12" or a 13-digit barcode > silently rounded, join key destroyed).
 # Read them as string at parse time + exempt them from numeric coercion.
 _ID_COL_RE = re.compile(r'(^|_)(id|code|barcode|sku|ean|upc|gtin|ref|refno|acct|account)($|_|no$)', re.I)
 
@@ -1658,13 +1658,13 @@ def _is_id_colname(name) -> bool:
     # "Article-Code") is checked here, before the pipeline snake-cases columns.
     # Without this, "Article Code" failed the `(^|_)code` anchor (space ≠ "_")
     # and landed as int64 while the snake-cased "article_code" in another file
-    # landed as text → cross-table join type-mismatch. 2026-06-09.
+    # landed as text > cross-table join type-mismatch. 2026-06-09.
     norm = re.sub(r'[^a-z0-9]+', '_', str(name).strip().lower())
     return bool(_ID_COL_RE.search(norm))
 
 def _id_dtypes(file_path: str, ext: str, header_row, sep: str | None = None) -> dict:
-    """Header-only pre-scan → {col: str} for ID/code columns so pandas keeps them
-    as text (exact) instead of float (lossy). Fail-soft → {} (normal read)."""
+    """Header-only pre-scan > {col: str} for ID/code columns so pandas keeps them
+    as text (exact) instead of float (lossy). Fail-soft > {} (normal read)."""
     try:
         if ext == ".csv":
             hdr = pd.read_csv(file_path, header=header_row, sep=sep or ",", nrows=0).columns
@@ -1733,7 +1733,7 @@ def _analyze_column(series: pd.Series) -> dict[str, Any]:
         try:
             sample = clean.head(20).astype(str)
             parsed = pd.to_datetime(sample, format='mixed', errors='coerce')
-            if parsed.notna().mean() > 0.7:  # 70%+ parseable as dates
+            if parsed.notna().mean() > 0.7: # 70%+ parseable as dates
                 info["type"] = "datetime"
                 info["min_date"] = str(parsed.min())
                 info["max_date"] = str(parsed.max())
@@ -1760,7 +1760,7 @@ def _detect_relationships(columns: list[str]) -> list[str]:
     rels = []
     for col in columns:
         if col.endswith("_id") and col != "id":
-            ref_table = col[:-3]  # customer_id → customer
+            ref_table = col[:-3] # customer_id > customer
             rels.append(f"`{col}` likely references `{ref_table}` table")
     return rels
 
@@ -1828,7 +1828,7 @@ def _profile_table(df: pd.DataFrame, project_slug: str, table_name: str) -> dict
             if n_total == 0:
                 continue
             n_distinct = int(clean.nunique())
-            # Heuristic 1: >1000 rows but ≤2 distinct values → suspiciously collapsed
+            # Heuristic 1: >1000 rows but ≤2 distinct values > suspiciously collapsed
             collapsed = n_total > 1000 and n_distinct <= 2
             # Heuristic 2: >50% of values match scientific-notation pattern
             sci_hits = int(clean.apply(lambda v: bool(_SCI_RE.match(v.strip()))).sum())
@@ -1839,7 +1839,7 @@ def _profile_table(df: pd.DataFrame, project_slug: str, table_name: str) -> dict
                 logger.warning(
                     "CORRUPT ID COLUMN detected in '%s': column '%s' has %d distinct value(s) "
                     "over %d rows (sci-notation fraction=%.0f%%). Excel has collapsed large IDs "
-                    "to scientific notation (e.g. '%s'). Catalog↔stock joins WILL break. "
+                    "to scientific notation (e.g. '%s'). Catalog<>stock joins WILL break. "
                     "Re-upload with article_code formatted as TEXT, or export CSV directly from source.",
                     table_name, col, n_distinct, n_total, sci_frac * 100, sample_val,
                 )
@@ -1941,7 +1941,7 @@ def _sql_profile_columns(project_slug: str, table_name: str, engine=None) -> lis
 
             for col_name, col_type in cols:
                 if col_name.startswith('_source_'):
-                    continue  # Skip our tracking columns
+                    continue # Skip our tracking columns
                 safe_col = f'"{col_name}"'
                 p = {"name": col_name, "pg_type": col_type, "total_rows": total_rows}
 
@@ -1987,12 +1987,12 @@ def _sql_profile_columns(project_slug: str, table_name: str, engine=None) -> lis
                     # FIRST, which stole numeric measures with few distinct values
                     # (e.g. base_price) and unique text keys (article_code) before
                     # they could be measure/id. New priority:
-                    #   1. id-like NAME that's mostly unique  -> id
-                    #   2. high-cardinality unique column       -> id (primary key)
-                    #   3. numeric & not a key & not a 2-value flag -> measure
-                    #   4. low-cardinality                       -> dimension
-                    #   5. remaining numeric                     -> measure
-                    #   6. else                                  -> text
+                    # 1. id-like NAME that's mostly unique -> id
+                    # 2. high-cardinality unique column -> id (primary key)
+                    # 3. numeric & not a key & not a 2-value flag -> measure
+                    # 4. low-cardinality -> dimension
+                    # 5. remaining numeric -> measure
+                    # 6. else -> text
                     name_lc = col_name.lower()
                     uniq = p["unique_count"]
                     uniq_ratio = (uniq / total_rows) if total_rows else 0.0
@@ -2000,11 +2000,11 @@ def _sql_profile_columns(project_slug: str, table_name: str, engine=None) -> lis
                         or name_lc.endswith(("_id", "_code", "_key", "_no", "_num", "_sku"))
 
                     if _is_id_name and uniq_ratio >= 0.5:
-                        p["classification"] = "id"                      # code/key that's mostly unique
+                        p["classification"] = "id" # code/key that's mostly unique
                     elif uniq_ratio >= 0.9 and total_rows > 10 and p["type"] != "datetime":
-                        p["classification"] = "id"                      # high-cardinality primary key
+                        p["classification"] = "id" # high-cardinality primary key
                     elif p["type"] == "numeric" and not _is_id_name and uniq > 2:
-                        p["classification"] = "measure"                 # price/qty/score/amount — any non-key numeric
+                        p["classification"] = "measure" # price/qty/score/amount — any non-key numeric
                     elif uniq <= 500 and p["type"] != "datetime":
                         p["classification"] = "dimension"
                     elif p["type"] == "numeric":
@@ -2114,7 +2114,7 @@ def _purge_orphan_knowledge(project_slug: str, log_fn=None) -> int:
     _log = log_fn or (lambda m: None)
     live = _live_tables(project_slug)
     if not live:
-        return 0  # can't confirm liveness → don't risk deleting good files
+        return 0 # can't confirm liveness > don't risk deleting good files
     base = KNOWLEDGE_DIR / project_slug
     removed = 0
     # (subdir, suffix-to-strip-from-stem)
@@ -2137,7 +2137,7 @@ def _purge_orphan_knowledge(project_slug: str, log_fn=None) -> int:
                 except Exception:
                     pass
     if removed:
-        _log(f"🧹 purged {removed} orphan knowledge file(s) for dropped tables")
+        _log(f" purged {removed} orphan knowledge file(s) for dropped tables")
     return removed
 
 
@@ -2150,7 +2150,7 @@ def _build_dimension_catalog(project_slug: str, table_name: str, profiles: list[
         engine = create_engine(db_url)
 
     catalog = {}
-    date_text_cols: list[str] = []   # text cols holding DD/MM/YYYY dates (#3)
+    date_text_cols: list[str] = [] # text cols holding DD/MM/YYYY dates (#3)
     total_rows = profiles[0]["total_rows"] if profiles else 0
 
     def _is_lineage(c: str) -> bool:
@@ -2197,7 +2197,7 @@ def _build_dimension_catalog(project_slug: str, table_name: str, profiles: list[
                 """)).fetchall()
                 cleaned = [{"value": _clean_val(r[0]), "count": int(r[1]),
                             "pct": round(int(r[1]) / max(total_rows, 1) * 100, 1)} for r in rows]
-                cleaned = [c for c in cleaned if c["value"]]  # drop now-empty (null-byte-only)
+                cleaned = [c for c in cleaned if c["value"]] # drop now-empty (null-byte-only)
                 # #4 — a single-value column (e.g. stock created_at = one snapshot
                 # timestamp on every row) is useless as a dimension. Skip it.
                 if len(cleaned) <= 1:
@@ -2243,7 +2243,7 @@ def _build_dimension_catalog(project_slug: str, table_name: str, profiles: list[
 
 def _detect_hierarchies(project_slug: str, table_name: str, catalog: dict, engine=None) -> list[dict]:
     """Detect parent-child hierarchies between dimension columns.
-    If every child value maps to exactly 1 parent → hierarchy."""
+    If every child value maps to exactly 1 parent > hierarchy."""
     schema = re.sub(r"[^a-z0-9_]", "_", project_slug.lower())[:63]
     qualified = f'"{schema}"."{table_name}"'
     if not engine:
@@ -2276,8 +2276,8 @@ def _detect_hierarchies(project_slug: str, table_name: str, catalog: dict, engin
 
     for parent in dim_cols:
         parent_unique = len(catalog.get(parent, []))
-        # Degenerate parent (0 or 1 distinct value) → every child trivially
-        # maps to 1 parent → false hierarchy. Skip.
+        # Degenerate parent (0 or 1 distinct value) > every child trivially
+        # maps to 1 parent > false hierarchy. Skip.
         if parent_unique <= 1:
             continue
         for child in dim_cols:
@@ -2285,7 +2285,7 @@ def _detect_hierarchies(project_slug: str, table_name: str, catalog: dict, engin
                 continue
             child_unique = len(catalog.get(child, []))
             if child_unique <= parent_unique:
-                continue  # Child should have MORE unique values than parent
+                continue # Child should have MORE unique values than parent
             # Check: does each child have exactly 1 parent?
             try:
                 with engine.connect() as conn:
@@ -2298,7 +2298,7 @@ def _detect_hierarchies(project_slug: str, table_name: str, catalog: dict, engin
                             HAVING COUNT(DISTINCT "{parent}") > 1
                         ) multi_parent
                     """)).scalar()
-                    if check == 0:  # Every child has exactly 1 parent
+                    if check == 0: # Every child has exactly 1 parent
                         hierarchies.append({"parent": parent, "child": child,
                                             "parent_count": parent_unique, "child_count": child_unique})
             except Exception:
@@ -2446,7 +2446,7 @@ def _generate_sample_queries(table_name: str, col_analyses: list[dict]) -> str:
 
     # Date trend — skip when the only date col is effectively constant
     # (e.g. CityPharma `created_at` populated with a single ingestion timestamp
-    # → 1-row trend is meaningless). Uses in-memory unique_count to avoid
+    # > 1-row trend is meaningless). Uses in-memory unique_count to avoid
     # an extra DB roundtrip; defense-in-depth `is_constant_column` available
     # in dash.utils.column_classifier for callers w/ a live conn.
     if date_cols and numeric_cols:
@@ -2454,7 +2454,7 @@ def _generate_sample_queries(table_name: str, col_analyses: list[dict]) -> str:
         if (dt_col.get("unique_count") or 0) > 1:
             dt = dt_col["name"]
             num = numeric_cols[0]["name"]
-            # text DD/MM/YYYY → to_date(); real datetime → ::timestamp.
+            # text DD/MM/YYYY > to_date(); real datetime > ::timestamp.
             _dsv = dt_col.get("sample_values") or []
             if dt_col.get("type") != "datetime" and any(
                     re.match(r"^\s*\d{1,2}/\d{1,2}/\d{4}\b", str(v)) for v in _dsv[:6]):
@@ -2542,7 +2542,7 @@ def _llm_deep_analysis(table_name: str, col_analyses: list[dict], sample_rows: l
         ctype = ca.get("type", "?")
         null_pct = ca.get("null_pct", 0)
         unique = ca.get("unique_count", 0)
-        line = f"  {name} ({ctype}): {unique} unique, {null_pct}% null"
+        line = f" {name} ({ctype}): {unique} unique, {null_pct}% null"
         if ctype == "numeric" and ca.get("mean") is not None:
             line += f", min={ca.get('min')}, max={ca.get('max')}, mean={ca.get('mean')}"
             zeros = ca.get("zeros_pct", 0)
@@ -2623,7 +2623,7 @@ def _get_chat_feedback_for_training(table_name: str) -> str:
             if good:
                 feedback_context += "\nUSERS LIKED THESE QUERIES (generate similar):\n"
                 for g in good:
-                    feedback_context += f"  Q: {str(g[0])[:80]}\n"
+                    feedback_context += f" Q: {str(g[0])[:80]}\n"
 
             # Anti-patterns (thumbs-down)
             bad = conn.execute(text(
@@ -2632,7 +2632,7 @@ def _get_chat_feedback_for_training(table_name: str) -> str:
             if bad:
                 feedback_context += "\nUSERS DISLIKED THESE (avoid similar):\n"
                 for b in bad:
-                    feedback_context += f"  Q: {str(b[0])[:80]}\n"
+                    feedback_context += f" Q: {str(b[0])[:80]}\n"
 
             # Proven SQL patterns
             patterns = conn.execute(text(
@@ -2641,7 +2641,7 @@ def _get_chat_feedback_for_training(table_name: str) -> str:
             if patterns:
                 feedback_context += "\nPROVEN SQL PATTERNS (high usage, include similar):\n"
                 for p in patterns:
-                    feedback_context += f"  Q: {str(p[0])[:60]} → {str(p[1])[:100]}\n"
+                    feedback_context += f" Q: {str(p[0])[:60]} > {str(p[1])[:100]}\n"
     except Exception:
         pass
     return feedback_context
@@ -2668,10 +2668,10 @@ def _llm_generate_training(table_name: str, metadata: dict, col_analyses: list[d
     enum_cols: list[str] = []
     # 2026-05-25 (Phase 9): also flag CONSTANT columns so LLM doesn't generate
     # "trend by X" / "by X month" / DATE_TRUNC(X) Q&A on a column that has only
-    # one unique value. CityPharma `created_at` was constant → trend QA returned
-    # 1 row → useless cached oracle.
+    # one unique value. CityPharma `created_at` was constant > trend QA returned
+    # 1 row > useless cached oracle.
     constant_cols: list[str] = []
-    date_text_cols: list[str] = []   # TEXT cols holding DD/MM/YYYY dates
+    date_text_cols: list[str] = [] # TEXT cols holding DD/MM/YYYY dates
     import re as _re_dt
     _DDMMYYYY = _re_dt.compile(r"^\s*\d{1,2}/\d{1,2}/\d{4}\b")
     if col_analyses:
@@ -2688,7 +2688,7 @@ def _llm_generate_training(table_name: str, metadata: dict, col_analyses: list[d
             except Exception:
                 pass
             _uc = ca.get("unique_count") or 0
-            line = f"  {name}: {_uc} unique, {ca.get('null_pct', 0)}% null"
+            line = f" {name}: {_uc} unique, {ca.get('null_pct', 0)}% null"
             tag = ""
             # CONSTANT detection — applies to ANY dtype.
             if isinstance(_uc, int) and _uc <= 1 and (total or 0) > 1:
@@ -2712,25 +2712,25 @@ def _llm_generate_training(table_name: str, metadata: dict, col_analyses: list[d
         dist_info = "\nDATA DISTRIBUTION:\n" + "\n".join(dist_lines) + "\n"
         if enum_cols:
             dist_info += (
-                f"\n⚠ ENUM/BOOLEAN columns (do NOT SUM/AVG/multiply): {', '.join(enum_cols)}\n"
-                f"  → For these cols, only use COUNT, GROUP BY, WHERE, or CASE WHEN.\n"
+                f"\n ENUM/BOOLEAN columns (do NOT SUM/AVG/multiply): {', '.join(enum_cols)}\n"
+                f" > For these cols, only use COUNT, GROUP BY, WHERE, or CASE WHEN.\n"
             )
         if constant_cols:
             dist_info += (
-                f"\n⚠ CONSTANT columns (single value across ALL rows): {', '.join(constant_cols)}\n"
-                f"  → DO NOT use in GROUP BY, DATE_TRUNC, time-series, or 'trend' questions.\n"
-                f"  → DO NOT generate Q&A involving 'by {constant_cols[0]}' / 'over time' on these.\n"
-                f"  → Use them ONLY as a filter (WHERE) or as a static fact.\n"
+                f"\n CONSTANT columns (single value across ALL rows): {', '.join(constant_cols)}\n"
+                f" > DO NOT use in GROUP BY, DATE_TRUNC, time-series, or 'trend' questions.\n"
+                f" > DO NOT generate Q&A involving 'by {constant_cols[0]}' / 'over time' on these.\n"
+                f" > Use them ONLY as a filter (WHERE) or as a static fact.\n"
             )
         if date_text_cols:
             _dc0 = date_text_cols[0]
             dist_info += (
-                f"\n⚠ TEXT-DATE columns (stored as TEXT in DD/MM/YYYY HH24:MI): {', '.join(date_text_cols)}\n"
-                f"  → These are NOT real date/timestamp types. {_dc0}::date THROWS DatetimeFieldOverflow.\n"
-                f"  → ALWAYS wrap with to_date(\"{_dc0}\", 'DD/MM/YYYY HH24:MI') (or to_timestamp) before\n"
-                f"    DATE_TRUNC / comparison / extraction. Example:\n"
-                f"    DATE_TRUNC('month', to_date(\"{_dc0}\", 'DD/MM/YYYY HH24:MI'))\n"
-                f"  → NEVER emit \"{_dc0}\"::date or \"{_dc0}\"::timestamp directly.\n"
+                f"\n TEXT-DATE columns (stored as TEXT in DD/MM/YYYY HH24:MI): {', '.join(date_text_cols)}\n"
+                f" > These are NOT real date/timestamp types. {_dc0}::date THROWS DatetimeFieldOverflow.\n"
+                f" > ALWAYS wrap with to_date(\"{_dc0}\", 'DD/MM/YYYY HH24:MI') (or to_timestamp) before\n"
+                f" DATE_TRUNC / comparison / extraction. Example:\n"
+                f" DATE_TRUNC('month', to_date(\"{_dc0}\", 'DD/MM/YYYY HH24:MI'))\n"
+                f" > NEVER emit \"{_dc0}\"::date or \"{_dc0}\"::timestamp directly.\n"
             )
 
     # SQL-VALIDATED — inject Postgres dialect rules so LLM emits correct SQL first try.
@@ -2800,7 +2800,7 @@ Return ONLY valid JSON array (no markdown):
                     continue
                 v = validate_and_fix(sql, project_slug, strict=True)
                 if v["ok"]:
-                    qa["sql"] = v["sql"]  # use fixed version
+                    qa["sql"] = v["sql"] # use fixed version
                     if v["fixes_applied"]:
                         qa["_sql_fixes"] = v["fixes_applied"]
                     kept.append(qa)
@@ -2980,7 +2980,7 @@ Return empty array [] if no relationships found."""
             # subquery into a correlated seq-scan of a 100k+ row table per
             # distinct key. Without a timeout a single bad pair froze the whole
             # training run indefinitely (run hung at 'relationships' forever).
-            # On timeout the query aborts → caught below → LLM confidence kept.
+            # On timeout the query aborts > caught below > LLM confidence kept.
             schema = re.sub(r"[^a-z0-9_]", "_", project_slug.lower())[:63]
             engine = create_engine(db_url, connect_args={"options": "-c statement_timeout=30000"})
             with engine.connect() as conn:
@@ -2991,8 +2991,8 @@ Return empty array [] if no relationships found."""
                     try:
                         # FK is asymmetric: every `from` value should exist in `to`.
                         # Bug fix (2026-05-25): old code used Jaccard
-                        # (|A∩B| / |A∪B|) on 100-row samples → 96.2% real overlap
-                        # collapsed to 0.2 confidence on bigint-keyed PK→FK pairs.
+                        # (|A∩B| / |A∪B|) on 100-row samples > 96.2% real overlap
+                        # collapsed to 0.2 confidence on bigint-keyed PK>FK pairs.
                         # New: SQL-side directional containment up to 5K distinct
                         # values, no sampling bias. Confidence = max of both
                         # directions (FK direction wins; reverse direction also
@@ -3014,13 +3014,13 @@ Return empty array [] if no relationships found."""
                                     WHERE b."{tc}"::text = a."{fc}"::text
                                   )
                             ''')).scalar() or 0
-                            cov_from = n_match / n_from  # fraction of "from" found in "to"
-                            cov_to = n_match / n_to      # fraction of "to" found in "from"
+                            cov_from = n_match / n_from # fraction of "from" found in "to"
+                            cov_to = n_match / n_to # fraction of "to" found in "from"
                             # FK direction = high cov_from. PK direction = high cov_to.
                             # Take max so swapped LLM output still scores correctly.
                             verified_conf = round(max(cov_from, cov_to), 2)
                     except Exception as _re:
-                        logger.warning(f"relationship verify failed ({ft}.{fc} → {tt}.{tc}): {_re}")
+                        logger.warning(f"relationship verify failed ({ft}.{fc} > {tt}.{tc}): {_re}")
                         # Keep LLM confidence if verification fails
                     try:
                         conn.execute(text("""
@@ -3061,7 +3061,7 @@ def _seed_cross_table_qa(project_slug: str) -> int:
         training_dir = KNOWLEDGE_DIR / project_slug / "training"
         training_dir.mkdir(parents=True, exist_ok=True)
         # statement_timeout=30s — the generated JOIN-verify SQL below casts the
-        # join keys to ::text (bigint↔text article_code), defeating indexes on
+        # join keys to ::text (bigint<>text article_code), defeating indexes on
         # 100k+ row tables. A heavy GROUP-BY/LEFT-JOIN must abort, not hang the
         # training run. On timeout the pair is skipped (best-effort QA seed).
         verify_engine = create_engine(db_url, poolclass=NullPool,
@@ -3122,7 +3122,7 @@ def _seed_cross_table_qa(project_slug: str) -> int:
                         qa["verified_row_count"] = len(rows)
                         verified_pairs.append(qa)
                 except Exception:
-                    pass  # skip unverified
+                    pass # skip unverified
 
             if not verified_pairs:
                 continue
@@ -3414,7 +3414,7 @@ def _generate_project_evals(project_slug: str, max_evals: int = 15, per_table: i
         # representative sample rather than dominated by the first table.
         # Only sample Q&A from tables that still exist — a ghost
         # {table}_qa.json (left by a wipe) generates eval SQL against a
-        # dropped table → every such eval ERRORs ("relation does not exist").
+        # dropped table > every such eval ERRORs ("relation does not exist").
         _live = _live_tables(project_slug)
         per_table_pairs: list[list[tuple[str, str]]] = []
         for qa_file in sorted(training_dir.glob("*_qa.json")):
@@ -3449,7 +3449,7 @@ def _generate_project_evals(project_slug: str, max_evals: int = 15, per_table: i
                 flat.append(bucket.pop(0))
             ri += 1
             if ri > max_evals * (len(per_table_pairs) + 1):
-                break  # safety
+                break # safety
 
         eng = create_engine(db_url)
         try:
@@ -3463,9 +3463,9 @@ def _generate_project_evals(project_slug: str, max_evals: int = 15, per_table: i
                 conn.commit()
         finally:
             eng.dispose()
-        _log(f"✓ project evals: {evals_saved} test cases generated (project-wide, bounded)")
+        _log(f"OK project evals: {evals_saved} test cases generated (project-wide, bounded)")
     except Exception as e:
-        _log(f"⚠ project eval generation skipped: {str(e)[:80]}")
+        _log(f" project eval generation skipped: {str(e)[:80]}")
     return evals_saved
 
 
@@ -3504,7 +3504,7 @@ def _run_auto_training(project_slug: str, table_name: str, col_analyses: list[di
         try:
             exc = RuntimeError(error[:200]) if error else None
             cm.__exit__(type(exc) if exc else None, exc, None)
-        except Exception:  # noqa: BLE001
+        except Exception: # noqa: BLE001
             pass
 
     def _open_step_span(step_name: str):
@@ -3513,7 +3513,7 @@ def _run_auto_training(project_slug: str, table_name: str, col_analyses: list[di
                              project_slug=project_slug)
             cm.__enter__()
             _step_span["cm"] = cm
-        except Exception:  # noqa: BLE001
+        except Exception: # noqa: BLE001
             _step_span["cm"] = None
 
     def _update_run(status: str, steps: str = "", error: str = ""):
@@ -3524,7 +3524,7 @@ def _run_auto_training(project_slug: str, table_name: str, col_analyses: list[di
             elif status == "running" and steps:
                 _close_step_span()
                 _open_step_span(steps)
-        except Exception:  # noqa: BLE001
+        except Exception: # noqa: BLE001
             pass
         if not run_id:
             return
@@ -3622,7 +3622,7 @@ def _run_auto_training(project_slug: str, table_name: str, col_analyses: list[di
     _update_run("running", "drift_detection")
     _log("checking for data drift...")
     _detect_data_drift(project_slug, table_name, col_analyses)
-    _log("✓ drift check complete")
+    _log("OK drift check complete")
 
     # Step 1a: SQL Profiling — stats via PostgreSQL ($0, <10s even for 1M rows)
     if _cancelled():
@@ -3633,7 +3633,7 @@ def _run_auto_training(project_slug: str, table_name: str, col_analyses: list[di
     dimensions = [p for p in sql_profiles if p.get("classification") == "dimension"]
     measures = [p for p in sql_profiles if p.get("classification") == "measure"]
     ids = [p for p in sql_profiles if p.get("classification") == "id"]
-    _log(f"✓ profiled {len(sql_profiles)} cols: {len(dimensions)} dim · {len(measures)} measure · {len(ids)} id")
+    _log(f"OK profiled {len(sql_profiles)} cols: {len(dimensions)} dim · {len(measures)} measure · {len(ids)} id")
 
     # Step 1a-v2: Advanced profile (compact dim summaries + variant detection + roles).
     # Fail-soft additive layer — writes dash_table_metadata.metadata['profile_v2'].
@@ -3650,17 +3650,17 @@ def _run_auto_training(project_slug: str, table_name: str, col_analyses: list[di
                 _v2cols = _v2.get("columns") or []
                 _v2_states = sum(1 for c in _v2cols if c.get("role") == "state")
                 _v2_variants = sum(1 for c in _v2cols if c.get("variants_detected"))
-                _log(f"✓ profile_v2: {len(_v2cols)} cols · {_v2_states} state · {_v2_variants} variant-warned · scan={_v2.get('scan_elapsed_ms','?')}ms")
+                _log(f"OK profile_v2: {len(_v2cols)} cols · {_v2_states} state · {_v2_variants} variant-warned · scan={_v2.get('scan_elapsed_ms','?')}ms")
         except Exception as _e:
-            _log(f"⚠ profile_v2 skipped: {str(_e)[:200]}")
+            _log(f" profile_v2 skipped: {str(_e)[:200]}")
     if dimensions:
         dim_summary = ", ".join(f"{p['name']}({p.get('distinct_count','?')})" for p in dimensions[:6])
-        _log(f"  └─ dimensions: {dim_summary}{' …' if len(dimensions) > 6 else ''}")
+        _log(f" └─ dimensions: {dim_summary}{' …' if len(dimensions) > 6 else ''}")
     if measures:
         msr_summary = ", ".join(
             f"{p['name']}[{p.get('min','?')}–{p.get('max','?')}]" for p in measures[:6]
         )
-        _log(f"  └─ measures: {msr_summary}{' …' if len(measures) > 6 else ''}")
+        _log(f" └─ measures: {msr_summary}{' …' if len(measures) > 6 else ''}")
 
     # Step 1b: Dimension Catalog — exact values for categorical columns ($0)
     dim_catalog = {}
@@ -3669,13 +3669,13 @@ def _run_auto_training(project_slug: str, table_name: str, col_analyses: list[di
         _log(f"building dimension catalog ({len(dimensions)} categorical columns)...")
         dim_catalog = _build_dimension_catalog(project_slug, table_name, sql_profiles)
         total_values = sum(len(v) for v in dim_catalog.values())
-        _log(f"✓ dimension catalog: {total_values} unique values across {len(dim_catalog)} columns")
+        _log(f"OK dimension catalog: {total_values} unique values across {len(dim_catalog)} columns")
         for col_name, values in list(dim_catalog.items())[:5]:
             top = values[:3] if isinstance(values, list) else []
             preview = ", ".join(
                 str(v.get("value", v) if isinstance(v, dict) else v)[:30] for v in top
             )
-            _log(f"  └─ {col_name}: [{preview}{' …' if len(values) > 3 else ''}]")
+            _log(f" └─ {col_name}: [{preview}{' …' if len(values) > 3 else ''}]")
 
     # Step 1c: Hierarchy Detection ($0)
     hierarchies = []
@@ -3684,12 +3684,12 @@ def _run_auto_training(project_slug: str, table_name: str, col_analyses: list[di
         _log("detecting column hierarchies...")
         hierarchies = _detect_hierarchies(project_slug, table_name, dim_catalog)
         # Always persist the freshly-detected list — even when EMPTY — so a
-        # prior run's stale/false hierarchies (e.g. the old _period→* lineage
+        # prior run's stale/false hierarchies (e.g. the old _period>* lineage
         # junk) get cleared from metadata + brain, not left behind by a
         # `if hierarchies:` guard.
         metadata["hierarchies"] = hierarchies
         if hierarchies:
-            _log(f"✓ found {len(hierarchies)} hierarchies: {', '.join(h['parent'] + ' → ' + h['child'] for h in hierarchies)}")
+            _log(f"OK found {len(hierarchies)} hierarchies: {', '.join(h['parent'] + ' > ' + h['child'] for h in hierarchies)}")
         else:
             _log("· no hierarchies detected")
 
@@ -3697,11 +3697,11 @@ def _run_auto_training(project_slug: str, table_name: str, col_analyses: list[di
     _update_run("running", "smart_sampling")
     _log("collecting diverse sample rows...")
     smart_samples = _smart_sample_rows(project_slug, table_name, sql_profiles)
-    _log(f"✓ sampled {len(smart_samples)} diverse rows (start/mid/end/outlier/null)")
+    _log(f"OK sampled {len(smart_samples)} diverse rows (start/mid/end/outlier/null)")
 
     # Save dimension info to table metadata for prompt injection
     if dim_catalog:
-        metadata["dimensions"] = {col: vals[:20] for col, vals in dim_catalog.items()}  # Top 20 per column
+        metadata["dimensions"] = {col: vals[:20] for col, vals in dim_catalog.items()} # Top 20 per column
     if sql_profiles:
         metadata["column_profiles"] = {p["name"]: {k: v for k, v in p.items() if k != "name"} for p in sql_profiles}
 
@@ -3730,18 +3730,18 @@ def _run_auto_training(project_slug: str, table_name: str, col_analyses: list[di
             pks = analysis.get('primary_keys') or []
             fks = analysis.get('foreign_keys') or []
             cols_described = len(analysis.get('column_descriptions') or {})
-            _log(f"✓ deep analysis complete")
+            _log(f"OK deep analysis complete")
             if purpose:
-                _log(f"  └─ purpose: {purpose}")
+                _log(f" └─ purpose: {purpose}")
             if grain:
-                _log(f"  └─ grain: {grain}")
+                _log(f" └─ grain: {grain}")
             if pks:
                 pk_str = ", ".join(pks) if isinstance(pks, list) else str(pks)
-                _log(f"  └─ primary keys: {pk_str[:80]}")
+                _log(f" └─ primary keys: {pk_str[:80]}")
             if fks:
                 fk_count = len(fks) if isinstance(fks, list) else 1
-                _log(f"  └─ foreign keys: {fk_count}")
-            _log(f"  └─ cols described: {cols_described}/{num_cols}")
+                _log(f" └─ foreign keys: {fk_count}")
+            _log(f" └─ cols described: {cols_described}/{num_cols}")
     if analysis:
         # Overwrite metadata with smart descriptions
         if analysis.get("table_description"):
@@ -3787,7 +3787,7 @@ def _run_auto_training(project_slug: str, table_name: str, col_analyses: list[di
             }
             with open(rules_dir / f"{rule_id}.json", "w") as f:
                 json.dump(rule_data, f, indent=2)
-            _time.sleep(0.01)  # unique timestamps
+            _time.sleep(0.01) # unique timestamps
 
         # Update agent persona
         if analysis.get("suggested_role"):
@@ -3860,7 +3860,7 @@ def _run_auto_training(project_slug: str, table_name: str, col_analyses: list[di
                     discarded_count += 1
         except Exception:
             pass
-        _log(f"  ✓ {verified_count} Q&A verified with real data, {discarded_count} had SQL errors")
+        _log(f" OK {verified_count} Q&A verified with real data, {discarded_count} had SQL errors")
 
         training_dir = KNOWLEDGE_DIR / project_slug / "training"
         training_dir.mkdir(parents=True, exist_ok=True)
@@ -3868,7 +3868,7 @@ def _run_auto_training(project_slug: str, table_name: str, col_analyses: list[di
             json.dump(training, f, indent=2)
 
     if training and isinstance(training, list):
-        _log(f"✓ {len(training)} Q&A pairs generated")
+        _log(f"OK {len(training)} Q&A pairs generated")
     else:
         _log("· no Q&A generated")
 
@@ -3926,7 +3926,7 @@ def _run_auto_training(project_slug: str, table_name: str, col_analyses: list[di
     except Exception:
         pass
 
-    _log("✓ persona generated")
+    _log("OK persona generated")
 
     # Step 4: Auto-generate sample workflows
     if _cancelled():
@@ -3997,7 +3997,7 @@ Return ONLY valid JSON (no markdown):
                 wf_file = KNOWLEDGE_DIR / project_slug / "workflows.json"
                 with open(wf_file, "w") as f:
                     json.dump(workflows, f, indent=2)
-                _log(f"✓ {len(workflows)} workflows generated")
+                _log(f"OK {len(workflows)} workflows generated")
     except Exception:
         _log("· workflow generation skipped")
 
@@ -4051,7 +4051,7 @@ Return ONLY valid JSON (no markdown):
     except Exception:
         pass
 
-    _log("✓ saved to database")
+    _log("OK saved to database")
 
     # Step 7: Multi-file synthesis — unified project understanding
     if _cancelled():
@@ -4107,7 +4107,7 @@ Return ONLY valid JSON (no markdown):
     except Exception:
         pass
 
-    _log("✓ synthesis complete")
+    _log("OK synthesis complete")
 
     # Step 8: Discover relationships (only if multiple tables)
     if _cancelled():
@@ -4141,7 +4141,7 @@ Return ONLY valid JSON (no markdown):
         try:
             _seed_cross_table_qa(project_slug)
         except Exception as _xte:
-            _log(f"⚠ cross-table QA seed skipped: {str(_xte)[:80]}")
+            _log(f" cross-table QA seed skipped: {str(_xte)[:80]}")
     else:
         _log("⊘ skipping relationship discovery — only 1 table")
 
@@ -4177,18 +4177,18 @@ Return ONLY valid JSON (no markdown):
                                         "tt": r.get("to_doc", ""), "tc": r.get("relationship", ""),
                                         "conf": r.get("strength", 0.5)})
                             conn.commit()
-                        _log(f"✓ {len(rels)} cross-document relationships found")
+                        _log(f"OK {len(rels)} cross-document relationships found")
             except Exception:
                 pass
 
-    _log("✓ relationships discovered")
+    _log("OK relationships discovered")
 
     # Step 9: knowledge re-index MOVED to batch level (runs ONCE after ALL
     # tables finish — see the retrain ThreadPoolExecutor loop). Previously each
     # table re-embedded the ENTIRE project here, so with max_workers=4 up to 4
     # whole-project re-embeds ran concurrently; a 10-row table got a 60s budget
     # (sized by its own row count) yet had to index the full project and lost
-    # the race → "knowledge indexing timed out". Doing it once, after every
+    # the race > "knowledge indexing timed out". Doing it once, after every
     # table's files are on disk, with a timeout sized by total file count, is
     # both correct and far cheaper. 2026-06-10.
     if _cancelled():
@@ -4204,7 +4204,7 @@ Return ONLY valid JSON (no markdown):
 
     # 1. Auto-Memories — from REAL data, not just metadata
     try:
-        _log("  generating auto-memories from real data...")
+        _log(" generating auto-memories from real data...")
         mem_facts = []
         schema = re.sub(r"[^a-z0-9_]", "_", project_slug.lower())[:63]
 
@@ -4235,7 +4235,7 @@ Return ONLY valid JSON (no markdown):
                             if dr and dr[0]:
                                 if dr[2] == 1:
                                     mem_facts.append(
-                                        f"⚠ Table '{table_name}' column '{ca['name']}' is a CONSTANT "
+                                        f" Table '{table_name}' column '{ca['name']}' is a CONSTANT "
                                         f"({dr[0]}) across all rows — likely an export timestamp, "
                                         f"NOT a usable time dimension. Do not GROUP BY or DATE_TRUNC."
                                     )
@@ -4272,9 +4272,9 @@ Return ONLY valid JSON (no markdown):
                 # Data-quality facts — 2026-05-25, driven by central column
                 # classifier (real PK constraints + adaptive thresholds + per-
                 # project overrides). Replaces name-pattern heuristics:
-                #   - PK detection now from information_schema, not "ends with _id"
-                #   - Enum detection adaptive (ratio-based), not fixed range
-                #   - NULL threshold + free-text ratio configurable per project
+                # - PK detection now from information_schema, not "ends with _id"
+                # - Enum detection adaptive (ratio-based), not fixed range
+                # - NULL threshold + free-text ratio configurable per project
                 # Tenant-tunable via dash_projects.feature_config['pipeline_thresholds'].
                 try:
                     # Enrich col_stats with real unique counts where missing
@@ -4322,7 +4322,7 @@ Return ONLY valid JSON (no markdown):
                                     f'SELECT MIN("{cn}") FROM "{table_name}"'
                                 )).scalar()
                                 mem_facts.append(
-                                    f"⚠ Table '{table_name}' column '{cn}' has {neg_count:,} "
+                                    f" Table '{table_name}' column '{cn}' has {neg_count:,} "
                                     f"negative values (min={real_min}). Often returns/adjustments — "
                                     f"exclude from positive-only totals via WHERE \"{cn}\" >= 0."
                                 )
@@ -4338,7 +4338,7 @@ Return ONLY valid JSON (no markdown):
                             null_pct_real = 100.0 * null_n / row_count
                             if null_pct_real >= null_floor:
                                 mem_facts.append(
-                                    f"⚠ Table '{table_name}' column '{cn}' is {null_pct_real:.1f}% NULL "
+                                    f" Table '{table_name}' column '{cn}' is {null_pct_real:.1f}% NULL "
                                     f"({null_n:,} of {row_count:,} rows). Use COALESCE or IS NOT NULL."
                                 )
                     except Exception:
@@ -4379,7 +4379,7 @@ Return ONLY valid JSON (no markdown):
                             )
                             if scale:
                                 mem_facts.append(
-                                    f"⚠ Table '{table_name}' column '{cn}' is stored in MINOR UNITS "
+                                    f" Table '{table_name}' column '{cn}' is stored in MINOR UNITS "
                                     f"(divisor={scale}). Divide by {scale} for display values, OR "
                                     f"multiply thresholds by {scale} in WHERE clauses."
                                 )
@@ -4410,7 +4410,7 @@ Return ONLY valid JSON (no markdown):
 
         with engine.connect() as conn:
             saved = 0
-            # Bumped 8 → 30 (2026-05-25) — added data-quality facts which can
+            # Bumped 8 > 30 (2026-05-25) — added data-quality facts which can
             # produce 3-10 alerts per table. Each fact is <300 chars.
             for fact in mem_facts[:30]:
                 try:
@@ -4421,13 +4421,13 @@ Return ONLY valid JSON (no markdown):
                 except Exception:
                     pass
             conn.commit()
-        _log(f"  ✓ {saved} memories saved")
+        _log(f" OK {saved} memories saved")
     except Exception as e:
-        _log(f"  ⚠ memories error: {str(e)[:80]}")
+        _log(f" memories error: {str(e)[:80]}")
 
     # 2. Auto-Patterns: generate SQL patterns from Q&A (with metadata extraction)
     try:
-        _log("  generating query patterns...")
+        _log(" generating query patterns...")
         training_dir = KNOWLEDGE_DIR / project_slug / "training"
         qa_file = training_dir / f"{table_name}_qa.json"
         patterns_saved = 0
@@ -4440,13 +4440,13 @@ Return ONLY valid JSON (no markdown):
                 if q and s:
                     if _save_query_pattern_with_metadata(engine, project_slug, q, s, source='training'):
                         patterns_saved += 1
-        _log(f"  ✓ {patterns_saved} query patterns saved (with metadata)")
+        _log(f" OK {patterns_saved} query patterns saved (with metadata)")
     except Exception as e:
-        _log(f"  ⚠ patterns error: {str(e)[:80]}")
+        _log(f" patterns error: {str(e)[:80]}")
 
     # 3. Auto-Rules
     try:
-        _log("  generating business rules...")
+        _log(" generating business rules...")
         rules_saved = 0
         biz_metrics = biz_rules.get("metrics", [])
         biz_rules_list = biz_rules.get("business_rules", [])
@@ -4469,13 +4469,13 @@ Return ONLY valid JSON (no markdown):
                     ), {"s": project_slug, "rid": rule_id, "name": rule["name"], "defn": rule.get("definition", "")})
                     rules_saved += 1
             conn.commit()
-        _log(f"  ✓ {rules_saved} rules saved")
+        _log(f" OK {rules_saved} rules saved")
     except Exception as e:
-        _log(f"  ⚠ rules error: {str(e)[:80]}")
+        _log(f" rules error: {str(e)[:80]}")
 
     # 4. Auto-Annotations
     try:
-        _log("  generating column annotations...")
+        _log(" generating column annotations...")
         annotations_saved = 0
         with engine.connect() as conn:
             for col in (metadata.get("table_columns") or []):
@@ -4487,20 +4487,20 @@ Return ONLY valid JSON (no markdown):
                     ), {"s": project_slug, "t": table_name, "c": col["name"], "a": desc})
                     annotations_saved += 1
             conn.commit()
-        _log(f"  ✓ {annotations_saved} annotations saved")
+        _log(f" OK {annotations_saved} annotations saved")
     except Exception as e:
-        _log(f"  ⚠ annotations error: {str(e)[:80]}")
+        _log(f" annotations error: {str(e)[:80]}")
 
     # 5. Auto-Evals — MOVED OUT of the per-table path (issue #39).
     # Eval generation now runs ONCE project-wide in _bg()'s tail
     # (_generate_project_evals), sampling Q&A across all tables. Generating
-    # here fired one INSERT batch per table (3 tables → 3× the evals); the
+    # here fired one INSERT batch per table (3 tables > 3× the evals); the
     # project-wide pass produces a single bounded set per retrain (the
     # DELETE-at-start pre-clear in _bg still wipes the prior set first).
 
     # 6. Seed Feedback
     try:
-        _log("  seeding sample feedback...")
+        _log(" seeding sample feedback...")
         feedback_saved = 0
         if qa_file.exists():
             with open(qa_file) as f:
@@ -4516,13 +4516,13 @@ Return ONLY valid JSON (no markdown):
                         ), {"s": project_slug, "q": q, "a": a, "sql": qa.get("sql", "")})
                         feedback_saved += 1
                 conn.commit()
-        _log(f"  ✓ {feedback_saved} seed feedback saved")
+        _log(f" OK {feedback_saved} seed feedback saved")
     except Exception as e:
-        _log(f"  ⚠ feedback error: {str(e)[:80]}")
+        _log(f" feedback error: {str(e)[:80]}")
 
     # 7. Save workflows to DB
     try:
-        _log("  saving workflows to database...")
+        _log(" saving workflows to database...")
         wf_file = KNOWLEDGE_DIR / project_slug / "workflows.json"
         wf_saved = 0
         if wf_file.exists():
@@ -4539,9 +4539,9 @@ Return ONLY valid JSON (no markdown):
                         ), {"s": project_slug, "n": name, "d": wf.get("description", ""), "st": json.dumps(wf.get("steps", []))})
                         wf_saved += 1
                 conn.commit()
-        _log(f"  ✓ {wf_saved} workflows saved to DB")
+        _log(f" OK {wf_saved} workflows saved to DB")
     except Exception as e:
-        _log(f"  ⚠ workflows error: {str(e)[:80]}")
+        _log(f" workflows error: {str(e)[:80]}")
 
     # ═══ SMART TRAINING — Extract domain knowledge from data ═══
     if _cancelled():
@@ -4570,13 +4570,13 @@ Return ONLY valid JSON (no markdown):
     except Exception:
         pass
 
-    cat_values_str = "\n".join(f"  {k}: {', '.join(v[:10])}" for k, v in cat_values.items()) if cat_values else "None detected"
+    cat_values_str = "\n".join(f" {k}: {', '.join(v[:10])}" for k, v in cat_values.items()) if cat_values else "None detected"
 
     from dash.settings import training_llm_call
 
     # 8. Business Glossary
     try:
-        _log("  extracting business glossary...")
+        _log(" extracting business glossary...")
         result = training_llm_call(
             f"Look at these column names and values from table '{table_name}'. "
             f"Extract abbreviations, acronyms, and domain terms with their meanings.\n\n"
@@ -4632,13 +4632,13 @@ Return ONLY valid JSON (no markdown):
                         except Exception:
                             pass
                     conn.commit()
-                _log(f"  ✓ {len(glossary[:15])} glossary terms saved (memories + brain)")
+                _log(f" OK {len(glossary[:15])} glossary terms saved (memories + brain)")
     except Exception as e:
-        _log(f"  ⚠ glossary error: {str(e)[:80]}")
+        _log(f" glossary error: {str(e)[:80]}")
 
     # 9. Calculation Rules
     try:
-        _log("  extracting calculation rules...")
+        _log(" extracting calculation rules...")
         numeric_cols = [c["name"] for c in (metadata.get("table_columns") or []) if c.get("type") in ("DOUBLE PRECISION", "INTEGER", "BIGINT", "NUMERIC", "numeric", "int64", "float64")]
         if numeric_cols:
             result = training_llm_call(
@@ -4661,13 +4661,13 @@ Return ONLY valid JSON (no markdown):
                                     "VALUES (:s, :rid, :name, 'calculation', :defn, 'auto_training') ON CONFLICT (project_slug, rule_id) DO NOTHING"
                                 ), {"s": project_slug, "rid": rule_id, "name": f"Calculation: {calc[:50]}", "defn": calc})
                         conn.commit()
-                    _log(f"  ✓ {len(calcs[:8])} calculation rules saved")
+                    _log(f" OK {len(calcs[:8])} calculation rules saved")
     except Exception as e:
-        _log(f"  ⚠ calculation error: {str(e)[:80]}")
+        _log(f" calculation error: {str(e)[:80]}")
 
     # 10. Value Mappings
     try:
-        _log("  extracting value mappings...")
+        _log(" extracting value mappings...")
         if cat_values:
             result = training_llm_call(
                 f"Table '{table_name}' has these categorical columns with values:\n{cat_values_str}\n\n"
@@ -4687,13 +4687,13 @@ Return ONLY valid JSON (no markdown):
                                     "VALUES (:s, 'project', :f, 'value_mapping') ON CONFLICT DO NOTHING"
                                 ), {"s": project_slug, "f": f"Value mapping: {mapping}"})
                         conn.commit()
-                    _log(f"  ✓ {len(mappings[:15])} value mappings saved")
+                    _log(f" OK {len(mappings[:15])} value mappings saved")
     except Exception as e:
-        _log(f"  ⚠ value mapping error: {str(e)[:80]}")
+        _log(f" value mapping error: {str(e)[:80]}")
 
     # 11. KPI Definitions
     try:
-        _log("  extracting KPI definitions...")
+        _log(" extracting KPI definitions...")
         result = training_llm_call(
             f"Table '{table_name}' columns: {col_info}\n"
             f"Categorical values:\n{cat_values_str}\n\n"
@@ -4740,13 +4740,13 @@ Return ONLY valid JSON (no markdown):
                             except Exception:
                                 pass
                     conn.commit()
-                _log(f"  ✓ {len(kpis[:8])} KPI definitions saved (rules + brain)")
+                _log(f" OK {len(kpis[:8])} KPI definitions saved (rules + brain)")
     except Exception as e:
-        _log(f"  ⚠ KPI error: {str(e)[:80]}")
+        _log(f" KPI error: {str(e)[:80]}")
 
     # 12. Data Quality Rules
     try:
-        _log("  extracting data quality rules...")
+        _log(" extracting data quality rules...")
         null_info = ", ".join(f"{c['name']}: {c.get('null_pct', 0)}% null" for c in (metadata.get("table_columns") or []) if c.get("null_pct", 0) > 5)
         if null_info:
             result = training_llm_call(
@@ -4769,13 +4769,13 @@ Return ONLY valid JSON (no markdown):
                                     "VALUES (:s, 'project', :f, 'data_quality') ON CONFLICT DO NOTHING"
                                 ), {"s": project_slug, "f": f"Data quality: {rule}"})
                         conn.commit()
-                    _log(f"  ✓ {len(dq_rules[:8])} data quality rules saved")
+                    _log(f" OK {len(dq_rules[:8])} data quality rules saved")
     except Exception as e:
-        _log(f"  ⚠ data quality error: {str(e)[:80]}")
+        _log(f" data quality error: {str(e)[:80]}")
 
     # 13. Negative Examples (What NOT to do)
     try:
-        _log("  extracting negative examples...")
+        _log(" extracting negative examples...")
         result = training_llm_call(
             f"Table '{table_name}' columns: {col_info}\n"
             f"Categorical values:\n{cat_values_str}\n\n"
@@ -4794,13 +4794,13 @@ Return ONLY valid JSON (no markdown):
                             conn.execute(text(
                                 "INSERT INTO public.dash_memories (project_slug, scope, fact, source) "
                                 "VALUES (:s, 'project', :f, 'negative_example') ON CONFLICT DO NOTHING"
-                            ), {"s": project_slug, "f": f"⚠ {neg}"})
+                            ), {"s": project_slug, "f": f" {neg}"})
                     conn.commit()
-                _log(f"  ✓ {len(negs[:8])} negative examples saved")
+                _log(f" OK {len(negs[:8])} negative examples saved")
     except Exception as e:
-        _log(f"  ⚠ negative examples error: {str(e)[:80]}")
+        _log(f" negative examples error: {str(e)[:80]}")
 
-    _log("✓ agent brain filled — ready to use!")
+    _log("OK agent brain filled — ready to use!")
 
     # ═══ AI SEED — Pre-populate activity metrics from data analysis ═══
     if _cancelled():
@@ -4811,11 +4811,11 @@ Return ONLY valid JSON (no markdown):
     cat_values_str = ""
     for c in (metadata.get("table_columns") or []):
         if c.get("sample_values"):
-            cat_values_str += f"  {c['name']}: {', '.join(str(v) for v in c['sample_values'][:5])}\n"
+            cat_values_str += f" {c['name']}: {', '.join(str(v) for v in c['sample_values'][:5])}\n"
 
     # 14. Seed Bad Feedback (common mistakes)
     try:
-        _log("  generating bad feedback examples...")
+        _log(" generating bad feedback examples...")
         result = training_llm_call(
             f"Table '{table_name}' columns: {col_info}\n\n"
             f"Generate 2 examples of WRONG analysis that a data analyst might make with this data. "
@@ -4837,13 +4837,13 @@ Return ONLY valid JSON (no markdown):
                             ), {"s": project_slug, "q": b["question"], "a": f"{b.get('wrong_answer','')} | WHY WRONG: {b.get('why_wrong','')}"})
                             bad_saved += 1
                     conn.commit()
-                _log(f"  ✓ {bad_saved} bad feedback examples saved")
+                _log(f" OK {bad_saved} bad feedback examples saved")
     except Exception as e:
-        _log(f"  ⚠ bad feedback error: {str(e)[:80]}")
+        _log(f" bad feedback error: {str(e)[:80]}")
 
     # 15. Seed Proactive Insights (anomalies from data)
     try:
-        _log("  generating proactive insights...")
+        _log(" generating proactive insights...")
         result = training_llm_call(
             f"Table '{table_name}' columns: {col_info}\n"
             f"Sample values:\n{cat_values_str}\n\n"
@@ -4868,13 +4868,13 @@ Return ONLY valid JSON (no markdown):
                                 "sev": ins.get("severity", "info"), "tables": [table_name]})
                             ins_saved += 1
                     conn.commit()
-                _log(f"  ✓ {ins_saved} proactive insights saved")
+                _log(f" OK {ins_saved} proactive insights saved")
     except Exception as e:
-        _log(f"  ⚠ insights error: {str(e)[:80]}")
+        _log(f" insights error: {str(e)[:80]}")
 
     # 16. Seed Drift Baseline
     try:
-        _log("  saving drift baseline...")
+        _log(" saving drift baseline...")
         with train_engine.connect() as conn:
             # Check if baseline already exists
             existing = conn.execute(text(
@@ -4887,15 +4887,15 @@ Return ONLY valid JSON (no markdown):
                     "VALUES (:s, :t, CAST(:a AS jsonb))"
                 ), {"s": project_slug, "t": table_name, "a": baseline})
                 conn.commit()
-                _log("  ✓ drift baseline saved")
+                _log(" OK drift baseline saved")
             else:
-                _log("  · drift baseline already exists")
+                _log(" · drift baseline already exists")
     except Exception as e:
-        _log(f"  ⚠ drift baseline error: {str(e)[:80]}")
+        _log(f" drift baseline error: {str(e)[:80]}")
 
     # 17. Seed Initial Evolution
     try:
-        _log("  generating initial evolution...")
+        _log(" generating initial evolution...")
         with train_engine.connect() as conn:
             existing_evol = conn.execute(text(
                 "SELECT COUNT(*) FROM public.dash_evolved_instructions WHERE project_slug = :s"
@@ -4915,11 +4915,11 @@ Return ONLY valid JSON (no markdown):
                         "VALUES (:s, :i, 1, 'Auto-generated during initial training')"
                     ), {"s": project_slug, "i": result[:2000]})
                     conn.commit()
-                    _log("  ✓ initial evolution saved (v1)")
+                    _log(" OK initial evolution saved (v1)")
             else:
-                _log(f"  · evolution already exists ({existing_evol} versions)")
+                _log(f" · evolution already exists ({existing_evol} versions)")
     except Exception as e:
-        _log(f"  ⚠ evolution error: {str(e)[:80]}")
+        _log(f" evolution error: {str(e)[:80]}")
 
     # ═══ ENRICH PERSONA — Re-generate with full domain context ═══
     if _cancelled():
@@ -5016,7 +5016,7 @@ Return ONLY valid JSON (no markdown):
                             "UPDATE public.dash_personas SET persona = CAST(:p AS jsonb) WHERE project_slug = :s"
                         ), {"s": project_slug, "p": json.dumps(persona_data)})
                         conn.commit()
-                    _log(f"✓ persona enriched with {len(domain_context_parts)} domain layers")
+                    _log(f"OK persona enriched with {len(domain_context_parts)} domain layers")
                 else:
                     _log("· persona enrichment skipped — invalid response")
             else:
@@ -5024,7 +5024,7 @@ Return ONLY valid JSON (no markdown):
         else:
             _log("· persona enrichment skipped — no domain knowledge yet")
     except Exception as e:
-        _log(f"⚠ persona enrichment error: {str(e)[:80]}")
+        _log(f" persona enrichment error: {str(e)[:80]}")
 
     # PandasAI Experiments — generate 50+ verified Q&A from real data
     if getenv("PANDASAI_EXPERIMENTS", "true").lower() in ("true", "1", "yes"):
@@ -5045,7 +5045,7 @@ Return ONLY valid JSON (no markdown):
                 combined_text = "\n\n---\n\n".join(doc_texts)
                 _langextract_facts(project_slug, combined_text, _log)
     except Exception as e:
-        _log(f"⚠ fact extraction skipped: {str(e)[:80]}")
+        _log(f" fact extraction skipped: {str(e)[:80]}")
 
     # Cross-Source Knowledge Graph — REMOVED from per-table loop.
     # KG now builds ONCE at end of TRAIN ALL (see master loop ~line 9611) — saves 9 LLM calls/train.
@@ -5089,7 +5089,7 @@ Return ONLY valid JSON (no markdown):
             quality_details["qa_total"] = total_qa
             quality_details["qa_verified"] = verified_qa
             quality_details["qa_pct"] = round((verified_qa / max(total_qa, 1)) * 100)
-            quality_score += quality_details["qa_pct"] * 0.4  # 40% weight
+            quality_score += quality_details["qa_pct"] * 0.4 # 40% weight
 
         # Check relationships verified
         try:
@@ -5100,9 +5100,9 @@ Return ONLY valid JSON (no markdown):
                     verified_rels = sum(1 for r in rels if r[1] == 'ai_verified')
                     quality_details["relationships_total"] = len(rels)
                     quality_details["relationships_verified"] = verified_rels
-                    quality_score += min(100, (verified_rels / max(len(rels), 1)) * 100) * 0.2  # 20% weight
+                    quality_score += min(100, (verified_rels / max(len(rels), 1)) * 100) * 0.2 # 20% weight
                 else:
-                    quality_score += 50 * 0.2  # No rels = partial credit
+                    quality_score += 50 * 0.2 # No rels = partial credit
         except Exception:
             quality_score += 50 * 0.2
 
@@ -5111,7 +5111,7 @@ Return ONLY valid JSON (no markdown):
             with rel_engine.connect() as rconn:
                 mem_count = rconn.execute(text("SELECT COUNT(*) FROM public.dash_memories WHERE project_slug = :s AND source = 'auto'"), {"s": project_slug}).scalar() or 0
                 quality_details["memories"] = mem_count
-                quality_score += min(100, (mem_count / 8) * 100) * 0.2  # 20% weight
+                quality_score += min(100, (mem_count / 8) * 100) * 0.2 # 20% weight
         except Exception:
             pass
 
@@ -5122,7 +5122,7 @@ Return ONLY valid JSON (no markdown):
                 with open(profile_file) as f:
                     profile = json.load(f)
                 quality_details["health"] = profile.get("health", 0)
-                quality_score += profile.get("health", 50) * 0.2  # 20% weight
+                quality_score += profile.get("health", 50) * 0.2 # 20% weight
             except Exception:
                 quality_score += 50 * 0.2
         else:
@@ -5130,20 +5130,20 @@ Return ONLY valid JSON (no markdown):
 
         quality_score = round(min(100, max(0, quality_score)))
         quality_details["overall_score"] = quality_score
-        _log(f"✓ training quality score: {quality_score}% (Q&A: {quality_details.get('qa_pct', '?')}% verified, {quality_details.get('memories', '?')} memories, health: {quality_details.get('health', '?')}%)")
+        _log(f"OK training quality score: {quality_score}% (Q&A: {quality_details.get('qa_pct', '?')}% verified, {quality_details.get('memories', '?')} memories, health: {quality_details.get('health', '?')}%)")
 
         # Save quality score
         quality_dir = KNOWLEDGE_DIR / project_slug / "table_sources"
         quality_dir.mkdir(parents=True, exist_ok=True)
         _safe_write_json(quality_dir / f"{table_name}_training_quality.json", quality_details)
     except Exception as e:
-        _log(f"⚠ quality score error: {str(e)[:80]}")
+        _log(f" quality score error: {str(e)[:80]}")
 
     # ── Per-table summary card (Level 3) ───────────────────────────────────
     try:
         dim_count = len(metadata.get("dimensions") or {})
         hier_list = metadata.get("hierarchies") or []
-        hier_str = ", ".join(f"{h.get('parent','?')}→{h.get('child','?')}" for h in hier_list[:3]) if hier_list else "—"
+        hier_str = ", ".join(f"{h.get('parent','?')}>{h.get('child','?')}" for h in hier_list[:3]) if hier_list else "—"
         fk_list = metadata.get("foreign_keys") or []
         fk_count = len(fk_list) if isinstance(fk_list, list) else 0
         qa_path = KNOWLEDGE_DIR / project_slug / "training" / f"{table_name}_qa.json"
@@ -5167,17 +5167,17 @@ Return ONLY valid JSON (no markdown):
         except Exception:
             pass
         _log(f"┌─ SUMMARY · {table_name}")
-        _log(f"│  rows: {num_rows} · cols: {num_cols} · dim: {dim_count} · measure: {len(measures) if 'measures' in dir() else '?'} · fk: {fk_count}")
-        _log(f"│  hierarchy: {hier_str}")
-        _log(f"│  Q&A: {qa_verified}/{qa_count} verified")
+        _log(f"│ rows: {num_rows} · cols: {num_cols} · dim: {dim_count} · measure: {len(measures) if 'measures' in dir() else '?'} · fk: {fk_count}")
+        _log(f"│ hierarchy: {hier_str}")
+        _log(f"│ Q&A: {qa_verified}/{qa_count} verified")
         # KG triples are built globally AFTER all tables train — per-table count
         # is always 0 (misleading), so it's omitted here.
-        _log(f"│  memories: {mem_count}")
+        _log(f"│ memories: {mem_count}")
         _log(f"└─ quality: {quality_score if 'quality_score' in dir() else '?'}%")
     except Exception as _se:
-        _log(f"⚠ summary card error: {str(_se)[:80]}")
+        _log(f" summary card error: {str(_se)[:80]}")
 
-    _log(f"✓ training complete for {table_name}")
+    _log(f"OK training complete for {table_name}")
     _update_run("done", "complete")
 
     # Best-effort: notify project owner of training completion
@@ -5477,7 +5477,7 @@ def _describe_images_with_vision(images: list[dict], filename: str) -> str:
 # ---------------------------------------------------------------------------
 # Upload Intelligence: Handlers + Conductor
 # Each handler returns: {"tables": [...], "text": str, "images": [...],
-#                        "metadata": dict, "errors": [...], "warnings": [...]}
+# "metadata": dict, "errors": [...], "warnings": [...]}
 # ---------------------------------------------------------------------------
 
 def _handle_image(file_path: str, filename: str) -> dict:
@@ -5605,7 +5605,7 @@ def _rules_find_blank_boundaries(rows: list[list[str]]) -> list[int]:
 def _full_sheet_blank_scan(file_path: str, sheet_name: str, max_row: int, ext: str) -> list[int]:
     """P3: Stream the FULL sheet (capped 10K rows) to find blank-row boundaries.
     Returns row indices where 2+ consecutive rows are fully blank.
-    Same shape as _rules_find_blank_boundaries. Fail-soft → returns []."""
+    Same shape as _rules_find_blank_boundaries. Fail-soft > returns []."""
     try:
         ext = (ext or "").lower()
         if ext not in (".xlsx", ".xls"):
@@ -5634,7 +5634,7 @@ def _full_sheet_blank_scan(file_path: str, sheet_name: str, max_row: int, ext: s
                     wb.close()
                 except Exception:
                     pass
-        else:  # .xls
+        else: # .xls
             try:
                 import xlrd
             except Exception:
@@ -5693,7 +5693,7 @@ def _rules_detect_skip_rows(rows: list[list[str]], header_row: int) -> list[int]
 
 
 def _rules_has_month_columns(header_values: list[str]) -> bool:
-    """Check if 3+ columns are month/date names → needs unpivot."""
+    """Check if 3+ columns are month/date names > needs unpivot."""
     month_count = sum(1 for v in header_values if v and _MONTH_RE.match(str(v).strip()))
     return month_count >= 3
 
@@ -5725,10 +5725,10 @@ def _rules_analyze_sheet(rows: list[list[str]], merged_cells: list = None,
         except Exception:
             pass
 
-    # Step 2: If boundaries found → multiple tables in one sheet
+    # Step 2: If boundaries found > multiple tables in one sheet
     if boundaries:
         # Split into blocks
-        block_starts = [0] + [b + 2 for b in boundaries]  # skip blank rows
+        block_starts = [0] + [b + 2 for b in boundaries] # skip blank rows
         block_ends = boundaries + [len(rows)]
         blocks = []
         for start, end in zip(block_starts, block_ends):
@@ -5798,7 +5798,7 @@ def _rules_analyze_sheet(rows: list[list[str]], merged_cells: list = None,
         plan["confidence"] = conf
         plan["skip_rows"] = _rules_detect_skip_rows(rows, header_row)
 
-    # Step 4: Check for month columns → unpivot
+    # Step 4: Check for month columns > unpivot
     header_idx = plan["header_row"] if plan["action"] != "split" else (plan["blocks"][0]["header_row"] if plan.get("blocks") else 0)
     if header_idx < len(rows):
         header_vals = [str(v).strip() for v in rows[header_idx] if v]
@@ -5847,19 +5847,19 @@ def _rules_analyze_sheet(rows: list[list[str]], merged_cells: list = None,
         # text-heavy. Treating that as multi-level clobbers the real names
         # (flatten yields `name__<datavalue>` garbage). So: if the top header
         # row is already dense + mostly-unique labels, it is a complete header
-        # on its own → reject the multi-level plan.
+        # on its own > reject the multi-level plan.
         if multi_level >= 2:
             top = rows[hdr] if hdr < len(rows) else []
             n_cols = max((len(r) for r in rows[hdr:hdr + multi_level]), default=0)
             top_non_empty = [str(v).strip() for v in top if v and str(v).strip()]
             density = (len(top_non_empty) / n_cols) if n_cols else 0.0
             uniq_ratio = (len(set(top_non_empty)) / len(top_non_empty)) if top_non_empty else 0.0
-            # Dense (≥90% of columns labeled) AND mostly-unique labels ⇒ this is
+            # Dense (≥90% of columns labeled) AND mostly-unique labels > this is
             # already a complete single-row header, NOT a spanning group header.
             top_is_complete_header = density >= 0.9 and uniq_ratio >= 0.9
 
             if top_is_complete_header:
-                multi_level = 1  # fall back to single detected header row
+                multi_level = 1 # fall back to single detected header row
 
         if multi_level >= 2:
             # Build flattened header: concatenate parent > child
@@ -5904,22 +5904,22 @@ def _is_clean_sheet(df_preview: pd.DataFrame, merged_cells: list = []) -> bool:
         return False
     # Messy signals
     if merged_cells:
-        return False  # Merged cells = messy
+        return False # Merged cells = messy
     headers = list(df_preview.columns)
     unnamed_count = sum(1 for h in headers if "unnamed" in str(h).lower())
     if unnamed_count > len(headers) * 0.3:
-        return False  # Too many unnamed columns = wrong header row
+        return False # Too many unnamed columns = wrong header row
     # Check if first row looks like data (not metadata/units)
     first_row = df_preview.iloc[0]
     text_vals = [str(v).strip().lower() for v in first_row.dropna()]
     unit_words = {"sachets", "kg", "units", "pcs", "nos", "mtrs", "ltrs"}
     if text_vals and all(v in unit_words for v in text_vals if v):
-        return False  # First data row is units = messy
+        return False # First data row is units = messy
     # Check if columns have month/date patterns (needs unpivot)
     month_re = re.compile(r"^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)", re.IGNORECASE)
     month_cols = sum(1 for h in headers if month_re.match(str(h).strip()))
     if month_cols >= 3:
-        return False  # Months as columns = needs unpivot
+        return False # Months as columns = needs unpivot
     # Clean: proper headers, no merges, no months as columns
     return True
 
@@ -5936,7 +5936,7 @@ def _deep_extract_cells(file_path: str, sheet_name: str) -> dict:
         result["max_col"] = ws.max_column or 0
 
         # Collect merged ranges and their values
-        merge_map = {}  # (row, col) → value from top-left cell
+        merge_map = {} # (row, col) > value from top-left cell
         for mr in ws.merged_cells.ranges:
             result["merged_ranges"].append(str(mr))
             top_left = ws.cell(mr.min_row, mr.min_col).value
@@ -5967,7 +5967,7 @@ def _deep_extract_cells(file_path: str, sheet_name: str) -> dict:
                 except Exception:
                     pass
             if row_has_bold:
-                bold_rows.add(ri - 1)  # 0-indexed
+                bold_rows.add(ri - 1) # 0-indexed
             result["cells"].append(row_data)
 
         result["formatting"] = {
@@ -6154,7 +6154,7 @@ def _vision_extract_sheet(file_path: str, sheet_name: str) -> str:
 
 
 def _handle_excel(file_path: str, filename: str) -> dict:
-    """Handle Excel upload — master decision: clean data → fast load, messy data → AI analysis."""
+    """Handle Excel upload — master decision: clean data > fast load, messy data > AI analysis."""
     result = {"tables": [], "text": "", "images": [], "metadata": {}, "errors": [], "warnings": []}
     ext = Path(file_path).suffix.lower()
 
@@ -6166,9 +6166,9 @@ def _handle_excel(file_path: str, filename: str) -> dict:
             import openpyxl
             # First pass: read merged cells (needs non-read-only mode)
             merged_info = {}
-            hidden_rows_info = {}  # sheet → set of hidden row numbers
-            hidden_cols_info = {}  # sheet → set of hidden column letters
-            comments_info = {}    # sheet → list of {row, col, text}
+            hidden_rows_info = {} # sheet > set of hidden row numbers
+            hidden_cols_info = {} # sheet > set of hidden column letters
+            comments_info = {} # sheet > list of {row, col, text}
             try:
                 wb_full = openpyxl.load_workbook(file_path, data_only=True)
                 for sname in wb_full.sheetnames:
@@ -6265,7 +6265,7 @@ def _handle_excel(file_path: str, filename: str) -> dict:
         return result
 
     # Step 1.5: Multi-sheet similarity detection — find same-structure sheets for auto-concat
-    _similar_sheet_groups = {}  # group_id → [sheet_names]
+    _similar_sheet_groups = {} # group_id > [sheet_names]
     if len(sheet_names) > 1:
         sheet_cols = {}
         for sname in sheet_names:
@@ -6299,8 +6299,8 @@ def _handle_excel(file_path: str, filename: str) -> dict:
 
     # Step 2: RULES ENGINE — deterministic structure detection (no LLM)
     file_slug = _sanitize_table_name(Path(filename).stem)
-    rules_plans = {}  # sheet_name → rules plan
-    needs_llm = []    # sheets where rules are uncertain
+    rules_plans = {} # sheet_name > rules plan
+    needs_llm = [] # sheets where rules are uncertain
 
     for sname in sheet_names:
         info = sheet_previews.get(sname, {})
@@ -6354,9 +6354,9 @@ def _handle_excel(file_path: str, filename: str) -> dict:
                     sheet_info = sheet_previews.get(sname, {})
                     actual_rows = sheet_info.get("max_row", 0)
                     _excel_cap = int(os.environ.get("EXCEL_MAX_ROWS", "2000000"))
-                    nrows_limit = min(actual_rows, _excel_cap) if actual_rows > 0 else None  # env-configurable cap (default 2M)
+                    nrows_limit = min(actual_rows, _excel_cap) if actual_rows > 0 else None # env-configurable cap (default 2M)
                     if actual_rows > _excel_cap:
-                        result["warnings"].append(f"⚠ Sheet '{sname}': {actual_rows:,} rows exceeds EXCEL_MAX_ROWS={_excel_cap:,} — DROPPED {actual_rows - _excel_cap:,} rows. Raise EXCEL_MAX_ROWS to ingest all.")
+                        result["warnings"].append(f" Sheet '{sname}': {actual_rows:,} rows exceeds EXCEL_MAX_ROWS={_excel_cap:,} — DROPPED {actual_rows - _excel_cap:,} rows. Raise EXCEL_MAX_ROWS to ingest all.")
 
                     # Pandas-safe skiprows: include ALL rows above header_row + skip rows.
                     # Then header=0 since first remaining row IS the header.
@@ -6382,7 +6382,7 @@ def _handle_excel(file_path: str, filename: str) -> dict:
                 result["tables"].append({"name": _sanitize_table_name(tname), "df": df, "source": f"{sname} [rules]", "sheet_number": sheet_idx, "description": f"Direct load (rules, confidence {plan['confidence']:.0%})"})
                 rules_processed += 1
             except Exception as e:
-                needs_llm.append(sname)  # rules failed, try LLM
+                needs_llm.append(sname) # rules failed, try LLM
 
         elif plan["action"] == "unpivot":
             # Month columns detected — unpivot deterministically (no LLM)
@@ -6421,7 +6421,7 @@ def _handle_excel(file_path: str, filename: str) -> dict:
                         return True
                     df_use = df_use[df_use.apply(_is_data_row, axis=1)]
 
-                    # Melt: months as columns → rows
+                    # Melt: months as columns > rows
                     df_long = df_use.melt(id_vars=id_cols, value_vars=month_cols,
                                           var_name="month", value_name="output")
 
@@ -6606,8 +6606,8 @@ If correct as-is: {{"action": "keep", "reason": "brief"}}"""
                         df_long = _clean_dataframe(df_long)
                         tbl["df"] = df_long
                         tbl["source"] = tbl.get("source", "") + " [ai-unpivot]"
-                        tbl["description"] = f"AI restructured: {n_rows}×{n_cols} → {len(df_long)}×{len(df_long.columns)} ({val_result.get('reason','')})"
-                        result["warnings"].append(f"AI Validator: unpivoted '{tbl.get('name','')}' from {n_cols} → {len(df_long.columns)} cols")
+                        tbl["description"] = f"AI restructured: {n_rows}×{n_cols} > {len(df_long)}×{len(df_long.columns)} ({val_result.get('reason','')})"
+                        result["warnings"].append(f"AI Validator: unpivoted '{tbl.get('name','')}' from {n_cols} > {len(df_long.columns)} cols")
 
                         # Save learning
                         try:
@@ -6636,13 +6636,13 @@ If correct as-is: {{"action": "keep", "reason": "brief"}}"""
     # When parser loaded <10% of expected sheet rows, LLM re-analyzes preview to
     # find correct header_row + skip_rows, then re-reads sheet with corrected ranges.
     # Single LLM call per suspicious sheet, fail-soft.
-    # P5: file-hash cache — same file_hash → reuse prior plan → skip LLM call.
+    # P5: file-hash cache — same file_hash > reuse prior plan > skip LLM call.
     _file_hash = _compute_file_hash(file_path)
     _file_size = Path(file_path).stat().st_size if Path(file_path).exists() else 0
     _cached = _lookup_upload_cache(_file_hash) if _file_hash else None
     _cached_plan = (_cached or {}).get("plan") or {}
     _cached_sheet_map = _cached_plan.get("sheet_to_header") or {}
-    _accum_sheet_plan = dict(_cached_sheet_map)  # accumulate across sheets in this run
+    _accum_sheet_plan = dict(_cached_sheet_map) # accumulate across sheets in this run
     _rescued_tables = []
     for tbl in result["tables"]:
         try:
@@ -6690,7 +6690,7 @@ If correct as-is: {{"action": "keep", "reason": "brief"}}"""
                         _excel_cap = int(os.environ.get("EXCEL_MAX_ROWS", "2000000"))
                         nrows_limit = min(expected_max, _excel_cap)
                         if expected_max > _excel_cap:
-                            result["warnings"].append(f"⚠ Sheet '{sname}': {expected_max:,} rows exceeds EXCEL_MAX_ROWS={_excel_cap:,} — DROPPED {expected_max - _excel_cap:,} rows. Raise EXCEL_MAX_ROWS to ingest all.")
+                            result["warnings"].append(f" Sheet '{sname}': {expected_max:,} rows exceeds EXCEL_MAX_ROWS={_excel_cap:,} — DROPPED {expected_max - _excel_cap:,} rows. Raise EXCEL_MAX_ROWS to ingest all.")
                         try:
                             df_new = pd.read_excel(file_path, sheet_name=sname, header=0,
                                                    skiprows=pd_skip, nrows=nrows_limit, engine='calamine')
@@ -6701,8 +6701,8 @@ If correct as-is: {{"action": "keep", "reason": "brief"}}"""
                         if len(df_new) > actual_rows * 5:
                             tbl["df"] = df_new
                             tbl["source"] = sheet_src + " [llm-rescued-cached]"
-                            tbl["description"] = f"LLM rescued (cache): {actual_rows} → {len(df_new)} rows (header_row={_c_hrow})"
-                            result["warnings"].append(f"LLM Rescue: '{tbl.get('name','')}' {actual_rows} → {len(df_new)} rows ✓ (cache)")
+                            tbl["description"] = f"LLM rescued (cache): {actual_rows} > {len(df_new)} rows (header_row={_c_hrow})"
+                            result["warnings"].append(f"LLM Rescue: '{tbl.get('name','')}' {actual_rows} > {len(df_new)} rows OK (cache)")
                         else:
                             result["warnings"].append(f"LLM Rescue: cached rescue for '{sname}' produced {len(df_new)} rows — kept original")
                     except Exception as _cre:
@@ -6774,7 +6774,7 @@ Rules:
                 _excel_cap = int(os.environ.get("EXCEL_MAX_ROWS", "2000000"))
                 nrows_limit = min(expected_max, _excel_cap)
                 if expected_max > _excel_cap:
-                    result["warnings"].append(f"⚠ Sheet '{sname}': {expected_max:,} rows exceeds EXCEL_MAX_ROWS={_excel_cap:,} — DROPPED {expected_max - _excel_cap:,} rows. Raise EXCEL_MAX_ROWS to ingest all.")
+                    result["warnings"].append(f" Sheet '{sname}': {expected_max:,} rows exceeds EXCEL_MAX_ROWS={_excel_cap:,} — DROPPED {expected_max - _excel_cap:,} rows. Raise EXCEL_MAX_ROWS to ingest all.")
                 try:
                     df_new = pd.read_excel(file_path, sheet_name=sname, header=0,
                                            skiprows=pd_skip, nrows=nrows_limit, engine='calamine')
@@ -6782,11 +6782,11 @@ Rules:
                     df_new = pd.read_excel(file_path, sheet_name=sname, header=0,
                                            skiprows=pd_skip, nrows=nrows_limit)
                 df_new = _clean_dataframe(df_new)
-                if len(df_new) > actual_rows * 5:  # Real rescue if >5x more rows
+                if len(df_new) > actual_rows * 5: # Real rescue if >5x more rows
                     tbl["df"] = df_new
                     tbl["source"] = sheet_src + " [llm-rescued]"
-                    tbl["description"] = f"LLM rescued: {actual_rows} → {len(df_new)} rows (header_row={new_hrow}, reason: {resc_plan.get('reasoning','')[:80]})"
-                    result["warnings"].append(f"LLM Rescue: '{tbl.get('name','')}' {actual_rows} → {len(df_new)} rows ✓")
+                    tbl["description"] = f"LLM rescued: {actual_rows} > {len(df_new)} rows (header_row={new_hrow}, reason: {resc_plan.get('reasoning','')[:80]})"
+                    result["warnings"].append(f"LLM Rescue: '{tbl.get('name','')}' {actual_rows} > {len(df_new)} rows OK")
 
                     # P5: save rescue plan to file-hash cache for future re-uploads
                     try:
@@ -6854,12 +6854,12 @@ Rules:
                 # Compress: skip fully empty rows, collapse repeated values
                 non_empty = [(ci, v) for ci, v in enumerate(row) if v and str(v).strip()]
                 if not non_empty:
-                    continue  # Skip blank rows entirely (saves tokens)
+                    continue # Skip blank rows entirely (saves tokens)
                 # If row is sparse (>60% empty), use inverse index format
                 if len(non_empty) < len(row) * 0.4 and len(row) > 5:
-                    preview_text += f"  Row {ri}: {{{', '.join(f'{ci}:{v}' for ci, v in non_empty)}}}\n"
+                    preview_text += f" Row {ri}: {{{', '.join(f'{ci}:{v}' for ci, v in non_empty)}}}\n"
                 else:
-                    preview_text += f"  Row {ri}: {row}\n"
+                    preview_text += f" Row {ri}: {row}\n"
 
         prompt = f"""Analyze {len(ai_sheet_names)} messy Excel sheets that need intelligent processing. For each sheet I show the first rows as raw cell values. Empty cells are ''.
 
@@ -6894,13 +6894,13 @@ ACTIONS:
 For "split" action, return "tables" array with "table_name", "header_row", "data_start_row", "data_end_row", "description".
 
 DETECT THESE PATTERNS:
-- Columns with month/date names (Jul'21, Aug'21, Q1 2022, 2021-01...) → use "unpivot"
-- Multiple data blocks with same columns but different categories → merge via "blocks"
-- Metadata rows at top (Company, Period, Rate) → NOT headers, skip them
-- Sub-header rows (units: Sachets, kg, %) → skip_rows, capture unit in extra_columns
-- Summary/total rows (Utilisation, Total) → skip_rows
-- Merged cells → forward_fill_columns
-- Empty sheets → "skip"
+- Columns with month/date names (Jul'21, Aug'21, Q1 2022, 2021-01...) > use "unpivot"
+- Multiple data blocks with same columns but different categories > merge via "blocks"
+- Metadata rows at top (Company, Period, Rate) > NOT headers, skip them
+- Sub-header rows (units: Sachets, kg, %) > skip_rows, capture unit in extra_columns
+- Summary/total rows (Utilisation, Total) > skip_rows
+- Merged cells > forward_fill_columns
+- Empty sheets > "skip"
 
 CRITICAL for "split" with multiple sub-tables in one sheet:
 - If sub-tables have SAME structure but different first column name (e.g. "No of FFS machines" vs "No of Spray Dryer" vs "No of Drum Roller"), these are the SAME table with different machine types
@@ -6912,7 +6912,7 @@ CRITICAL for "split" with multiple sub-tables in one sheet:
 Column naming rules:
 - Use EXACT text from header row, cleaned for PostgreSQL
 - "No of FFS machines" and "No of Spray Dryer" should BOTH become "machine_count" (standardized)
-- "Products" → "products", "SKU" → "sku", "Speed" → "speed"
+- "Products" > "products", "SKU" > "sku", "Speed" > "speed"
 - column_names mapping: key=column index, value=cleaned standardized name"""
 
         raw = training_llm_call(prompt, "excel_analysis")
@@ -6951,7 +6951,7 @@ Column naming rules:
                     raw_preview = ""
                     for ri in range(min(20, len(df_raw_all))):
                         vals = [str(v)[:30] if pd.notna(v) else "" for v in df_raw_all.iloc[ri].values[:18]]
-                        raw_preview += f"  Row {ri}: {vals}\n"
+                        raw_preview += f" Row {ri}: {vals}\n"
 
                     convert_prompt = f"""Convert this Excel sheet from WIDE to LONG format.
 
@@ -7098,7 +7098,7 @@ Return ONLY a JSON object mapping each period to its date:
                             continue
                         # Extract data rows
                         skip_rows = set(sub.get("skip_rows", []))
-                        skip_rows.add(hrow)  # Don't include header as data
+                        skip_rows.add(hrow) # Don't include header as data
                         data_rows = []
                         for ri in range(dstart, min(dend + 1, len(df_raw))):
                             if ri not in skip_rows:
@@ -7226,7 +7226,7 @@ Return ONLY a JSON object mapping each period to its date:
                     result["tables"].append({"name": merged_name, "df": merged_df, "source": f"merged:{','.join(group_sheets)}", "description": f"Auto-merged {len(compatible)} similar sheets"})
                     result["warnings"].append(f"Merged {len(compatible)} sheets into '{merged_name}' ({len(merged_df)} rows)")
 
-    # ── LAYER 3+4: Validate → Auto-fix → Vision fallback ──────────────
+    # ── LAYER 3+4: Validate > Auto-fix > Vision fallback ──────────────
     # Run on all extracted tables — catch subtotals, bad headers, high NaN
     validated_tables = []
     for tbl in result["tables"]:
@@ -7264,7 +7264,7 @@ Return ONLY a JSON object mapping each period to its date:
                             # Build better preview with unmerged cells for LLM
                             from dash.settings import training_llm_call
                             cell_text = "\n".join(
-                                f"  Row {i}: {row}" for i, row in enumerate(deep["cells"][:30])
+                                f" Row {i}: {row}" for i, row in enumerate(deep["cells"][:30])
                             )
                             fmt_info = f"Bold rows (likely headers): {deep['formatting'].get('bold_rows', [])}"
                             if deep["merged_ranges"]:
@@ -7319,7 +7319,7 @@ Pick the BEST header row (bold rows are headers). Skip metadata, subtotals, unit
                             if headers and rows:
                                 df_vision = pd.DataFrame(rows, columns=headers[:len(rows[0])] if rows else headers)
                                 df_vision = _clean_dataframe(df_vision)
-                                if len(df_vision) > len(df) * 0.5:  # Vision got reasonable data
+                                if len(df_vision) > len(df) * 0.5: # Vision got reasonable data
                                     tbl["df"] = df_vision
                                     tbl["quality_score"] = 75
                                     tbl["source"] = tbl.get("source", "") + " [vision-extracted]"
@@ -7390,8 +7390,8 @@ def _handle_pdf(file_path: str, filename: str) -> dict:
             import pymupdf4llm
             md_pages = pymupdf4llm.to_markdown(
                 file_path,
-                page_chunks=True,       # one chunk per page
-                write_images=False,      # we handle images ourselves (Vision pipeline)
+                page_chunks=True, # one chunk per page
+                write_images=False, # we handle images ourselves (Vision pipeline)
             )
             md_parts = []
             for chunk in md_pages:
@@ -7406,7 +7406,7 @@ def _handle_pdf(file_path: str, filename: str) -> dict:
 
         # ── STEP 2: Per-page scan — detect scanned pages + diagrams ──
         scanned_count = 0
-        fallback_texts = []  # only used if PyMuPDF4LLM failed
+        fallback_texts = [] # only used if PyMuPDF4LLM failed
         tesseract_ok = False
         try:
             import pytesseract
@@ -7428,8 +7428,8 @@ def _handle_pdf(file_path: str, filename: str) -> dict:
                         ocr_text = pytesseract.image_to_string(img)
                         if len(ocr_text.strip()) > 30:
                             fallback_texts.append(f"[Page {pi + 1} — OCR]\n{ocr_text.strip()}")
-                            continue  # Got text via Tesseract, skip vision
-                    # Tesseract failed → send to Vision LLM as fallback
+                            continue # Got text via Tesseract, skip vision
+                    # Tesseract failed > send to Vision LLM as fallback
                     if len(result["images"]) < 10:
                         png_bytes = pixmap.tobytes("png")
                         if len(png_bytes) < 5_000_000:
@@ -7494,7 +7494,7 @@ def _handle_pdf(file_path: str, filename: str) -> dict:
         tables = _extract_tables_pdf(file_path)
         result["tables"] = [{"name": f"{_sanitize_table_name(Path(filename).stem)}_{t['source']}", "df": t["df"], "source": t["source"]} for t in tables]
 
-        # ── STEP 5: Extract embedded images (charts, diagrams → Vision) ──
+        # ── STEP 5: Extract embedded images (charts, diagrams > Vision) ──
         embedded_images = _extract_images_pdf(file_path)
         result["images"].extend(embedded_images)
 
@@ -7506,7 +7506,7 @@ def _handle_pdf(file_path: str, filename: str) -> dict:
 def _handle_pptx(file_path: str, filename: str) -> dict:
     """Handle PPTX upload — text + tables + images + render image-heavy slides for Vision."""
     result = {"tables": [], "text": "", "images": [], "metadata": {}, "errors": [], "warnings": []}
-    image_only_slides = []  # slides with <10 chars text → render full slide for Vision
+    image_only_slides = [] # slides with <10 chars text > render full slide for Vision
     try:
         from pptx import Presentation
         from pptx.enum.shapes import MSO_SHAPE_TYPE
@@ -7657,7 +7657,7 @@ def _handle_docx(file_path: str, filename: str) -> dict:
             pass
         result["text"] = body_text
         if extras:
-            result["text"] += "\n\n--- HEADERS/FOOTERS ---\n" + "\n".join(set(extras))  # deduplicate
+            result["text"] += "\n\n--- HEADERS/FOOTERS ---\n" + "\n".join(set(extras)) # deduplicate
     except Exception as e:
         result["errors"].append(f"DOCX text extraction failed: {e}")
 
@@ -7676,7 +7676,7 @@ def _handle_csv(file_path: str, filename: str) -> dict:
         try:
             import chardet
             with open(file_path, "rb") as f:
-                raw = f.read(100000)  # Read first 100KB for detection
+                raw = f.read(100000) # Read first 100KB for detection
             detected = chardet.detect(raw)
             if detected and detected.get("encoding") and detected.get("confidence", 0) > 0.5:
                 encoding = detected["encoding"]
@@ -7691,7 +7691,7 @@ def _handle_csv(file_path: str, filename: str) -> dict:
         df = pd.read_csv(file_path, header=header_row, sep=sep, encoding=encoding,
                          encoding_errors="replace", dtype=_id_dtypes(file_path, ".csv", header_row, sep))
 
-        # Normalize null values: N/A, NULL, None, -, ? → NaN
+        # Normalize null values: N/A, NULL, None, -, ? > NaN
         null_values = {"N/A", "n/a", "#N/A", "NA", "na", "NULL", "null", "None", "none", "NONE", "-", "?", ".", " "}
         for col in df.columns:
             if df[col].dtype == object:
@@ -7836,7 +7836,7 @@ def _handle_zip(file_path: str, filename: str) -> dict:
                     elif ext == '.docx': sub = _handle_docx(tmp_path, member)
                     else: continue
                     for t in sub.get("tables", []):
-                        t["source"] = f"zip:{member} → {t.get('source', '')}"
+                        t["source"] = f"zip:{member} > {t.get('source', '')}"
                         result["tables"].append(t)
                     if sub.get("text"):
                         result["text"] += f"\n\n--- {member} ---\n{sub['text']}"
@@ -7991,10 +7991,10 @@ def _ai_review_and_fix_table(project_slug: str, table_name: str, engine=None):
 TABLE: "{table_name}" in schema "{schema}" ({row_count} rows)
 
 COLUMNS + TYPES:
-{chr(10).join(f"  {c[0]} ({c[1]})" for c in cols)}
+{chr(10).join(f" {c[0]} ({c[1]})" for c in cols)}
 
 NULL STATS:
-{chr(10).join(f"  {s}" for s in null_stats)}
+{chr(10).join(f" {s}" for s in null_stats)}
 
 SAMPLE DATA (first 10 rows):
 {sample_text}
@@ -8056,7 +8056,7 @@ Use schema "{schema}" in all SQL. Only return fixes you are confident about."""
                         continue
                     applied.append(desc)
                 except Exception as e:
-                    pass  # Skip failed fixes silently
+                    pass # Skip failed fixes silently
             conn.commit()
         return applied
     except Exception:
@@ -8078,7 +8078,7 @@ def _run_pandasai_experiments(project_slug: str, table_name: str, col_analyses: 
         num_cols = [c["name"] for c in col_analyses if c.get("type") == "numeric"]
         cat_cols = [c["name"] for c in col_analyses if c.get("is_categorical")]
         # Gate trend/monthly/daily/weekly QA: skip date cols that are effectively
-        # constant (1-period data → meaningless time series). See Phase 9 DQ
+        # constant (1-period data > meaningless time series). See Phase 9 DQ
         # memory contract (dash/utils/column_stats_cache.py is_constant role).
         _ca_by_name = {c.get("name"): c for c in col_analyses}
         def _is_date_col_usable(_c: dict) -> bool:
@@ -8098,7 +8098,7 @@ def _run_pandasai_experiments(project_slug: str, table_name: str, col_analyses: 
         t = f'"{schema}"."{table_name}"'
 
         # A "date" col may be TEXT in DD/MM/YYYY (DATE_TRUNC on raw text throws).
-        # Build a safe date expression: real datetime → use as-is; text-date →
+        # Build a safe date expression: real datetime > use as-is; text-date >
         # wrap with to_date(...,'DD/MM/YYYY HH24:MI').
         def _date_expr(col: str) -> str:
             if not col:
@@ -8188,11 +8188,11 @@ def _run_pandasai_experiments(project_slug: str, table_name: str, col_analyses: 
                     mconn.commit()
             except Exception:
                 pass
-            _log(f"✓ experiments: {len(new_qa)} new Q&A added ({len(results)} ran, {len(existing_qa)} existing)")
+            _log(f"OK experiments: {len(new_qa)} new Q&A added ({len(results)} ran, {len(existing_qa)} existing)")
         else:
             _log("· no successful experiments")
     except Exception as e:
-        _log(f"⚠ experiments error: {str(e)[:100]}")
+        _log(f" experiments error: {str(e)[:100]}")
 
 
 def _langextract_facts(project_slug: str, all_text: str, _log=None):
@@ -8207,12 +8207,12 @@ def _langextract_facts(project_slug: str, all_text: str, _log=None):
     try:
         import langextract as lx
     except ImportError:
-        _log("⚠ langextract not installed — skipped")
+        _log(" langextract not installed — skipped")
         return
 
     api_key = os.getenv("OPENROUTER_API_KEY", "")
     if not api_key:
-        _log("⚠ no API key — fact extraction skipped")
+        _log(" no API key — fact extraction skipped")
         return
 
     try:
@@ -8294,11 +8294,11 @@ def _langextract_facts(project_slug: str, all_text: str, _log=None):
         engine = create_engine(db_url)
         saved = 0
         with engine.connect() as conn:
-            for fact in all_facts[:30]:  # Cap at 30 facts per project
+            for fact in all_facts[:30]: # Cap at 30 facts per project
                 if not fact["text"] or len(fact["text"]) < 5:
                     continue
                 # Build fact string with grounding info
-                grounding_tag = "✅" if fact["grounded"] else "⚠️"
+                grounding_tag = "" if fact["grounded"] else ""
                 type_tag = fact["type"].upper()
                 attr_str = ""
                 if fact["attributes"]:
@@ -8332,11 +8332,11 @@ def _langextract_facts(project_slug: str, all_text: str, _log=None):
 
             conn.commit()
 
-        _log(f"✓ {saved} grounded facts extracted ({sum(1 for f in all_facts if f['grounded'])} verified, "
+        _log(f"OK {saved} grounded facts extracted ({sum(1 for f in all_facts if f['grounded'])} verified, "
              f"{sum(1 for f in all_facts if not f['grounded'])} ungrounded)")
 
     except Exception as e:
-        _log(f"⚠ LangExtract error: {str(e)[:100]}")
+        _log(f" LangExtract error: {str(e)[:100]}")
 
 
 def _post_upload_engineer(project_slug: str, tables_created: list[dict], user_id: int = 1):
@@ -8442,7 +8442,7 @@ def _post_upload_engineer(project_slug: str, tables_created: list[dict], user_id
                 with merge_engine.connect() as conn:
                     actual_rows = conn.execute(text(f'SELECT COUNT(*) FROM "{schema}"."{merged_name}"')).scalar() or 0
 
-                merge_valid = actual_rows >= expected_rows  # Must have ALL rows
+                merge_valid = actual_rows >= expected_rows # Must have ALL rows
 
                 if merge_valid:
                     # Profile the merged table
@@ -8450,7 +8450,7 @@ def _post_upload_engineer(project_slug: str, tables_created: list[dict], user_id
                         df_sample = pd.read_sql(f'SELECT * FROM "{schema}"."{merged_name}" LIMIT 5000', merge_engine)
                         profile = _profile_table(df_sample, project_slug, merged_name)
                         health = profile.get("health", 0)
-                        merge_valid = health >= 50  # Must pass minimum quality
+                        merge_valid = health >= 50 # Must pass minimum quality
                     except Exception:
                         pass
 
@@ -8463,7 +8463,7 @@ def _post_upload_engineer(project_slug: str, tables_created: list[dict], user_id
                             except Exception:
                                 pass
                         conn.commit()
-                    log.info(f"Post-upload MERGED: {group} → {merged_name} ({actual_rows} rows, health={profile.get('health', '?')}%)")
+                    log.info(f"Post-upload MERGED: {group} > {merged_name} ({actual_rows} rows, health={profile.get('health', '?')}%)")
 
                     # AI review and fix data quality issues
                     try:
@@ -8494,7 +8494,7 @@ def _post_upload_engineer(project_slug: str, tables_created: list[dict], user_id
                     with merge_engine.connect() as conn:
                         conn.execute(text(f'DROP TABLE IF EXISTS "{schema}"."{merged_name}" CASCADE'))
                         conn.commit()
-                    log.warning(f"Post-upload MERGE FAILED validation: {group} → kept separate (expected={expected_rows}, actual={actual_rows})")
+                    log.warning(f"Post-upload MERGE FAILED validation: {group} > kept separate (expected={expected_rows}, actual={actual_rows})")
 
             except Exception as e:
                 log.warning(f"Post-upload merge error for {group}: {e}")
@@ -8518,12 +8518,12 @@ def _run_engineer_agent(project_slug: str, tables_created: list[dict], user_id: 
         learning = LearningMachine(knowledge=learnings, learned_knowledge=LearnedKnowledgeConfig(mode=LearningMode.AGENTIC))
         engineer = create_engineer(project_slug=project_slug, knowledge=knowledge, learning=learning, dashboard_user_id=user_id)
 
-        table_summary = "\n".join(f"  - {t['table']} ({t['rows']} rows)" for t in tables_created[:20])
+        table_summary = "\n".join(f" - {t['table']} ({t['rows']} rows)" for t in tables_created[:20])
 
         prompt = f"""Inspect the project tables and optimize:
 1. INSPECT all tables — run introspect_schema
 2. DISCOVER RELATIONSHIPS — find JOINable columns (shared IDs, dates, categories)
-3. FIX COLUMN TYPES — dates stored as text → ALTER to DATE
+3. FIX COLUMN TYPES — dates stored as text > ALTER to DATE
 4. REPORT relationships found
 
 Tables in project:
@@ -8548,7 +8548,7 @@ def _extract_document_structure(file_path: str, ext: str) -> list[dict]:
     """Extract document structure (titles + content summaries) for workflow conversion.
 
     Returns list of {"index": 1, "title": "...", "content_summary": "..."} dicts.
-    PPTX → slide titles, PDF → page headers by font size, DOCX → heading paragraphs.
+    PPTX > slide titles, PDF > page headers by font size, DOCX > heading paragraphs.
     """
     sections: list[dict] = []
 
@@ -8662,18 +8662,18 @@ _DOMAIN_KEYWORDS: dict[str, tuple[set[str], str]] = {
     "pharmacy_network": ({"article", "articles", "drug", "drugs", "pharma",
                           "medication", "medications", "rx", "prescription"},
                          "Pharmacy Network"),
-    "investment":       ({"balance_sheet", "balancesheet", "income_statement",
+    "investment": ({"balance_sheet", "balancesheet", "income_statement",
                           "incomestatement", "cash_flow", "cashflow",
                           "cap_table", "captable"},
                          "Investment Desk"),
-    "retail":           ({"customer", "customers", "transaction", "transactions",
+    "retail": ({"customer", "customers", "transaction", "transactions",
                           "order", "orders", "sale", "sales", "sku", "skus",
                           "store", "stores", "pos"},
                          "Retail"),
-    "hotel_group":      ({"hotel", "hotels", "reservation", "reservations",
+    "hotel_group": ({"hotel", "hotels", "reservation", "reservations",
                           "adr", "revpar", "occupancy", "rate_code"},
                          "Hotel Group"),
-    "manufacturing":    ({"bom", "defect", "defects", "yield", "supplier",
+    "manufacturing": ({"bom", "defect", "defects", "yield", "supplier",
                           "suppliers", "work_order", "workorder", "mrp"},
                          "Manufacturing"),
 }
@@ -8682,7 +8682,7 @@ _DOMAIN_KEYWORDS: dict[str, tuple[set[str], str]] = {
 def _detect_domain_from_tables(table_names: list[str]) -> tuple[str | None, float, str]:
     """Score table names against domain keyword sets.
 
-    Returns (template, confidence, label). 2+ keyword hits → conf ≥ 0.78.
+    Returns (template, confidence, label). 2+ keyword hits > conf ≥ 0.78.
     """
     if not table_names:
         return None, 0.0, ""
@@ -8716,7 +8716,7 @@ def _suggest_template_for_project(project_slug: str, new_table_names: list[str])
 
 def _autoload_definitions(project_slug: str, file_path: str, ext: str) -> int:
     """Detect a definitions/glossary sheet in an uploaded Excel file and insert
-    each term→definition into the project's Company Brain as a glossary entry.
+    each term>definition into the project's Company Brain as a glossary entry.
 
     Conservative: only fires when a sheet clearly looks like a 2-column data
     dictionary (a 'term' column + a long-text 'definition' column). Fail-soft.
@@ -8747,7 +8747,7 @@ def _autoload_definitions(project_slug: str, file_path: str, ext: str) -> int:
             if df is None or df.shape[1] < 2 or len(df) < 3:
                 continue
             df = df.dropna(how="all")
-            # pick the column whose values are the longest text → definitions
+            # pick the column whose values are the longest text > definitions
             def_col, term_col, best_avg = None, None, 0.0
             for c in df.columns:
                 vals = [str(v) for v in df[c].dropna().tolist() if str(v).strip()]
@@ -8774,7 +8774,7 @@ def _autoload_definitions(project_slug: str, file_path: str, ext: str) -> int:
                 term = str(r.get(term_col, "")).strip()
                 defn = str(r.get(def_col, "")).strip()
                 if term and defn and term.lower() != "nan" and defn.lower() != "nan" and len(defn) > 8:
-                    # rows that read like a formula → category 'formula', else 'glossary'
+                    # rows that read like a formula > category 'formula', else 'glossary'
                     cat = "formula" if re.search(r"\bnumerator|denominator|formula|=|count|/|\bsum\b", defn, re.I) else "glossary"
                     rows.append((cat, term[:200], defn[:4000]))
             if not rows:
@@ -8830,7 +8830,7 @@ async def upload_file(request: Request, file: UploadFile, table_name: str | None
         if _form.get("guarded") in ("1", "true", "True"):
             guarded = True
     except Exception:
-        pass  # form already consumed by FastAPI internals; bare query still works
+        pass # form already consumed by FastAPI internals; bare query still works
     user_id = _get_user_id(request)
 
     # Editor role required for uploads
@@ -8852,7 +8852,7 @@ async def upload_file(request: Request, file: UploadFile, table_name: str | None
     with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
         size = 0
         try:
-            while chunk := await file.read(1024 * 1024):  # 1MB chunks
+            while chunk := await file.read(1024 * 1024): # 1MB chunks
                 size += len(chunk)
                 if size > MAX_FILE_SIZE:
                     # Clean up the partial temp file before bailing (delete=False
@@ -8884,7 +8884,7 @@ async def upload_file(request: Request, file: UploadFile, table_name: str | None
         with open(tmp_path, 'rb') as f:
             content = f.read()
     else:
-        content = b''  # Don't hold file content in memory
+        content = b'' # Don't hold file content in memory
 
     # Compute file hash (sha256) once for extraction-plan audit
     _file_hash: str | None = None
@@ -8899,7 +8899,7 @@ async def upload_file(request: Request, file: UploadFile, table_name: str | None
         _file_hash = None
 
     # Save raw upload so we can re-ingest later with operator overrides.
-    # 2026-05-25: extended from xlsx/xls only → also csv/json/parquet. Re-ingest
+    # 2026-05-25: extended from xlsx/xls only > also csv/json/parquet. Re-ingest
     # endpoint reads from raw_uploads/, CSV was orphaned before this fix.
     if ext in (".xlsx", ".xls", ".csv", ".json", ".parquet", ".ods") and project:
         try:
@@ -8913,7 +8913,7 @@ async def upload_file(request: Request, file: UploadFile, table_name: str | None
             except Exception:
                 pass
 
-    # Auto-pin any definitions/glossary sheet in an uploaded Excel file → Brain
+    # Auto-pin any definitions/glossary sheet in an uploaded Excel file > Brain
     if ext in (".xlsx", ".xls") and project:
         try:
             _autoload_definitions(project, tmp_path, ext)
@@ -9025,7 +9025,7 @@ async def upload_file(request: Request, file: UploadFile, table_name: str | None
                             try:
                                 df.to_sql(tbl_name, engine, schema=schema, if_exists='replace', index=False)
                                 try:
-                                    _upload_lg.info(f"✓ upload success: {file.filename}: {len(df)} rows × {len(df.columns)} cols → {tbl_name}")
+                                    _upload_lg.info(f"OK upload success: {file.filename}: {len(df)} rows × {len(df.columns)} cols > {tbl_name}")
                                 except Exception:
                                     pass
                                 tables_saved += 1
@@ -9080,10 +9080,10 @@ async def upload_file(request: Request, file: UploadFile, table_name: str | None
                     write_mode = 'replace'
                     per = (detect_period(sheet_src) or detect_period(file.filename)) if detect_period else None
                     if fp and fp in fp_to_table:
-                        # same schema as an earlier sheet → append into its table
+                        # same schema as an earlier sheet > append into its table
                         tbl_name = fp_to_table[fp]
                         write_mode = 'append'
-                        df["_period"] = per  # always present so grouped appends line up
+                        df["_period"] = per # always present so grouped appends line up
                     else:
                         tbl_name = _sanitize_table_name(tbl_info["name"])
                         if fp:
@@ -9095,7 +9095,7 @@ async def upload_file(request: Request, file: UploadFile, table_name: str | None
                     try:
                         df.to_sql(tbl_name, engine, schema=user_schema, if_exists=write_mode, index=False)
                         try:
-                            _upload_lg.info(f"✓ upload success: {file.filename} [{tbl_info.get('source','')}]: {len(df)} rows × {len(df.columns)} cols → {tbl_name}")
+                            _upload_lg.info(f"OK upload success: {file.filename} [{tbl_info.get('source','')}]: {len(df)} rows × {len(df.columns)} cols > {tbl_name}")
                         except Exception:
                             pass
                         tables_created.append({"table": tbl_name, "rows": len(df), "cols": len(df.columns), "source": tbl_info.get("source", ""), "sheet_number": tbl_info.get("sheet_number", 0), "description": tbl_info.get("description", "")})
@@ -9111,7 +9111,7 @@ async def upload_file(request: Request, file: UploadFile, table_name: str | None
                                     "blocks": tbl_info.get("blocks") or [],
                                     # 2026-05-25: default to len(df) when neither
                                     # max_row nor row_count_in present — rules-direct
-                                    # path was leaving it NULL → audit row hole.
+                                    # path was leaving it NULL > audit row hole.
                                     "row_count_in": tbl_info.get("max_row") or tbl_info.get("row_count_in") or int(len(df)),
                                     "row_count_out": len(df),
                                     "llm_rescued": "llm-rescued" in str(tbl_info.get("source", "")) or "llm-repaired" in str(tbl_info.get("source", "")),
@@ -9423,7 +9423,7 @@ async def upload_file(request: Request, file: UploadFile, table_name: str | None
             # REPLACE or new table
             mode = "replace" if (replace or upload_action == "replace") else "fail"
             # pandas if_exists='replace' issues a bare DROP TABLE (no CASCADE),
-            # which fails (DependentObjectsStillExist → HTTP 500) when an
+            # which fails (DependentObjectsStillExist > HTTP 500) when an
             # engineer-built view depends on the data table. Drop with CASCADE
             # ourselves first, then create fresh via append-on-empty.
             if mode == "replace":
@@ -9510,7 +9510,7 @@ async def upload_file(request: Request, file: UploadFile, table_name: str | None
                                         f'CREATE TABLE "{user_schema}"."{tbl}__bak" '
                                         f'AS TABLE "{user_schema}"."{tbl}"'
                                     ))
-                                    logger.info(f"replace backup: {user_schema}.{tbl} → {tbl}__bak ({_cur_rows} rows)")
+                                    logger.info(f"replace backup: {user_schema}.{tbl} > {tbl}__bak ({_cur_rows} rows)")
                                 else:
                                     logger.info(f"replace backup skipped for {tbl}: {_cur_rows} rows > {_bmax}")
                         except Exception as _be:
@@ -9518,12 +9518,12 @@ async def upload_file(request: Request, file: UploadFile, table_name: str | None
                 try:
                     with engine.begin() as _conn:
                         _conn.execute(text(f'DROP TABLE IF EXISTS "{user_schema}"."{tbl}" CASCADE'))
-                    mode = "fail"  # table now gone — create fresh
+                    mode = "fail" # table now gone — create fresh
                 except Exception as _de:
                     logger.warning(f"replace DROP CASCADE failed for {tbl}: {_de}")
             df.to_sql(tbl, engine, if_exists=mode, index=False, schema=user_schema)
             try:
-                _upload_lg.info(f"✓ upload success: {file.filename}: {len(df)} rows × {len(df.columns)} cols → {tbl}")
+                _upload_lg.info(f"OK upload success: {file.filename}: {len(df)} rows × {len(df.columns)} cols > {tbl}")
             except Exception:
                 pass
 
@@ -9688,7 +9688,7 @@ async def upload_file(request: Request, file: UploadFile, table_name: str | None
                 if _proj:
                     # Run check in background, don't block upload response
                     async def _deferred_retrain():
-                        await _at_aio.sleep(5)  # 5s grace — let upload finish fully
+                        await _at_aio.sleep(5) # 5s grace — let upload finish fully
                         already = await _is_training_running(_proj)
                         if not already:
                             _enqueue_retrain(_proj, "upload_trigger")
@@ -9731,8 +9731,8 @@ async def upload_file(request: Request, file: UploadFile, table_name: str | None
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGED INGEST PIPELINE
-#   upload → stage (disk, hashed) → validate + schema-contract → dry-run → gate →
-#   promote (idempotent, lineage-stamped) → train.
+# upload > stage (disk, hashed) > validate + schema-contract > dry-run > gate >
+# promote (idempotent, lineage-stamped) > train.
 # Files never touch Postgres until /promote. Drift/dups/low-quality are caught at
 # staging, not after they corrupt a table. Direct (non-staged) upload still works.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -9742,15 +9742,15 @@ _STAGE_DATA_EXTS = (".csv", ".xlsx", ".xls", ".json", ".parquet")
 
 def _logical_dataset(filename: str) -> str:
     """Map a filename to its CONSISTENT logical dataset by stripping period tokens.
-    'MM Conso Apr 25.csv', 'MM Conso May 25.csv' → both 'mm_conso' → one contract,
+    'MM Conso Apr 25.csv', 'MM Conso May 25.csv' > both 'mm_conso' > one contract,
     one table. This is what turns monthly drops into a single consolidated table."""
     s = Path(filename).stem.lower()
-    s = re.sub(r"(20\d{2})[-_]?(0[1-9]|1[0-2])", " ", s)            # 2025-04 / 202504
+    s = re.sub(r"(20\d{2})[-_]?(0[1-9]|1[0-2])", " ", s) # 2025-04 / 202504
     s = re.sub(r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*['_ -]?\d{2,4}\b", " ", s)
     s = re.sub(r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b", " ", s)
     s = re.sub(r"\bq[1-4]\b", " ", s)
-    s = re.sub(r"\b20\d{2}\b", " ", s)                               # bare year
-    s = re.sub(r"['_ -]\d{2}\b", " ", s)                            # trailing _25 / -25
+    s = re.sub(r"\b20\d{2}\b", " ", s) # bare year
+    s = re.sub(r"['_ -]\d{2}\b", " ", s) # trailing _25 / -25
     s = re.sub(r"[^a-z0-9]+", "_", s)
     s = re.sub(r"_+", "_", s).strip("_")
     return s[:50] or "dataset"
@@ -9811,8 +9811,8 @@ async def stage_upload(request: Request, file: UploadFile, project: str | None =
             "batch_id": bid, "project": project,
             "created_at": _dt_datetime.utcnow().isoformat(), "status": "staged", "files": [],
         }
-        # Build (df, sheet) pairs. Multi-sheet xlsx → one staged entry per sheet
-        # (each a distinct logical dataset); csv/json/parquet/single-sheet → one.
+        # Build (df, sheet) pairs. Multi-sheet xlsx > one staged entry per sheet
+        # (each a distinct logical dataset); csv/json/parquet/single-sheet > one.
         pairs = []
         if ext == ".parquet":
             pairs = [(_clean_dataframe(pd.read_parquet(tmp_path)), None)]
@@ -9832,7 +9832,7 @@ async def stage_upload(request: Request, file: UploadFile, project: str | None =
         else:
             pairs = [(_read_file(tmp_path, ext), None)]
 
-        # Auto-pin any Definitions/glossary sheet → Brain (kept from direct path).
+        # Auto-pin any Definitions/glossary sheet > Brain (kept from direct path).
         if ext in (".xlsx", ".xls"):
             try:
                 _autoload_definitions(project, tmp_path, ext)
@@ -9856,7 +9856,7 @@ async def stage_upload(request: Request, file: UploadFile, project: str | None =
             if sheet:
                 dataset = _logical_dataset(f"{Path(file.filename).stem} {sheet}")
                 entry["sheet"] = sheet
-                entry["filename"] = f"{file.filename}#{sheet}"   # unique manifest key per sheet
+                entry["filename"] = f"{file.filename}#{sheet}" # unique manifest key per sheet
             else:
                 dataset = _logical_dataset(file.filename)
             entry["dataset"] = dataset
@@ -9884,7 +9884,7 @@ async def stage_upload(request: Request, file: UploadFile, project: str | None =
                 entry["verdict"] = "new"
                 entry["load_key"] = detect_load_key(df, sheet or file.filename)
             # Only quarantine truly broken files (empty / unreadable).
-            # Real CSVs with many sparse cols hit score 0 but train fine. Lowered 40→10.
+            # Real CSVs with many sparse cols hit score 0 but train fine. Lowered 40>10.
             if quality.get("score", 100) < 10 and int(entry.get("rows", 0) or 0) < 5:
                 entry["status"] = "quarantine"
                 entry["reason"] = f"low quality score {quality.get('score')}"
@@ -10348,7 +10348,7 @@ async def upload_document(request: Request, file: UploadFile, project: str | Non
                 # completion even if the SSE client disconnects (which would skip
                 # the generator's post-loop cleanup and leak the file).
                 Path(tmp_path).unlink(missing_ok=True)
-                progress_q.put(None)  # Signal done
+                progress_q.put(None) # Signal done
 
         thread = threading.Thread(target=_process, daemon=True)
         thread.start()
@@ -10377,7 +10377,7 @@ async def upload_document(request: Request, file: UploadFile, project: str | Non
             # temp already unlinked by _process's finally (disconnect-safe)
 
             # Save text
-            _emit_direct = lambda a, s, d: None  # already streamed
+            _emit_direct = lambda a, s, d: None # already streamed
             if project:
                 docs_dir = KNOWLEDGE_DIR / project / "docs"
             else:
@@ -10405,7 +10405,7 @@ async def upload_document(request: Request, file: UploadFile, project: str | Non
                     knowledge = dash_knowledge
                 doc_name = Path(file.filename).stem
                 knowledge.insert(name=f"doc-{doc_name}", text_content=f"Document: {file.filename}\n\n{text_content[:10000]}", reader=TextReader(), skip_if_exists=False)
-                yield f"data: {safe_dumps({'agent': 'Inspector', 'step': 'Knowledge indexing', 'detail': 'indexed to PgVector ✓'})}\n\n"
+                yield f"data: {safe_dumps({'agent': 'Inspector', 'step': 'Knowledge indexing', 'detail': 'indexed to PgVector OK'})}\n\n"
             except Exception as e:
                 yield f"data: {safe_dumps({'agent': 'Inspector', 'step': 'Knowledge indexing', 'detail': f'failed: {str(e)[:80]}'})}\n\n"
 
@@ -10425,7 +10425,7 @@ async def upload_document(request: Request, file: UploadFile, project: str | Non
             # Save tables
             tables_saved = 0
             if doc_tables and project:
-                yield f"data: {safe_dumps({'agent': 'Engineer', 'step': 'Tables → PostgreSQL', 'detail': f'saving {len(doc_tables)} tables...'})}\n\n"
+                yield f"data: {safe_dumps({'agent': 'Engineer', 'step': 'Tables > PostgreSQL', 'detail': f'saving {len(doc_tables)} tables...'})}\n\n"
                 try:
                     from db import get_project_engine
                     from db.session import create_project_schema
@@ -10445,7 +10445,7 @@ async def upload_document(request: Request, file: UploadFile, project: str | Non
                         try:
                             df.to_sql(tbl_name, engine, schema=schema, if_exists='replace', index=False)
                             try:
-                                _upload_lg.info(f"✓ upload success: {file.filename}: {len(df)} rows × {len(df.columns)} cols → {tbl_name}")
+                                _upload_lg.info(f"OK upload success: {file.filename}: {len(df)} rows × {len(df.columns)} cols > {tbl_name}")
                             except Exception:
                                 pass
                             tables_saved += 1
@@ -10596,7 +10596,7 @@ async def upload_document(request: Request, file: UploadFile, project: str | Non
                 try:
                     df.to_sql(tbl_name, engine, schema=schema, if_exists='replace', index=False)
                     try:
-                        _upload_lg.info(f"✓ upload success: {file.filename}: {len(df)} rows × {len(df.columns)} cols → {tbl_name}")
+                        _upload_lg.info(f"OK upload success: {file.filename}: {len(df)} rows × {len(df.columns)} cols > {tbl_name}")
                     except Exception:
                         pass
                     tables_saved += 1
@@ -10691,7 +10691,7 @@ async def upload_document(request: Request, file: UploadFile, project: str | Non
         processing_steps.append({"agent": "Inspector", "step": "Knowledge indexing", "detail": "indexed to PgVector", "status": "done"})
 
     if tables_saved:
-        processing_steps.append({"agent": "Engineer", "step": "Tables → PostgreSQL", "detail": f"{tables_saved} tables saved", "status": "done"})
+        processing_steps.append({"agent": "Engineer", "step": "Tables > PostgreSQL", "detail": f"{tables_saved} tables saved", "status": "done"})
 
     # Add warnings/errors from conductor
     for w in conductor_result.get("warnings", []):
@@ -10732,7 +10732,7 @@ async def upload_document(request: Request, file: UploadFile, project: str | Non
 
 @router.post("/upload-agent")
 async def upload_with_agent(request: Request, file: UploadFile, project: str | None = Form(None)):
-    """Upload a file using the Upload Agent Team (Conductor → Parser/Scanner/Vision → Inspector → Engineer).
+    """Upload a file using the Upload Agent Team (Conductor > Parser/Scanner/Vision > Inspector > Engineer).
 
     This uses AI agents for intelligent processing: structure detection,
     unpivot, merge, quality validation, and post-upload optimization.
@@ -10841,7 +10841,7 @@ STEPS:
                     try:
                         df.to_sql(tbl_name, eng, schema=schema, if_exists='replace', index=False)
                         try:
-                            _upload_lg.info(f"✓ upload success: {file.filename}: {len(df)} rows × {len(df.columns)} cols → {tbl_name}")
+                            _upload_lg.info(f"OK upload success: {file.filename}: {len(df)} rows × {len(df.columns)} cols > {tbl_name}")
                         except Exception:
                             pass
                         tables_stored.append({"table": tbl_name, "rows": len(df), "cols": len(df.columns), "source": tbl_info.get("source", "")})
@@ -11144,8 +11144,8 @@ async def save_feedback(slug: str, request: Request):
     body = await request.json()
     question = body.get("question", "")
     answer = body.get("answer", "")
-    rating = body.get("rating", "up")  # "up" or "down"
-    # Optional "why" payload (correction capture). Lets a 👎 carry a real
+    rating = body.get("rating", "up") # "up" or "down"
+    # Optional "why" payload (correction capture). Lets a carry a real
     # training signal instead of a bare negative.
     comment = (body.get("comment") or "").strip()
     _tags = body.get("tags") or []
@@ -11210,7 +11210,7 @@ async def save_feedback(slug: str, request: Request):
         user = _get_user(request)
         uid = (user or {}).get("id") or (user or {}).get("user_id")
         sess = body.get("session_id") or body.get("session")
-        # A correction (or a 👎 with substantive comment) opens a review item.
+        # A correction (or a with substantive comment) opens a review item.
         corr_status = "pending" if correction else None
         from db.session import get_write_engine as _gwe_fb
         _eng = _gwe_fb()
@@ -11228,8 +11228,8 @@ async def save_feedback(slug: str, request: Request):
     except Exception as _fe:
         logger.warning(f"dash_feedback insert failed: {_fe}")
 
-    # Auto-promote 👍 to golden corpus if SQL present + not gated
-    # Mirrors Dataherald's user-feedback → golden_sql lifecycle (Correction 1, Option B).
+    # Auto-promote to golden corpus if SQL present + not gated
+    # Mirrors Dataherald's user-feedback > golden_sql lifecycle (Correction 1, Option B).
     promoted = None
     if rating == "up" and not gated:
         _sql = (body.get("sql") or "").strip()
@@ -11341,7 +11341,7 @@ async def golden_drift_check(slug: str, request: Request):
 
 @router.get("/projects/{slug}/golden/list")
 async def golden_list(slug: str, request: Request):
-    """List all golden Q→SQL pairs for this project (newest first)."""
+    """List all golden Q>SQL pairs for this project (newest first)."""
     _ = _get_user(request)
     try:
         from dash.learning.golden import list_goldens
@@ -11755,7 +11755,7 @@ def column_map(slug: str, table: str, request: Request):
             pass
 
     cols = [p for p in profiles if not str(p.get("name", "")).startswith("_source_")]
-    # group → list, ordered for display
+    # group > list, ordered for display
     order = ["DIMENSION", "MEASURE", "IDENTIFIER", "DATE", "TEXT"]
     groups: dict[str, list] = {g: [] for g in order}
     for p in cols:
@@ -11797,7 +11797,7 @@ async def retrain_project(slug: str, request: Request):
 
     # Optional selective-train list from request body (fail-soft on empty body).
     selected_tables: list[str] | None = None
-    force = False  # when True, bypass fingerprint "unchanged" skip (train untrained tables)
+    force = False # when True, bypass fingerprint "unchanged" skip (train untrained tables)
     try:
         body = await request.json()
         if isinstance(body, dict):
@@ -11826,8 +11826,8 @@ async def retrain_project(slug: str, request: Request):
     # upload. Training it (a) wastes a full pipeline pass, (b) writes a
     # dash_table_metadata row that makes the stock resolver (STOCK_COLS =
     # site_code+stock_qty, which shop_flat also has) pick shop_flat as the
-    # "latest stock table" → build_shop_flat then reads article_code (shop_flat
-    # has art_key) → "column does not exist" → rebuild silently skipped.
+    # "latest stock table" > build_shop_flat then reads article_code (shop_flat
+    # has art_key) > "column does not exist" > rebuild silently skipped.
     # 2026-06-09.
     _DERIVED_TABLES = {"shop_flat"}
     # Engineer-built matviews are derived too — exclude every registered
@@ -11844,7 +11844,7 @@ async def retrain_project(slug: str, request: Request):
     tables = [t for t in tables if not t.endswith("__bak")]
 
     # Fire column enrichment IMMEDIATELY (parallel to training, fire-and-forget).
-    # User clicked "Train All" → columns should refresh even if training stalls.
+    # User clicked "Train All" > columns should refresh even if training stalls.
     # UPSERT idempotent. Fail-soft. ~30s per table for 15 cols.
     if tables and not selected_tables:
         try:
@@ -11915,7 +11915,7 @@ async def retrain_project(slug: str, request: Request):
                 _update_step("reindex")
                 _dlog("indexing documents into knowledge base...")
                 _reload_project_knowledge(slug, timeout_sec=60)
-                _dlog("✓ knowledge indexed")
+                _dlog("OK knowledge indexed")
 
                 # Step 2: Read all doc text for LLM context
                 docs_dir = KNOWLEDGE_DIR / slug / "docs"
@@ -11945,7 +11945,7 @@ async def retrain_project(slug: str, request: Request):
                             desc = _describe_images_with_vision(imgs, raw_file.name)
                             if desc:
                                 all_text += f"\n\n--- IMAGES FROM {raw_file.name} ---\n{desc}"
-                                _dlog(f"✓ {len(imgs)} image descriptions added")
+                                _dlog(f"OK {len(imgs)} image descriptions added")
 
                 if not all_text.strip():
                     _dlog("· no document text found — skipping brain fill")
@@ -11974,9 +11974,9 @@ async def retrain_project(slug: str, request: Request):
                                             ), {"s": slug, "f": fact})
                                             saved += 1
                                     conn.commit()
-                                _dlog(f"✓ {saved} memories saved")
+                                _dlog(f"OK {saved} memories saved")
                     except Exception as e:
-                        _dlog(f"⚠ memories error: {str(e)[:60]}")
+                        _dlog(f" memories error: {str(e)[:60]}")
 
                     # Step 4: Generate persona
                     _update_step("persona")
@@ -12001,9 +12001,9 @@ async def retrain_project(slug: str, request: Request):
                                         "ON CONFLICT (project_slug) DO UPDATE SET persona = CAST(:p AS jsonb)"
                                     ), {"s": slug, "p": json.dumps(persona)})
                                     conn.commit()
-                                _dlog("✓ persona generated")
+                                _dlog("OK persona generated")
                     except Exception as e:
-                        _dlog(f"⚠ persona error: {str(e)[:60]}")
+                        _dlog(f" persona error: {str(e)[:60]}")
 
                     # Step 5: Generate workflows (structure-aware for PPTX/PDF/DOCX)
                     _update_step("synthesis")
@@ -12042,7 +12042,7 @@ async def retrain_project(slug: str, request: Request):
                                             ), {"s": slug, "n": wf["name"], "d": wf.get("description", ""), "st": json.dumps(step_list)})
                                             conn.commit()
                                         structure_wf_saved += 1
-                                        _dlog(f"✓ workflow from {raw_file.name} ({len(step_list)} steps)")
+                                        _dlog(f"OK workflow from {raw_file.name} ({len(step_list)} steps)")
 
                         # Fall back: use LLM to extract structure from text content
                         if structure_wf_saved == 0:
@@ -12067,7 +12067,7 @@ async def retrain_project(slug: str, request: Request):
                                             "VALUES (:s, :n, :d, CAST(:st AS jsonb), 'document') ON CONFLICT DO NOTHING"
                                         ), {"s": slug, "n": wf["name"], "d": wf.get("description", ""), "st": json.dumps(step_list)})
                                         conn.commit()
-                                    _dlog(f"✓ workflow from text ({len(step_list)} steps)")
+                                    _dlog(f"OK workflow from text ({len(step_list)} steps)")
                                     structure_wf_saved = 1
                                 elif isinstance(wf, list):
                                     saved = 0
@@ -12082,12 +12082,12 @@ async def retrain_project(slug: str, request: Request):
                                                 ), {"s": slug, "n": w["name"], "d": w.get("description", ""), "st": json.dumps(step_list)})
                                                 saved += 1
                                         conn.commit()
-                                    _dlog(f"✓ {saved} workflows from text")
+                                    _dlog(f"OK {saved} workflows from text")
                                     structure_wf_saved = saved
                         else:
-                            _dlog(f"✓ {structure_wf_saved} document-based workflows saved")
+                            _dlog(f"OK {structure_wf_saved} document-based workflows saved")
                     except Exception as e:
-                        _dlog(f"⚠ workflows error: {str(e)[:60]}")
+                        _dlog(f" workflows error: {str(e)[:60]}")
 
                     # Step 6: Generate evals
                     _dlog("generating eval questions...")
@@ -12114,9 +12114,9 @@ async def retrain_project(slug: str, request: Request):
                                             ), {"s": slug, "q": ev["question"], "a": ev.get("expected_answer", "")})
                                             saved += 1
                                     conn.commit()
-                                _dlog(f"✓ {saved} eval questions saved")
+                                _dlog(f"OK {saved} eval questions saved")
                     except Exception as e:
-                        _dlog(f"⚠ evals error: {str(e)[:60]}")
+                        _dlog(f" evals error: {str(e)[:60]}")
 
                     # Step 7: Seed feedback
                     _dlog("seeding sample feedback...")
@@ -12127,7 +12127,7 @@ async def retrain_project(slug: str, request: Request):
                                 "VALUES (:s, 'What is this project about?', :a, 'up')"
                             ), {"s": slug, "a": all_text[:500]})
                             conn.commit()
-                        _dlog("✓ 1 seed feedback saved")
+                        _dlog("OK 1 seed feedback saved")
                     except Exception:
                         pass
 
@@ -12155,9 +12155,9 @@ async def retrain_project(slug: str, request: Request):
                                             ), {"s": slug, "rid": rule_id, "name": r["name"], "type": r.get("type", "business_rule"), "defn": r.get("definition", "")})
                                             saved += 1
                                     conn.commit()
-                                _dlog(f"✓ {saved} business rules extracted")
+                                _dlog(f"OK {saved} business rules extracted")
                     except Exception as e:
-                        _dlog(f"⚠ rules error: {str(e)[:60]}")
+                        _dlog(f" rules error: {str(e)[:60]}")
 
                     # Step 9: Extract domain knowledge (glossary + KPIs)
                     _dlog("extracting domain knowledge...")
@@ -12176,7 +12176,7 @@ async def retrain_project(slug: str, request: Request):
                             if isinstance(domain, dict):
                                 saved = 0
                                 with eng.connect() as conn:
-                                    # Glossary → memories
+                                    # Glossary > memories
                                     for g in (domain.get("glossary") or [])[:10]:
                                         if isinstance(g, dict) and g.get("term"):
                                             conn.execute(text(
@@ -12184,7 +12184,7 @@ async def retrain_project(slug: str, request: Request):
                                                 "VALUES (:s, 'project', :f, 'glossary') ON CONFLICT DO NOTHING"
                                             ), {"s": slug, "f": f"Glossary: {g['term']} = {g.get('definition', '')}"})
                                             saved += 1
-                                    # KPIs → rules
+                                    # KPIs > rules
                                     for k in (domain.get("kpis") or [])[:8]:
                                         if isinstance(k, dict) and k.get("name"):
                                             rule_id = f"kpi_doc_{k['name'].lower().replace(' ', '_')[:25]}"
@@ -12193,7 +12193,7 @@ async def retrain_project(slug: str, request: Request):
                                                 "VALUES (:s, :rid, :name, 'kpi', :defn, 'doc_training') ON CONFLICT DO NOTHING"
                                             ), {"s": slug, "rid": rule_id, "name": k["name"], "defn": k.get("definition", "")})
                                             saved += 1
-                                    # Metrics → memories
+                                    # Metrics > memories
                                     for m in (domain.get("key_metrics") or [])[:5]:
                                         if isinstance(m, dict) and m.get("name"):
                                             conn.execute(text(
@@ -12202,9 +12202,9 @@ async def retrain_project(slug: str, request: Request):
                                             ), {"s": slug, "f": f"Key metric: {m['name']} = {m.get('value', 'N/A')}"})
                                             saved += 1
                                     conn.commit()
-                                _dlog(f"✓ {saved} domain knowledge items extracted")
+                                _dlog(f"OK {saved} domain knowledge items extracted")
                     except Exception as e:
-                        _dlog(f"⚠ domain knowledge error: {str(e)[:60]}")
+                        _dlog(f" domain knowledge error: {str(e)[:60]}")
 
                     # Step 10: Generate proactive insights from docs
                     _dlog("generating proactive insights...")
@@ -12228,9 +12228,9 @@ async def retrain_project(slug: str, request: Request):
                                             ), {"s": slug, "i": ins["insight"], "sev": ins.get("severity", "info")})
                                             saved += 1
                                     conn.commit()
-                                _dlog(f"✓ {saved} proactive insights generated")
+                                _dlog(f"OK {saved} proactive insights generated")
                     except Exception as e:
-                        _dlog(f"⚠ insights error: {str(e)[:60]}")
+                        _dlog(f" insights error: {str(e)[:60]}")
 
                     # Step 11: Cross-document relationships
                     _update_step("relationships")
@@ -12268,11 +12268,11 @@ async def retrain_project(slug: str, request: Request):
                                                     "conf": r.get("strength", 0.5)})
                                                 saved += 1
                                         conn.commit()
-                                    _dlog(f"✓ {saved} cross-document relationships found")
+                                    _dlog(f"OK {saved} cross-document relationships found")
                         else:
                             _dlog("· only 1 document — no cross-references to find")
                     except Exception as e:
-                        _dlog(f"⚠ relationships error: {str(e)[:60]}")
+                        _dlog(f" relationships error: {str(e)[:60]}")
 
                     # Step 12: Negative examples
                     _dlog("extracting negative examples...")
@@ -12294,12 +12294,12 @@ async def retrain_project(slug: str, request: Request):
                                             conn.execute(text(
                                                 "INSERT INTO public.dash_memories (project_slug, scope, fact, source) "
                                                 "VALUES (:s, 'project', :f, 'negative_example') ON CONFLICT DO NOTHING"
-                                            ), {"s": slug, "f": f"⚠ {neg}"})
+                                            ), {"s": slug, "f": f" {neg}"})
                                             saved += 1
                                     conn.commit()
-                                _dlog(f"✓ {saved} negative examples saved")
+                                _dlog(f"OK {saved} negative examples saved")
                     except Exception as e:
-                        _dlog(f"⚠ negative examples error: {str(e)[:60]}")
+                        _dlog(f" negative examples error: {str(e)[:60]}")
 
                     # Step 13: Training Q&A from docs
                     _dlog("generating training Q&A...")
@@ -12317,9 +12317,9 @@ async def retrain_project(slug: str, request: Request):
                                 qa_file.mkdir(parents=True, exist_ok=True)
                                 with open(qa_file / "doc_qa.json", "w") as f:
                                     json.dump(qas, f, indent=2)
-                                _dlog(f"✓ {len(qas)} training Q&A pairs generated")
+                                _dlog(f"OK {len(qas)} training Q&A pairs generated")
                     except Exception as e:
-                        _dlog(f"⚠ Q&A error: {str(e)[:60]}")
+                        _dlog(f" Q&A error: {str(e)[:60]}")
 
                     # Step 14: Multi-doc synthesis
                     if len([f for f in docs_dir.iterdir() if f.is_file()]) >= 2:
@@ -12340,9 +12340,9 @@ async def retrain_project(slug: str, request: Request):
                                         "VALUES (:s, 'project', :f, 'synthesis') ON CONFLICT DO NOTHING"
                                     ), {"s": slug, "f": f"Project synthesis: {result[:500]}"})
                                     conn.commit()
-                                _dlog("✓ multi-document synthesis complete")
+                                _dlog("OK multi-document synthesis complete")
                         except Exception as e:
-                            _dlog(f"⚠ synthesis error: {str(e)[:60]}")
+                            _dlog(f" synthesis error: {str(e)[:60]}")
 
                     # Step 15: LangExtract — grounded fact extraction for Researcher
                     _dlog("extracting grounded facts with LangExtract...")
@@ -12352,8 +12352,8 @@ async def retrain_project(slug: str, request: Request):
                     # 2026-05-25: wrap in StepRunner so doc-only path shares
                     # the same fp cache + dash_training_steps audit as data
                     # path. Previously direct build_knowledge_graph() call
-                    # had no fp cache → rebuilt every doc-only retrain even
-                    # when docs unchanged, AND wrote 0 step rows → audit blind.
+                    # had no fp cache > rebuilt every doc-only retrain even
+                    # when docs unchanged, AND wrote 0 step rows > audit blind.
                     _update_step("knowledge_graph")
                     _dlog("building cross-source knowledge graph...")
                     try:
@@ -12363,7 +12363,7 @@ async def retrain_project(slug: str, request: Request):
 
                         def _do_kg_doc():
                             stats = build_knowledge_graph(slug)
-                            _dlog(f"✓ knowledge graph built ({stats.get('triples', 0)} triples, {stats.get('communities', 0)} communities)")
+                            _dlog(f"OK knowledge graph built ({stats.get('triples', 0)} triples, {stats.get('communities', 0)} communities)")
                             return stats
 
                         # fp = doc set + extracted-text length (cheap stable signal)
@@ -12374,7 +12374,7 @@ async def retrain_project(slug: str, request: Request):
                             scope="project", step_no=16,
                         )
                     except Exception as e:
-                        _dlog(f"⚠ knowledge graph skipped: {str(e)[:60]}")
+                        _dlog(f" knowledge graph skipped: {str(e)[:60]}")
 
                     # Sub-agent synthesis — DISABLED BY DEFAULT (dead feature, see data path).
                     if os.environ.get("SUBAGENT_SYNTHESIS_ENABLED") in ("1", "true", "True"):
@@ -12382,7 +12382,7 @@ async def retrain_project(slug: str, request: Request):
                             _update_step("subagent_synthesis")
                             from dash.learning.subagent_synthesis import synthesize_subagents
                             _sa_res = synthesize_subagents(slug, logger=_dlog)
-                            _dlog(f"✓ sub-agents: created={_sa_res.get('created',0)} clusters={_sa_res.get('clusters',0)}")
+                            _dlog(f"OK sub-agents: created={_sa_res.get('created',0)} clusters={_sa_res.get('clusters',0)}")
                         except Exception:
                             logger.exception("subagent_synthesis failed (non-fatal)")
 
@@ -12390,11 +12390,11 @@ async def retrain_project(slug: str, request: Request):
                     try:
                         _vbf = _enqueue_vector_backfill(slug)
                         _dlog(
-                            f"✓ vector backfill: {_vbf.get('knowledge',0)} docs, "
+                            f"OK vector backfill: {_vbf.get('knowledge',0)} docs, "
                             f"{_vbf.get('brain',0)} brain, {_vbf.get('kg',0)} kg triples"
                         )
                     except Exception as _vbf_e:
-                        _dlog(f"⚠ vector backfill skipped: {str(_vbf_e)[:80]}")
+                        _dlog(f" vector backfill skipped: {str(_vbf_e)[:80]}")
 
                     # Step 17a: Agent Template Reconciliation
                     try:
@@ -12403,12 +12403,12 @@ async def retrain_project(slug: str, request: Request):
                         if rec.get("reconciled"):
                             wfs = rec.get("workflows", {})
                             _dlog(
-                                f"✓ template reconciled: {rec.get('entities_matched',0)}/{rec.get('entities_total',0)} entities, "
+                                f"OK template reconciled: {rec.get('entities_matched',0)}/{rec.get('entities_total',0)} entities, "
                                 f"{rec.get('bindings_bound',0)}/{rec.get('bindings_total',0)} bindings, "
                                 f"{wfs.get('active',0)} workflows active"
                             )
                     except Exception as _re:
-                        _dlog(f"⚠ template reconcile skipped: {str(_re)[:60]}")
+                        _dlog(f" template reconcile skipped: {str(_re)[:60]}")
 
                     # Step 17: Auto-Scope Guardrail
                     _update_step("scope_derivation")
@@ -12419,20 +12419,20 @@ async def retrain_project(slug: str, request: Request):
                         derived = derive_scope(slug)
                         set_scope(slug, derived, mark_auto=True)
                         _dlog(
-                            f"✓ scope: {len(derived.get('topics', []))} topics, "
+                            f"OK scope: {len(derived.get('topics', []))} topics, "
                             f"{len(derived.get('denied_intents', []))} denied"
                         )
                     except Exception as e:
                         import logging
                         logging.warning(f"scope derivation failed for {slug}: {e}")
-                        _dlog(f"⚠ scope derivation skipped: {str(e)[:60]}")
+                        _dlog(f" scope derivation skipped: {str(e)[:60]}")
                     # Auto-apply data-fit feature config (only if never configured).
                     try:
                         from dash.feature_config import apply_recommended_if_unset
                         _rec = apply_recommended_if_unset(slug)
                         if _rec:
                             _on = [k for k, v in (_rec.get("tools") or {}).items() if v]
-                            _dlog(f"✓ feature config auto-set from data: {', '.join(_on) or 'none'}")
+                            _dlog(f"OK feature config auto-set from data: {', '.join(_on) or 'none'}")
                     except Exception as e:
                         import logging
                         logging.warning(f"feature-config auto-apply failed for {slug}: {e}")
@@ -12444,7 +12444,7 @@ async def retrain_project(slug: str, request: Request):
                         if looks_like_crm(slug):
                             _cr = seed_crm_starter(slug)
                             if _cr.get("seeded"):
-                                _dlog(f"✓ CRM starter metrics seeded: {', '.join(_cr['seeded'])}")
+                                _dlog(f"OK CRM starter metrics seeded: {', '.join(_cr['seeded'])}")
                     except Exception as e:
                         import logging
                         logging.warning(f"CRM starter seed failed for {slug}: {e}")
@@ -12456,15 +12456,15 @@ async def retrain_project(slug: str, request: Request):
                         from dash.learning.goals_deriver import derive_goals
                         gres = derive_goals(slug, force=False)
                         if gres.get("derived"):
-                            _dlog("✓ learning_goals.md auto-generated")
+                            _dlog("OK learning_goals.md auto-generated")
                         else:
                             _dlog(f"· goals skipped: {gres.get('reason','')[:60]}")
                     except Exception as e:
                         import logging
                         logging.warning(f"goals derivation failed for {slug}: {e}")
-                        _dlog(f"⚠ goals derivation skipped: {str(e)[:60]}")
+                        _dlog(f" goals derivation skipped: {str(e)[:60]}")
 
-                _dlog("✓ doc-only training complete")
+                _dlog("OK doc-only training complete")
 
                 # Save training run with proper step tracking
                 run_id = None
@@ -12483,7 +12483,7 @@ async def retrain_project(slug: str, request: Request):
 
     import pandas as pd
 
-    _training_cancel_flags[slug] = False  # Reset cancel flag
+    _training_cancel_flags[slug] = False # Reset cancel flag
 
     def _bg():
         import time as _time
@@ -12553,7 +12553,7 @@ async def retrain_project(slug: str, request: Request):
         _llm_lock = threading.Lock()
         # Thread-local current-table context so parallel table workers don't
         # clobber each other's LLM-log labels. The observer callback runs on
-        # whichever worker thread made the LLM call → reads its own thread's ctx.
+        # whichever worker thread made the LLM call > reads its own thread's ctx.
         _tbl_ctx = threading.local()
 
         def _cur_tbl():
@@ -12568,11 +12568,11 @@ async def retrain_project(slug: str, request: Request):
                 _calls = _llm_totals["calls"]
                 _cost = _llm_totals["cost_usd"]
             model_short = (stats.get("model", "") or "").split("/")[-1]
-            tag = "✗" if not stats.get("ok") else "✓"
+            tag = "x" if not stats.get("ok") else "OK"
             msg = (
-                f"  {tag} llm · {stats.get('task','?')} · {model_short} · "
+                f" {tag} llm · {stats.get('task','?')} · {model_short} · "
                 f"{stats.get('latency_s', 0)}s · "
-                f"{stats.get('tokens_in', 0)}→{stats.get('tokens_out', 0)} tok · "
+                f"{stats.get('tokens_in', 0)}>{stats.get('tokens_out', 0)} tok · "
                 f"${stats.get('cost_usd', 0):.4f}"
                 f" · running ${_cost:.4f} ({_calls} calls)"
             )
@@ -12588,18 +12588,18 @@ async def retrain_project(slug: str, request: Request):
         # clear / first-table setup) leaves logs=[] and a post-mortem can't tell
         # where it stuck. 2026-06-13.
         try:
-            _master_log(f"▶ retrain started — {total_tables} table(s): {', '.join(tables[:8])}"
+            _master_log(f" retrain started — {total_tables} table(s): {', '.join(tables[:8])}"
                         + (" …" if total_tables > 8 else ""), "", 0)
         except Exception:
             pass
 
         # Clear stale eval cases ONCE at retrain start. Per-table eval generation
         # appends to public.dash_evals every run with no dedup, so the set grew
-        # unbounded (15→30→90...) and post-training evals got slower each retrain.
+        # unbounded (15>30>90...) and post-training evals got slower each retrain.
         # Wiping here means each retrain regenerates a fresh, bounded eval set.
         # Purge orphaned knowledge files for tables that no longer exist (e.g.
         # a raw-SQL wipe drops the DB table but leaves dimensions/qa/business
-        # JSON on disk → ghost relationships + eval cases against dead tables).
+        # JSON on disk > ghost relationships + eval cases against dead tables).
         try:
             _purge_orphan_knowledge(slug, log_fn=lambda m: _master_log(m, "", total_tables))
         except Exception:
@@ -12626,7 +12626,7 @@ async def retrain_project(slug: str, request: Request):
             if _training_cancel_flags.get(slug):
                 try:
                     _trace_end("done")
-                except Exception:  # noqa: BLE001
+                except Exception: # noqa: BLE001
                     pass
                 return {"status": "cancelled", "table": tbl}
             _train_err: str | None = None
@@ -12687,19 +12687,19 @@ async def retrain_project(slug: str, request: Request):
 
                 # Save new fingerprint after training
                 save_fingerprint(slug, tbl, row_count, tbl_cols)
-                _master_log(f"✓ table {tbl} training complete ({tbl_idx}/{total_tables})", tbl, tbl_idx)
+                _master_log(f"OK table {tbl} training complete ({tbl_idx}/{total_tables})", tbl, tbl_idx)
                 return {"status": "trained", "table": tbl}
             except Exception as e:
                 import logging
                 logging.error(f"Retrain failed for {slug}/{tbl}: {e}")
-                _master_log(f"⚠ table {tbl} training failed: {str(e)[:80]}", tbl, tbl_idx)
+                _master_log(f" table {tbl} training failed: {str(e)[:80]}", tbl, tbl_idx)
                 _train_err = str(e)[:200]
                 return {"status": "failed", "table": tbl, "error": str(e)[:200]}
             finally:
                 # Close this table's root training trace (fail-soft).
                 try:
                     _trace_end("error" if _train_err else "done", _train_err)
-                except Exception:  # noqa: BLE001
+                except Exception: # noqa: BLE001
                     pass
 
         # Parallelize per-table training (max 4 concurrent). Each table opens its
@@ -12708,7 +12708,7 @@ async def retrain_project(slug: str, request: Request):
         #
         # PER-TABLE TIMEOUT (RETRAIN_TABLE_TIMEOUT_S, default 600s) is a hard
         # ceiling so ONE hung table/step can't wedge the whole batch forever. The
-        # old `as_completed(_futs)` loop blocked indefinitely on a stuck future →
+        # old `as_completed(_futs)` loop blocked indefinitely on a stuck future >
         # the run sat 'running' until the 12-min stale-watchdog killed it with
         # logs=[] and no clue which table. Now a hung future's .result(timeout)
         # returns control, we log it, count it failed, and move on. We do NOT join
@@ -12766,11 +12766,11 @@ async def retrain_project(slug: str, request: Request):
                 _idx_to = max(180, min(600, _kfiles * 15))
                 _master_log(f"indexing knowledge base — {_kfiles} files ({_idx_to}s timeout)…", "", total_tables)
                 if _reload_project_knowledge(slug, timeout_sec=_idx_to):
-                    _master_log("✓ knowledge indexed", "", total_tables)
+                    _master_log("OK knowledge indexed", "", total_tables)
                 else:
-                    _master_log("⚠ knowledge indexing timed out — skipped (training still complete)", "", total_tables)
+                    _master_log(" knowledge indexing timed out — skipped (training still complete)", "", total_tables)
             except Exception as _ie:
-                _master_log(f"⚠ knowledge indexing error: {str(_ie)[:80]}", "", total_tables)
+                _master_log(f" knowledge indexing error: {str(_ie)[:80]}", "", total_tables)
 
         # Kick off LLM column enrichment for ALL project tables (fire-and-forget,
         # fail-soft, runs in background). Auto-fills dash_column_meta so the
@@ -12791,13 +12791,13 @@ async def retrain_project(slug: str, request: Request):
                             try:
                                 _loop.run_until_complete(enrich_columns_async(slug, _t))
                             except Exception:
-                                _master_log(f"⚠ col enrich failed for {_t}", _t, 0)
+                                _master_log(f" col enrich failed for {_t}", _t, 0)
                         _loop.close()
                     except Exception:
                         pass
                 import threading as _th
                 _th.Thread(target=_kick_enrich, daemon=True, name=f"enrich-{slug}").start()
-                _master_log(f"⚙ column enrichment queued for {len(_trained_tbls)} table(s)", "", total_tables)
+                _master_log(f" column enrichment queued for {len(_trained_tbls)} table(s)", "", total_tables)
             except Exception:
                 pass
 
@@ -12821,7 +12821,7 @@ async def retrain_project(slug: str, request: Request):
                 return []
 
         def _tail_doc_count() -> int:
-            """Project document count (KG fp input). Fail-soft → 0."""
+            """Project document count (KG fp input). Fail-soft > 0."""
             try:
                 with master_engine.connect() as _dc:
                     return int(_dc.execute(text(
@@ -12872,15 +12872,15 @@ async def retrain_project(slug: str, request: Request):
                         slug, _plan.matviews, _base, db_url, schema=schema,
                         log=lambda m: _master_log(m, "", total_tables))
                     _ok = sum(1 for r in _res if r.get("ok"))
-                    _master_log(f"✓ semantic layer: {_ok}/{len(_res)} matviews created", "", total_tables)
+                    _master_log(f"OK semantic layer: {_ok}/{len(_res)} matviews created", "", total_tables)
                     for _sk in (getattr(_plan, "skipped", None) or [])[:5]:
-                        _master_log(f"  · skipped: {str(_sk)[:100]}", "", total_tables)
+                        _master_log(f" · skipped: {str(_sk)[:100]}", "", total_tables)
                 else:
                     _master_log("· Engineer proposed no matviews", "", total_tables)
             except Exception as _sle:
                 import logging as _l
                 _l.getLogger(__name__).warning(f"semantic layer failed for {slug}: {_sle}")
-                _master_log(f"⚠ semantic layer skipped: {str(_sle)[:100]}", "", total_tables)
+                _master_log(f" semantic layer skipped: {str(_sle)[:100]}", "", total_tables)
 
         # Cross-Source Knowledge Graph (runs even if all tables were skipped)
         # Knowledge graph runs FIRST (serially) — subagent_synthesis depends on it.
@@ -12909,12 +12909,12 @@ async def retrain_project(slug: str, request: Request):
 
             def _do_kg():
                 kg_stats = build_knowledge_graph(slug)
-                _master_log(f"✓ knowledge graph: {kg_stats.get('triples', 0)} triples, {kg_stats.get('entities', 0)} entities, {kg_stats.get('communities', 0)} communities", "", total_tables)
+                _master_log(f"OK knowledge graph: {kg_stats.get('triples', 0)} triples, {kg_stats.get('entities', 0)} entities, {kg_stats.get('communities', 0)} communities", "", total_tables)
                 return kg_stats
 
             # Fingerprint must include row counts — 2026-05-25 fix. Previous fp
             # (tables + doc count) treated same-named tables as unchanged even
-            # when data was wiped + reloaded → KG step was skipped on every
+            # when data was wiped + reloaded > KG step was skipped on every
             # retrain after first run. Added row counts so any data change
             # invalidates the cached fp and rebuilds the graph.
             _tail_runner.run(
@@ -12929,7 +12929,7 @@ async def retrain_project(slug: str, request: Request):
         except Exception as e:
             import logging
             logging.error(f"Knowledge graph failed for {slug}: {e}")
-            _master_log(f"⚠ knowledge graph skipped: {str(e)[:80]}", "", total_tables)
+            _master_log(f" knowledge graph skipped: {str(e)[:80]}", "", total_tables)
 
         # Sub-agent synthesis — DISABLED BY DEFAULT (dead feature). It writes
         # dash_custom_agents rows with enabled=false that are NEVER promoted,
@@ -12947,7 +12947,7 @@ async def retrain_project(slug: str, request: Request):
                 def _do_subagents():
                     _sa_res = synthesize_subagents(slug, logger=_sa_log)
                     _master_log(
-                        f"✓ sub-agents: created={_sa_res.get('created',0)} skipped={_sa_res.get('skipped',0)} clusters={_sa_res.get('clusters',0)}",
+                        f"OK sub-agents: created={_sa_res.get('created',0)} skipped={_sa_res.get('skipped',0)} clusters={_sa_res.get('clusters',0)}",
                         "", total_tables,
                     )
                     return _sa_res
@@ -12960,7 +12960,7 @@ async def retrain_project(slug: str, request: Request):
             except Exception as _sa_e:
                 import logging
                 logging.exception("subagent_synthesis failed (non-fatal)")
-                _master_log(f"⚠ subagent_synthesis skipped: {str(_sa_e)[:80]}", "", total_tables)
+                _master_log(f" subagent_synthesis skipped: {str(_sa_e)[:80]}", "", total_tables)
         # else: sub-agent synthesis is a dead feature (SUBAGENT_SYNTHESIS_ENABLED=1
         # to re-enable) — silent, no log line.
 
@@ -12972,14 +12972,14 @@ async def retrain_project(slug: str, request: Request):
             def _do_vbf():
                 _vbf = _enqueue_vector_backfill(slug)
                 _master_log(
-                    f"✓ vector backfill enqueued: {_vbf.get('knowledge',0)} docs, "
+                    f"OK vector backfill enqueued: {_vbf.get('knowledge',0)} docs, "
                     f"{_vbf.get('brain',0)} brain, {_vbf.get('kg',0)} kg triples"
                     + (f" ({_vbf['errors']} errors)" if _vbf.get('errors') else ""),
                     "", total_tables,
                 )
                 return _vbf
 
-            # Issue #41 — fp = sorted table names. Unchanged retrain → skip the
+            # Issue #41 — fp = sorted table names. Unchanged retrain > skip the
             # backfill enqueue (vectors already populated from a prior run).
             _tail_runner.run(
                 "vector_backfill", _do_vbf,
@@ -12987,7 +12987,7 @@ async def retrain_project(slug: str, request: Request):
                 scope="project", step_no=31,
             )
         except Exception as _vbf_e:
-            _master_log(f"⚠ vector backfill skipped: {str(_vbf_e)[:80]}", "", total_tables)
+            _master_log(f" vector backfill skipped: {str(_vbf_e)[:80]}", "", total_tables)
 
         # Step 14c: Codex code enrichment — read view/table DDL + source logic,
         # LLM-enrich, persist to dash_table_metadata.metadata['pipeline_logic'].
@@ -12998,11 +12998,11 @@ async def retrain_project(slug: str, request: Request):
             from dash.tools.codex_code import run_codex_code_enrichment
             res = run_codex_code_enrichment(slug)
             _master_log(
-                f"✓ codex code: {res.get('tables_enriched', 0)} tables enriched from source logic",
+                f"OK codex code: {res.get('tables_enriched', 0)} tables enriched from source logic",
                 "", total_tables,
             )
         except Exception as _cce_e:
-            _master_log(f"⚠ codex code enrichment skipped: {str(_cce_e)[:80]}", "", total_tables)
+            _master_log(f" codex code enrichment skipped: {str(_cce_e)[:80]}", "", total_tables)
 
         # ─── Independent tail steps run CONCURRENTLY (max 4) ──────────────────
         # scope_derivation, goals_derivation, auto ML models, post-training evals,
@@ -13022,7 +13022,7 @@ async def retrain_project(slug: str, request: Request):
                 derived = derive_scope(slug)
                 set_scope(slug, derived, mark_auto=True)
                 _master_log(
-                    f"✓ scope: {len(derived.get('topics', []))} topics, "
+                    f"OK scope: {len(derived.get('topics', []))} topics, "
                     f"{len(derived.get('core_entities', []))} entities, "
                     f"{len(derived.get('denied_intents', []))} denied",
                     "", total_tables,
@@ -13032,7 +13032,7 @@ async def retrain_project(slug: str, request: Request):
                     _rec = apply_recommended_if_unset(slug)
                     if _rec:
                         _on = [k for k, v in (_rec.get("tools") or {}).items() if v]
-                        _master_log(f"✓ feature config auto-set from data: {', '.join(_on) or 'docs-only'}", "", total_tables)
+                        _master_log(f"OK feature config auto-set from data: {', '.join(_on) or 'docs-only'}", "", total_tables)
                 except Exception as _fe:
                     import logging
                     logging.warning(f"feature-config auto-apply failed for {slug}: {_fe}")
@@ -13041,7 +13041,7 @@ async def retrain_project(slug: str, request: Request):
                     if looks_like_crm(slug):
                         _cr = seed_crm_starter(slug)
                         if _cr.get("seeded"):
-                            _master_log(f"✓ CRM starter metrics seeded: {', '.join(_cr['seeded'])}", "", total_tables)
+                            _master_log(f"OK CRM starter metrics seeded: {', '.join(_cr['seeded'])}", "", total_tables)
                 except Exception as _ce:
                     import logging
                     logging.warning(f"CRM starter seed failed for {slug}: {_ce}")
@@ -13056,7 +13056,7 @@ async def retrain_project(slug: str, request: Request):
                     from dash.training.phase_e import _all_column_names
                     # fp = column set only. Scope is schema-driven; do NOT key on
                     # persona (persona_enrich regenerates it via LLM every train,
-                    # so its text drifts → fp would never be stable → never cache).
+                    # so its text drifts > fp would never be stable > never cache).
                     _sr = StepRunner(master_run_id, slug,
                                      logger_fn=lambda m: _master_log(m, "", total_tables))
                     _sr.run("derive_scope", _do_scope,
@@ -13066,14 +13066,14 @@ async def retrain_project(slug: str, request: Request):
                 except Exception as e:
                     import logging
                     logging.warning(f"scope (v2) failed for {slug}, falling back: {e}")
-                    _master_log(f"⚠ scope v2 fell back: {str(e)[:60]}", "", total_tables)
+                    _master_log(f" scope v2 fell back: {str(e)[:60]}", "", total_tables)
 
             try:
                 _do_scope()
             except Exception as e:
                 import logging
                 logging.warning(f"scope derivation failed for {slug}: {e}")
-                _master_log(f"⚠ scope derivation skipped: {str(e)[:80]}", "", total_tables)
+                _master_log(f" scope derivation skipped: {str(e)[:80]}", "", total_tables)
 
         def _task_goals():
             _master_log("deriving learning goals...", "", total_tables)
@@ -13081,13 +13081,13 @@ async def retrain_project(slug: str, request: Request):
                 from dash.learning.goals_deriver import derive_goals
                 gres = derive_goals(slug, force=False)
                 if gres.get("derived"):
-                    _master_log("✓ learning_goals.md auto-generated", "", total_tables)
+                    _master_log("OK learning_goals.md auto-generated", "", total_tables)
                 else:
                     _master_log(f"· goals skipped: {gres.get('reason','')[:80]}", "", total_tables)
             except Exception as e:
                 import logging
                 logging.warning(f"goals derivation failed for {slug}: {e}")
-                _master_log(f"⚠ goals derivation skipped: {str(e)[:80]}", "", total_tables)
+                _master_log(f" goals derivation skipped: {str(e)[:80]}", "", total_tables)
 
         def _task_ml():
             # ml_worker container + auto_create_models() were removed in the
@@ -13134,20 +13134,20 @@ async def retrain_project(slug: str, request: Request):
                 from app.learning import _run_evals_for_slug
                 _eval_res = _run_evals_for_slug(slug)
                 _master_log(
-                    f"✓ evals: {_eval_res.get('passed', 0)}/{_eval_res.get('total', 0)} passed, "
+                    f"OK evals: {_eval_res.get('passed', 0)}/{_eval_res.get('total', 0)} passed, "
                     f"{_eval_res.get('partial', 0)} partial",
                     "", total_tables,
                 )
             except Exception as _ee:
                 import logging as _l
                 _l.getLogger(__name__).warning(f"post-training eval failed for {slug}: {_ee}")
-                _master_log(f"⚠ evals skipped: {str(_ee)[:80]}", "", total_tables)
+                _master_log(f" evals skipped: {str(_ee)[:80]}", "", total_tables)
 
         def _task_auto_configure():
             _master_log("auto-detecting vertical...", "", total_tables)
             # V2 Phase E (flag-gated): runner-tracked + fingerprint-cached vertical
             # detect+apply. Skips the ~60s pack apply on retrain when (vertical,
-            # column-set) is unchanged. Flag off → unchanged legacy path below.
+            # column-set) is unchanged. Flag off > unchanged legacy path below.
             if os.environ.get("TRAINING_V2_PHASE_E") in ("1", "true", "True"):
                 try:
                     from dash.training.runner import StepRunner
@@ -13161,7 +13161,7 @@ async def retrain_project(slug: str, request: Request):
                 except Exception as _v2e:
                     import logging as _l
                     _l.getLogger(__name__).warning(f"phase_e failed for {slug}, falling back: {_v2e}")
-                    _master_log(f"⚠ phase_e fell back to legacy: {str(_v2e)[:60]}", "", total_tables)
+                    _master_log(f" phase_e fell back to legacy: {str(_v2e)[:60]}", "", total_tables)
             try:
                 from dash.learning.auto_configurator import classify_vertical
                 _detection = classify_vertical(slug)
@@ -13174,9 +13174,9 @@ async def retrain_project(slug: str, request: Request):
                         _apply_res = auto_apply_vertical(slug, _detection, user_id="auto", derive_scope_step=False)
                         _ok_steps = sum(1 for s in _apply_res.get("applied_steps", []) if s.get("ok"))
                         _tot_steps = len(_apply_res.get("applied_steps", []))
-                        _master_log(f"✓ auto-applied {_vert} pack: {_ok_steps}/{_tot_steps} steps", "", total_tables)
+                        _master_log(f"OK auto-applied {_vert} pack: {_ok_steps}/{_tot_steps} steps", "", total_tables)
                     except Exception as _ae:
-                        _master_log(f"⚠ auto-apply skipped: {str(_ae)[:80]}", "", total_tables)
+                        _master_log(f" auto-apply skipped: {str(_ae)[:80]}", "", total_tables)
                 elif _conf >= 0.15:
                     # Suggest only — save detection row to history for UI review
                     try:
@@ -13191,16 +13191,16 @@ async def retrain_project(slug: str, request: Request):
                             _ac.commit()
                         _master_log(f"· suggested {_vert} ({int(_conf*100)}%) — review in Auto-Config tab", "", total_tables)
                     except Exception as _se:
-                        _master_log(f"⚠ suggestion save skipped: {str(_se)[:80]}", "", total_tables)
+                        _master_log(f" suggestion save skipped: {str(_se)[:80]}", "", total_tables)
                 else:
                     _master_log("· no strong vertical signal — skipped auto-apply", "", total_tables)
             except Exception as _ace:
                 import logging as _l
                 _l.getLogger(__name__).warning(f"auto-configure failed for {slug}: {_ace}")
-                _master_log(f"⚠ auto-configure skipped: {str(_ace)[:80]}", "", total_tables)
+                _master_log(f" auto-configure skipped: {str(_ace)[:80]}", "", total_tables)
 
         # Stable phase-level label for the concurrent tail. The 5 tail tasks no
-        # longer call _set_step (they ran concurrently → last-writer-wins clobber
+        # longer call _set_step (they ran concurrently > last-writer-wins clobber
         # froze the UI on a random step). Per-step detail now lives in
         # dash_training_steps; current_step reads "tail" for the whole phase.
         _set_step("tail")
@@ -13257,7 +13257,7 @@ async def retrain_project(slug: str, request: Request):
             "", total_tables,
         )
         # (post-training evals + auto-configure now run concurrently in the
-        #  tail ThreadPoolExecutor above — see _task_evals / _task_auto_configure)
+        # tail ThreadPoolExecutor above — see _task_evals / _task_auto_configure)
 
         # Tables are trained, but post-hooks (bilingual twins, catalog vectors,
         # shop_flat denorm, dream-lite, vertical pack) still run below for
@@ -13284,7 +13284,7 @@ async def retrain_project(slug: str, request: Request):
             from scripts.regen_bilingual import run as _regen_bilingual
             _bi = _regen_bilingual()
             _master_log(
-                f"✓ bilingual twins refreshed · {_bi.get('memories_my',0)} mem · "
+                f"OK bilingual twins refreshed · {_bi.get('memories_my',0)} mem · "
                 f"{_bi.get('patterns_twin',0)} pat · {_bi.get('rules_my',0)} rules · "
                 f"{_bi.get('brain_my',0)} brain · {_bi.get('schema_bilingual',0)} schema",
                 "", total_tables,
@@ -13292,7 +13292,7 @@ async def retrain_project(slug: str, request: Request):
         except Exception as _bie:
             import logging as _l
             _l.getLogger(__name__).warning(f"bilingual regen skipped for {slug}: {_bie}")
-            _master_log(f"⚠ bilingual regen skipped: {str(_bie)[:80]}", "", total_tables)
+            _master_log(f" bilingual regen skipped: {str(_bie)[:80]}", "", total_tables)
 
         # ─── Semantic catalog vectors — hybrid (vector+keyword) catalog_search
         # corpus. Idempotent (unchanged blobs skipped). Fail-soft so an embed
@@ -13303,11 +13303,11 @@ async def retrain_project(slug: str, request: Request):
             # a large/slow catalog embed runs silent > 12 min and the watchdog
             # (_reap_stale_runs) FALSE-aborts this still-working run.
             _cv = _build_catalog(log_fn=lambda m: _master_log(m, "", total_tables))
-            _master_log(f"✓ catalog vectors: {_cv.get('embedded',0)} products", "", total_tables)
+            _master_log(f"OK catalog vectors: {_cv.get('embedded',0)} products", "", total_tables)
         except Exception as _cve:
             import logging as _l
             _l.getLogger(__name__).warning(f"catalog vectors skipped for {slug}: {_cve}")
-            _master_log(f"⚠ catalog vectors skipped: {str(_cve)[:80]}", "", total_tables)
+            _master_log(f" catalog vectors skipped: {str(_cve)[:80]}", "", total_tables)
 
         # ─── Catalog gap-fill (LLM) + articles_enriched view. The view always
         # (re)builds — cheap, and reflects any suggestions a human approved in the
@@ -13331,12 +13331,12 @@ async def retrain_project(slug: str, request: Request):
                                           log=lambda m: _master_log(m, "", total_tables))
                 _bev(db_url, log=lambda m: _master_log(m, "", total_tables))
                 _master_log(
-                    f"✓ catalog enrich: {_er.get('suggested',0)} suggested, "
+                    f"OK catalog enrich: {_er.get('suggested',0)} suggested, "
                     f"{_aa.get('approved',0)} low-risk auto-approved", "", total_tables)
             except Exception as _cee:
                 import logging as _l
                 _l.getLogger(__name__).warning(f"catalog enrich skipped for {slug}: {_cee}")
-                _master_log(f"⚠ catalog enrich skipped: {str(_cee)[:80]}", "", total_tables)
+                _master_log(f" catalog enrich skipped: {str(_cee)[:80]}", "", total_tables)
 
         # ─── Denormalized shop_flat stock table — pre-joined catalog+stock for
         # fast branch lookups. Idempotent rebuild. Fail-soft so a build failure
@@ -13344,11 +13344,11 @@ async def retrain_project(slug: str, request: Request):
         try:
             from scripts.build_shop_flat import run as _build_shop_flat
             _sf = _build_shop_flat()
-            _master_log(f"✓ shop_flat: {_sf.get('rows',0)} rows", "", total_tables)
+            _master_log(f"OK shop_flat: {_sf.get('rows',0)} rows", "", total_tables)
         except Exception as _sfe:
             import logging as _l
             _l.getLogger(__name__).warning(f"shop_flat skipped for {slug}: {_sfe}")
-            _master_log(f"⚠ shop_flat skipped: {str(_sfe)[:80]}", "", total_tables)
+            _master_log(f" shop_flat skipped: {str(_sfe)[:80]}", "", total_tables)
 
         # ─── Apache AGE knowledge graph (drug_network multi-hop tool). Rebuilds
         # the citypharma_kg graph from the fresh catalog. Fail-soft + gated: a
@@ -13360,13 +13360,13 @@ async def retrain_project(slug: str, request: Request):
                 raise RuntimeError("graph build disabled")
             from scripts.build_pharma_graph import main as _build_graph
             # Pass _master_log so the MERGE loop heartbeats into the run's logs —
-            # otherwise the watchdog is blind to this step (print() → stdout only).
+            # otherwise the watchdog is blind to this step (print() > stdout only).
             _build_graph(log_fn=lambda m: _master_log(m, "", total_tables))
-            _master_log("✓ knowledge graph rebuilt", "", total_tables)
+            _master_log("OK knowledge graph rebuilt", "", total_tables)
         except Exception as _ge:
             import logging as _l
             _l.getLogger(__name__).warning(f"pharma graph build skipped for {slug}: {_ge}")
-            _master_log(f"⚠ knowledge graph skipped: {str(_ge)[:80]}", "", total_tables)
+            _master_log(f" knowledge graph skipped: {str(_ge)[:80]}", "", total_tables)
 
         # ─── Continuous query learning (P6) — fold 'proven' chat-learned query
         # patterns into the training corpus so they harden (survive retrain +
@@ -13375,7 +13375,7 @@ async def retrain_project(slug: str, request: Request):
             from dash.learning.query_curator import fold_proven_into_training as _fold_qb
             _fq = _fold_qb(slug)
             if _fq.get("folded"):
-                _master_log(f"✓ query bank: {_fq['folded']} learned queries folded into training", "", total_tables)
+                _master_log(f"OK query bank: {_fq['folded']} learned queries folded into training", "", total_tables)
         except Exception as _fqe:
             import logging as _l
             _l.getLogger(__name__).debug(f"query-bank fold skipped for {slug}: {_fqe}")
@@ -13389,7 +13389,7 @@ async def retrain_project(slug: str, request: Request):
                 _rn = refresh_semantic_layer(slug, db_url, schema=schema,
                                              log=lambda m: _master_log(m, "", total_tables))
                 if _rn:
-                    _master_log(f"✓ semantic layer: {_rn} matviews refreshed", "", total_tables)
+                    _master_log(f"OK semantic layer: {_rn} matviews refreshed", "", total_tables)
             except Exception as _rfe:
                 import logging as _l
                 _l.getLogger(__name__).warning(f"matview refresh skipped for {slug}: {_rfe}")
@@ -13421,11 +13421,11 @@ async def retrain_project(slug: str, request: Request):
                 },
                 priority=7,
             )
-            _master_log("✓ first dream-lite cycle enqueued", "", total_tables)
+            _master_log("OK first dream-lite cycle enqueued", "", total_tables)
         except Exception as _de:
             import logging as _l
             _l.getLogger(__name__).warning(f"dream_lite enqueue failed for {slug}: {_de}")
-            _master_log(f"⚠ dream_lite enqueue skipped: {str(_de)[:80]}", "", total_tables)
+            _master_log(f" dream_lite enqueue skipped: {str(_de)[:80]}", "", total_tables)
 
         # Best-effort notification: full project retrain finished
         try:
@@ -13447,7 +13447,7 @@ async def retrain_project(slug: str, request: Request):
         # Close the batch-level root training trace (fail-soft).
         try:
             _trace_end("done")
-        except Exception:  # noqa: BLE001
+        except Exception: # noqa: BLE001
             pass
 
         # Auto-install best-matching vertical workflow pack on training complete
@@ -13469,7 +13469,7 @@ async def retrain_project(slug: str, request: Request):
                 if _top and _top.get("score", 0) >= 0.4:
                     _r = _vinstall(slug, _top["name"])
                     _master_log(
-                        f"✓ auto-installed vertical pack '{_top['name']}' "
+                        f"OK auto-installed vertical pack '{_top['name']}' "
                         f"(score {_top['score']:.2f}) — {_r.get('installed', 0)} workflows ready",
                         "", total_tables,
                     )
@@ -13480,7 +13480,7 @@ async def retrain_project(slug: str, request: Request):
             )
 
         # ─── FINAL done-mark — all post-hooks above are complete. status flips
-        # 'finalizing' → 'done' only now, so the UI / poll never reports done
+        # 'finalizing' > 'done' only now, so the UI / poll never reports done
         # while shop_flat / catalog vectors are still building. Fail-soft. ───
         if master_run_id:
             try:

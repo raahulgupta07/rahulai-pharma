@@ -1,10 +1,10 @@
 """Admin API for distilled insights (#1) — review gate over daemon proposals.
 
 Endpoints (super-admin gated, mirrors app/cache_curator_api.py auth):
-  GET  /api/projects/{slug}/insights          — list pending + approved insights
-  POST /api/projects/{slug}/insights/run       — run the curator (dry_run default True)
-  POST /api/insights/{id}/approve              — promote a pending insight into chat
-  POST /api/insights/{id}/reject               — reject (kept out of chat)
+  GET /api/projects/{slug}/insights — list pending + approved insights
+  POST /api/projects/{slug}/insights/run — run the curator (dry_run default True)
+  POST /api/insights/{id}/approve — promote a pending insight into chat
+  POST /api/insights/{id}/reject — reject (kept out of chat)
 
 A daemon-distilled insight lands as dash_insights(status='pending') + a
 dash_company_brain(status='pending') row. Approve flips both to active so
@@ -54,7 +54,7 @@ def _gate(request: Request):
 
 @router.get("/api/projects/{slug}/insights")
 def list_insights(slug: str, request: Request, status: str = Query("")):
-    """List distilled insights for review. status='' → pending + approved."""
+    """List distilled insights for review. status='' > pending + approved."""
     _gate(request)
     try:
         c, cur = _conn()
@@ -79,7 +79,7 @@ def list_insights(slug: str, request: Request, status: str = Query("")):
             return {"ok": True, "count": len(items), "insights": items}
         finally:
             c.close()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.warning("list_insights failed for %s: %s", slug, exc)
         return {"ok": False, "error": str(exc)[:300], "insights": []}
 
@@ -91,7 +91,7 @@ def run_insights(slug: str, request: Request, dry_run: bool = Query(True)):
     try:
         from dash.learning.insight_curator import run_insight_curator
         return run_insight_curator(slug, dry_run=dry_run)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         logger.warning("run_insights failed for %s: %s", slug, exc)
         return {"ok": False, "error": str(exc)[:300], "insights": []}
 
@@ -117,25 +117,25 @@ def _set_status(insight_id: int, ins_status: str, brain_status: str) -> dict:
 
 @router.post("/api/insights/{insight_id}/approve")
 def approve_insight(insight_id: int, request: Request):
-    """Promote a pending insight — its brain row goes active → injected into chat."""
+    """Promote a pending insight — its brain row goes active > injected into chat."""
     _gate(request)
     try:
         return _set_status(insight_id, "approved", "active")
     except HTTPException:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         return {"ok": False, "error": str(exc)[:300]}
 
 
 @router.post("/api/insights/{insight_id}/reject")
 def reject_insight(insight_id: int, request: Request):
-    """Reject a pending insight — kept out of chat (brain row → rejected)."""
+    """Reject a pending insight — kept out of chat (brain row > rejected)."""
     _gate(request)
     try:
         return _set_status(insight_id, "rejected", "rejected")
     except HTTPException:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         return {"ok": False, "error": str(exc)[:300]}
 
 
@@ -158,7 +158,7 @@ def list_distilled(slug: str, request: Request):
             return {"ok": True, "count": len(items), "memories": items}
         finally:
             c.close()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         return {"ok": False, "error": str(exc)[:300], "memories": []}
 
 
@@ -177,13 +177,13 @@ def _set_memory_status(memory_id: int, status: str) -> dict:
 
 @router.post("/api/memories/{memory_id}/approve")
 def approve_memory(memory_id: int, request: Request):
-    """Approve a distilled memory → active = injected into chat as a hint."""
+    """Approve a distilled memory > active = injected into chat as a hint."""
     _gate(request)
     try:
         return _set_memory_status(memory_id, "active")
     except HTTPException:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         return {"ok": False, "error": str(exc)[:300]}
 
 
@@ -195,5 +195,5 @@ def reject_memory(memory_id: int, request: Request):
         return _set_memory_status(memory_id, "rejected")
     except HTTPException:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc: # noqa: BLE001
         return {"ok": False, "error": str(exc)[:300]}

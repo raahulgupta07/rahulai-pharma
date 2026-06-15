@@ -28,10 +28,11 @@ export function costOf(tin: number, tout: number, model: string | undefined): nu
   return (tin / 1e6) * p.in + (tout / 1e6) * p.out;
 }
 
-/** Compact model tag, e.g. "google/gemini-3-flash-preview" -> "gemini-3-flash". */
+/** User-facing model name. The underlying router/model (gemini, etc.) is an
+ *  implementation detail — the product face is always "Dash 1.0". */
 export function shortModel(model: string | undefined): string {
   if (!model || typeof model !== 'string') return '';
-  return model.split('/').pop()!.replace(/-preview$/, '').replace(/-latest$/, '');
+  return 'Dash 1.0';
 }
 
 /** Render a duration (ms or "1.2s" string) as a compact "1.2s" / "850ms". */

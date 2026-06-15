@@ -8,9 +8,9 @@ Algorithm per expected entity/column:
   5. Otherwise: unbound
 
 For each KPI/workflow:
-  - All refs bound → activate, substitute placeholders, write resolved_query
-  - Partial bound → needs_review
-  - None bound → stay pending
+  - All refs bound > activate, substitute placeholders, write resolved_query
+  - Partial bound > needs_review
+  - None bound > stay pending
 
 Read-only schema introspection. Never executes template SQL during reconcile.
 """
@@ -25,7 +25,7 @@ from .schema import AgentTemplate, ExpectedEntity, ExpectedColumn
 from . import storage
 
 # Industry preset registry removed; reconcile against stored expectations only.
-def get_template(name: str):  # noqa: D401 - shim
+def get_template(name: str): # noqa: D401 - shim
     return None
 
 logger = logging.getLogger(__name__)
@@ -179,8 +179,8 @@ _PLACEHOLDER_BARE_RE = re.compile(r"\{([a-zA-Z_]+)\}")
 def _resolve_query(query_template: str, refs_map: dict[str, str]) -> tuple[str, list[str]]:
     """Substitute {entity.column} and {entity} placeholders.
 
-    Returns (resolved_sql, missing_refs). Each {entity.column} → real_table.real_col,
-    each {entity} → real_table. Missing placeholders preserved.
+    Returns (resolved_sql, missing_refs). Each {entity.column} > real_table.real_col,
+    each {entity} > real_table. Missing placeholders preserved.
     """
     missing: list[str] = []
 
@@ -297,9 +297,9 @@ def reconcile(project_slug: str) -> dict:
         "errors": [],
     }
 
-    refs_map: dict[str, str] = {}  # template_ref → real_ref
+    refs_map: dict[str, str] = {} # template_ref > real_ref
 
-    # Match each entity → table
+    # Match each entity > table
     for entity in tmpl.entities:
         real_tbl, method, conf = _match_table(entity, schema)
         if not real_tbl:

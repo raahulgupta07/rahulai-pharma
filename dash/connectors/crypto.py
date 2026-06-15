@@ -70,7 +70,7 @@ def _load_or_create_key_file() -> bytes | None:
         except OSError:
             return None
     except OSError:
-        return None  # dir not writable → caller raises
+        return None # dir not writable > caller raises
 
 
 @lru_cache(maxsize=1)
@@ -83,7 +83,7 @@ def get_fernet() -> Fernet:
         if jwt_secret:
             key_bytes = _derive_key_from_secret(jwt_secret)
         else:
-            # Neither env set → auto-generate + persist (no manual config needed).
+            # Neither env set > auto-generate + persist (no manual config needed).
             key_bytes = _load_or_create_key_file()
             if not key_bytes:
                 raise RuntimeError(

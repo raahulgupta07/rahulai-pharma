@@ -6,7 +6,7 @@ server-side by default; flip PRIVACY_SHOW_CHAT=1 only for a deliberate, audited
 reveal build. Every admin endpoint that selects question/answer/content text should
 pass it through redact() before returning it.
 
-The single sanctioned exception is the audited per-row reveal used by the 👎
+The single sanctioned exception is the audited per-row reveal used by the 
 train-review flow (app/usage_api.py:/feedback/{fid}/reveal), which logs each reveal
 to dash_audit_log.
 """

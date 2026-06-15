@@ -5,19 +5,19 @@ on disk without re-loading into DB on reindex. Default tier is `db_tracked`
 (both DB + disk — current behavior).
 
 Marker files under `knowledge/{slug}/{subdir}/`:
-    .db_only    — content lives in DB only (disk copies evictable)
-    .disk_only  — content lives on disk only (skip on next DB reindex)
+    .db_only — content lives in DB only (disk copies evictable)
+    .disk_only — content lives on disk only (skip on next DB reindex)
 
-If neither marker present → tier = `db_tracked`.
+If neither marker present > tier = `db_tracked`.
 
 Public surface:
-    mark_db_only(slug, subdir)        -> dict
-    mark_disk_only(slug, subdir)      -> dict
-    clear_tier(slug, subdir)          -> dict           (revert to db_tracked)
-    get_tier(slug, subdir)            -> str            ('db_tracked'|'db_only'|'disk_only')
-    list_tiers(slug)                  -> dict[subdir, tier]
+    mark_db_only(slug, subdir) -> dict
+    mark_disk_only(slug, subdir) -> dict
+    clear_tier(slug, subdir) -> dict (revert to db_tracked)
+    get_tier(slug, subdir) -> str ('db_tracked'|'db_only'|'disk_only')
+    list_tiers(slug) -> dict[subdir, tier]
     evict_db_only_files(slug, subdir, keep_index=True) -> dict
-    restore_from_db(slug, subdir)     -> dict
+    restore_from_db(slug, subdir) -> dict
 
 All functions are sync, never raise (log + return error dicts on failure).
 """

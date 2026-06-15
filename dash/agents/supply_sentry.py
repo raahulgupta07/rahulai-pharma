@@ -5,8 +5,8 @@ Monitors supplier health, surfaces cross-tenant exposures (consent-gated),
 proposes alternative suppliers with switching cost and lead-time delta.
 
 Boundaries:
-- Pre-investment market sizing → route to Market Sentinel.
-- Post-investment KPI tracking → route to Ops Optimizer.
+- Pre-investment market sizing > route to Market Sentinel.
+- Post-investment KPI tracking > route to Ops Optimizer.
 """
 from __future__ import annotations
 

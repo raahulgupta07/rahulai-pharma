@@ -16,14 +16,14 @@ logger = logging.getLogger(__name__)
 
 # SQL-VALIDATED: central validator import (fail-soft)
 try:
-    from dash.tools.sql_validator import validate_and_fix as _sql_validate_and_fix  # type: ignore
-    from dash.tools.llm_sql_helper import _postgres_sql_rules as _sql_pg_rules, get_schema_hint as _sql_schema_hint  # type: ignore
+    from dash.tools.sql_validator import validate_and_fix as _sql_validate_and_fix # type: ignore
+    from dash.tools.llm_sql_helper import _postgres_sql_rules as _sql_pg_rules, get_schema_hint as _sql_schema_hint # type: ignore
     _SQL_VALIDATOR_AVAILABLE = True
-except Exception as _e:  # pragma: no cover
+except Exception as _e: # pragma: no cover
     logger.warning(f"sql_validator unavailable, falling back to inline EXPLAIN: {_e}")
-    _sql_validate_and_fix = None  # type: ignore
-    _sql_pg_rules = None  # type: ignore
-    _sql_schema_hint = None  # type: ignore
+    _sql_validate_and_fix = None # type: ignore
+    _sql_pg_rules = None # type: ignore
+    _sql_schema_hint = None # type: ignore
     _SQL_VALIDATOR_AVAILABLE = False
 
 
@@ -235,17 +235,17 @@ class DashboardAgent:
 # DeepDashAgent — 9-stage Pydantic-typed pipeline
 # ============================================================
 #
-#   1 Intent           Haiku 4.5      DashboardIntent
-#   2 Schema RAG       pgvector       SchemaContext (top-k tables + samples)
-#   3 Panel Plan       Sonnet 4.7     list[PanelPlan]
-#   4 SQL Gen          Sonnet 4.7     list[PanelSQL] (parallel via asyncio)
-#   5 EXPLAIN Gate     Postgres       no LLM, rejects bad SQL, retry once
-#   6 Execute+Profile  Python         list[PanelData]
-#   7 Chart Spec Gen   Sonnet 4.7     list[EChartsPanelSpec] (Pydantic validated)
-#   8 Judge            DIFFERENT MODEL (Gemini/GPT)  Critique + JsonPatchOp
-#   9 Layout           Sonnet 4.7     DeepDashSpec (12-col grid + mobile breakpoints)
+# 1 Intent Haiku 4.5 DashboardIntent
+# 2 Schema RAG pgvector SchemaContext (top-k tables + samples)
+# 3 Panel Plan Sonnet 4.7 list[PanelPlan]
+# 4 SQL Gen Sonnet 4.7 list[PanelSQL] (parallel via asyncio)
+# 5 EXPLAIN Gate Postgres no LLM, rejects bad SQL, retry once
+# 6 Execute+Profile Python list[PanelData]
+# 7 Chart Spec Gen Sonnet 4.7 list[EChartsPanelSpec] (Pydantic validated)
+# 8 Judge DIFFERENT MODEL (Gemini/GPT) Critique + JsonPatchOp
+# 9 Layout Sonnet 4.7 DeepDashSpec (12-col grid + mobile breakpoints)
 #
-# Iteration: chat edit → router → is_edit=True → apply JsonPatchOp to panel,
+# Iteration: chat edit > router > is_edit=True > apply JsonPatchOp to panel,
 # never full rebuild.
 
 import asyncio
@@ -274,7 +274,7 @@ from dash.dashboards.spec import (
 # so hardcoded prompts remain authoritative fallback.
 # ------------------------------------------------------------
 _SKILL_CACHE: dict[tuple[str, str], tuple[float, str, int]] = {}
-_SKILL_TTL_S = 300.0  # 5 min — refresh if SkillRefinery edits via UI
+_SKILL_TTL_S = 300.0 # 5 min — refresh if SkillRefinery edits via UI
 
 
 def invalidate_skill_cache(skill_id: str | None = None) -> int:
@@ -417,11 +417,11 @@ def _persist_skill_run(
         with eng.begin() as conn:
             conn.execute(text(
                 "INSERT INTO public.dash_dashboard_skill_runs ("
-                "  project_slug, dashboard_id, skill_id, skill_version, stage, "
-                "  panel_count, verified_cell_count, judge_score, latency_ms, "
-                "  cost_usd, ran_at"
+                " project_slug, dashboard_id, skill_id, skill_version, stage, "
+                " panel_count, verified_cell_count, judge_score, latency_ms, "
+                " cost_usd, ran_at"
                 ") VALUES ("
-                "  :slug, :did, :sid, :sv, :stage, :pc, :vc, :js, :lat, :cost, NOW()"
+                " :slug, :did, :sid, :sv, :stage, :pc, :vc, :js, :lat, :cost, NOW()"
                 ")"
             ), {
                 "slug": project_slug or "",
@@ -460,9 +460,9 @@ def _persist_dashboard_audit(
         with eng.begin() as conn:
             conn.execute(text(
                 "INSERT INTO public.dash_dashboard_audit ("
-                "  dashboard_id, skill_versions, verified_cell_pct, created_at"
+                " dashboard_id, skill_versions, verified_cell_pct, created_at"
                 ") VALUES ("
-                "  :did, CAST(:m AS jsonb), :pct, NOW()"
+                " :did, CAST(:m AS jsonb), :pct, NOW()"
                 ")"
             ), {
                 "did": dashboard_id or "",
@@ -509,12 +509,12 @@ class DeepDashAgent:
         persona: str = "",
         audience: str = "executive",
         n_panels: int = 8,
-        gen_model: str | None = None,        # stages 3,4,7,9
-        judge_model: str | None = None,      # stage 8 — MUST differ from gen_model
+        gen_model: str | None = None, # stages 3,4,7,9
+        judge_model: str | None = None, # stage 8 — MUST differ from gen_model
         budget: dict | None = None,
-        session_id: str | None = None,       # chat session linkage (versioning)
-        force_rebuild: bool = False,         # ignored at agent layer; honored by API
-        signature_hash: str | None = None,   # #15 — question+schema fingerprint for cache rebuild
+        session_id: str | None = None, # chat session linkage (versioning)
+        force_rebuild: bool = False, # ignored at agent layer; honored by API
+        signature_hash: str | None = None, # #15 — question+schema fingerprint for cache rebuild
     ):
         self.project_slug = project_slug
         self.question = question
@@ -651,7 +651,7 @@ JSON only."""
         try:
             self.intent = DashboardIntent(**parsed)
         except Exception:
-            self.intent = DashboardIntent(question=self.question, audience=self.audience,  # type: ignore[arg-type]
+            self.intent = DashboardIntent(question=self.question, audience=self.audience, # type: ignore[arg-type]
                                           n_panels_target=self.n_panels)
         if not self.intent.question:
             self.intent.question = self.question
@@ -702,7 +702,7 @@ JSON only."""
 
         # Always query information_schema for live dtypes. Codex metadata is rich on
         # purpose/semantics but often lacks live dtypes (or is stale). Live dtypes are
-        # required by SQL gen to emit correct casts (e.g. text→date for TEXT columns).
+        # required by SQL gen to emit correct casts (e.g. text>date for TEXT columns).
         # If no tables came from metadata path, this also bootstraps the table list.
         try:
             from db.session import get_project_readonly_engine
@@ -762,7 +762,7 @@ JSON only."""
             return []
         tables_blob = "\n".join(
             f"- {t.name} ({t.row_count or '?'} rows): {t.purpose[:140]}\n"
-            f"  cols: {', '.join(c['name'] + ':' + str(c.get('dtype') or '') for c in t.columns[:20])}"
+            f" cols: {', '.join(c['name'] + ':' + str(c.get('dtype') or '') for c in t.columns[:20])}"
             for t in self.schema_ctx.tables
         )
         # skl_dash_orchestrator = pipeline-side instructions (separate from skl_dash_builder
@@ -888,7 +888,7 @@ Use ONLY listed table names. JSON only."""
         plans = filtered
 
         # Phase 9 DQ gate: skip / demote time-axis panels where the chosen date
-        # column is effectively constant (1-period data → meaningless time series).
+        # column is effectively constant (1-period data > meaningless time series).
         # See dash/utils/column_classifier.is_constant_column + CityPharma created_at
         # gotcha. Demote to KPI if all candidate date cols are constant; else
         # let SQL-gen pick a non-constant date col downstream.
@@ -922,7 +922,7 @@ Use ONLY listed table names. JSON only."""
                             if _k not in _const_cache:
                                 _const_cache[_k] = is_constant_column(_gconn, self.project_slug, _tbl, _col)
                             if not _const_cache[_k]:
-                                return False  # at least one usable
+                                return False # at least one usable
                         return True
 
                     _demoted: list[PanelPlan] = []
@@ -935,7 +935,7 @@ Use ONLY listed table names. JSON only."""
                             if all(_all_dates_constant(_t) for _t in _tbls if _t in _tbl_date_cols):
                                 logger.info(
                                     f"time-axis gate: panel {_p.id} ({_ct}) on "
-                                    f"tables={_tbls} — all date cols constant → demoting to kpi"
+                                    f"tables={_tbls} — all date cols constant > demoting to kpi"
                                 )
                                 try:
                                     _p.panel_type = "kpi"
@@ -991,7 +991,7 @@ TABLES (use only these):
 
 Rules:
 - POSTGRESQL DIALECT ONLY. Do not use MySQL/BigQuery syntax.
-  WRONG (MySQL):   DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+  WRONG (MySQL): DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
   WRONG (BigQuery): DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
   CORRECT (Postgres): CURRENT_DATE - INTERVAL '30 days'
   Also: CURRENT_DATE (no parens). NOW() for timestamp. AGE(), EXTRACT(epoch FROM ...).
@@ -1104,7 +1104,7 @@ Return ONLY fixed SQL."""
                     plan = conn.execute(text(f"EXPLAIN (FORMAT JSON) {ps.sql}")).fetchone()
                 ps.explain_passed = True
                 try:
-                    ps.explain_cost = float(plan[0][0]["Plan"]["Total Cost"])  # type: ignore[index]
+                    ps.explain_cost = float(plan[0][0]["Plan"]["Total Cost"]) # type: ignore[index]
                 except Exception:
                     pass
             except Exception as e:
@@ -1213,7 +1213,7 @@ Output JSON: {{
   "options": <ECharts options object — must include xAxis, yAxis, series for charts; or single 'value' for kpi>,
   "narrative": "1-2 sentence insight from the data",
   "confidence": "low|medium|high",
-  "grid": [x, y, w, h]  // 12-col grid, w in 1-12, h in 1-6
+  "grid": [x, y, w, h] // 12-col grid, w in 1-12, h in 1-6
 }}
 
 Rules: ECharts options ONLY (no Vega/Plotly). Use real column values from sample.
@@ -1224,7 +1224,7 @@ For KPI panels, use {{"value":N, "label":"...", "delta_pct":N}}. JSON only."""
             try:
                 spec = EChartsPanelSpec(
                     panel_id=plan.id,
-                    chart_type=plan.chart_type or "bar",  # type: ignore[arg-type]
+                    chart_type=plan.chart_type or "bar", # type: ignore[arg-type]
                     title=plan.title,
                     options=parsed.get("options") or {},
                     narrative=parsed.get("narrative", "")[:300],
@@ -1359,7 +1359,7 @@ JSON only."""
             title=(self.intent.question if self.intent else "Dashboard")[:120],
             intent=self.intent or DashboardIntent(question=self.question),
             panels=ordered,
-            layout=layout,  # type: ignore[arg-type]
+            layout=layout, # type: ignore[arg-type]
             persona=self.persona,
             audience=self.audience,
             judge_score=(self.critique.overall_score if self.critique else None),
@@ -1469,7 +1469,7 @@ JSON only."""
         t0 = time.time()
         try:
             narrative = stage_executive_overview(
-                spec=self,  # mutated best-effort; real attach happens after layout
+                spec=self, # mutated best-effort; real attach happens after layout
                 audience=self.audience,
                 panels=self.panel_specs,
                 verified_values=verified_values,
@@ -1558,8 +1558,8 @@ JSON only."""
         """SSE-ready stage events. Each stage runs in thread to not block loop.
 
         Order (11 stages including 0.5 intent + 7.5 narrator):
-        intent_classify → intent → schema_rag → panel_plan → sql_gen →
-        explain_gate → execute → chart_specs → narrator → judge → layout.
+        intent_classify > intent > schema_rag > panel_plan > sql_gen >
+        explain_gate > execute > chart_specs > narrator > judge > layout.
 
         Extra SSE events emitted:
         - `panel_announcement` per panel after `panel_ready` (LITE, non-blocking)
@@ -1651,7 +1651,7 @@ JSON only."""
             # Mid-stream panel emission so frontend renders as available,
             # followed by LITE per-panel announcement (non-blocking on failure).
             if name == "chart_specs":
-                # Build a panel_id → row_count map from PanelData
+                # Build a panel_id > row_count map from PanelData
                 row_count_map: dict[str, int] = {}
                 for pd_ in (self.data or []):
                     try:
@@ -1776,7 +1776,7 @@ JSON only."""
             self._compute_verified_cell_pct(),
         )
 
-        # Persist + mirror panels → cells so legacy DashRenderer + new Studio
+        # Persist + mirror panels > cells so legacy DashRenderer + new Studio
         # renderer both see content (Deep Dash writes spec.panels; legacy
         # reads spec.cells). One source-of-truth normalize here.
         try:
@@ -1849,7 +1849,7 @@ JSON only."""
 
 def _clean_narrative_numbers(text: str) -> str:
     """#12 — Round floats with >2 decimals to 0/1/2 decimals based on magnitude.
-    Strips noisy precision like 182.333333334 → 182 in narrator output.
+    Strips noisy precision like 182.333333334 > 182 in narrator output.
     """
     if not text:
         return text
@@ -1889,7 +1889,7 @@ Output JSON ONLY with:
 - intent: short slug (e.g. "kpi_overview", "trend_review", "comparison", "drilldown", "qbr", "investor_update", "ops_review", "customer_review")
 - audience: one of (investor, ops, customer, exec, general)
 
-Rules: if the phrase mentions "for investors" / "to investors" → audience=investor. "for ops/operations" → ops. "for customer/client" → customer. "for exec/leadership/board" → exec. Else general.
+Rules: if the phrase mentions "for investors" / "to investors" > audience=investor. "for ops/operations" > ops. "for customer/client" > customer. "for exec/leadership/board" > exec. Else general.
 JSON only."""
     raw = _llm(prompt, task="extraction")
     parsed = _parse_json(raw, {}) or {}
@@ -1924,10 +1924,10 @@ def stage_executive_overview(
         for v in verified_values[:20]:
             vv_lines.append(
                 f"- {v.get('label') or v.get('source_q','metric')}: "
-                f"{v.get('value')}  (panel={v.get('panel_id','?')})"
+                f"{v.get('value')} (panel={v.get('panel_id','?')})"
             )
         vv_block = (
-            "\n\n⚑ VERIFIED METRICS — USE THESE NUMBERS VERBATIM, do NOT round, "
+            "\n\n VERIFIED METRICS — USE THESE NUMBERS VERBATIM, do NOT round, "
             "do NOT recompute:\n" + "\n".join(vv_lines)
         )
     else:
@@ -1956,7 +1956,7 @@ PANELS:
 Rules:
 - 2-4 sentences. Lead with the headline. End with the so-what.
 - Use the verified numbers verbatim where applicable. Never invent figures.
-- Tone fits the audience (investor → forward-looking + risk; ops → action; customer → outcome; exec → bottom-line).
+- Tone fits the audience (investor > forward-looking + risk; ops > action; customer > outcome; exec > bottom-line).
 
 Output ONLY the narrative paragraph as plain text. No JSON, no markdown headers."""
     )
@@ -2002,7 +2002,7 @@ Output ONLY the narrative paragraph as plain text. No JSON, no markdown headers.
 def stage_panel_announce(panel: Any, row_count: int = 0, project_slug: str | None = None) -> dict:
     """LITE/FAST per-panel announcement.
 
-    Calls `skl_panel_announcer` → returns one-line "✓ Added [title] (N rows)".
+    Calls `skl_panel_announcer` > returns one-line "OK Added [title] (N rows)".
     Returns a dict suitable for an SSE `panel_announcement` event:
       {panel_id, message, mini_thumbnail_spec: {chart_type, sparkline_data}}
     Fail-soft.
@@ -2021,12 +2021,12 @@ PANEL TITLE: {title}
 ROWS: {row_count}
 CHART_TYPE: {chart_type}
 
-Output ONE line, max ~90 chars, starting with ✓. Example: "✓ Added Revenue by Region (12 rows)".
+Output ONE line, max ~90 chars, starting with OK. Example: "OK Added Revenue by Region (12 rows)".
 Plain text only."""
     raw = _llm(prompt, task="extraction")
     msg = (raw or "").strip().splitlines()[0] if raw else ""
     if not msg:
-        msg = f"✓ Added {title or panel_id} ({row_count} rows)"
+        msg = f"OK Added {title or panel_id} ({row_count} rows)"
     msg = msg[:200]
 
     # Sparkline preview: first 10 numeric values from panel options if we can find them
@@ -2062,12 +2062,12 @@ Plain text only."""
 
 
 def apply_refine_command(spec: dict, nl_command: str, project_slug: str | None = None) -> dict:
-    """Refine-endpoint helper. LITE-model NL → RFC 6902 JSON Patch ops.
+    """Refine-endpoint helper. LITE-model NL > RFC 6902 JSON Patch ops.
 
     Uses `skl_dashboard_refiner` skill. Returns {ops, summary}. Caller is
     responsible for `apply_patch(spec, ops)`.
 
-    Fail-soft: bad LLM output → {ops: [], summary: error string}.
+    Fail-soft: bad LLM output > {ops: [], summary: error string}.
     """
     spec_compact = {}
     try:
@@ -2112,10 +2112,10 @@ Rules: RFC 6902 paths only (/panels/<i>/...). Use op in {{add, replace, remove, 
 
 def apply_patch(spec_dict: dict, ops: list[dict]) -> dict:
     """Apply RFC 6902 JSON Patch ops to a DeepDashSpec dict.
-    Used by iteration: chat edit → router → generate patch → apply → re-render.
+    Used by iteration: chat edit > router > generate patch > apply > re-render.
     Never full-regen. Bumps spec_version."""
     try:
-        import jsonpatch  # type: ignore[import-not-found]
+        import jsonpatch # type: ignore[import-not-found]
     except ImportError:
         logger.warning("jsonpatch not installed; falling back to manual apply")
         # Minimal manual apply for add/replace/remove only

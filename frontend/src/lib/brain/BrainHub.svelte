@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount, onDestroy } from 'svelte';
  import { confirmDelete } from '$lib/confirmDelete';
  import ScopeSwitch from '$lib/brain/ScopeSwitch.svelte';
@@ -172,7 +172,7 @@
  return tabs.find(t => t.id === id)?.label || id;
  }
 
- /* ─── category map (tab id → API category) ─── */
+ /* ─── category map (tab id > API category) ─── */
  const tabCategoryMap: Record<string, string> = {
  glossary: 'glossary',
  formulas: 'formula',
@@ -538,7 +538,7 @@
  // Safety net: backend now folds the Burmese twin into the EN row's *_my field,
  // so standalone MY rows should not appear. Filter any that still leak through.
  return entries.filter((e: any) => e.category === category
-   && e.lang !== 'my' && e.source !== 'bilingual_twin');
+ && e.lang !== 'my' && e.source !== 'bilingual_twin');
  }
 
  /* ─── helpers ─── */
@@ -600,74 +600,74 @@
  });
  }
 
- /* ─── Unified graph (project KG triples → node-link MAP) ─── */
+ /* ─── Unified graph (project KG triples > node-link MAP) ─── */
  function _ugNodeType(name: string): string {
-   const n = (name || '').toLowerCase();
-   if (/_\d{6,8}$/.test(n) || n.includes('stock') || n.includes('articles') || n.includes('_list')) return 'table';
-   return 'metric';
+ const n = (name || '').toLowerCase();
+ if (/_\d{6,8}$/.test(n) || n.includes('stock') || n.includes('articles') || n.includes('_list')) return 'table';
+ return 'metric';
  }
 
  function buildUnifiedGraph() {
-   const nodes = new Map<string, any>();
-   const links: any[] = [];
-   const ensure = (name: string, type: string) => {
-     if (!nodes.has(name)) nodes.set(name, { name, type });
-     return name;
-   };
-   for (const it of (unifiedItems || [])) {
-     const m = (it.meta || {}) as any;
-     if (m.grouped) {
-       // collapsed value-spam → table ─pred(N vals)→ column-group node
-       const tbl = ensure(m.object, 'table');
-       const grpName = `${m.predicate}\n${m.value_count} values`;
-       ensure(grpName, 'group');
-       links.push({ source: tbl, target: grpName, relation: m.predicate });
-     } else if (m.subject && m.object) {
-       const s = ensure(m.subject, _ugNodeType(m.subject));
-       const o = ensure(m.object, _ugNodeType(m.object));
-       links.push({ source: s, target: o, relation: m.predicate });
-     }
-   }
-   return { nodes: [...nodes.values()], links };
+ const nodes = new Map<string, any>();
+ const links: any[] = [];
+ const ensure = (name: string, type: string) => {
+ if (!nodes.has(name)) nodes.set(name, { name, type });
+ return name;
+ };
+ for (const it of (unifiedItems || [])) {
+ const m = (it.meta || {}) as any;
+ if (m.grouped) {
+ // collapsed value-spam > table ─pred(N vals)> column-group node
+ const tbl = ensure(m.object, 'table');
+ const grpName = `${m.predicate}\n${m.value_count} values`;
+ ensure(grpName, 'group');
+ links.push({ source: tbl, target: grpName, relation: m.predicate });
+ } else if (m.subject && m.object) {
+ const s = ensure(m.subject, _ugNodeType(m.subject));
+ const o = ensure(m.object, _ugNodeType(m.object));
+ links.push({ source: s, target: o, relation: m.predicate });
+ }
+ }
+ return { nodes: [...nodes.values()], links };
  }
 
  async function renderUnifiedGraph() {
-   if (!ugraphContainer) return;
-   const echarts = await import('echarts');
-   if (ugraphInstance) ugraphInstance.dispose();
-   ugraphInstance = echarts.init(ugraphContainer);
-   const { nodes, links } = buildUnifiedGraph();
-   const color = (t: string) => t === 'table' ? '#c96342' : t === 'group' ? '#8a6db5' : '#5b6fb5';
-   ugraphInstance.setOption({
-     backgroundColor: '#faf8f1',
-     tooltip: { trigger: 'item', formatter: (p: any) => (p.data?.name || p.data?.relation || '').replace(/\n/g, ' · ') },
-     series: [{
-       type: 'graph', layout: 'force', roam: true, draggable: true,
-       focusNodeAdjacency: true,
-       data: nodes.map((n) => ({
-         name: n.name,
-         symbol: n.type === 'metric' ? 'diamond' : n.type === 'group' ? 'roundRect' : 'circle',
-         symbolSize: n.type === 'table' ? 46 : n.type === 'group' ? 34 : 28,
-         itemStyle: { color: color(n.type), borderColor: '#2c2a26', borderWidth: 1 },
-         label: { show: true, fontSize: 10, color: '#2c2a26', overflow: 'truncate', width: 90 },
-       })),
-       links: links.map((e) => ({
-         source: e.source, target: e.target,
-         lineStyle: { color: '#bdb6a6', width: 1.5, curveness: 0.08 },
-         label: { show: true, formatter: e.relation || '', fontSize: 8, color: '#8a8478' },
-       })),
-       emphasis: { focus: 'adjacency', lineStyle: { width: 3, color: '#c96342' } },
-       force: { repulsion: 420, gravity: 0.08, edgeLength: [90, 220] },
-     }],
-   });
-   ugraphInstance.resize();
+ if (!ugraphContainer) return;
+ const echarts = await import('echarts');
+ if (ugraphInstance) ugraphInstance.dispose();
+ ugraphInstance = echarts.init(ugraphContainer);
+ const { nodes, links } = buildUnifiedGraph();
+ const color = (t: string) => t === 'table' ? '#c96342' : t === 'group' ? '#8a6db5' : '#5b6fb5';
+ ugraphInstance.setOption({
+ backgroundColor: '#faf8f1',
+ tooltip: { trigger: 'item', formatter: (p: any) => (p.data?.name || p.data?.relation || '').replace(/\n/g, ' · ') },
+ series: [{
+ type: 'graph', layout: 'force', roam: true, draggable: true,
+ focusNodeAdjacency: true,
+ data: nodes.map((n) => ({
+ name: n.name,
+ symbol: n.type === 'metric' ? 'diamond' : n.type === 'group' ? 'roundRect' : 'circle',
+ symbolSize: n.type === 'table' ? 46 : n.type === 'group' ? 34 : 28,
+ itemStyle: { color: color(n.type), borderColor: '#2c2a26', borderWidth: 1 },
+ label: { show: true, fontSize: 10, color: '#2c2a26', overflow: 'truncate', width: 90 },
+ })),
+ links: links.map((e) => ({
+ source: e.source, target: e.target,
+ lineStyle: { color: '#bdb6a6', width: 1.5, curveness: 0.08 },
+ label: { show: true, formatter: e.relation || '', fontSize: 8, color: '#8a8478' },
+ })),
+ emphasis: { focus: 'adjacency', lineStyle: { width: 3, color: '#c96342' } },
+ force: { repulsion: 420, gravity: 0.08, edgeLength: [90, 220] },
+ }],
+ });
+ ugraphInstance.resize();
  }
 
  // render MAP when graph tab + map view + data present
  $effect(() => {
-   if (activeTab === '__unified__' && hubItem === 'graph' && graphView === 'map' && (unifiedItems?.length ?? 0) > 0) {
-     setTimeout(() => { if (ugraphContainer) renderUnifiedGraph(); }, 80);
-   }
+ if (activeTab === '__unified__' && hubItem === 'graph' && graphView === 'map' && (unifiedItems?.length ?? 0) > 0) {
+ setTimeout(() => { if (ugraphContainer) renderUnifiedGraph(); }, 80);
+ }
  });
 
  /* ─── lifecycle ─── */
@@ -707,32 +707,32 @@
 
  /* ═══ UNIFIED HUB (single Brain) ═══ */
  const LOCKED_SLUG = 'citypharma';
- let hubScope = $state('all');      // agent | company | personal | all
- let hubItem  = $state('glossary'); // rail item id
+ let hubScope = $state('all'); // agent | company | personal | all
+ let hubItem = $state('glossary'); // rail item id
 
- // rail item id → unified merge category (KNOWLEDGE items)
+ // rail item id > unified merge category (KNOWLEDGE items)
  const ITEM_TO_CAT: Record<string, string> = {
-   definitions: 'definitions',
-   glossary: 'glossary',
-   patterns: 'patterns',
-   rules: 'rules',
-   graph: 'graph',
-   schema: 'schema',
-   org: 'org',
+ definitions: 'definitions',
+ glossary: 'glossary',
+ patterns: 'patterns',
+ rules: 'rules',
+ graph: 'graph',
+ schema: 'schema',
+ org: 'org',
  };
- // SHARING items → status filter over ALL merge categories
+ // SHARING items > status filter over ALL merge categories
  const SHARING_FILTER: Record<string, string> = {
-   promote: 'agent_only',
-   pull: 'company_only',
-   conflicts: 'conflict',
+ promote: 'agent_only',
+ pull: 'company_only',
+ conflicts: 'conflict',
  };
  const MERGE_CATS = ['definitions', 'glossary', 'patterns', 'rules'];
 
  function hubScopeToFilter(s: string): string {
-   if (s === 'agent') return LOCKED_SLUG;
-   if (s === 'company') return 'global';
-   if (s === 'personal') return 'personal';
-   return 'all';
+ if (s === 'agent') return LOCKED_SLUG;
+ if (s === 'company') return 'global';
+ if (s === 'personal') return 'personal';
+ return 'all';
  }
 
  /* ── unified merged-list state ── */
@@ -741,117 +741,117 @@
  let unifiedStatusFilter = $state('all');
 
  async function _fetchUnified(cat: string): Promise<any[]> {
-   try {
-     const url = `/api/brain/unified?category=${cat}&scope=${hubScope}&project_slug=${LOCKED_SLUG}`;
-     const r = await fetch(url, { headers: _h() });
-     if (r.ok) { const d = await r.json(); return d.items || []; }
-   } catch {}
-   return [];
+ try {
+ const url = `/api/brain/unified?category=${cat}&scope=${hubScope}&project_slug=${LOCKED_SLUG}`;
+ const r = await fetch(url, { headers: _h() });
+ if (r.ok) { const d = await r.json(); return d.items || []; }
+ } catch {}
+ return [];
  }
 
  async function loadUnified(cat: string) {
-   unifiedLoading = true; unifiedItems = [];
-   unifiedItems = await _fetchUnified(cat);
-   unifiedLoading = false;
+ unifiedLoading = true; unifiedItems = [];
+ unifiedItems = await _fetchUnified(cat);
+ unifiedLoading = false;
  }
 
  async function loadUnifiedAll() {
-   unifiedLoading = true; unifiedItems = [];
-   const all = await Promise.all(MERGE_CATS.map((c) => _fetchUnified(c)));
-   unifiedItems = all.flat();
-   unifiedLoading = false;
+ unifiedLoading = true; unifiedItems = [];
+ const all = await Promise.all(MERGE_CATS.map((c) => _fetchUnified(c)));
+ unifiedItems = all.flat();
+ unifiedLoading = false;
  }
 
  async function refreshCurrentUnified() {
-   const cat = ITEM_TO_CAT[hubItem];
-   if (cat) await loadUnified(cat);
-   else if (hubItem in SHARING_FILTER) await loadUnifiedAll();
+ const cat = ITEM_TO_CAT[hubItem];
+ if (cat) await loadUnified(cat);
+ else if (hubItem in SHARING_FILTER) await loadUnifiedAll();
  }
 
  async function handleMergedAction(action: string, item: any) {
-   const cat = item.category;
-   let ep = '', body: any = null;
-   if (action === 'promote') {
-     ep = '/api/brain/promote';
-     body = { category: cat, name: item.name, agent_id: item.agent_id, project_slug: LOCKED_SLUG };
-   } else if (action === 'pull') {
-     ep = '/api/brain/pull';
-     body = { category: cat, name: item.name, company_id: item.company_id, project_slug: LOCKED_SLUG };
-   } else if (action === 'resolve_agent' || action === 'resolve_company') {
-     ep = '/api/brain/resolve';
-     body = {
-       category: cat, name: item.name, agent_id: item.agent_id, company_id: item.company_id,
-       winner: action === 'resolve_agent' ? 'agent' : 'company', project_slug: LOCKED_SLUG,
-     };
-   } else { return; }
-   try {
-     await fetch(ep, {
-       method: 'POST',
-       headers: { 'Content-Type': 'application/json', ..._h() },
-       body: JSON.stringify(body),
-     });
-   } catch {}
-   await refreshCurrentUnified();
-   loadStats();
+ const cat = item.category;
+ let ep = '', body: any = null;
+ if (action === 'promote') {
+ ep = '/api/brain/promote';
+ body = { category: cat, name: item.name, agent_id: item.agent_id, project_slug: LOCKED_SLUG };
+ } else if (action === 'pull') {
+ ep = '/api/brain/pull';
+ body = { category: cat, name: item.name, company_id: item.company_id, project_slug: LOCKED_SLUG };
+ } else if (action === 'resolve_agent' || action === 'resolve_company') {
+ ep = '/api/brain/resolve';
+ body = {
+ category: cat, name: item.name, agent_id: item.agent_id, company_id: item.company_id,
+ winner: action === 'resolve_agent' ? 'agent' : 'company', project_slug: LOCKED_SLUG,
+ };
+ } else { return; }
+ try {
+ await fetch(ep, {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json', ..._h() },
+ body: JSON.stringify(body),
+ });
+ } catch {}
+ await refreshCurrentUnified();
+ loadStats();
  }
 
  async function selectHubItem(section: string, item: string) {
-   hubItem = item;
-   if (!embedded) writeHash({ section, item, scope: hubScope });
-   const cat = ITEM_TO_CAT[item];
-   if (cat) {
-     activeTab = '__unified__'; unifiedStatusFilter = 'all';
-     await loadUnified(cat);
-   } else if (item in SHARING_FILTER) {
-     activeTab = '__unified__'; unifiedStatusFilter = SHARING_FILTER[item];
-     await loadUnifiedAll();
-   } else if (item === 'cortex') {
-     activeTab = '__cortex__'; loading = false;
-   } else if (item === 'okf') {
-     activeTab = 'okf'; loading = false;
-   } else if (item === 'accesslog' || item === 'activity') {
-     await switchTab('log');
-   } else if (item === 'training') {
-     window.location.href = `/ui/project/${LOCKED_SLUG}/settings#training`;
-   } else if (item === 'datasource') {
-     window.location.href = `/ui/project/${LOCKED_SLUG}/settings#upload`;
-   } else {
-     activeTab = '__placeholder__'; loading = false;
-   }
+ hubItem = item;
+ if (!embedded) writeHash({ section, item, scope: hubScope });
+ const cat = ITEM_TO_CAT[item];
+ if (cat) {
+ activeTab = '__unified__'; unifiedStatusFilter = 'all';
+ await loadUnified(cat);
+ } else if (item in SHARING_FILTER) {
+ activeTab = '__unified__'; unifiedStatusFilter = SHARING_FILTER[item];
+ await loadUnifiedAll();
+ } else if (item === 'cortex') {
+ activeTab = '__cortex__'; loading = false;
+ } else if (item === 'okf') {
+ activeTab = 'okf'; loading = false;
+ } else if (item === 'accesslog' || item === 'activity') {
+ await switchTab('log');
+ } else if (item === 'training') {
+ window.location.href = `/ui/project/${LOCKED_SLUG}/settings#training`;
+ } else if (item === 'datasource') {
+ window.location.href = `/ui/project/${LOCKED_SLUG}/settings#upload`;
+ } else {
+ activeTab = '__placeholder__'; loading = false;
+ }
  }
 
  async function changeHubScope(s: string) {
-   hubScope = s;
-   scopeFilter = hubScopeToFilter(s);
-   tabLoaded = {};
-   if (!embedded) writeHash({ scope: s });
-   await refreshCurrentUnified();
+ hubScope = s;
+ scopeFilter = hubScopeToFilter(s);
+ tabLoaded = {};
+ if (!embedded) writeHash({ scope: s });
+ await refreshCurrentUnified();
  }
 
  function placeholderTitle(item: string): string {
-   const m: Record<string, string> = {
-     definitions: 'Definitions', schema: 'Schema', training: 'Training',
-     datasource: 'Data Source', promote: 'Promote agent → company',
-     pull: 'Pull company → agent', conflicts: 'Conflicts',
-   };
-   return m[item] || item;
+ const m: Record<string, string> = {
+ definitions: 'Definitions', schema: 'Schema', training: 'Training',
+ datasource: 'Data Source', promote: 'Promote agent > company',
+ pull: 'Pull company > agent', conflicts: 'Conflicts',
+ };
+ return m[item] || item;
  }
 
  // hash-driven init + back/forward support
  let _hubUnsub: (() => void) | null = null;
  async function applyHubState(st: { section: string; item: string; scope: string }) {
-   hubScope = st.scope;
-   scopeFilter = hubScopeToFilter(st.scope);
-   await selectHubItem(st.section, st.item);
+ hubScope = st.scope;
+ scopeFilter = hubScopeToFilter(st.scope);
+ await selectHubItem(st.section, st.item);
  }
  onMount(() => {
-   if (!embedded) _hubUnsub = onHashChange((st) => { applyHubState(st); });
+ if (!embedded) _hubUnsub = onHashChange((st) => { applyHubState(st); });
  });
  onDestroy(() => { if (_hubUnsub) _hubUnsub(); });
 
  // Embedded: settings rail drives the active item via the `item` prop.
  $effect(() => {
-   if (embedded && item && item !== hubItem) selectHubItem('', item);
+ if (embedded && item && item !== hubItem) selectHubItem('', item);
  });
 </script>
 
@@ -912,7 +912,7 @@
   <div class="ds-stat">
     <div class="ds-stat-row">
       <div class="ds-stat-value">{_byCat('alias')}</div>
-      <div class="ds-stat-icon">↔</div>
+      <div class="ds-stat-icon"><Icon name="arrow-right" size={16} /></div>
     </div>
     <div class="ds-stat-label">Aliases</div>
   </div>
@@ -1316,7 +1316,7 @@
     {/if}
   {:else}
     <div class="brain-searchbar">
-      <input class="brain-search-input" type="text" placeholder="⌕  Filter…" bind:value={brainQuery} />
+      <input class="brain-search-input" type="text" placeholder="(search)  Filter…" bind:value={brainQuery} />
       {#if brainQuery}
         <button class="brain-search-clear" type="button" onclick={() => (brainQuery = '')}>×</button>
       {/if}
@@ -1626,12 +1626,12 @@
  .bi-line { display: flex; align-items: baseline; gap: 6px; }
  .bi-line + .bi-line { margin-top: 3px; }
  .bi-badge {
-   flex-shrink: 0;
-   display: inline-flex; align-items: center; justify-content: center;
-   width: 14px; height: 14px;
-   font-size: 9px; font-weight: 700; line-height: 1;
-   color: var(--pw-ink); background: var(--pw-bg-alt);
-   border: 1px solid var(--pw-border); border-radius: 50%;
+ flex-shrink: 0;
+ display: inline-flex; align-items: center; justify-content: center;
+ width: 14px; height: 14px;
+ font-size: 9px; font-weight: 700; line-height: 1;
+ color: var(--pw-ink); background: var(--pw-bg-alt);
+ border: 1px solid var(--pw-border); border-radius: 50%;
  }
  .bi-en { color: var(--pw-muted); }
  .bi-my { color: var(--pw-dim); }
@@ -1885,72 +1885,72 @@
  margin-bottom: 6px;
  }
  .brain-placeholder {
-   border: 1px dashed var(--pw-border, #e3ddd0);
-   padding: 40px 28px;
-   text-align: center;
+ border: 1px dashed var(--pw-border, #e3ddd0);
+ padding: 40px 28px;
+ text-align: center;
  }
  .brain-placeholder-title {
-   font-size: 18px;
-   font-weight: 700;
-   color: var(--pw-ink, #2c2a26);
-   margin-bottom: 8px;
+ font-size: 18px;
+ font-weight: 700;
+ color: var(--pw-ink, #2c2a26);
+ margin-bottom: 8px;
  }
  .brain-placeholder-sub {
-   font-size: 13px;
-   color: var(--pw-muted, #6b6557);
-   max-width: 480px;
-   margin: 0 auto;
-   line-height: 1.5;
+ font-size: 13px;
+ color: var(--pw-muted, #6b6557);
+ max-width: 480px;
+ margin: 0 auto;
+ line-height: 1.5;
  }
 
  .brain-searchbar {
-   position: relative;
-   margin-bottom: 10px;
+ position: relative;
+ margin-bottom: 10px;
  }
  .brain-search-input {
-   width: 100%;
-   box-sizing: border-box;
-   padding: 8px 30px 8px 12px;
-   font-size: 13px;
-   font-family: inherit;
-   color: #2c2a26;
-   background: #fff;
-   border: 1px solid #e3ddd0;
-   border-radius: var(--pw-radius-sm);
-   outline: none;
+ width: 100%;
+ box-sizing: border-box;
+ padding: 8px 30px 8px 12px;
+ font-size: 13px;
+ font-family: inherit;
+ color: #2c2a26;
+ background: #fff;
+ border: 1px solid #e3ddd0;
+ border-radius: var(--pw-radius-sm);
+ outline: none;
  }
  .brain-search-input:focus { border-color: #c96342; }
  .brain-search-input::placeholder { color: #a39d90; }
  .brain-search-clear {
-   position: absolute;
-   right: 8px;
-   top: 50%;
-   transform: translateY(-50%);
-   border: none;
-   background: transparent;
-   color: #8a8478;
-   font-size: 18px;
-   line-height: 1;
-   cursor: pointer;
-   padding: 0 4px;
+ position: absolute;
+ right: 8px;
+ top: 50%;
+ transform: translateY(-50%);
+ border: none;
+ background: transparent;
+ color: #8a8478;
+ font-size: 18px;
+ line-height: 1;
+ cursor: pointer;
+ padding: 0 4px;
  }
  .brain-search-clear:hover { color: #c96342; }
 
  .brain-gtoggle { display: inline-flex; border: 1px solid #e3ddd0; margin-bottom: 12px; }
  .brain-gtog-btn {
-   padding: 6px 14px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
-   background: #fff; color: #6b6557; border: none; cursor: pointer;
-   border-right: 1px solid #e3ddd0;
+ padding: 6px 14px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+ background: #fff; color: #6b6557; border: none; cursor: pointer;
+ border-right: 1px solid #e3ddd0;
  }
  .brain-gtog-btn:last-child { border-right: none; }
  .brain-gtog-btn.active { background: #c96342; color: #fff; }
  .brain-gcanvas {
-   width: 100%; height: 520px; background: #faf8f1;
-   border: 1px solid #e3ddd0;
+ width: 100%; height: 520px; background: #faf8f1;
+ border: 1px solid #e3ddd0;
  }
  .brain-glegend {
-   display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
-   margin-top: 8px; font-size: 11px; color: #6b6557;
+ display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+ margin-top: 8px; font-size: 11px; color: #6b6557;
  }
  .brain-glegend span { display: inline-flex; align-items: center; gap: 5px; }
  .brain-gdot { width: 11px; height: 11px; display: inline-block; }

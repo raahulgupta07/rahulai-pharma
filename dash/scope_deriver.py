@@ -26,7 +26,7 @@ _MAX_TOPICS = 10
 _MAX_ENTITIES = 10
 _MAX_ALLOWED = 8
 _MAX_DENIED = 8
-_MAX_SIGNAL_CHARS = 3000  # total truncation budget for the LLM prompt body
+_MAX_SIGNAL_CHARS = 3000 # total truncation budget for the LLM prompt body
 
 _ALWAYS_DENY = ["general knowledge", "politics", "celebrities", "code generation"]
 
@@ -443,7 +443,7 @@ def _write_run_progress(project_slug: str, step: str, progress: int) -> None:
 
 
 def derive_scope(project_slug: str) -> dict:
-    """Top-level: gather → LLM → validate → return.
+    """Top-level: gather > LLM > validate > return.
 
     Never raises. On any failure (timeout, LLM error, signal collection
     crash), returns a fallback scope derived from persona + table names

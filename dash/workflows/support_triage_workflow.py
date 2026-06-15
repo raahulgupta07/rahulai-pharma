@@ -1,6 +1,6 @@
 """Support triage workflow.
 
-Pattern: classify ticket priority/category → route to specialist agent →
+Pattern: classify ticket priority/category > route to specialist agent >
 escalate to Helpdesk if severity == 'critical'.
 
 Schedule: on-demand.
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 WORKFLOW_META = {
     "name": "support_triage",
     "schedule": "manual",
-    "description": "Classify ticket → route to specialist → escalate if critical.",
+    "description": "Classify ticket > route to specialist > escalate if critical.",
     "tags": ["support", "routing", "classify"],
 }
 
@@ -97,7 +97,7 @@ async def _route_to_specialist(specialist: str, ticket: Dict[str, Any],
                                cls: Dict[str, str]) -> str:
     prompt = (
         f"You are {specialist}. A ticket has been routed to you.\n"
-        f"Category: {cls['category']}   Severity: {cls['severity']}\n"
+        f"Category: {cls['category']} Severity: {cls['severity']}\n"
         f"Summary: {cls.get('summary', '')}\n\n"
         f"Subject: {ticket.get('subject', '')}\n"
         f"Body:\n{ticket.get('body', '')}\n\n"

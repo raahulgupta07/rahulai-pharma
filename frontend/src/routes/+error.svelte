@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { page } from '$app/state';
+  import Icon from '$lib/Icon.svelte';
+ import { page } from '$app/state';
 </script>
 
 <div style="min-height: 100vh; background: var(--pw-bg); display: flex; align-items: center; justify-content: center; font-family: var(--pw-font-body); padding: 40px;">
@@ -10,7 +11,7 @@
       {page.error?.message || (page.status === 404 ? 'The page you were looking for could not be found.' : page.status === 403 ? 'You do not have access to this page.' : 'An unexpected error occurred.')}
     </p>
     <a href="/ui/home" style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 22px; background: var(--pw-accent); color: #fff; font-family: var(--pw-font-body); font-size: 11px; font-weight: 500; text-decoration: none; border-radius: var(--pw-radius-pill); transition: background 0.15s;">
-      ← Back home
+      <Icon name="arrow-left" size={16} /> Back home
     </a>
   </div>
 </div>

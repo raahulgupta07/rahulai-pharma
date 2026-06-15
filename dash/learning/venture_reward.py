@@ -65,11 +65,11 @@ def _ensure_table() -> bool:
 def _compute_reward(verdict: str | None, deal_status: str | None
                     ) -> tuple[float, str]:
     """Mapping:
-      verdict=go   + status=closed → +1.0 (true positive)
-      verdict=go   + status=pass   → -1.0 (false positive)
-      verdict=pass + status=closed → -0.5 (false negative)
-      verdict=hold                 →  0.0
-      else                          →  0.0 (neutral / pending)
+      verdict=go + status=closed > +1.0 (true positive)
+      verdict=go + status=pass > -1.0 (false positive)
+      verdict=pass + status=closed > -0.5 (false negative)
+      verdict=hold > 0.0
+      else > 0.0 (neutral / pending)
     """
     v = (verdict or "").lower()
     s = (deal_status or "").lower()

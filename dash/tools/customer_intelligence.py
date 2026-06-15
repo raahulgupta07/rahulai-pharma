@@ -168,7 +168,7 @@ def rfm_score(project_slug: str,
             f'MAX("{date_col}"::text) AS last_date, '
             f'COUNT(*) AS freq, '
             f'SUM(CASE WHEN "{amount_col}"::text ~ \'^-?[0-9.]+$\' '
-            f'         THEN "{amount_col}"::numeric ELSE 0 END) AS total '
+            f' THEN "{amount_col}"::numeric ELSE 0 END) AS total '
             f'FROM "{schema}"."{table}" '
             f'WHERE "{customer_col}" IS NOT NULL '
             f'GROUP BY "{customer_col}" '
@@ -217,7 +217,7 @@ def rfm_score(project_slug: str,
                 ranked = 6 - ranked
             return ranked
 
-        # R: lower days_since = better → invert
+        # R: lower days_since = better > invert
         df["R"] = _safe_qcut(df["days_since"], ascending_better=False)
         # F, M: higher = better
         df["F"] = _safe_qcut(df["freq"], ascending_better=True)
@@ -322,7 +322,7 @@ def cohort_curve(project_slug: str,
         if period not in ("week", "month", "quarter"):
             return {"ok": False, "error": f"period must be week|month|quarter, got '{period}'"}
 
-        trunc_unit = period  # postgres DATE_TRUNC accepts 'week' / 'month' / 'quarter'
+        trunc_unit = period # postgres DATE_TRUNC accepts 'week' / 'month' / 'quarter'
 
         eng, schema = _resolve_engine_schema(project_slug)
 
@@ -391,7 +391,7 @@ def cohort_curve(project_slug: str,
                 (df["period_start"].dt.quarter - df["cohort"].dt.quarter)
             ).astype(int)
             label_fmt = lambda d: f"{d.year}-Q{d.quarter}"
-        else:  # month
+        else: # month
             df["period_idx"] = (
                 (df["period_start"].dt.year - df["cohort"].dt.year) * 12 +
                 (df["period_start"].dt.month - df["cohort"].dt.month)

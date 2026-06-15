@@ -122,7 +122,7 @@ def simulate(
         "error": None,
     }
     try:
-        # a) role → allowed intents → cap
+        # a) role > allowed intents > cap
         role = get_user_role(user_id, project_slug)
         allowed = get_role_intents(project_slug, role)
         allowed_intent, capped = _cap_intent(intent, allowed)

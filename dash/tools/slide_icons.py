@@ -1,20 +1,20 @@
 """Auto-icon matcher for slide bullets.
 
-Maps bullet text keywords → Lucide icon name. Pure Python keyword scoring,
+Maps bullet text keywords > Lucide icon name. Pure Python keyword scoring,
 no LLM, no network. Frontend (which already bundles lucide-svelte) renders
 the matched icon next to each bullet.
 
 Usage:
     from dash.tools.slide_icons import pick_icon
     icon_name = pick_icon("Revenue grew 23% YoY")
-    # → "trending-up"
+    # > "trending-up"
 """
 from __future__ import annotations
 
 import re
 from typing import List, Optional
 
-# ── Static keyword → icon map (~70 most common analytical concepts) ────
+# ── Static keyword > icon map (~70 most common analytical concepts) ────
 # Order matters: more specific keywords first.
 _ICON_MAP: List[tuple[str, str]] = [
     # Money + finance
@@ -111,7 +111,7 @@ _ICON_MAP: List[tuple[str, str]] = [
     (r"\b(brand|category|line)\b", "layers"),
 
     # Generic fallback markers
-    (r"^\s*\d", "hash"),     # bullet starting w/ number
+    (r"^\s*\d", "hash"), # bullet starting w/ number
     (r"\?$", "help-circle"), # ends w/ question mark
 ]
 

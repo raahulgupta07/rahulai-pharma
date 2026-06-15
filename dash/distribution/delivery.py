@@ -3,9 +3,9 @@ Deliver a scheduled deck: render PPTX (and optional PDF), then route to
 each recipient via email or Slack. Logs results back to the schedule row.
 
 Routing rule:
-  - looks like email (contains '@')             → send_email
-  - starts with '#' or 'slack:'                 → send_slack
-  - anything else                               → skipped (recorded as warn)
+  - looks like email (contains '@') > send_email
+  - starts with '#' or 'slack:' > send_slack
+  - anything else > skipped (recorded as warn)
 """
 from __future__ import annotations
 
@@ -167,7 +167,7 @@ def deliver_scheduled_deck(presentation_id: int, schedule_row: dict) -> dict:
         if pdf_path:
             attachments.append(pdf_path)
         elif fmt == "pdf":
-            # PDF requested but soffice unavailable → fall back to PPTX rather
+            # PDF requested but soffice unavailable > fall back to PPTX rather
             # than ship nothing. Caller intent was "send the deck".
             log.warning("PDF requested but soffice unavailable; falling back to PPTX")
             attachments = [pptx_path]

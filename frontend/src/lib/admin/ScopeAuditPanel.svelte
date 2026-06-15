@@ -1,234 +1,235 @@
 <script lang="ts">
-  import { dashFetch } from '$lib/api';
-  import { onMount } from 'svelte';
+  import Icon from '$lib/Icon.svelte';
+ import { dashFetch } from '$lib/api';
+ import { onMount } from 'svelte';
 
-  type SessionRow = {
-    session_id: string;
-    user_id: number | null;
-    username: string | null;
-    project_slug: string | null;
-    first_message: string | null;
-    msg_count: number;
-    created_at: string | null;
-    updated_at: string | null;
-    total_cost_usd: number;
-    error_count: number;
-  };
+ type SessionRow = {
+ session_id: string;
+ user_id: number | null;
+ username: string | null;
+ project_slug: string | null;
+ first_message: string | null;
+ msg_count: number;
+ created_at: string | null;
+ updated_at: string | null;
+ total_cost_usd: number;
+ error_count: number;
+ };
 
-  type SpanRow = {
-    id: number;
-    trace_id: string;
-    parent_id: string | null;
-    name: string;
-    kind: string;
-    status: string;
-    duration_ms: number | null;
-    cost_usd: number | null;
-    tokens: number | null;
-    error: string | null;
-    started_at: string | null;
-    finished_at: string | null;
-    meta: any;
-  };
+ type SpanRow = {
+ id: number;
+ trace_id: string;
+ parent_id: string | null;
+ name: string;
+ kind: string;
+ status: string;
+ duration_ms: number | null;
+ cost_usd: number | null;
+ tokens: number | null;
+ error: string | null;
+ started_at: string | null;
+ finished_at: string | null;
+ meta: any;
+ };
 
-  type Summary = {
-    project_slug: string;
-    days: number;
-    session_count: number;
-    total_cost_usd: number;
-    error_rate: number;
-    top_tables: { table: string; count: number }[];
-    top_skills: { skill_id: string; count: number }[];
-    top_users: { user_id: number; username: string | null; session_count: number; cost_usd: number }[];
-    top_tools: { tool: string; count: number }[];
-    warning: string | null;
-  };
+ type Summary = {
+ project_slug: string;
+ days: number;
+ session_count: number;
+ total_cost_usd: number;
+ error_rate: number;
+ top_tables: { table: string; count: number }[];
+ top_skills: { skill_id: string; count: number }[];
+ top_users: { user_id: number; username: string | null; session_count: number; cost_usd: number }[];
+ top_tools: { tool: string; count: number }[];
+ warning: string | null;
+ };
 
-  type SessionDetail = {
-    session: SessionRow;
-    timeline: SpanRow[];
-    tables_touched: { table: string; count: number }[];
-    skills_used: { skill_id: string; count: number; success_count: number }[];
-    tools_called: { tool: string; count: number; error_count: number }[];
-    rls_policies_fired: { policy: string; count: number }[];
-    errors: { span_name: string; error: string | null; started_at: string | null }[];
-    total_cost_usd: number;
-    total_tokens: number;
-    warning: string | null;
-  };
+ type SessionDetail = {
+ session: SessionRow;
+ timeline: SpanRow[];
+ tables_touched: { table: string; count: number }[];
+ skills_used: { skill_id: string; count: number; success_count: number }[];
+ tools_called: { tool: string; count: number; error_count: number }[];
+ rls_policies_fired: { policy: string; count: number }[];
+ errors: { span_name: string; error: string | null; started_at: string | null }[];
+ total_cost_usd: number;
+ total_tokens: number;
+ warning: string | null;
+ };
 
-  type UserAudit = {
-    user_id: number;
-    username: string | null;
-    days: number;
-    session_count: number;
-    project_count: number;
-    total_cost_usd: number;
-    recent_sessions: SessionRow[];
-    top_projects: { project_slug: string; session_count: number; cost_usd: number }[];
-    top_tools: { tool: string; count: number }[];
-    warning: string | null;
-  };
+ type UserAudit = {
+ user_id: number;
+ username: string | null;
+ days: number;
+ session_count: number;
+ project_count: number;
+ total_cost_usd: number;
+ recent_sessions: SessionRow[];
+ top_projects: { project_slug: string; session_count: number; cost_usd: number }[];
+ top_tools: { tool: string; count: number }[];
+ warning: string | null;
+ };
 
-  // ── State ────────────────────────────────────────────────────────────────
-  let projectSlug = $state('');
-  let activeTab = $state<'sessions' | 'summary' | 'user'>('sessions');
-  // privacy: dashboards show keyword chips, never raw chat text
-  const _STOPW = new Set('the a an and or to in on for is are how what which this that with at by from as can my your you we they it do does of'.split(' '));
-  function kw(s: string | null, n = 5): string[] {
-    const out: string[] = []; const seen = new Set<string>();
-    for (const m of (s || '').toLowerCase().match(/[a-z][a-z0-9\-]{2,}|[က-႟]+/g) || []) {
-      if (_STOPW.has(m) || seen.has(m)) continue; seen.add(m); out.push(m); if (out.length >= n) break;
-    }
-    return out;
-  }
-  let days = $state(7);
+ // ── State ────────────────────────────────────────────────────────────────
+ let projectSlug = $state('');
+ let activeTab = $state<'sessions' | 'summary' | 'user'>('sessions');
+ // privacy: dashboards show keyword chips, never raw chat text
+ const _STOPW = new Set('the a an and or to in on for is are how what which this that with at by from as can my your you we they it do does of'.split(' '));
+ function kw(s: string | null, n = 5): string[] {
+ const out: string[] = []; const seen = new Set<string>();
+ for (const m of (s || '').toLowerCase().match(/[a-z][a-z0-9\-]{2,}|[က-႟]+/g) || []) {
+ if (_STOPW.has(m) || seen.has(m)) continue; seen.add(m); out.push(m); if (out.length >= n) break;
+ }
+ return out;
+ }
+ let days = $state(7);
 
-  let sessions = $state<SessionRow[]>([]);
-  let sessionsWarning = $state<string | null>(null);
-  let sessionsLoading = $state(false);
+ let sessions = $state<SessionRow[]>([]);
+ let sessionsWarning = $state<string | null>(null);
+ let sessionsLoading = $state(false);
 
-  let expandedSession = $state<string | null>(null);
-  let sessionDetail = $state<SessionDetail | null>(null);
-  let detailLoading = $state(false);
+ let expandedSession = $state<string | null>(null);
+ let sessionDetail = $state<SessionDetail | null>(null);
+ let detailLoading = $state(false);
 
-  let summary = $state<Summary | null>(null);
-  let summaryLoading = $state(false);
+ let summary = $state<Summary | null>(null);
+ let summaryLoading = $state(false);
 
-  let userIdInput = $state('');
-  let userAudit = $state<UserAudit | null>(null);
-  let userLoading = $state(false);
+ let userIdInput = $state('');
+ let userAudit = $state<UserAudit | null>(null);
+ let userLoading = $state(false);
 
-  // ── Loaders ──────────────────────────────────────────────────────────────
-  async function loadSessions() {
-    if (!projectSlug) {
-      sessions = [];
-      sessionsWarning = 'Enter a project slug';
-      return;
-    }
-    sessionsLoading = true;
-    sessionsWarning = null;
-    try {
-      const r = await dashFetch(`/api/scope-audit/sessions?project_slug=${encodeURIComponent(projectSlug)}&limit=50`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const data = await r.json();
-      sessions = data.sessions || [];
-      sessionsWarning = data.warning;
-    } catch (e: any) {
-      sessionsWarning = e?.message || String(e);
-      sessions = [];
-    } finally {
-      sessionsLoading = false;
-    }
-  }
+ // ── Loaders ──────────────────────────────────────────────────────────────
+ async function loadSessions() {
+ if (!projectSlug) {
+ sessions = [];
+ sessionsWarning = 'Enter a project slug';
+ return;
+ }
+ sessionsLoading = true;
+ sessionsWarning = null;
+ try {
+ const r = await dashFetch(`/api/scope-audit/sessions?project_slug=${encodeURIComponent(projectSlug)}&limit=50`);
+ if (!r.ok) throw new Error(`HTTP ${r.status}`);
+ const data = await r.json();
+ sessions = data.sessions || [];
+ sessionsWarning = data.warning;
+ } catch (e: any) {
+ sessionsWarning = e?.message || String(e);
+ sessions = [];
+ } finally {
+ sessionsLoading = false;
+ }
+ }
 
-  async function loadSessionDetail(sid: string) {
-    if (expandedSession === sid) {
-      expandedSession = null;
-      sessionDetail = null;
-      return;
-    }
-    expandedSession = sid;
-    sessionDetail = null;
-    detailLoading = true;
-    try {
-      const r = await dashFetch(`/api/scope-audit/session/${encodeURIComponent(sid)}`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      sessionDetail = await r.json();
-    } catch (e: any) {
-      sessionDetail = {
-        session: { session_id: sid } as any,
-        timeline: [], tables_touched: [], skills_used: [], tools_called: [],
-        rls_policies_fired: [], errors: [], total_cost_usd: 0, total_tokens: 0,
-        warning: e?.message || String(e),
-      };
-    } finally {
-      detailLoading = false;
-    }
-  }
+ async function loadSessionDetail(sid: string) {
+ if (expandedSession === sid) {
+ expandedSession = null;
+ sessionDetail = null;
+ return;
+ }
+ expandedSession = sid;
+ sessionDetail = null;
+ detailLoading = true;
+ try {
+ const r = await dashFetch(`/api/scope-audit/session/${encodeURIComponent(sid)}`);
+ if (!r.ok) throw new Error(`HTTP ${r.status}`);
+ sessionDetail = await r.json();
+ } catch (e: any) {
+ sessionDetail = {
+ session: { session_id: sid } as any,
+ timeline: [], tables_touched: [], skills_used: [], tools_called: [],
+ rls_policies_fired: [], errors: [], total_cost_usd: 0, total_tokens: 0,
+ warning: e?.message || String(e),
+ };
+ } finally {
+ detailLoading = false;
+ }
+ }
 
-  async function loadSummary() {
-    if (!projectSlug) return;
-    summaryLoading = true;
-    try {
-      const r = await dashFetch(`/api/scope-audit/summary?project_slug=${encodeURIComponent(projectSlug)}&days=${days}`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      summary = await r.json();
-    } catch (e: any) {
-      summary = {
-        project_slug: projectSlug, days, session_count: 0, total_cost_usd: 0, error_rate: 0,
-        top_tables: [], top_skills: [], top_users: [], top_tools: [],
-        warning: e?.message || String(e),
-      };
-    } finally {
-      summaryLoading = false;
-    }
-  }
+ async function loadSummary() {
+ if (!projectSlug) return;
+ summaryLoading = true;
+ try {
+ const r = await dashFetch(`/api/scope-audit/summary?project_slug=${encodeURIComponent(projectSlug)}&days=${days}`);
+ if (!r.ok) throw new Error(`HTTP ${r.status}`);
+ summary = await r.json();
+ } catch (e: any) {
+ summary = {
+ project_slug: projectSlug, days, session_count: 0, total_cost_usd: 0, error_rate: 0,
+ top_tables: [], top_skills: [], top_users: [], top_tools: [],
+ warning: e?.message || String(e),
+ };
+ } finally {
+ summaryLoading = false;
+ }
+ }
 
-  async function loadUser() {
-    const uid = parseInt(userIdInput, 10);
-    if (!uid) return;
-    userLoading = true;
-    try {
-      const r = await dashFetch(`/api/scope-audit/user/${uid}?days=${30}`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      userAudit = await r.json();
-    } catch (e: any) {
-      userAudit = {
-        user_id: uid, username: null, days: 30, session_count: 0,
-        project_count: 0, total_cost_usd: 0, recent_sessions: [],
-        top_projects: [], top_tools: [], warning: e?.message || String(e),
-      };
-    } finally {
-      userLoading = false;
-    }
-  }
+ async function loadUser() {
+ const uid = parseInt(userIdInput, 10);
+ if (!uid) return;
+ userLoading = true;
+ try {
+ const r = await dashFetch(`/api/scope-audit/user/${uid}?days=${30}`);
+ if (!r.ok) throw new Error(`HTTP ${r.status}`);
+ userAudit = await r.json();
+ } catch (e: any) {
+ userAudit = {
+ user_id: uid, username: null, days: 30, session_count: 0,
+ project_count: 0, total_cost_usd: 0, recent_sessions: [],
+ top_projects: [], top_tools: [], warning: e?.message || String(e),
+ };
+ } finally {
+ userLoading = false;
+ }
+ }
 
-  // ── Derived: chart bar max for top-N visuals ─────────────────────────────
-  function maxCount(arr: { count: number }[]): number {
-    if (!Array.isArray(arr) || arr.length === 0) return 1;
-    return Math.max(1, ...arr.map(x => x.count || 0));
-  }
+ // ── Derived: chart bar max for top-N visuals ─────────────────────────────
+ function maxCount(arr: { count: number }[]): number {
+ if (!Array.isArray(arr) || arr.length === 0) return 1;
+ return Math.max(1, ...arr.map(x => x.count || 0));
+ }
 
-  function fmtCost(v: number | null | undefined): string {
-    if (v == null) return '—';
-    if (v < 0.01) return `$${v.toFixed(4)}`;
-    return `$${v.toFixed(2)}`;
-  }
+ function fmtCost(v: number | null | undefined): string {
+ if (v == null) return '—';
+ if (v < 0.01) return `$${v.toFixed(4)}`;
+ return `$${v.toFixed(2)}`;
+ }
 
-  function fmtMs(v: number | null | undefined): string {
-    if (v == null) return '—';
-    if (v < 1000) return `${v}ms`;
-    return `${(v / 1000).toFixed(2)}s`;
-  }
+ function fmtMs(v: number | null | undefined): string {
+ if (v == null) return '—';
+ if (v < 1000) return `${v}ms`;
+ return `${(v / 1000).toFixed(2)}s`;
+ }
 
-  function fmtTime(iso: string | null | undefined): string {
-    if (!iso) return '—';
-    try {
-      return new Date(iso).toLocaleString();
-    } catch {
-      return iso;
-    }
-  }
+ function fmtTime(iso: string | null | undefined): string {
+ if (!iso) return '—';
+ try {
+ return new Date(iso).toLocaleString();
+ } catch {
+ return iso;
+ }
+ }
 
-  function tabChange(t: 'sessions' | 'summary' | 'user') {
-    activeTab = t;
-    if (t === 'summary' && !summary && projectSlug) loadSummary();
-  }
+ function tabChange(t: 'sessions' | 'summary' | 'user') {
+ activeTab = t;
+ if (t === 'summary' && !summary && projectSlug) loadSummary();
+ }
 
-  let singleAgent = $state(false);
+ let singleAgent = $state(false);
 
-  onMount(async () => {
-    // single-tenant: auto-fill the locked slug + load — no manual entry needed
-    try {
-      const f = await fetch('/api/flags').then((r) => (r.ok ? r.json() : null));
-      if (f?.single_agent && f.locked_slug) {
-        singleAgent = true;
-        projectSlug = f.locked_slug;
-        loadSessions();
-      }
-    } catch { /* ignore */ }
-  });
+ onMount(async () => {
+ // single-tenant: auto-fill the locked slug + load — no manual entry needed
+ try {
+ const f = await fetch('/api/flags').then((r) => (r.ok ? r.json() : null));
+ if (f?.single_agent && f.locked_slug) {
+ singleAgent = true;
+ projectSlug = f.locked_slug;
+ loadSessions();
+ }
+ } catch { /* ignore */ }
+ });
 </script>
 
 <div class="sa-shell">
@@ -285,7 +286,7 @@
           <tbody>
             {#each sessions as s}
               <tr class="row" onclick={() => loadSessionDetail(s.session_id)}>
-                <td><span class="chev">{expandedSession === s.session_id ? '▼' : '▶'}</span></td>
+                <td><span class="chev">{expandedSession === s.session_id ? '▼' : ''}</span></td>
                 <td><code class="mono">{s.session_id.slice(0, 16)}…</code></td>
                 <td>{s.username || `#${s.user_id ?? '?'}`}</td>
                 <td class="msg">{#each kw(s.first_message) as k}<span class="kwc">{k}</span>{/each}{#if !kw(s.first_message).length}—{/if}</td>
@@ -406,7 +407,7 @@
                                   <span class="bar-track">
                                     <span class="bar-fill" style="width:{(sk.count / m) * 100}%"></span>
                                   </span>
-                                  <span class="bar-count">{sk.count}/{sk.success_count}✓</span>
+                                  <span class="bar-count">{sk.count}/{sk.success_count}<Icon name="check" size={16} /></span>
                                 </li>
                               {/each}
                             </ul>
@@ -683,203 +684,203 @@
 </div>
 
 <style>
-  .sa-shell {
-    padding: 24px 32px;
-    max-width: 1280px;
-    margin: 0 auto;
-    font-family: system-ui, -apple-system, sans-serif;
-    color: #1f1c17;
-  }
-  .sa-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    gap: 16px;
-    margin-bottom: 16px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid #e8e3d6;
-  }
-  .sa-head h1 {
-    font-size: 22px;
-    margin: 0 0 4px 0;
-    font-weight: 600;
-  }
-  .muted { color: #777; font-size: 13px; margin: 0; }
-  .small { font-size: 12px; }
-  .err { color: #b3261e !important; }
-  .ctrls { display: flex; gap: 8px; align-items: center; }
-  .ctrls input[type="text"], .row-controls input, .row-controls select {
-    padding: 6px 10px;
-    border: 1px solid #d6d1c2;
-    background: #fff;
-    border-radius: 4px;
-    font-size: 13px;
-    min-width: 240px;
-  }
-  button {
-    padding: 6px 12px;
-    border: 1px solid #d6d1c2;
-    background: #fff;
-    border-radius: 4px;
-    font-size: 13px;
-    cursor: pointer;
-  }
-  button.primary {
-    background: #c96342; color: #fff; border-color: #c96342;
-  }
-  button.primary:hover { background: #b15639; }
-  button:hover:not(.primary) { background: #f7f3e9; }
-  button:disabled { opacity: 0.5; cursor: default; }
+ .sa-shell {
+ padding: 24px 32px;
+ max-width: 1280px;
+ margin: 0 auto;
+ font-family: system-ui, -apple-system, sans-serif;
+ color: #1f1c17;
+ }
+ .sa-head {
+ display: flex;
+ justify-content: space-between;
+ align-items: flex-end;
+ gap: 16px;
+ margin-bottom: 16px;
+ padding-bottom: 12px;
+ border-bottom: 1px solid #e8e3d6;
+ }
+ .sa-head h1 {
+ font-size: 22px;
+ margin: 0 0 4px 0;
+ font-weight: 600;
+ }
+ .muted { color: #777; font-size: 13px; margin: 0; }
+ .small { font-size: 12px; }
+ .err { color: #b3261e !important; }
+ .ctrls { display: flex; gap: 8px; align-items: center; }
+ .ctrls input[type="text"], .row-controls input, .row-controls select {
+ padding: 6px 10px;
+ border: 1px solid #d6d1c2;
+ background: #fff;
+ border-radius: 4px;
+ font-size: 13px;
+ min-width: 240px;
+ }
+ button {
+ padding: 6px 12px;
+ border: 1px solid #d6d1c2;
+ background: #fff;
+ border-radius: 4px;
+ font-size: 13px;
+ cursor: pointer;
+ }
+ button.primary {
+ background: #c96342; color: #fff; border-color: #c96342;
+ }
+ button.primary:hover { background: #b15639; }
+ button:hover:not(.primary) { background: #f7f3e9; }
+ button:disabled { opacity: 0.5; cursor: default; }
 
-  .tabs {
-    display: flex; gap: 0;
-    margin-bottom: 18px;
-    border-bottom: 1px solid #e8e3d6;
-  }
-  .tabs button {
-    background: transparent; border: none; border-bottom: 2px solid transparent;
-    border-radius: var(--pw-radius-sm);
-    padding: 8px 16px; font-size: 13px; font-weight: 500;
-    color: #777;
-  }
-  .tabs button.active {
-    color: #c96342; border-bottom-color: #c96342;
-  }
+ .tabs {
+ display: flex; gap: 0;
+ margin-bottom: 18px;
+ border-bottom: 1px solid #e8e3d6;
+ }
+ .tabs button {
+ background: transparent; border: none; border-bottom: 2px solid transparent;
+ border-radius: var(--pw-radius-sm);
+ padding: 8px 16px; font-size: 13px; font-weight: 500;
+ color: #777;
+ }
+ .tabs button.active {
+ color: #c96342; border-bottom-color: #c96342;
+ }
 
-  .row-controls {
-    display: flex; gap: 8px; margin-bottom: 16px; align-items: center;
-  }
+ .row-controls {
+ display: flex; gap: 8px; margin-bottom: 16px; align-items: center;
+ }
 
-  .banner {
-    background: #fdf3e7; border: 1px solid #f0c896;
-    color: #8a4b14; padding: 8px 12px; border-radius: 4px;
-    font-size: 12px; margin-bottom: 12px;
-  }
-  .banner.warn { background: #fff7e0; border-color: #f3d97a; color: #7a5a14; }
+ .banner {
+ background: #fdf3e7; border: 1px solid #f0c896;
+ color: #8a4b14; padding: 8px 12px; border-radius: 4px;
+ font-size: 12px; margin-bottom: 12px;
+ }
+ .banner.warn { background: #fff7e0; border-color: #f3d97a; color: #7a5a14; }
 
-  .card {
-    background: #fff; border: 1px solid #e8e3d6;
-    border-radius: 6px; padding: 16px; margin-bottom: 20px;
-  }
-  .card h2 {
-    font-size: 13px; margin: 0 0 12px 0;
-    text-transform: uppercase; letter-spacing: 0.04em; color: #555; font-weight: 600;
-  }
+ .card {
+ background: #fff; border: 1px solid #e8e3d6;
+ border-radius: 6px; padding: 16px; margin-bottom: 20px;
+ }
+ .card h2 {
+ font-size: 13px; margin: 0 0 12px 0;
+ text-transform: uppercase; letter-spacing: 0.04em; color: #555; font-weight: 600;
+ }
 
-  .sa-table { width: 100%; border-collapse: collapse; }
-  .sa-table th, .sa-table td {
-    text-align: left; padding: 8px 10px;
-    border-bottom: 1px solid #f0ebde;
-    font-size: 13px;
-  }
-  .sa-table th {
-    font-size: 11px; color: #777; text-transform: uppercase;
-    letter-spacing: 0.04em; font-weight: 500; background: #faf7ef;
-  }
-  .sa-table tr.row { cursor: pointer; }
-  .sa-table tr.row:hover { background: #faf7ef; }
-  .sa-table .chev { font-size: 10px; color: #c96342; }
-  .sa-table .msg { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .kwc { display: inline-block; font-size: 10px; background: #eef1f4; color: #4a5568; border-radius: 999px; padding: .05rem .4rem; margin: 0 .15rem .15rem 0; }
-  .mono { font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 11px; background: #f7f3e9; padding: 2px 6px; border-radius: 3px; }
+ .sa-table { width: 100%; border-collapse: collapse; }
+ .sa-table th, .sa-table td {
+ text-align: left; padding: 8px 10px;
+ border-bottom: 1px solid #f0ebde;
+ font-size: 13px;
+ }
+ .sa-table th {
+ font-size: 11px; color: #777; text-transform: uppercase;
+ letter-spacing: 0.04em; font-weight: 500; background: #faf7ef;
+ }
+ .sa-table tr.row { cursor: pointer; }
+ .sa-table tr.row:hover { background: #faf7ef; }
+ .sa-table .chev { font-size: 10px; color: #c96342; }
+ .sa-table .msg { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ .kwc { display: inline-block; font-size: 10px; background: #eef1f4; color: #4a5568; border-radius: 999px; padding: .05rem .4rem; margin: 0 .15rem .15rem 0; }
+ .mono { font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 11px; background: #f7f3e9; padding: 2px 6px; border-radius: 3px; }
 
-  .detail-row td { background: #fdfaf3; padding: 16px; }
+ .detail-row td { background: #fdfaf3; padding: 16px; }
 
-  .kpi-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
-  .kpi { background: #fff; border: 1px solid #e8e3d6; border-radius: 6px; padding: 12px; }
-  .kpi-label { font-size: 10px; color: #777; text-transform: uppercase; letter-spacing: 0.05em; }
-  .kpi-val { font-size: 22px; font-weight: 600; color: #c96342; margin-top: 4px; }
+ .kpi-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
+ .kpi { background: #fff; border: 1px solid #e8e3d6; border-radius: 6px; padding: 12px; }
+ .kpi-label { font-size: 10px; color: #777; text-transform: uppercase; letter-spacing: 0.05em; }
+ .kpi-val { font-size: 22px; font-weight: 600; color: #c96342; margin-top: 4px; }
 
-  .audit-grid {
-    display: grid;
-    grid-template-columns: minmax(280px, 1.4fr) 1fr 1fr;
-    gap: 12px;
-  }
-  .audit-block {
-    background: #fff; border: 1px solid #e8e3d6;
-    border-radius: 6px; padding: 12px;
-    min-width: 0;
-  }
-  .audit-block h3 {
-    font-size: 11px; margin: 0 0 10px 0;
-    text-transform: uppercase; letter-spacing: 0.04em;
-    color: #777; font-weight: 600;
-  }
-  .audit-block.timeline { grid-row: span 2; }
+ .audit-grid {
+ display: grid;
+ grid-template-columns: minmax(280px, 1.4fr) 1fr 1fr;
+ gap: 12px;
+ }
+ .audit-block {
+ background: #fff; border: 1px solid #e8e3d6;
+ border-radius: 6px; padding: 12px;
+ min-width: 0;
+ }
+ .audit-block h3 {
+ font-size: 11px; margin: 0 0 10px 0;
+ text-transform: uppercase; letter-spacing: 0.04em;
+ color: #777; font-weight: 600;
+ }
+ .audit-block.timeline { grid-row: span 2; }
 
-  .agg-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 14px;
-    margin-bottom: 20px;
-  }
+ .agg-grid {
+ display: grid;
+ grid-template-columns: repeat(2, 1fr);
+ gap: 14px;
+ margin-bottom: 20px;
+ }
 
-  .tiles {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    margin-bottom: 18px;
-  }
-  .tile {
-    background: #fff; border: 1px solid #e8e3d6;
-    border-radius: 6px; padding: 14px;
-  }
-  .tile-label { font-size: 11px; color: #777; text-transform: uppercase; letter-spacing: 0.04em; }
-  .tile-val { font-size: 24px; font-weight: 600; color: #c96342; margin: 6px 0 4px 0; }
-  .tile-sub { font-size: 11px; color: #999; }
+ .tiles {
+ display: grid;
+ grid-template-columns: repeat(4, 1fr);
+ gap: 12px;
+ margin-bottom: 18px;
+ }
+ .tile {
+ background: #fff; border: 1px solid #e8e3d6;
+ border-radius: 6px; padding: 14px;
+ }
+ .tile-label { font-size: 11px; color: #777; text-transform: uppercase; letter-spacing: 0.04em; }
+ .tile-val { font-size: 24px; font-weight: 600; color: #c96342; margin: 6px 0 4px 0; }
+ .tile-sub { font-size: 11px; color: #999; }
 
-  .span-list { list-style: none; padding: 0; margin: 0; max-height: 460px; overflow-y: auto; }
-  .span {
-    padding: 6px 8px;
-    border-left: 2px solid #e8e3d6;
-    margin-bottom: 4px;
-  }
-  .span-error { border-left-color: #b3261e; background: #fef5f3; }
-  .span-row { display: flex; gap: 8px; align-items: center; font-size: 12px; flex-wrap: wrap; }
-  .span-name { font-family: 'SF Mono', Menlo, Consolas, monospace; flex: 1; min-width: 100px; }
-  .span-kind {
-    font-size: 10px; text-transform: uppercase; padding: 1px 6px;
-    border-radius: 3px; font-weight: 600; letter-spacing: 0.04em;
-    background: #efe9d8; color: #6b5a30;
-  }
-  .span-kind.kind-chat { background: #ffe0d5; color: #a13d1c; }
-  .span-kind.kind-tool { background: #d6eaff; color: #1e5394; }
-  .span-kind.kind-training { background: #e7d8ff; color: #5a2eaf; }
-  .span-kind.kind-cron { background: #dfe9c2; color: #4d5e21; }
-  .span-kind.kind-ml { background: #ffd9e0; color: #931b3a; }
-  .span-dur { min-width: 50px; text-align: right; }
-  .span-cost { color: #8a4b14; font-family: 'SF Mono', Menlo, monospace; }
-  .span-err { color: #b3261e; margin-top: 3px; padding-left: 4px; }
+ .span-list { list-style: none; padding: 0; margin: 0; max-height: 460px; overflow-y: auto; }
+ .span {
+ padding: 6px 8px;
+ border-left: 2px solid #e8e3d6;
+ margin-bottom: 4px;
+ }
+ .span-error { border-left-color: #b3261e; background: #fef5f3; }
+ .span-row { display: flex; gap: 8px; align-items: center; font-size: 12px; flex-wrap: wrap; }
+ .span-name { font-family: 'SF Mono', Menlo, Consolas, monospace; flex: 1; min-width: 100px; }
+ .span-kind {
+ font-size: 10px; text-transform: uppercase; padding: 1px 6px;
+ border-radius: 3px; font-weight: 600; letter-spacing: 0.04em;
+ background: #efe9d8; color: #6b5a30;
+ }
+ .span-kind.kind-chat { background: #ffe0d5; color: #a13d1c; }
+ .span-kind.kind-tool { background: #d6eaff; color: #1e5394; }
+ .span-kind.kind-training { background: #e7d8ff; color: #5a2eaf; }
+ .span-kind.kind-cron { background: #dfe9c2; color: #4d5e21; }
+ .span-kind.kind-ml { background: #ffd9e0; color: #931b3a; }
+ .span-dur { min-width: 50px; text-align: right; }
+ .span-cost { color: #8a4b14; font-family: 'SF Mono', Menlo, monospace; }
+ .span-err { color: #b3261e; margin-top: 3px; padding-left: 4px; }
 
-  .bar-list { list-style: none; padding: 0; margin: 0; }
-  .bar-list li {
-    display: grid; grid-template-columns: minmax(0, 1fr) 80px 60px;
-    gap: 6px; align-items: center; padding: 3px 0;
-    font-size: 12px;
-  }
-  .bar-label {
-    font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 11px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .bar-track {
-    background: #f0ebde; height: 8px; border-radius: 2px; overflow: hidden;
-  }
-  .bar-fill { display: block; background: #c96342; height: 100%; }
-  .bar-count { text-align: right; font-size: 11px; color: #666; font-variant-numeric: tabular-nums; }
+ .bar-list { list-style: none; padding: 0; margin: 0; }
+ .bar-list li {
+ display: grid; grid-template-columns: minmax(0, 1fr) 80px 60px;
+ gap: 6px; align-items: center; padding: 3px 0;
+ font-size: 12px;
+ }
+ .bar-label {
+ font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 11px;
+ overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+ }
+ .bar-track {
+ background: #f0ebde; height: 8px; border-radius: 2px; overflow: hidden;
+ }
+ .bar-fill { display: block; background: #c96342; height: 100%; }
+ .bar-count { text-align: right; font-size: 11px; color: #666; font-variant-numeric: tabular-nums; }
 
-  .err-list { list-style: none; padding: 0; margin: 0; }
-  .err-list li {
-    padding: 6px 8px;
-    background: #fef5f3; border-left: 2px solid #b3261e;
-    margin-bottom: 4px;
-  }
-  .err-name { font-size: 12px; font-weight: 500; color: #b3261e; }
-  .err-msg { font-family: 'SF Mono', Menlo, monospace; word-break: break-word; }
+ .err-list { list-style: none; padding: 0; margin: 0; }
+ .err-list li {
+ padding: 6px 8px;
+ background: #fef5f3; border-left: 2px solid #b3261e;
+ margin-bottom: 4px;
+ }
+ .err-name { font-size: 12px; font-weight: 500; color: #b3261e; }
+ .err-msg { font-family: 'SF Mono', Menlo, monospace; word-break: break-word; }
 
-  @media (max-width: 1080px) {
-    .audit-grid { grid-template-columns: 1fr; }
-    .audit-block.timeline { grid-row: auto; }
-    .agg-grid { grid-template-columns: 1fr; }
-    .tiles, .kpi-strip { grid-template-columns: repeat(2, 1fr); }
-  }
+ @media (max-width: 1080px) {
+ .audit-grid { grid-template-columns: 1fr; }
+ .audit-block.timeline { grid-row: auto; }
+ .agg-grid { grid-template-columns: 1fr; }
+ .tiles, .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+ }
 </style>

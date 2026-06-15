@@ -11,14 +11,14 @@ Same gate as the bash variant:
   * exits non-zero iff regressions > 0 AND avg_score_delta < FAIL_DELTA
 
 Env:
-    DASH_API_URL         base URL (default http://localhost:8000)
-    DASH_API_TOKEN       bearer token (required)
-    DASH_DB_URL          SQLAlchemy URL OR psycopg DSN (required)
-    TOP_N                default 10
-    POLL_TIMEOUT         seconds per run, default 900
-    FAIL_DELTA           default -0.3
-    SLACK_WEBHOOK_URL    optional — posts on regression
-    JUNIT_XML            output path (default brainbench-junit.xml)
+    DASH_API_URL base URL (default http://localhost:8000)
+    DASH_API_TOKEN bearer token (required)
+    DASH_DB_URL SQLAlchemy URL OR psycopg DSN (required)
+    TOP_N default 10
+    POLL_TIMEOUT seconds per run, default 900
+    FAIL_DELTA default -0.3
+    SLACK_WEBHOOK_URL optional — posts on regression
+    JUNIT_XML output path (default brainbench-junit.xml)
 """
 from __future__ import annotations
 
@@ -94,12 +94,12 @@ def _slack(text: str) -> None:
 def _print_table(rows: list[dict]) -> None:
     cols = ["project", "run_id", "total", "wins", "regr", "ties", "errs", "avg_Δ", "status"]
     widths = {c: max(len(c), max((len(str(r.get(c, "-"))) for r in rows), default=0)) for c in cols}
-    sep = "  ".join("─" * widths[c] for c in cols)
-    head = "  ".join(c.ljust(widths[c]) for c in cols)
+    sep = " ".join("─" * widths[c] for c in cols)
+    head = " ".join(c.ljust(widths[c]) for c in cols)
     print(head)
     print(sep)
     for r in rows:
-        print("  ".join(str(r.get(c, "-")).ljust(widths[c]) for c in cols))
+        print(" ".join(str(r.get(c, "-")).ljust(widths[c]) for c in cols))
 
 
 def _write_junit(rows: list[dict], failed: bool, reason: str) -> None:
@@ -151,12 +151,12 @@ def main() -> int:
 
     for slug, cids in by_proj.items():
         label = f"ci_{int(time.time())}_{slug}"
-        print(f"▶ {slug}: replay corpus_ids={cids}")
+        print(f" {slug}: replay corpus_ids={cids}")
         try:
             start = _http("POST", f"/api/projects/{slug}/brainbench/runs",
                           {"corpus_ids": cids, "run_label": label})
         except Exception as e:
-            print(f"  ✗ start failed: {e}", file=sys.stderr)
+            print(f" x start failed: {e}", file=sys.stderr)
             rows.append({"project": slug, "run_id": "-", "status": "start_failed",
                          "total": 0, "wins": 0, "regr": 0, "ties": 0, "errs": 0, "avg_Δ": "-"})
             continue
@@ -192,7 +192,7 @@ def main() -> int:
     print()
     _print_table(rows)
     print()
-    print(f"TOTAL  W={total_win} R={total_reg} T={total_tie} E={total_err}  avg_Δ={avg_total}")
+    print(f"TOTAL W={total_win} R={total_reg} T={total_tie} E={total_err} avg_Δ={avg_total}")
 
     failed = total_reg > 0 and (avg_total is not None) and (avg_total < FAIL_DELTA)
     reason = ""

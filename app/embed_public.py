@@ -50,7 +50,7 @@ def _embed_call_insert_sql(log_bodies: bool) -> str:
 
 def _embed_usage_from_response(response) -> dict:
     """Pull token usage + model from an Agno RunResponse for the Usage dashboard.
-    Reuses RunMetrics (input_tokens/output_tokens). Fail-soft → zeros."""
+    Reuses RunMetrics (input_tokens/output_tokens). Fail-soft > zeros."""
     out = {"tokens_in": 0, "tokens_out": 0, "model": ""}
     try:
         m = getattr(response, "metrics", None)
@@ -72,7 +72,7 @@ router = APIRouter(prefix="/api/embed", tags=["EmbedPublic"])
 
 
 _WIDGET_PATH = "/app/dash/embed/widget.js"
-_WIDGET_CACHE: tuple[str, float] | None = None  # (content, mtime)
+_WIDGET_CACHE: tuple[str, float] | None = None # (content, mtime)
 
 
 # ── Consumer-mode response sanitizer ──────────────────────────────────────────
@@ -175,7 +175,7 @@ def _consumer_followups(question: str, answer: str, max_n: int = 3) -> list[str]
     q = (question or "").lower()
     a = (answer or "").lower()
     listy = bool(_re.search(r"(?m)^\s*(?:[-*•]|\d+[.)])\s+", answer or "")) or "top " in q
-    # Burmese has no English keywords → fall back to the question's own intent
+    # Burmese has no English keywords > fall back to the question's own intent
     # words where possible, else 'default'. Branch detection stays EN-keyword
     # based (works for EN); Burmese questions mostly land on 'default'/'stock'.
     if any(w in q for w in ("expensive", "cheapest", "price", "cost", "top ")) and listy:
@@ -221,7 +221,7 @@ def sanitize_consumer_response(text: str, max_chars: int = 600) -> str:
     out = _ROUTING_LINE_RE.sub("", out)
 
     # 5. Markdown table separator rows (|---|---|). The rows themselves
-    #    survive; only the separator is noisy.
+    # survive; only the separator is noisy.
     out = _MD_TABLE_SEP_RE.sub("", out)
 
     # 5b. Banded-price tails ("— [banded] MMK") — noise to the end-user.
@@ -258,13 +258,13 @@ def _sanitize_fragment(text: str) -> str:
     if not text:
         return ""
     out = text
-    out = _CONSUMER_TAG_RE.sub("", out)        # [TAG:...]
-    out = _CODE_BLOCK_RE.sub("", out)          # ```...```
-    out = _HTML_CODE_RE.sub("", out)           # <code>
-    out = _AGENT_PREFIX_RE.sub("", out)        # "Analyst: ..."
-    out = _ROUTING_LINE_RE.sub("", out)        # ROUTING / FAST mode
-    out = _MD_TABLE_SEP_RE.sub("", out)        # |---|---|
-    out = _BANDED_PRICE_TAIL_RE.sub("", out)   # — [banded] MMK
+    out = _CONSUMER_TAG_RE.sub("", out) # [TAG:...]
+    out = _CODE_BLOCK_RE.sub("", out) # ```...```
+    out = _HTML_CODE_RE.sub("", out) # <code>
+    out = _AGENT_PREFIX_RE.sub("", out) # "Analyst: ..."
+    out = _ROUTING_LINE_RE.sub("", out) # ROUTING / FAST mode
+    out = _MD_TABLE_SEP_RE.sub("", out) # |---|---|
+    out = _BANDED_PRICE_TAIL_RE.sub("", out) # — [banded] MMK
     return out
 
 
@@ -279,8 +279,8 @@ def _consumer_hold_len(raw: str) -> int:
     of the string. Conservative by design — when in doubt, hold (correctness of
     masking > stream smoothness). Cases held:
 
-      • an open `[` with no later `]`  → could become `[TAG:...]`
-      • an odd number of  ```  fences  → inside an open code block
+      • an open `[` with no later `]` > could become `[TAG:...]`
+      • an odd number of ``` fences > inside an open code block
       • an open `<` that could grow into `<code` / `</code` (`<`, `<c`, `<co`,
         `<cod`, `<code` …, or `</`, `</c` …) with no closing `>`
       • a trailing partial line that *starts like* a markdown table separator
@@ -289,23 +289,23 @@ def _consumer_hold_len(raw: str) -> int:
     if not raw:
         return 0
     n = len(raw)
-    hold_from = n  # earliest byte index we must hold from (default: hold nothing)
+    hold_from = n # earliest byte index we must hold from (default: hold nothing)
 
     # 1. Unclosed '[' — a [TAG:...] could be mid-arrival.
     lb = raw.rfind("[")
     if lb != -1 and "]" not in raw[lb:]:
         hold_from = min(hold_from, lb)
 
-    # 2. Odd number of ``` fences → we are inside an open code block. Hold from
-    #    the LAST opening fence so the whole open block stays masked.
+    # 2. Odd number of ``` fences > we are inside an open code block. Hold from
+    # the LAST opening fence so the whole open block stays masked.
     if raw.count("```") % 2 == 1:
         last_fence = raw.rfind("```")
         if last_fence != -1:
             hold_from = min(hold_from, last_fence)
 
     # 3. Unclosed '<' that could be an emerging <code>/</code> tag. Hold from the
-    #    last '<' when there's no '>' after it AND the partial matches a code-tag
-    #    prefix (so we don't needlessly hold ordinary '<' like "a < b").
+    # last '<' when there's no '>' after it AND the partial matches a code-tag
+    # prefix (so we don't needlessly hold ordinary '<' like "a < b").
     lt = raw.rfind("<")
     if lt != -1 and ">" not in raw[lt:]:
         partial = raw[lt:].lower()
@@ -315,8 +315,8 @@ def _consumer_hold_len(raw: str) -> int:
             hold_from = min(hold_from, lt)
 
     # 4. Trailing partial markdown table-separator row with no closing newline.
-    #    e.g. "...\n| --- | ---" still streaming → hold the whole partial line so
-    #    `_MD_TABLE_SEP_RE` (anchored ^...$) can match it once the newline lands.
+    # e.g. "...\n| --- | ---" still streaming > hold the whole partial line so
+    # `_MD_TABLE_SEP_RE` (anchored ^...$) can match it once the newline lands.
     nl = raw.rfind("\n")
     tail = raw[nl + 1:] if nl != -1 else raw
     bare = tail.lstrip()
@@ -359,15 +359,15 @@ def serve_embed_docs():
         data-embed-id="emb_xxx"
         data-key="pub_xxx"
         async&gt;&lt;/script&gt;</code></pre>
-<p>Replace <code>HOST</code>, <code>emb_xxx</code>, <code>pub_xxx</code> with values from your project Settings → EMBED → CREATE.</p>
+<p>Replace <code>HOST</code>, <code>emb_xxx</code>, <code>pub_xxx</code> with values from your project Settings > EMBED > CREATE.</p>
 
 <h2>2. With user identity (HMAC mode)</h2>
-<p>For logged-in apps. Host server signs the user payload with the embed's <strong>secret_key</strong>; the widget passes payload + signature to Dash; Dash verifies → trusts the user identity for row-level filtering.</p>
+<p>For logged-in apps. Host server signs the user payload with the embed's <strong>secret_key</strong>; the widget passes payload + signature to Dash; Dash verifies > trusts the user identity for row-level filtering.</p>
 
 <h3>Server-side signing</h3>
 <pre><code># Python
 import hmac, hashlib, json
-EMBED_SECRET = "sk_xxx"   # secret_key from Dash, store in env
+EMBED_SECRET = "sk_xxx" # secret_key from Dash, store in env
 
 payload = {"id": user.id, "store_id": user.store_id}
 canon = json.dumps(payload, sort_keys=True, separators=(",",":"))
@@ -406,7 +406,7 @@ $sig = hash_hmac('sha256', $canon, $EMBED_SECRET);</code></pre>
 <h2>4. Security model</h2>
 <table>
 <tr><th>Layer</th><th>What it does</th></tr>
-<tr><td>Origin allowlist</td><td>Server checks <code>Origin</code> header against embed config. Off-list → 403.</td></tr>
+<tr><td>Origin allowlist</td><td>Server checks <code>Origin</code> header against embed config. Off-list > 403.</td></tr>
 <tr><td>Sec-Fetch-Site</td><td>Blocks direct curl/address-bar requests for /embed/* endpoints.</td></tr>
 <tr><td>HMAC user verify</td><td>Server recomputes HMAC, rejects mismatched signatures.</td></tr>
 <tr><td>Rate limit</td><td>Per-embed sliding 60s window, default 30/min.</td></tr>
@@ -417,16 +417,16 @@ $sig = hash_hmac('sha256', $canon, $EMBED_SECRET);</code></pre>
 </table>
 
 <div class="note">
-  <strong>⚠ Never expose secret_key to the browser.</strong> It is server-only. If accidentally leaked,
+  <strong> Never expose secret_key to the browser.</strong> It is server-only. If accidentally leaked,
   click ROTATE in EMBED settings to invalidate it instantly.
 </div>
 
 <h2>5. Programmatic API</h2>
 <p>The widget exposes a small JS API for testing:</p>
-<pre><code>DashAgent.open();             // open the panel
-DashAgent.close();            // close it
-DashAgent.send("hello");      // send a message programmatically
-DashAgent.config;             // {embedId, apiOrigin, theme}</code></pre>
+<pre><code>DashAgent.open(); // open the panel
+DashAgent.close(); // close it
+DashAgent.send("hello"); // send a message programmatically
+DashAgent.config; // {embedId, apiOrigin, theme}</code></pre>
 
 <h2>6. REST endpoints (for your own clients)</h2>
 <table>
@@ -438,20 +438,20 @@ DashAgent.config;             // {embedId, apiOrigin, theme}</code></pre>
 
 <h3>POST /api/embed/session/create</h3>
 <pre><code>{
-  "embed_id":   "emb_xxx",
+  "embed_id": "emb_xxx",
   "public_key": "pub_xxx",
-  "user":       {"id":"alice","store_id":"MUM01"},   // optional
-  "signature":  "abc123..."                          // HMAC-SHA256 hex, required if HMAC mode
+  "user": {"id":"alice","store_id":"MUM01"}, // optional
+  "signature": "abc123..." // HMAC-SHA256 hex, required if HMAC mode
 }
-→ 200 {"session_token":"sess_xxx","expires_in":900,"feature_config":{}}
-→ 403 {"detail":"origin not allowed" | "invalid user signature" | "embed disabled"}</code></pre>
+> 200 {"session_token":"sess_xxx","expires_in":900,"feature_config":{}}
+> 403 {"detail":"origin not allowed" | "invalid user signature" | "embed disabled"}</code></pre>
 
 <h3>POST /api/embed/chat</h3>
 <pre><code>{ "session_token": "sess_xxx", "message": "what is X?" }
-→ 200 {"content":"...","session_token":"sess_xxx","external_user":"alice","latency_ms":1234}
-→ 401 session expired
-→ 429 rate limit
-→ 403 embed disabled</code></pre>
+> 200 {"content":"...","session_token":"sess_xxx","external_user":"alice","latency_ms":1234}
+> 401 session expired
+> 429 rate limit
+> 403 embed disabled</code></pre>
 
 <h2>7. Troubleshooting</h2>
 <table>
@@ -464,7 +464,7 @@ DashAgent.config;             // {embedId, apiOrigin, theme}</code></pre>
 </table>
 
 <p style="margin-top:30px; color:#666; font-size:11px; text-align:center;">
-  Manage your embeds in Dash → project → Settings → EMBED tab.
+  Manage your embeds in Dash > project > Settings > EMBED tab.
 </p>
 </body></html>"""
     return HTMLResponse(html, headers={
@@ -492,8 +492,8 @@ def serve_widget_js():
         content=_WIDGET_CACHE[0],
         media_type="application/javascript; charset=utf-8",
         headers={
-            "Cache-Control": "public, max-age=300",      # 5min cache
-            "Access-Control-Allow-Origin": "*",          # widget is meant to load anywhere
+            "Cache-Control": "public, max-age=300", # 5min cache
+            "Access-Control-Allow-Origin": "*", # widget is meant to load anywhere
             "Access-Control-Allow-Methods": "GET, OPTIONS",
             "X-Content-Type-Options": "nosniff",
         },
@@ -507,26 +507,26 @@ def serve_widget_js():
 # downloaded code runs as-is.
 _SDK_DIR = "/app/examples"
 _SDK_FILES = [
-    ("widget-embed.php",     "php",  "PHP page — drop-in chat bubble, user-scoped (HMAC). Fastest path."),
-    ("CityAgentClient.php",  "php",  "PHP SDK class — your own UI / server-to-server. No Composer."),
-    ("rest_client.py",       "python", "Python SDK — stdlib only, no pip."),
-    ("rest_client.js",       "javascript", "Node 18+ SDK — zero deps."),
-    ("quickstart.sh",        "bash", "Bash + curl — 10-second end-to-end smoke test."),
-    ("README.md",            "markdown", "Integration guide — 3 paths, auth modes, error table."),
+    ("widget-embed.php", "php", "PHP page — drop-in chat bubble, user-scoped (HMAC). Fastest path."),
+    ("CityAgentClient.php", "php", "PHP SDK class — your own UI / server-to-server. No Composer."),
+    ("rest_client.py", "python", "Python SDK — stdlib only, no pip."),
+    ("rest_client.js", "javascript", "Node 18+ SDK — zero deps."),
+    ("quickstart.sh", "bash", "Bash + curl — 10-second end-to-end smoke test."),
+    ("README.md", "markdown", "Integration guide — 3 paths, auth modes, error table."),
 ]
 # placeholder values inside the example files, replaced at download time
 _SDK_PLACEHOLDERS = {
-    "base":    "http://localhost:8011",
-    "embed":   "emb_rGd8VWW8DloS6WNNssvenA",
-    "pubkey":  "pub_FWWyXah2Sv0iuN5f8TwQQH1v2LaoeIUT",
+    "base": "http://localhost:8011",
+    "embed": "emb_rGd8VWW8DloS6WNNssvenA",
+    "pubkey": "pub_FWWyXah2Sv0iuN5f8TwQQH1v2LaoeIUT",
 }
 
 
 def _public_base(req: "Request | None" = None) -> str | None:
     """Canonical public origin for snippet/SDK URLs.
 
-    Priority: PUBLIC_URL / WEBUI_URL env (set this to the AWS domain) →
-    request Origin/Referer → request base_url. Returns None if nothing usable,
+    Priority: PUBLIC_URL / WEBUI_URL env (set this to the AWS domain) >
+    request Origin/Referer > request base_url. Returns None if nothing usable,
     in which case the localhost placeholder is left untouched.
     """
     import os
@@ -610,7 +610,7 @@ def download_sdk_zip(request: Request):
             try:
                 content = _sdk_read(name, base=base, embed=q.get("embed"), pubkey=q.get("pubkey"))
             except HTTPException:
-                continue  # skip files not deployed
+                continue # skip files not deployed
             zf.writestr(f"cityagent-sdk/{name}", content)
     buf.seek(0)
     return Response(
@@ -648,7 +648,7 @@ def download_gateway_bundle(request: Request):
                 with open(os.path.join(_MULTISHOP_DIR, name), "r", encoding="utf-8") as f:
                     content = f.read()
             except FileNotFoundError:
-                continue  # skip files not deployed
+                continue # skip files not deployed
             content = content.replace(_SDK_PLACEHOLDERS["base"], base)
             content = content.replace("__CITYPHARMA_BASE__", base)
             zf.writestr(f"citypharma-shops/{name}", content)
@@ -671,7 +671,7 @@ def download_gateway_bundle(request: Request):
 # /api/embed/deploy is added to SKIP_PREFIXES in main.py.
 
 def _deploy_embed_rows(embed_id: str | None = None):
-    """Fetch embed row(s) for the deploy zip. embed_id=None → all enabled
+    """Fetch embed row(s) for the deploy zip. embed_id=None > all enabled
     embeds for the locked project. Returns list of plain dicts."""
     from sqlalchemy import text
     from dash.embed import _get_engine
@@ -705,30 +705,30 @@ def _deploy_files(row: dict, base: str) -> dict[str, str]:
     # attribute when this store actually overrides — otherwise OMIT it so the
     # widget falls through to /api/embed/config and inherits the live Brand
     # theme. Baking the hard default froze every widget on navy/English and
-    # broke the "change Brand → all widgets update live" promise.
-    accent_ov   = (row.get("primary_color") or "").strip()
+    # broke the "change Brand > all widgets update live" promise.
+    accent_ov = (row.get("primary_color") or "").strip()
     position_ov = (row.get("position") or "").strip()
-    theme_ov    = (row.get("theme") or "").strip()
-    welcome_ov  = (row.get("welcome_msg") or "").strip()
-    accent = accent_ov or "#1a2b4a"   # page chrome (h1 etc.) still needs a color
+    theme_ov = (row.get("theme") or "").strip()
+    welcome_ov = (row.get("welcome_msg") or "").strip()
+    accent = accent_ov or "#1a2b4a" # page chrome (h1 etc.) still needs a color
     position = position_ov or "bottom-right"
     et = _html.escape(title)
     base = base.rstrip("/")
 
-    _attr_pos = f'        data-position="{position_ov}"\n' if position_ov else ''
-    _attr_thm = f'        data-theme="{theme_ov}"\n' if theme_ov else ''
-    _attr_acc = f'        data-accent="{accent_ov}"\n' if accent_ov else ''
-    _attr_grt = (f'        data-greeting="{_html.escape(welcome_ov, quote=True)}"\n'
+    _attr_pos = f' data-position="{position_ov}"\n' if position_ov else ''
+    _attr_thm = f' data-theme="{theme_ov}"\n' if theme_ov else ''
+    _attr_acc = f' data-accent="{accent_ov}"\n' if accent_ov else ''
+    _attr_grt = (f' data-greeting="{_html.escape(welcome_ov, quote=True)}"\n'
                  if welcome_ov else '')
     # the one snippet — same shape as the live sandbox (data-key = public key).
-    # Appearance attrs appear only on override; absent → inherit Brand.
+    # Appearance attrs appear only on override; absent > inherit Brand.
     snippet = (
         f'<script src="{base}/api/embed/widget.js"\n'
-        f'        data-embed-id="{eid}"\n'
-        f'        data-key="{pubkey}"\n'
+        f' data-embed-id="{eid}"\n'
+        f' data-key="{pubkey}"\n'
         f'{_attr_pos}{_attr_thm}{_attr_acc}{_attr_grt}'
-        f'        data-title="{et}"\n'
-        f'        async></script>'
+        f' data-title="{et}"\n'
+        f' async></script>'
     )
 
     index_html = (
@@ -737,18 +737,18 @@ def _deploy_files(row: dict, base: str) -> dict[str, str]:
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/>\n"
         f"<title>{et}</title>\n"
         "<style>\n"
-        "  body{margin:0;padding:48px 20px;background:#f5f1ea;"
+        " body{margin:0;padding:48px 20px;background:#f5f1ea;"
         "font-family:system-ui,-apple-system,'Segoe UI',sans-serif;text-align:center;min-height:100vh;}\n"
-        f"  h1{{color:{accent};font-size:26px;margin:32px auto 10px;}}\n"
-        "  p{color:#555;font-size:15px;max-width:520px;margin:0 auto 8px;line-height:1.6;}\n"
-        "  .pill{display:inline-block;margin-top:18px;padding:4px 12px;background:rgba(0,0,0,.06);"
+        f" h1{{color:{accent};font-size:26px;margin:32px auto 10px;}}\n"
+        " p{color:#555;font-size:15px;max-width:520px;margin:0 auto 8px;line-height:1.6;}\n"
+        " .pill{display:inline-block;margin-top:18px;padding:4px 12px;background:rgba(0,0,0,.06);"
         "color:#444;border-radius:999px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;}\n"
         "</style>\n</head><body>\n"
-        f"  <h1>{et}</h1>\n"
-        f"  <p>Tap the chat bubble at the {position.replace('-', ' ')} to ask about stock, "
+        f" <h1>{et}</h1>\n"
+        f" <p>Tap the chat bubble at the {position.replace('-', ' ')} to ask about stock, "
         "drug info, substitutes and prices.</p>\n"
-        + (f"  <span class=\"pill\">store: {_html.escape(store)}</span>\n" if store else "")
-        + "  " + snippet + "\n"
+        + (f" <span class=\"pill\">store: {_html.escape(store)}</span>\n" if store else "")
+        + " " + snippet + "\n"
         "</body></html>\n"
     )
 
@@ -757,22 +757,22 @@ def _deploy_files(row: dict, base: str) -> dict[str, str]:
         f"{'=' * len(title)}\n\n"
         "Your CityPharma chat assistant — ready to deploy. Pick ONE option.\n\n"
         "OPTION 1 — Host the ready page (easiest)\n"
-        "  1. Upload the file 'index.html' to your website / hosting.\n"
-        "  2. Open it in a browser. The chat bubble appears bottom corner.\n"
-        "  Done. Nothing to edit — your keys are already inside.\n\n"
+        " 1. Upload the file 'index.html' to your website / hosting.\n"
+        " 2. Open it in a browser. The chat bubble appears bottom corner.\n"
+        " Done. Nothing to edit — your keys are already inside.\n\n"
         "OPTION 2 — Add to an existing website\n"
-        "  1. Open 'snippet.html'.\n"
-        "  2. Copy everything in it.\n"
-        "  3. Paste it just before the </body> tag of your site's pages.\n"
-        "  Save + publish. The chat bubble appears on those pages.\n\n"
+        " 1. Open 'snippet.html'.\n"
+        " 2. Copy everything in it.\n"
+        " 3. Paste it just before the </body> tag of your site's pages.\n"
+        " Save + publish. The chat bubble appears on those pages.\n\n"
         "TEST WITHOUT A WEBSITE\n"
-        "  Double-click 'index.html' to open it in your browser right now.\n\n"
+        " Double-click 'index.html' to open it in your browser right now.\n\n"
         "GOOD TO KNOW\n"
-        f"  - Store / branch : {store or 'all (global)'}\n"
-        f"  - Widget ID      : {eid}\n"
-        "  - The assistant only answers about your pharmacy data.\n"
-        "  - Need it on a live site? Add your website address to the widget's\n"
-        "    allowed origins in the admin Widgets tab (else it shows a 403).\n"
+        f" - Store / branch : {store or 'all (global)'}\n"
+        f" - Widget ID : {eid}\n"
+        " - The assistant only answers about your pharmacy data.\n"
+        " - Need it on a live site? Add your website address to the widget's\n"
+        " allowed origins in the admin Widgets tab (else it shows a 403).\n"
     )
     return {"index.html": index_html, "snippet.html": snippet + "\n", "README.txt": readme}
 
@@ -785,11 +785,11 @@ def _safe_slug(s: str) -> str:
 @router.get("/deploy/{embed_id}.zip")
 def download_deploy_zip(embed_id: str, request: Request):
     """One store's drop-in widget kit (index.html + snippet.html + README),
-    keys pre-baked. Non-technical: download → host index.html → live."""
+    keys pre-baked. Non-technical: download > host index.html > live."""
     import io
     import zipfile
     from fastapi.responses import Response
-    if embed_id == "all":  # static route would otherwise be shadowed by this param route
+    if embed_id == "all": # static route would otherwise be shadowed by this param route
         return download_deploy_all_zip(request)
     rows = _deploy_embed_rows(embed_id)
     if not rows:
@@ -831,7 +831,7 @@ def download_deploy_all_zip(request: Request):
         seen: dict[str, int] = {}
         for row in rows:
             folder = _safe_slug(row.get("bound_scope_id") or row.get("name") or row["embed_id"])
-            if folder in seen:  # disambiguate collisions
+            if folder in seen: # disambiguate collisions
                 seen[folder] += 1
                 folder = f"{folder}-{seen[folder]}"
             else:
@@ -840,7 +840,7 @@ def download_deploy_all_zip(request: Request):
                 zf.writestr(f"{folder}/{fname}", content)
             label = row.get("bound_scope_id") or row.get("name") or row["embed_id"]
             index_links.append(
-                f'    <li><a href="{folder}/index.html">{_html.escape(str(label))}</a></li>'
+                f' <li><a href="{folder}/index.html">{_html.escape(str(label))}</a></li>'
             )
         index_html = (
             "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"/>\n"
@@ -859,9 +859,9 @@ def download_deploy_all_zip(request: Request):
             "chat widget with that store's keys already inside.\n\n"
             "TO SEE EVERYTHING : open INDEX.html — it links every store's page.\n\n"
             "TO DEPLOY ONE STORE:\n"
-            "  - Send that store its folder.\n"
-            "  - They upload 'index.html' to their site (or paste 'snippet.html'\n"
-            "    before </body> on an existing site). Read the folder's README.txt.\n\n"
+            " - Send that store its folder.\n"
+            " - They upload 'index.html' to their site (or paste 'snippet.html'\n"
+            " before </body> on an existing site). Read the folder's README.txt.\n\n"
             f"Stores included: {len(rows)}\n"
         ))
     buf.seek(0)
@@ -927,10 +927,10 @@ def _check_sec_fetch(req: Request) -> bool:
     """Block requests that look like same-origin spoofing (Sec-Fetch-Site=none).
 
     Browser sets Sec-Fetch-Site automatically:
-      - 'cross-site'  — legit cross-origin embed
+      - 'cross-site' — legit cross-origin embed
       - 'same-origin' — fine
-      - 'same-site'   — fine
-      - 'none'        — direct user navigation (curl, address bar) → suspicious for /embed/*
+      - 'same-site' — fine
+      - 'none' — direct user navigation (curl, address bar) > suspicious for /embed/*
 
     Returns True if OK, False if request looks crafted.
     """
@@ -1043,10 +1043,10 @@ def try_embed_sandbox(embed_id: str, request: Request, token: str | None = None)
     base_url = str(request.base_url).rstrip("/")
     # Raw per-store overrides — only baked as data-* attrs when set, else the
     # widget inherits the live Brand theme via /api/embed/config.
-    primary_ov  = (row.get("primary_color") or "").strip()
+    primary_ov = (row.get("primary_color") or "").strip()
     position_ov = (row.get("position") or "").strip()
-    theme_ov    = (row.get("theme") or "").strip()
-    primary = primary_ov or "#1a2b4a"   # page chrome still needs a color
+    theme_ov = (row.get("theme") or "").strip()
+    primary = primary_ov or "#1a2b4a" # page chrome still needs a color
     position = position_ov or "bottom-right"
 
     # ── Sandbox claim impersonation — ?claim_store_id=42&claim_role=staff ──
@@ -1063,9 +1063,9 @@ def try_embed_sandbox(embed_id: str, request: Request, token: str | None = None)
     )
 
     # Appearance attrs only when this store overrides — else inherit Brand.
-    _attr_pos = f'          data-position="{position_ov}"\n' if position_ov else ''
-    _attr_thm = f'          data-theme="{theme_ov}"\n' if theme_ov else ''
-    _attr_acc = f'          data-accent="{primary_ov}"\n' if primary_ov else ''
+    _attr_pos = f' data-position="{position_ov}"\n' if position_ov else ''
+    _attr_thm = f' data-theme="{theme_ov}"\n' if theme_ov else ''
+    _attr_acc = f' data-accent="{primary_ov}"\n' if primary_ov else ''
 
     html = f"""<!doctype html>
 <html><head><meta charset="utf-8"/>
@@ -1086,7 +1086,7 @@ def try_embed_sandbox(embed_id: str, request: Request, token: str | None = None)
   <script src="{base_url}/api/embed/widget.js"
           data-embed-id="{row['embed_id']}"
           data-key="{row['public_key']}"
-{_attr_pos}{_attr_thm}{_attr_acc}          data-title="{proj_name}"
+{_attr_pos}{_attr_thm}{_attr_acc} data-title="{proj_name}"
           {('data-claims="' + _claims_json_attr + '"') if _claims_json_attr else ''}
           async></script>
   {('<div style="margin-top:24px;padding:10px 14px;background:#fff;border:1px dashed #c96342;border-radius:6px;display:inline-block;font-size:11px;color:#1a2b4a;">Impersonating claims: <code style="color:#c96342;">' + _json_mod.dumps(_claim_overrides) + '</code></div>') if _claim_overrides else ''}
@@ -1097,7 +1097,7 @@ def try_embed_sandbox(embed_id: str, request: Request, token: str | None = None)
 
 def _resolve_starter_questions(row_value) -> list:
     """Resolve the widget's initial starter-question chips:
-        per-widget starter_questions (non-empty list)  ?  global embed_default_starters.
+        per-widget starter_questions (non-empty list) ? global embed_default_starters.
     Returns a list of strings (Burmese pharma defaults when nothing is set)."""
     try:
         import json as _json
@@ -1147,7 +1147,7 @@ def get_embed_public_config(embed_id: str, request: Request):
             "Vary": "Origin",
         }
     # Single-point brand: resolve each appearance field as
-    #   per-widget override (non-empty)  ►  brand default  ►  hard fallback.
+    # per-widget override (non-empty) ► brand default ► hard fallback.
     try:
         from app.embed import get_brand_defaults
         brand = get_brand_defaults()
@@ -1202,7 +1202,7 @@ def get_embed_starter_suggestions(embed_id: str, request: Request):
         if row and not (row[1] is False or row[2] == "disabled"):
             starters = _resolve_starter_questions(row[0])
         else:
-            # Unknown/disabled embed → still return the global Burmese defaults
+            # Unknown/disabled embed > still return the global Burmese defaults
             # so the widget never shows an empty chip row.
             starters = _resolve_starter_questions(None)
     except Exception:
@@ -1292,7 +1292,7 @@ async def create_embed_session(req: Request):
     # import lazily + fail-soft so embeds without RLS keep working.
     claims_summary: dict | None = None
     try:
-        from dash.embed.rls import load_rls_for_embed, extract_claims  # type: ignore
+        from dash.embed.rls import load_rls_for_embed, extract_claims # type: ignore
         # 4-tuple (enabled, claims_def, policies, claim_source) — NOT a dict.
         _rls_enabled, _rls_claims_def, _rls_policies, _rls_source = load_rls_for_embed(ctx["embed_id"])
         if _rls_enabled:
@@ -1384,7 +1384,7 @@ def _rate_limit_check(embed_id: str, limit_per_min: int) -> bool:
 
 @router.post("/feedback")
 async def embed_feedback(req: Request):
-    """Record a 👍/👎 (with optional comment + tags) from an embed widget
+    """Record a / (with optional comment + tags) from an embed widget
     visitor. Anonymous (no user_id); session_token identifies the visitor.
     Flows into the same dash_feedback review + training loop as app chat —
     so embed feedback shows in the admin Like/Dislike dashboard."""
@@ -1492,8 +1492,8 @@ async def embed_chat(req: Request):
     with eng.connect() as conn:
         row = conn.execute(text(
             "SELECT project_slug, rate_limit_per_min, feature_config, enabled, "
-            "       id, bound_scope_id, bound_intent, bound_role, "
-            "       response_style, max_reply_chars "
+            " id, bound_scope_id, bound_intent, bound_role, "
+            " response_style, max_reply_chars "
             "FROM public.dash_agent_embeds WHERE embed_id = :e"
         ), {"e": embed_id}).first()
     if not row or not row[3]:
@@ -1501,7 +1501,7 @@ async def embed_chat(req: Request):
     (project_slug, rate_limit, feature_cfg_override, _, embed_pk,
      bound_scope_id, bound_intent, bound_role,
      response_style, max_reply_chars) = row
-    bound_intent = bound_intent or "public"  # WHY: legacy rows pre-migration default safely
+    bound_intent = bound_intent or "public" # WHY: legacy rows pre-migration default safely
     response_style = (response_style or "consumer").lower()
     max_reply_chars = int(max_reply_chars or 600)
 
@@ -1581,9 +1581,9 @@ async def embed_chat(req: Request):
                 "store_id": sess_user_attrs.get("store_id", ""),
                 "store_ids": sess_user_attrs.get("store_ids", ""),
                 "scope_mode": sess_user_attrs.get("scope_mode", "store"),
-                # REQUIRED: resolve_api_scope() returns None without this →
-                # API_STORE_SCOPE stays None → the SQL tool drops the
-                # `WHERE site_code=…` filter → global-total leak. Embeds are
+                # REQUIRED: resolve_api_scope() returns None without this >
+                # API_STORE_SCOPE stays None > the SQL tool drops the
+                # `WHERE site_code=…` filter > global-total leak. Embeds are
                 # store-locked exactly like a store API key.
                 "via_api_key": True,
             }
@@ -1605,7 +1605,7 @@ async def embed_chat(req: Request):
     # ── RLS ContextVar wiring (Phase 3) — set before team.run, reset after.
     _rls_tokens: list = []
     try:
-        from dash.embed.rls import (  # type: ignore
+        from dash.embed.rls import ( # type: ignore
             EMBED_CLAIMS, EMBED_RLS_POLICIES, EMBED_RLS_AUDIT_CTX,
             load_rls_for_embed,
         )
@@ -1638,7 +1638,7 @@ async def embed_chat(req: Request):
     _usage = {"tokens_in": 0, "tokens_out": 0, "model": ""}
     try:
         # ── Stock fast-path (no LLM) ──────────────────────────────────────
-        # Pure "do we have X in stock?" → answer from stock_check directly,
+        # Pure "do we have X in stock?" > answer from stock_check directly,
         # skipping ~12s of model round-trips. Falls through to the agent on any
         # ambiguity. Consumer / non-private embeds hide qty + cost.
         _shortcut_hit = False
@@ -1669,10 +1669,10 @@ async def embed_chat(req: Request):
                 # Per-store team cache key. The store_id is baked into the system
                 # prompt at build time; with user_id=None every store collided on
                 # one cached team (citypharma_None_<lang>) and reused the FIRST
-                # store's baked store_id → cross-store number leak. synthetic_viewer
-                # is the per-embed (per-store) negative id → one team per store.
+                # store's baked store_id > cross-store number leak. synthetic_viewer
+                # is the per-embed (per-store) negative id > one team per store.
                 user_id=synthetic_viewer,
-                allow_write_agents=False,  # embed = never a write-capable agent
+                allow_write_agents=False, # embed = never a write-capable agent
             )
 
             ctx_note = ""
@@ -1690,7 +1690,7 @@ async def embed_chat(req: Request):
             import asyncio as _asyncio
             try:
                 from dash.settings import _get_sem as _llm_get_sem
-                _sem = _llm_get_sem("qa_generation")  # chat tier
+                _sem = _llm_get_sem("qa_generation") # chat tier
             except Exception:
                 _sem = None
             if _sem is not None:
@@ -1703,7 +1703,7 @@ async def embed_chat(req: Request):
                     team.run, message + ctx_note, session_id=f"embed_{token[:16]}"
                 )
             content = response.content or ""
-            _usage = _embed_usage_from_response(response)  # tokens + model for cost
+            _usage = _embed_usage_from_response(response) # tokens + model for cost
 
         # WHY: bound_intent is non-private by default for embeds; strip raw
         # numbers from narrative so banding policy is enforced end-to-end.
@@ -1734,16 +1734,16 @@ async def embed_chat(req: Request):
             from dash.tools.skill_refinery import set_request_context
             set_request_context(
                 query_intent="private",
-                viewer_user_id=0,  # WHY: ContextVar set() needs non-None to clear; 0 is safe sentinel
+                viewer_user_id=0, # WHY: ContextVar set() needs non-None to clear; 0 is safe sentinel
                 viewer_scope_id="",
-                embed_response_style="",  # clear so non-embed requests don't inherit
+                embed_response_style="", # clear so non-embed requests don't inherit
             )
         except Exception:
             pass
         # Reset RLS ContextVars in reverse order via stored reset tokens.
         if _rls_tokens:
             try:
-                from dash.embed.rls import (  # type: ignore
+                from dash.embed.rls import ( # type: ignore
                     EMBED_CLAIMS, EMBED_RLS_POLICIES, EMBED_RLS_AUDIT_CTX,
                 )
                 _vars = [EMBED_CLAIMS, EMBED_RLS_POLICIES, EMBED_RLS_AUDIT_CTX]
@@ -1840,14 +1840,14 @@ async def embed_chat(req: Request):
 # 400 here; callers must use the non-streaming /chat endpoint.
 #
 # Event types emitted:
-#   meta   {session_token, embed_id, started_at}
-#   token  {delta: "..."}
-#   done   {latency_ms, session_token, cache_hit}
-#   error  {detail, code}
+# meta {session_token, embed_id, started_at}
+# token {delta: "..."}
+# done {latency_ms, session_token, cache_hit}
+# error {detail, code}
 # Heartbeat ": heartbeat\n\n" every 15s to keep connections alive.
 # Buffer cap 10KB to defend against runaway LLM output.
 
-_STREAM_MAX_BUFFER_BYTES = 10 * 1024  # 10KB
+_STREAM_MAX_BUFFER_BYTES = 10 * 1024 # 10KB
 _STREAM_HEARTBEAT_S = 15.0
 
 
@@ -1861,20 +1861,20 @@ def _sse_format(event: str, data_obj) -> str:
     return f"event: {event}\ndata: {payload}\n\n"
 
 
-# Tool name → friendly compact label + icon for the live activity strip.
+# Tool name > friendly compact label + icon for the live activity strip.
 _STEP_TOOL_MAP = {
-    "run_sql_query": ("Querying inventory", "📊"),
-    "stock_check": ("Checking branch stock", "📦"),
-    "store_stock_summary": ("Summarising your shelf", "📦"),
-    "find_substitutes": ("Finding substitutes", "🔄"),
-    "substitutes": ("Finding substitutes", "🔄"),
-    "alternatives_for_indication": ("Finding alternatives", "💊"),
-    "indication_search": ("Searching by symptom", "🔍"),
-    "drug_relationships": ("Looking up drug info", "💊"),
-    "drug_profile": ("Looking up drug info", "💊"),
-    "interaction_check": ("Checking interactions", "⚠️"),
-    "search_all": ("Searching knowledge", "🔍"),
-    "discover_tables": ("Mapping the catalog", "🗂️"),
+    "run_sql_query": ("Querying inventory", ""),
+    "stock_check": ("Checking branch stock", ""),
+    "store_stock_summary": ("Summarising your shelf", ""),
+    "find_substitutes": ("Finding substitutes", ""),
+    "substitutes": ("Finding substitutes", ""),
+    "alternatives_for_indication": ("Finding alternatives", ""),
+    "indication_search": ("Searching by symptom", ""),
+    "drug_relationships": ("Looking up drug info", ""),
+    "drug_profile": ("Looking up drug info", ""),
+    "interaction_check": ("Checking interactions", ""),
+    "search_all": ("Searching knowledge", ""),
+    "discover_tables": ("Mapping the catalog", ""),
 }
 
 
@@ -1894,7 +1894,7 @@ def _step_label(event_name: str, data: dict) -> tuple[str, str]:
     if "Reasoning" in event_name:
         title = (data.get("title") or data.get("reasoning_content") or "Thinking").strip()
         title = " ".join(title.split())[:48]
-        return (title or "Thinking", "🧠")
+        return (title or "Thinking", "")
     # tool call
     tool = data.get("tool") or {}
     name = ""
@@ -1905,7 +1905,7 @@ def _step_label(event_name: str, data: dict) -> tuple[str, str]:
         lab, ic = _STEP_TOOL_MAP[name]
         return (lab, ic)
     pretty = str(name).replace("_", " ").strip().title() if name else "Working"
-    return (pretty[:40] or "Working", "⚙️")
+    return (pretty[:40] or "Working", "")
 
 
 @router.post("/chat/stream")
@@ -1952,8 +1952,8 @@ async def embed_chat_stream(req: Request):
     with eng.connect() as conn:
         row = conn.execute(text(
             "SELECT project_slug, rate_limit_per_min, feature_config, enabled, "
-            "       id, bound_scope_id, bound_intent, bound_role, "
-            "       response_style, max_reply_chars "
+            " id, bound_scope_id, bound_intent, bound_role, "
+            " response_style, max_reply_chars "
             "FROM public.dash_agent_embeds WHERE embed_id = :e"
         ), {"e": embed_id}).first()
     if not row or not row[3]:
@@ -2023,9 +2023,9 @@ async def embed_chat_stream(req: Request):
                 "store_id": sess_user_attrs.get("store_id", ""),
                 "store_ids": sess_user_attrs.get("store_ids", ""),
                 "scope_mode": sess_user_attrs.get("scope_mode", "store"),
-                # REQUIRED: resolve_api_scope() returns None without this →
-                # API_STORE_SCOPE stays None → the SQL tool drops the
-                # `WHERE site_code=…` filter → global-total leak. Embeds are
+                # REQUIRED: resolve_api_scope() returns None without this >
+                # API_STORE_SCOPE stays None > the SQL tool drops the
+                # `WHERE site_code=…` filter > global-total leak. Embeds are
                 # store-locked exactly like a store API key.
                 "via_api_key": True,
             }
@@ -2048,7 +2048,7 @@ async def embed_chat_stream(req: Request):
     # RLS ContextVar wiring (mirror /chat).
     _rls_tokens: list = []
     try:
-        from dash.embed.rls import (  # type: ignore
+        from dash.embed.rls import ( # type: ignore
             EMBED_CLAIMS, EMBED_RLS_POLICIES, EMBED_RLS_AUDIT_CTX,
             load_rls_for_embed,
         )
@@ -2088,7 +2088,7 @@ async def embed_chat_stream(req: Request):
         t0 = _time_mod.monotonic()
         started_at = datetime.now(timezone.utc).isoformat()
         full_buffer: list[str] = []
-        _stream_usage = {"tokens_in": 0, "tokens_out": 0, "model": ""}  # for cost
+        _stream_usage = {"tokens_in": 0, "tokens_out": 0, "model": ""} # for cost
         buffer_bytes = 0
         capped = False
         last_step_label = ""
@@ -2127,7 +2127,7 @@ async def embed_chat_stream(req: Request):
         except Exception:
             _sc = None
         if _sc and _sc.get("answer"):
-            yield _sse_format("step", {"label": "Checking stock", "icon": "🔍"})
+            yield _sse_format("step", {"label": "Checking stock", "icon": ""})
             _sc_answer = _sc["answer"]
             full_buffer.append(_sc_answer)
             yield _sse_format("token", {"delta": _sc_answer})
@@ -2170,7 +2170,7 @@ async def embed_chat_stream(req: Request):
                 # Per-store team cache key (see chat path) — stops cross-store
                 # baked-prompt reuse under the shared citypharma_None_<lang> key.
                 user_id=synthetic_viewer,
-                allow_write_agents=False,  # embed = never a write-capable agent
+                allow_write_agents=False, # embed = never a write-capable agent
             )
 
             ctx_note = ""
@@ -2274,7 +2274,7 @@ async def embed_chat_stream(req: Request):
                     if consumer_mode and _is_reasoning:
                         if not _reasoning_shown:
                             _reasoning_shown = True
-                            yield _sse_format("step", {"label": "Thinking", "icon": "🧠"})
+                            yield _sse_format("step", {"label": "Thinking", "icon": ""})
                         continue
                     # Consumer mode: WHITELIST-ONLY tool steps. An un-mapped tool
                     # (team delegation/transfer, internal orchestration — e.g.
@@ -2285,7 +2285,7 @@ async def embed_chat_stream(req: Request):
                         if _tname not in _STEP_TOOL_MAP:
                             if not _reasoning_shown:
                                 _reasoning_shown = True
-                                yield _sse_format("step", {"label": "Thinking", "icon": "🧠"})
+                                yield _sse_format("step", {"label": "Thinking", "icon": ""})
                             continue
                     label, icon = _step_label(event_name, data)
                     # Consumer mode: cap visible distinct steps so a 27-step run
@@ -2333,8 +2333,8 @@ async def embed_chat_stream(req: Request):
                     # contain no half-open sensitive token ([TAG:, ``` fence,
                     # <code>, partial md-table-sep). The trailing hold window is
                     # NEVER emitted — it is re-examined on the next delta once
-                    # more characters arrive (the token either closes → becomes
-                    # committable, or stays open → keeps being held). The FULL
+                    # more characters arrive (the token either closes > becomes
+                    # committable, or stays open > keeps being held). The FULL
                     # `sanitize_consumer_response` at stream end is the source of
                     # truth and flushes any safe remainder. Conservative: when in
                     # doubt we hold rather than emit (masking > smoothness).
@@ -2429,7 +2429,7 @@ async def embed_chat_stream(req: Request):
                 pass
             if _rls_tokens:
                 try:
-                    from dash.embed.rls import (  # type: ignore
+                    from dash.embed.rls import ( # type: ignore
                         EMBED_CLAIMS, EMBED_RLS_POLICIES, EMBED_RLS_AUDIT_CTX,
                     )
                     _vars = [EMBED_CLAIMS, EMBED_RLS_POLICIES, EMBED_RLS_AUDIT_CTX]
@@ -2489,7 +2489,7 @@ async def embed_chat_stream(req: Request):
     headers = {
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
-        "X-Accel-Buffering": "no",  # nginx hint: don't buffer SSE
+        "X-Accel-Buffering": "no", # nginx hint: don't buffer SSE
     }
     # Per-embed CORS echo so the browser accepts SSE from cross-origin pages.
     try:

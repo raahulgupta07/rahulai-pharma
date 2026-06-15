@@ -9,7 +9,7 @@ that don't exist in any migration under db/migrations/*.sql.
 Catches the bug class where:
   - Code does `SELECT ... FROM dash.dash_foo`
   - But no migration ever ran `CREATE TABLE dash.dash_foo`
-  - → Runtime error in production (e.g. mig 092 missing → workflow_runner crashes)
+  - > Runtime error in production (e.g. mig 092 missing > workflow_runner crashes)
 
 How it works
 ------------
@@ -18,16 +18,16 @@ How it works
    `<schema>.<table>` (with file:line for each occurrence).
 3. Parse all db/migrations/*.sql for `CREATE TABLE [IF NOT EXISTS] [schema.]<name>`,
    `CREATE VIEW`, `CREATE MATERIALIZED VIEW`.
-4. Diff: code refs NOT found in migrations → drift list.
+4. Diff: code refs NOT found in migrations > drift list.
 5. Subtract scripts/drift_allowlist.txt entries (one per line, # comments OK,
    simple glob wildcards `*` supported, e.g. `pg_*`, `proj_*`).
 6. Exit 0 if drift list empty after allowlist; exit 1 if any drift remains.
 
 CLI
 ---
-  python3 scripts/check_migration_drift.py            # check, exit code = drift status
-  python3 scripts/check_migration_drift.py --verbose  # print all detected refs + migrations
-  python3 scripts/check_migration_drift.py --report   # print summary even on success
+  python3 scripts/check_migration_drift.py # check, exit code = drift status
+  python3 scripts/check_migration_drift.py --verbose # print all detected refs + migrations
+  python3 scripts/check_migration_drift.py --report # print summary even on success
 
 Exit codes
 ----------
@@ -68,8 +68,8 @@ ALLOWLIST_FILE = REPO_ROOT / "scripts" / "drift_allowlist.txt"
 # Schemas considered: dash, public, ai. Everything else assumed external/dynamic.
 CODE_REF_PATTERN = re.compile(
     r"\b(FROM|JOIN|INSERT\s+INTO|UPDATE)\s+"
-    r"(?:(dash|public|ai)\.)?"  # optional schema (group 2)
-    r"([a-z_][a-z0-9_]*)",  # table name (group 3)
+    r"(?:(dash|public|ai)\.)?" # optional schema (group 2)
+    r"([a-z_][a-z0-9_]*)", # table name (group 3)
     re.IGNORECASE,
 )
 
@@ -78,7 +78,7 @@ MIGRATION_CREATE_PATTERN = re.compile(
     r"CREATE\s+(?:OR\s+REPLACE\s+)?(?:UNLOGGED\s+|TEMP\s+|TEMPORARY\s+)?"
     r"(?:TABLE|VIEW|MATERIALIZED\s+VIEW)\s+"
     r"(?:IF\s+NOT\s+EXISTS\s+)?"
-    r"(?:(dash|public|ai|information_schema)\.)?"  # optional schema
+    r"(?:(dash|public|ai|information_schema)\.)?" # optional schema
     r"([a-z_][a-z0-9_]*)",
     re.IGNORECASE,
 )
@@ -124,10 +124,10 @@ def is_allowlisted(qualified_ref: str, allowlist: set[str]) -> bool:
 
     Built-in wildcard matches (always allowlisted):
       - information_schema.*
-      - pg_*  (any pg_ prefix in any schema, e.g. pg_class)
-      - dash.proj_*, public.proj_*, ai.proj_*  (per-project schemas)
+      - pg_* (any pg_ prefix in any schema, e.g. pg_class)
+      - dash.proj_*, public.proj_*, ai.proj_* (per-project schemas)
       - dash.user_proj_*, public.user_proj_*
-      - dash.user_demo  (demo schema)
+      - dash.user_demo (demo schema)
     """
     ref = qualified_ref.lower()
     schema, _, table = ref.partition(".")
@@ -267,7 +267,7 @@ def find_drift(
 ) -> tuple[dict[str, list[CodeRef]], int]:
     """Return (drift_refs_grouped_by_qualified, total_drift_before_allowlist).
 
-    drift_refs_grouped_by_qualified maps 'schema.table' → list of CodeRef sites.
+    drift_refs_grouped_by_qualified maps 'schema.table' > list of CodeRef sites.
     Only includes refs NOT in migrations AND NOT allowlisted.
     """
     grouped: dict[str, list[CodeRef]] = defaultdict(list)
@@ -293,19 +293,19 @@ def print_drift_report(grouped: dict[str, list[CodeRef]]) -> None:
     )
     for qualified in sorted(grouped.keys()):
         sites = grouped[qualified]
-        print(f"  ✗ {qualified}  ({len(sites)} ref(s))", file=sys.stderr)
+        print(f" x {qualified} ({len(sites)} ref(s))", file=sys.stderr)
         # Show up to 5 sites per table to keep output bounded
         for site in sites[:5]:
             rel = site.file.relative_to(REPO_ROOT) if site.file.is_relative_to(REPO_ROOT) else site.file
-            print(f"      {rel}:{site.line}", file=sys.stderr)
+            print(f" {rel}:{site.line}", file=sys.stderr)
         if len(sites) > 5:
-            print(f"      ... and {len(sites) - 5} more", file=sys.stderr)
+            print(f" ... and {len(sites) - 5} more", file=sys.stderr)
     print(
         "\nFix options:\n"
-        "  1. Add a CREATE TABLE statement to a new db/migrations/*.sql file\n"
-        "     (use CREATE TABLE IF NOT EXISTS for idempotency).\n"
-        "  2. If the ref is intentional (dormant feature, external table, etc.),\n"
-        "     add it to scripts/drift_allowlist.txt with a comment explaining why.\n",
+        " 1. Add a CREATE TABLE statement to a new db/migrations/*.sql file\n"
+        " (use CREATE TABLE IF NOT EXISTS for idempotency).\n"
+        " 2. If the ref is intentional (dormant feature, external table, etc.),\n"
+        " add it to scripts/drift_allowlist.txt with a comment explaining why.\n",
         file=sys.stderr,
     )
 
@@ -354,12 +354,12 @@ def main() -> int:
 
     if args.report or args.verbose:
         print(
-            f"✓ No migration drift.\n"
-            f"  Refs scanned:           {len(code_refs)}\n"
-            f"  Migrations parsed:      {len(migration_tables)}\n"
-            f"  Drift before allowlist: {total_pre}\n"
-            f"  Drift after allowlist:  0\n"
-            f"  Allowlist entries:      {len(allowlist)}"
+            f"OK No migration drift.\n"
+            f" Refs scanned: {len(code_refs)}\n"
+            f" Migrations parsed: {len(migration_tables)}\n"
+            f" Drift before allowlist: {total_pre}\n"
+            f" Drift after allowlist: 0\n"
+            f" Allowlist entries: {len(allowlist)}"
         )
 
     return 0

@@ -49,7 +49,7 @@ def build_knowledge_graph(project_slug: str) -> dict:
     stats: dict = {"tables": 0, "documents": 0, "facts": 0, "inferred": 0,
                    "entities": 0, "aliases": 0, "triples": 0}
 
-    # 1-3  Extract triples from all sources
+    # 1-3 Extract triples from all sources
     table_triples = _extract_table_triples(project_slug)
     doc_triples = _extract_document_triples(project_slug)
     fact_triples = _extract_fact_triples(project_slug)
@@ -63,11 +63,11 @@ def build_knowledge_graph(project_slug: str) -> dict:
         log.info("KG: no triples extracted for %s", project_slug)
         return stats
 
-    # 4  Standardize entities
+    # 4 Standardize entities
     all_triples, alias_map = _standardize_entities(all_triples)
     stats["aliases"] = sum(len(v) for v in alias_map.values())
 
-    # 5  Infer relationships
+    # 5 Infer relationships
     inferred = _infer_relationships(all_triples)
     stats["inferred"] = len(inferred)
     all_triples.extend(inferred)
@@ -80,7 +80,7 @@ def build_knowledge_graph(project_slug: str) -> dict:
     stats["entities"] = len(entities)
     stats["triples"] = len(all_triples)
 
-    # 6  Save
+    # 6 Save
     _save_knowledge_graph(project_slug, all_triples, alias_map)
 
     log.info("KG: done for %s — %s", project_slug, stats)
@@ -124,11 +124,11 @@ def _extract_table_triples(project_slug: str) -> list[dict]:
 
             # Phase 9: batch metadata read replaces N per-col classify_text_column
             # calls with ONE query per table via column_stats_cache (TTL-cached).
-            # Fail-soft: empty metadata → fall back to per-col classify.
+            # Fail-soft: empty metadata > fall back to per-col classify.
             try:
                 from dash.utils.column_stats_cache import get_column_metadata
             except Exception:
-                get_column_metadata = None  # type: ignore
+                get_column_metadata = None # type: ignore
 
             for tbl, cols in col_map.items():
                 text_cols = [
@@ -466,8 +466,8 @@ def _save_knowledge_graph(project_slug: str, triples: list[dict], alias_map: dic
             # Idempotent column add for existing tables (pre-migration 075).
             conn.execute(text(
                 "ALTER TABLE public.dash_knowledge_triples "
-                "  ADD COLUMN IF NOT EXISTS extractor TEXT DEFAULT 'llm', "
-                "  ADD COLUMN IF NOT EXISTS extraction_cost_usd NUMERIC(10,6) DEFAULT 0"
+                " ADD COLUMN IF NOT EXISTS extractor TEXT DEFAULT 'llm', "
+                " ADD COLUMN IF NOT EXISTS extraction_cost_usd NUMERIC(10,6) DEFAULT 0"
             ))
             # Delete old triples
             conn.execute(text(
@@ -519,7 +519,7 @@ def _save_knowledge_graph(project_slug: str, triples: list[dict], alias_map: dic
             if _loop is not None:
                 _loop.create_task(_VS.enqueue(project_slug, "kg", _sid, _spo, {}))
             # else: no running loop (e.g. background thread) — skip; reembed_loop
-            #       will catch up on the next 6h sweep.
+            # will catch up on the next 6h sweep.
     except Exception:
         log.debug("vector_sync enqueue (kg) skipped", exc_info=True)
 
@@ -542,7 +542,7 @@ def _save_knowledge_graph(project_slug: str, triples: list[dict], alias_map: dic
         "entity_count": len({t["subject"] for t in triples} | {t["object"] for t in triples}),
         "source_types": list({t.get("source_type", "unknown") for t in triples}),
         "communities": max((t.get("community") or 0 for t in triples), default=0) + 1,
-        "triples": triples[:500],  # cap for file size
+        "triples": triples[:500], # cap for file size
     }
     try:
         kg_path.write_text(json.dumps(summary, indent=2, default=str))
@@ -624,14 +624,14 @@ def _context_analyst(triples: list[dict], alias_map: dict) -> str:
     if entity_cols:
         lines.append("KNOWLEDGE GRAPH — ENTITY-TO-TABLE MAP:")
         for entity, cols in sorted(entity_cols.items())[:30]:
-            lines.append(f"  {entity} -> {', '.join(cols[:3])} (found {len(cols)} times)")
+            lines.append(f" {entity} -> {', '.join(cols[:3])} (found {len(cols)} times)")
 
     # Aliases
     if alias_map:
         lines.append("\nENTITY ALIASES (use in WHERE clauses):")
         for canonical, aliases in sorted(alias_map.items())[:20]:
             alias_str = " = ".join(f"'{a}'" for a in aliases)
-            lines.append(f'  "{canonical}" = {alias_str}')
+            lines.append(f' "{canonical}" = {alias_str}')
 
     # Verified metrics
     verified = [t for t in triples
@@ -639,7 +639,7 @@ def _context_analyst(triples: list[dict], alias_map: dict) -> str:
     if verified:
         lines.append("\nVERIFIED METRICS:")
         for t in verified[:15]:
-            lines.append(f"  {t['subject']}: confirmed in {t['object']}")
+            lines.append(f" {t['subject']}: confirmed in {t['object']}")
 
     return "\n".join(lines) if lines else ""
 
@@ -655,7 +655,7 @@ def _context_researcher(triples: list[dict], alias_map: dict) -> str:
     if entity_docs:
         lines.append("KNOWLEDGE GRAPH — ENTITY-TO-DOCUMENT MAP:")
         for entity, docs in sorted(entity_docs.items())[:25]:
-            lines.append(f"  {entity} -> {', '.join(sorted(set(docs))[:3])}")
+            lines.append(f" {entity} -> {', '.join(sorted(set(docs))[:3])}")
 
     # Causal relationships
     causal_preds = {"caused", "led_to", "resulted_in", "decided", "triggered"}
@@ -663,7 +663,7 @@ def _context_researcher(triples: list[dict], alias_map: dict) -> str:
     if causals:
         lines.append("\nCAUSAL RELATIONSHIPS:")
         for t in causals[:15]:
-            lines.append(f"  {t['subject']} -> {t['predicate']} -> {t['object']}")
+            lines.append(f" {t['subject']} -> {t['predicate']} -> {t['object']}")
 
     # Communities
     communities: dict[int, list[str]] = defaultdict(list)
@@ -674,7 +674,7 @@ def _context_researcher(triples: list[dict], alias_map: dict) -> str:
         lines.append("\nBUSINESS COMMUNITIES:")
         for cid in sorted(communities)[:8]:
             members = sorted(set(communities[cid]))[:6]
-            lines.append(f"  Community {cid + 1}: {', '.join(members)}")
+            lines.append(f" Community {cid + 1}: {', '.join(members)}")
 
     return "\n".join(lines) if lines else ""
 
@@ -702,7 +702,7 @@ def _context_leader(triples: list[dict], alias_map: dict) -> str:
                 if items:
                     parts.append(f"{stype} in {', '.join(sorted(set(items))[:3])}")
             if parts:
-                lines.append(f"  {entity}: {'; '.join(parts)}")
+                lines.append(f" {entity}: {'; '.join(parts)}")
 
     # Summary stats
     entities = set()
@@ -710,7 +710,7 @@ def _context_leader(triples: list[dict], alias_map: dict) -> str:
         entities.add(t["subject"])
         entities.add(t["object"])
     n_communities = len({t["community"] for t in triples if t["community"] is not None})
-    lines.append(f"  Entity count: {len(entities)}, "
+    lines.append(f" Entity count: {len(entities)}, "
                  f"Relationship count: {len(triples)}, "
                  f"Communities: {n_communities}")
 

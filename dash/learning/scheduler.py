@@ -23,11 +23,11 @@ logger = logging.getLogger(__name__)
 # Observability tracing (fail-soft; no-op if unavailable or TRACING_DISABLED).
 try:
     from dash.obs.trace import trace_span
-except Exception:  # noqa: BLE001
+except Exception: # noqa: BLE001
     from contextlib import contextmanager as _cm
 
     @_cm
-    def trace_span(*_a, **_k):  # type: ignore
+    def trace_span(*_a, **_k): # type: ignore
         yield None
 
 # Module-level state (read by /health and scheduler endpoints)
@@ -41,11 +41,11 @@ _state: dict = {
     "enabled": True,
 }
 
-DAILY_INTERVAL_S = 24 * 60 * 60   # 1 day
-MAX_SWEEP_S = 30 * 60             # 30 min wall-clock cap
-INITIAL_DELAY_S = 60 * 60         # wait 1 hr after startup before first run
-WEEKLY_CANARY_INTERVAL_S = 7 * 24 * 60 * 60  # weekly
-_last_canary_day = None  # module state — date of last canary run
+DAILY_INTERVAL_S = 24 * 60 * 60 # 1 day
+MAX_SWEEP_S = 30 * 60 # 30 min wall-clock cap
+INITIAL_DELAY_S = 60 * 60 # wait 1 hr after startup before first run
+WEEKLY_CANARY_INTERVAL_S = 7 * 24 * 60 * 60 # weekly
+_last_canary_day = None # module state — date of last canary run
 
 # Env-var opt-out: set LEARNING_SCHEDULER_DISABLED=1 to disable from boot
 if os.environ.get("LEARNING_SCHEDULER_DISABLED", "").lower() in ("1", "true", "yes"):
@@ -67,8 +67,8 @@ if os.environ.get("KUBERNETES_SERVICE_HOST"):
 def _scheduler_enabled() -> bool:
     """Read enable flag from admin settings, fall back to env/state.
 
-    Resolution: admin_settings('enable_in_process_scheduler') →
-    LEARNING_SCHEDULER_DISABLED env → in-memory _state['enabled'].
+    Resolution: admin_settings('enable_in_process_scheduler') >
+    LEARNING_SCHEDULER_DISABLED env > in-memory _state['enabled'].
     """
     try:
         from dash.admin.settings import get_setting
@@ -106,17 +106,17 @@ async def _run_one_project(slug: str, llm_call_fn=None) -> None:
         try:
             from dash.settings import training_llm_call
         except Exception:
-            training_llm_call = None  # type: ignore
+            training_llm_call = None # type: ignore
 
         cyc = LearningCycle(
             project_slug=slug,
             llm_call_fn=llm_call_fn or training_llm_call,
-            max_questions=15,        # smaller cap in cron mode
-            run_decay=False,         # decay only once per sweep, central
-            run_promotion=False,     # promotion only on central pass
+            max_questions=15, # smaller cap in cron mode
+            run_decay=False, # decay only once per sweep, central
+            run_promotion=False, # promotion only on central pass
         )
         async for _ev in cyc.run():
-            pass  # discard SSE events; persisted in dash_self_learning_runs
+            pass # discard SSE events; persisted in dash_self_learning_runs
     except Exception as e:
         logger.warning(f"cron cycle for {slug} failed: {e}")
 
@@ -128,13 +128,13 @@ async def _run_central(llm_call_fn=None) -> None:
         try:
             from dash.settings import training_llm_call
         except Exception:
-            training_llm_call = None  # type: ignore
+            training_llm_call = None # type: ignore
 
         cyc = LearningCycle(
-            project_slug=None,           # central
+            project_slug=None, # central
             llm_call_fn=llm_call_fn or training_llm_call,
             max_questions=10,
-            run_decay=True,              # decay only on central pass
+            run_decay=True, # decay only on central pass
             run_promotion=True,
         )
         async for _ev in cyc.run():
@@ -152,7 +152,7 @@ def _get_optin_projects() -> list[str]:
             rows = conn.execute(text(
                 "SELECT slug FROM public.dash_projects "
                 "WHERE COALESCE(contribute_to_central, TRUE) = TRUE "
-                "   OR COALESCE(receive_from_central, TRUE) = TRUE "
+                " OR COALESCE(receive_from_central, TRUE) = TRUE "
                 "ORDER BY slug"
             )).fetchall()
         return [r[0] for r in rows]
@@ -169,7 +169,7 @@ async def _maybe_run_canary() -> None:
     global _last_canary_day
     today = datetime.utcnow().date()
     if _last_canary_day == today:
-        return  # already ran today
+        return # already ran today
     # Only Sundays (weekday 6)
     if today.weekday() != 6:
         return
@@ -269,7 +269,7 @@ async def _sweep_once() -> None:
             logger.warning(f"canary sweep failed: {e}")
 
         # 5. Per-source drift scan (admin can disable globally
-        #    via admin_settings.enable_self_learning)
+        # via admin_settings.enable_self_learning)
         try:
             await _maybe_run_drift_scan()
         except Exception as e:

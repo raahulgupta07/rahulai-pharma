@@ -32,9 +32,9 @@ current_project_slug: ContextVar[Optional[str]] = ContextVar("current_project_sl
 current_user_id: ContextVar[Optional[int]] = ContextVar("current_user_id", default=None)
 current_agent_name: ContextVar[Optional[str]] = ContextVar("current_agent_name", default=None)
 
-# ── In-process registry: run_id → asyncio.Queue ─────────────────────────
+# ── In-process registry: run_id > asyncio.Queue ─────────────────────────
 _pending_queues: Dict[str, asyncio.Queue] = {}
-_registry_lock: Optional[asyncio.Lock] = None  # lazy-init (Py3.9 compat)
+_registry_lock: Optional[asyncio.Lock] = None # lazy-init (Py3.9 compat)
 
 
 def _lock() -> asyncio.Lock:
@@ -61,14 +61,14 @@ def _get_run_id() -> str:
 def _get_engine():
     """Lazy import to avoid circular deps and keep decorators import-light."""
     try:
-        from db.session import get_sql_engine  # type: ignore
+        from db.session import get_sql_engine # type: ignore
         return get_sql_engine()
     except Exception:
         try:
-            from db import get_sql_engine  # type: ignore
+            from db import get_sql_engine # type: ignore
             return get_sql_engine()
         except Exception:
-            from db import db_url  # type: ignore
+            from db import db_url # type: ignore
             from sqlalchemy import create_engine
             from sqlalchemy.pool import NullPool
             return create_engine(db_url, poolclass=NullPool)
@@ -178,8 +178,8 @@ def require_confirmation(
     """Decorator: gate tool execution on human approval.
 
     On call, inserts a row in dash_hitl_pending with status='pending', awaits a
-    response via the in-process queue. If approved → invokes wrapped fn.
-    If rejected/expired → returns {"ok": False, "reason": ...}.
+    response via the in-process queue. If approved > invokes wrapped fn.
+    If rejected/expired > returns {"ok": False, "reason": ...}.
 
     Soft-disabled when EXPERIMENTAL_AGI != "1": pass-through to wrapped fn.
 
@@ -385,7 +385,7 @@ def _is_manifest_fn(fn: Callable) -> bool:
     try:
         sig = inspect.signature(fn)
         params = [p for p in sig.parameters.values() if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
-        return len(params) >= 1 and not name  # ambiguous; default to tool
+        return len(params) >= 1 and not name # ambiguous; default to tool
     except Exception:
         return False
 
@@ -394,9 +394,9 @@ def _schema_to_dict(schema: Type) -> Dict[str, Any]:
     """Best-effort serialize a pydantic model class to a JSON-renderable dict."""
     try:
         if hasattr(schema, "model_json_schema"):
-            return schema.model_json_schema()  # pydantic v2
+            return schema.model_json_schema() # pydantic v2
         if hasattr(schema, "schema"):
-            return schema.schema()  # pydantic v1
+            return schema.schema() # pydantic v1
     except Exception:
         pass
     return {"title": getattr(schema, "__name__", "Input"), "type": "object", "properties": {}}

@@ -1,177 +1,178 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import Icon from '$lib/Icon.svelte';
+ import { onMount } from 'svelte';
 
-  type Pack = {
-    id: string;
-    name: string;
-    version: string | null;
-    author: string | null;
-    source_path: string | null;
-    created_at: string | null;
-    description?: string;
-    vertical?: string | null;
-    skills?: string[];
-    golden_qa?: any[];
-    mdl_fragments?: string[];
-    workflow_count?: number;
-    model_count?: number;
-    format?: string;
-    enabled?: boolean;
-    installed_at?: string | null;
-    manifest?: Record<string, any>;
-  };
+ type Pack = {
+ id: string;
+ name: string;
+ version: string | null;
+ author: string | null;
+ source_path: string | null;
+ created_at: string | null;
+ description?: string;
+ vertical?: string | null;
+ skills?: string[];
+ golden_qa?: any[];
+ mdl_fragments?: string[];
+ workflow_count?: number;
+ model_count?: number;
+ format?: string;
+ enabled?: boolean;
+ installed_at?: string | null;
+ manifest?: Record<string, any>;
+ };
 
-  type Tab = 'available' | 'installed';
+ type Tab = 'available' | 'installed';
 
-  let tab = $state<Tab>('available');
-  let packs = $state<Pack[]>([]);
-  let installed = $state<Pack[]>([]);
-  let projectSlug = $state('');
-  let projectInputs = $state<Record<string, string>>({});
-  let loading = $state(false);
-  let syncing = $state(false);
-  let error = $state<string | null>(null);
-  let toast = $state<string | null>(null);
+ let tab = $state<Tab>('available');
+ let packs = $state<Pack[]>([]);
+ let installed = $state<Pack[]>([]);
+ let projectSlug = $state('');
+ let projectInputs = $state<Record<string, string>>({});
+ let loading = $state(false);
+ let syncing = $state(false);
+ let error = $state<string | null>(null);
+ let toast = $state<string | null>(null);
 
-  // manifest modal
-  let manifestPack = $state<Pack | null>(null);
-  let manifestLoading = $state(false);
+ // manifest modal
+ let manifestPack = $state<Pack | null>(null);
+ let manifestLoading = $state(false);
 
-  function authHeaders(): Record<string, string> {
-    const t = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
-    const h: Record<string, string> = { Accept: 'application/json' };
-    if (t) h['Authorization'] = `Bearer ${t}`;
-    return h;
-  }
+ function authHeaders(): Record<string, string> {
+ const t = typeof localStorage !== 'undefined' ? localStorage.getItem('dash_token') : null;
+ const h: Record<string, string> = { Accept: 'application/json' };
+ if (t) h['Authorization'] = `Bearer ${t}`;
+ return h;
+ }
 
-  async function api(method: string, path: string, body?: any): Promise<any> {
-    const opts: RequestInit = {
-      method,
-      headers: authHeaders()
-    };
-    if (body !== undefined) {
-      opts.headers = { ...opts.headers, 'Content-Type': 'application/json' };
-      opts.body = JSON.stringify(body);
-    }
-    const r = await fetch(path, opts);
-    if (!r.ok) {
-      const txt = await r.text().catch(() => '');
-      throw new Error(`HTTP ${r.status}: ${txt || r.statusText}`);
-    }
-    return r.json();
-  }
+ async function api(method: string, path: string, body?: any): Promise<any> {
+ const opts: RequestInit = {
+ method,
+ headers: authHeaders()
+ };
+ if (body !== undefined) {
+ opts.headers = { ...opts.headers, 'Content-Type': 'application/json' };
+ opts.body = JSON.stringify(body);
+ }
+ const r = await fetch(path, opts);
+ if (!r.ok) {
+ const txt = await r.text().catch(() => '');
+ throw new Error(`HTTP ${r.status}: ${txt || r.statusText}`);
+ }
+ return r.json();
+ }
 
-  function flash(msg: string) {
-    toast = msg;
-    setTimeout(() => { if (toast === msg) toast = null; }, 2500);
-  }
+ function flash(msg: string) {
+ toast = msg;
+ setTimeout(() => { if (toast === msg) toast = null; }, 2500);
+ }
 
-  async function loadAvailable() {
-    loading = true;
-    error = null;
-    try {
-      const res = await api('GET', '/api/packs');
-      packs = res.packs || [];
-    } catch (e: any) {
-      error = e.message || String(e);
-    } finally {
-      loading = false;
-    }
-  }
+ async function loadAvailable() {
+ loading = true;
+ error = null;
+ try {
+ const res = await api('GET', '/api/packs');
+ packs = res.packs || [];
+ } catch (e: any) {
+ error = e.message || String(e);
+ } finally {
+ loading = false;
+ }
+ }
 
-  async function loadInstalled() {
-    if (!projectSlug.trim()) {
-      installed = [];
-      return;
-    }
-    loading = true;
-    error = null;
-    try {
-      const slug = encodeURIComponent(projectSlug.trim());
-      const res = await api('GET', `/api/packs/installed?project_slug=${slug}`);
-      installed = res.installed || [];
-    } catch (e: any) {
-      error = e.message || String(e);
-    } finally {
-      loading = false;
-    }
-  }
+ async function loadInstalled() {
+ if (!projectSlug.trim()) {
+ installed = [];
+ return;
+ }
+ loading = true;
+ error = null;
+ try {
+ const slug = encodeURIComponent(projectSlug.trim());
+ const res = await api('GET', `/api/packs/installed?project_slug=${slug}`);
+ installed = res.installed || [];
+ } catch (e: any) {
+ error = e.message || String(e);
+ } finally {
+ loading = false;
+ }
+ }
 
-  async function syncFromDisk() {
-    syncing = true;
-    error = null;
-    try {
-      const res = await api('POST', '/api/packs/sync');
-      flash(`Synced ${res.synced} pack(s)`);
-      await loadAvailable();
-    } catch (e: any) {
-      error = e.message || String(e);
-    } finally {
-      syncing = false;
-    }
-  }
+ async function syncFromDisk() {
+ syncing = true;
+ error = null;
+ try {
+ const res = await api('POST', '/api/packs/sync');
+ flash(`Synced ${res.synced} pack(s)`);
+ await loadAvailable();
+ } catch (e: any) {
+ error = e.message || String(e);
+ } finally {
+ syncing = false;
+ }
+ }
 
-  async function installPack(pack: Pack) {
-    const slug = (projectInputs[pack.id] || projectSlug || '').trim();
-    if (!slug) {
-      error = 'Project slug required (set the top input or per-row override)';
-      return;
-    }
-    try {
-      const res = await api('POST', `/api/packs/${pack.id}/install`,
-                            { project_slug: slug });
-      flash(`Installed "${pack.name}" → ${slug}`
-            + (res.skills_registered ? ` (+${res.skills_registered} skill(s))` : ''));
-      if (tab === 'installed' && projectSlug.trim() === slug) await loadInstalled();
-    } catch (e: any) {
-      error = e.message || String(e);
-    }
-  }
+ async function installPack(pack: Pack) {
+ const slug = (projectInputs[pack.id] || projectSlug || '').trim();
+ if (!slug) {
+ error = 'Project slug required (set the top input or per-row override)';
+ return;
+ }
+ try {
+ const res = await api('POST', `/api/packs/${pack.id}/install`,
+ { project_slug: slug });
+ flash(`Installed "${pack.name}" > ${slug}`
+ + (res.skills_registered ? ` (+${res.skills_registered} skill(s))` : ''));
+ if (tab === 'installed' && projectSlug.trim() === slug) await loadInstalled();
+ } catch (e: any) {
+ error = e.message || String(e);
+ }
+ }
 
-  async function uninstallPack(pack: Pack) {
-    const slug = projectSlug.trim();
-    if (!slug) {
-      error = 'Project slug required';
-      return;
-    }
-    if (!confirm(`Disable "${pack.name}" for ${slug}?`)) return;
-    try {
-      await api('POST', `/api/packs/${pack.id}/uninstall`,
-                { project_slug: slug });
-      flash(`Disabled "${pack.name}" for ${slug}`);
-      await loadInstalled();
-    } catch (e: any) {
-      error = e.message || String(e);
-    }
-  }
+ async function uninstallPack(pack: Pack) {
+ const slug = projectSlug.trim();
+ if (!slug) {
+ error = 'Project slug required';
+ return;
+ }
+ if (!confirm(`Disable "${pack.name}" for ${slug}?`)) return;
+ try {
+ await api('POST', `/api/packs/${pack.id}/uninstall`,
+ { project_slug: slug });
+ flash(`Disabled "${pack.name}" for ${slug}`);
+ await loadInstalled();
+ } catch (e: any) {
+ error = e.message || String(e);
+ }
+ }
 
-  async function viewManifest(pack: Pack) {
-    manifestLoading = true;
-    manifestPack = pack;
-    try {
-      const detail = await api('GET', `/api/packs/${pack.id}`);
-      manifestPack = { ...pack, ...detail };
-    } catch (e: any) {
-      error = e.message || String(e);
-      manifestPack = null;
-    } finally {
-      manifestLoading = false;
-    }
-  }
+ async function viewManifest(pack: Pack) {
+ manifestLoading = true;
+ manifestPack = pack;
+ try {
+ const detail = await api('GET', `/api/packs/${pack.id}`);
+ manifestPack = { ...pack, ...detail };
+ } catch (e: any) {
+ error = e.message || String(e);
+ manifestPack = null;
+ } finally {
+ manifestLoading = false;
+ }
+ }
 
-  function closeManifest() { manifestPack = null; }
+ function closeManifest() { manifestPack = null; }
 
-  function fmtJson(o: any): string {
-    try { return JSON.stringify(o ?? {}, null, 2); }
-    catch { return String(o); }
-  }
+ function fmtJson(o: any): string {
+ try { return JSON.stringify(o ?? {}, null, 2); }
+ catch { return String(o); }
+ }
 
-  function switchTab(t: Tab) {
-    tab = t;
-    if (t === 'installed') loadInstalled();
-  }
+ function switchTab(t: Tab) {
+ tab = t;
+ if (t === 'installed') loadInstalled();
+ }
 
-  onMount(() => { loadAvailable(); });
+ onMount(() => { loadAvailable(); });
 </script>
 
 <div class="pk-shell">
@@ -340,7 +341,7 @@
           <h2>{manifestPack.name} <span class="muted small">v{manifestPack.version || '—'}</span></h2>
           <p class="muted small">{manifestPack.source_path || ''}</p>
         </div>
-        <button class="btn-ghost" onclick={closeManifest} aria-label="Close">✕</button>
+        <button class="btn-ghost" onclick={closeManifest} aria-label="Close"><Icon name="x" size={16} /></button>
       </header>
       <div class="modal-body">
         {#if manifestLoading}
@@ -357,239 +358,239 @@
 {/if}
 
 <style>
-  .pk-shell {
-    padding: 24px 32px;
-    max-width: 1300px;
-    margin: 0 auto;
-    font-family: system-ui, -apple-system, sans-serif;
-    color: #1f1c17;
-  }
-  .pk-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    gap: 16px;
-    margin-bottom: 20px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid #e8e3d6;
-    flex-wrap: wrap;
-  }
-  .pk-head h1 {
-    font-family: 'Source Serif Pro', Georgia, serif;
-    font-size: 24px;
-    margin: 0 0 4px 0;
-    font-weight: 600;
-  }
-  .muted { color: #777; font-size: 13px; margin: 0; }
-  .small { font-size: 12px; }
-  .err {
-    color: #b3261e;
-    background: #fdecea;
-    border: 1px solid #f5c2c0;
-    border-radius: 4px;
-    padding: 8px 12px;
-    margin: 0 0 16px 0;
-    font-size: 13px;
-  }
-  .toast {
-    color: #1f5c3a;
-    background: #e6f4ec;
-    border: 1px solid #b8dec8;
-    border-radius: 4px;
-    padding: 8px 12px;
-    margin: 0 0 16px 0;
-    font-size: 13px;
-  }
-  .ctrls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .slug-input {
-    padding: 6px 10px;
-    border: 1px solid #d6d1c2;
-    background: #fff;
-    border-radius: 4px;
-    font-size: 13px;
-    min-width: 220px;
-    font-family: monospace;
-  }
-  .slug-input.small { min-width: 140px; font-size: 12px; padding: 4px 8px; }
-  .btn-ghost, .btn-primary, .btn-secondary, .btn-mini {
-    padding: 6px 12px;
-    border: 1px solid #d6d1c2;
-    background: #fff;
-    border-radius: 4px;
-    font-size: 13px;
-    cursor: pointer;
-    transition: background 0.15s;
-    color: #1f1c17;
-  }
-  .btn-ghost:hover, .btn-secondary:hover { background: #f7f3e9; }
-  .btn-primary { background: #c96342; color: #fff; border-color: #c96342; }
-  .btn-primary:hover { background: #b35636; }
-  .btn-secondary { background: #fff; border-color: #c96342; color: #c96342; }
-  .btn-mini { padding: 3px 8px; font-size: 11px; margin-right: 4px; }
-  .btn-mini.btn-danger { color: #b3261e; border-color: #f5c2c0; }
-  .btn-mini.btn-danger:hover { background: #fdecea; }
-  .btn-mini.btn-ghost { color: #777; }
-  .btn-ghost:disabled, .btn-secondary:disabled, .btn-primary:disabled { opacity: 0.5; cursor: default; }
+ .pk-shell {
+ padding: 24px 32px;
+ max-width: 1300px;
+ margin: 0 auto;
+ font-family: system-ui, -apple-system, sans-serif;
+ color: #1f1c17;
+ }
+ .pk-head {
+ display: flex;
+ justify-content: space-between;
+ align-items: flex-end;
+ gap: 16px;
+ margin-bottom: 20px;
+ padding-bottom: 12px;
+ border-bottom: 1px solid #e8e3d6;
+ flex-wrap: wrap;
+ }
+ .pk-head h1 {
+ font-family: 'Source Serif Pro', Georgia, serif;
+ font-size: 24px;
+ margin: 0 0 4px 0;
+ font-weight: 600;
+ }
+ .muted { color: #777; font-size: 13px; margin: 0; }
+ .small { font-size: 12px; }
+ .err {
+ color: #b3261e;
+ background: #fdecea;
+ border: 1px solid #f5c2c0;
+ border-radius: 4px;
+ padding: 8px 12px;
+ margin: 0 0 16px 0;
+ font-size: 13px;
+ }
+ .toast {
+ color: #1f5c3a;
+ background: #e6f4ec;
+ border: 1px solid #b8dec8;
+ border-radius: 4px;
+ padding: 8px 12px;
+ margin: 0 0 16px 0;
+ font-size: 13px;
+ }
+ .ctrls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+ .slug-input {
+ padding: 6px 10px;
+ border: 1px solid #d6d1c2;
+ background: #fff;
+ border-radius: 4px;
+ font-size: 13px;
+ min-width: 220px;
+ font-family: monospace;
+ }
+ .slug-input.small { min-width: 140px; font-size: 12px; padding: 4px 8px; }
+ .btn-ghost, .btn-primary, .btn-secondary, .btn-mini {
+ padding: 6px 12px;
+ border: 1px solid #d6d1c2;
+ background: #fff;
+ border-radius: 4px;
+ font-size: 13px;
+ cursor: pointer;
+ transition: background 0.15s;
+ color: #1f1c17;
+ }
+ .btn-ghost:hover, .btn-secondary:hover { background: #f7f3e9; }
+ .btn-primary { background: #c96342; color: #fff; border-color: #c96342; }
+ .btn-primary:hover { background: #b35636; }
+ .btn-secondary { background: #fff; border-color: #c96342; color: #c96342; }
+ .btn-mini { padding: 3px 8px; font-size: 11px; margin-right: 4px; }
+ .btn-mini.btn-danger { color: #b3261e; border-color: #f5c2c0; }
+ .btn-mini.btn-danger:hover { background: #fdecea; }
+ .btn-mini.btn-ghost { color: #777; }
+ .btn-ghost:disabled, .btn-secondary:disabled, .btn-primary:disabled { opacity: 0.5; cursor: default; }
 
-  .tabs {
-    display: flex;
-    gap: 4px;
-    border-bottom: 1px solid #e8e3d6;
-    margin-bottom: 16px;
-  }
-  .tab {
-    background: transparent;
-    border: none;
-    padding: 10px 16px;
-    font-size: 13px;
-    color: #777;
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-  }
-  .tab:hover { color: #1f1c17; }
-  .tab.active {
-    color: #c96342;
-    border-bottom-color: #c96342;
-    font-weight: 600;
-  }
-  .badge {
-    background: #f0ebe0;
-    color: #555;
-    padding: 1px 6px;
-    border-radius: 8px;
-    font-size: 11px;
-    margin-left: 4px;
-  }
-  .tab.active .badge { background: #fdecea; color: #c96342; }
+ .tabs {
+ display: flex;
+ gap: 4px;
+ border-bottom: 1px solid #e8e3d6;
+ margin-bottom: 16px;
+ }
+ .tab {
+ background: transparent;
+ border: none;
+ padding: 10px 16px;
+ font-size: 13px;
+ color: #777;
+ cursor: pointer;
+ border-bottom: 2px solid transparent;
+ margin-bottom: -1px;
+ }
+ .tab:hover { color: #1f1c17; }
+ .tab.active {
+ color: #c96342;
+ border-bottom-color: #c96342;
+ font-weight: 600;
+ }
+ .badge {
+ background: #f0ebe0;
+ color: #555;
+ padding: 1px 6px;
+ border-radius: 8px;
+ font-size: 11px;
+ margin-left: 4px;
+ }
+ .tab.active .badge { background: #fdecea; color: #c96342; }
 
-  .pk-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-  }
-  .pk-table thead { background: #f7f3e9; }
-  .pk-table th, .pk-table td {
-    padding: 8px 10px;
-    text-align: left;
-    border-bottom: 1px solid #e8e3d6;
-    vertical-align: top;
-  }
-  .pk-table th {
-    font-weight: 600;
-    color: #555;
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .pk-table td.num, .pk-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .pk-table tr:hover { background: #fafaf6; }
+ .pk-table {
+ width: 100%;
+ border-collapse: collapse;
+ font-size: 13px;
+ }
+ .pk-table thead { background: #f7f3e9; }
+ .pk-table th, .pk-table td {
+ padding: 8px 10px;
+ text-align: left;
+ border-bottom: 1px solid #e8e3d6;
+ vertical-align: top;
+ }
+ .pk-table th {
+ font-weight: 600;
+ color: #555;
+ font-size: 12px;
+ text-transform: uppercase;
+ letter-spacing: 0.5px;
+ }
+ .pk-table td.num, .pk-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+ .pk-table tr:hover { background: #fafaf6; }
 
-  .link {
-    background: none;
-    border: none;
-    color: #c96342;
-    cursor: pointer;
-    padding: 0;
-    font-size: 13px;
-    font-weight: 500;
-    text-align: left;
-  }
-  .link:hover { text-decoration: underline; }
+ .link {
+ background: none;
+ border: none;
+ color: #c96342;
+ cursor: pointer;
+ padding: 0;
+ font-size: 13px;
+ font-weight: 500;
+ text-align: left;
+ }
+ .link:hover { text-decoration: underline; }
 
-  code {
-    font-family: monospace;
-    font-size: 12px;
-    background: #f0ebe0;
-    padding: 1px 5px;
-    border-radius: 3px;
-  }
+ code {
+ font-family: monospace;
+ font-size: 12px;
+ background: #f0ebe0;
+ padding: 1px 5px;
+ border-radius: 3px;
+ }
 
-  .fmt {
-    display: inline-block;
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 8px;
-    font-family: monospace;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .fmt-mdl { background: #e6f0fd; color: #1f5cb3; }
-  .fmt-legacy { background: #f0ebe0; color: #555; }
+ .fmt {
+ display: inline-block;
+ font-size: 11px;
+ padding: 2px 8px;
+ border-radius: 8px;
+ font-family: monospace;
+ text-transform: uppercase;
+ letter-spacing: 0.5px;
+ }
+ .fmt-mdl { background: #e6f0fd; color: #1f5cb3; }
+ .fmt-legacy { background: #f0ebe0; color: #555; }
 
-  .pill {
-    display: inline-block;
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .pill-on { background: #e6f4ec; color: #1f5c3a; }
-  .pill-off { background: #f0ebe0; color: #777; }
+ .pill {
+ display: inline-block;
+ font-size: 11px;
+ padding: 2px 8px;
+ border-radius: 8px;
+ text-transform: uppercase;
+ letter-spacing: 0.5px;
+ }
+ .pill-on { background: #e6f4ec; color: #1f5c3a; }
+ .pill-off { background: #f0ebe0; color: #777; }
 
-  .actions { white-space: nowrap; }
+ .actions { white-space: nowrap; }
 
-  .empty {
-    padding: 32px 16px;
-    text-align: center;
-    color: #777;
-    background: #fafaf6;
-    border: 1px dashed #e8e3d6;
-    border-radius: 6px;
-  }
+ .empty {
+ padding: 32px 16px;
+ text-align: center;
+ color: #777;
+ background: #fafaf6;
+ border: 1px dashed #e8e3d6;
+ border-radius: 6px;
+ }
 
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(31, 28, 23, 0.45);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
-    padding: 24px;
-  }
-  .modal {
-    background: #fff;
-    border-radius: 6px;
-    width: min(800px, 100%);
-    max-height: 85vh;
-    display: flex;
-    flex-direction: column;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-  }
-  .modal-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 16px;
-    padding: 16px 20px;
-    border-bottom: 1px solid #e8e3d6;
-  }
-  .modal-head h2 {
-    margin: 0;
-    font-family: 'Source Serif Pro', Georgia, serif;
-    font-size: 18px;
-    font-weight: 600;
-  }
-  .modal-body { padding: 16px 20px; overflow: auto; flex: 1; }
-  .modal-foot {
-    padding: 12px 20px;
-    border-top: 1px solid #e8e3d6;
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-  }
-  .manifest {
-    margin: 0;
-    padding: 12px;
-    background: #1f1c17;
-    color: #e8e3d6;
-    border-radius: 4px;
-    font-family: 'Menlo', 'Monaco', monospace;
-    font-size: 12px;
-    line-height: 1.5;
-    overflow: auto;
-    max-height: 60vh;
-  }
+ .modal-backdrop {
+ position: fixed;
+ inset: 0;
+ background: rgba(31, 28, 23, 0.45);
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ z-index: 100;
+ padding: 24px;
+ }
+ .modal {
+ background: #fff;
+ border-radius: 6px;
+ width: min(800px, 100%);
+ max-height: 85vh;
+ display: flex;
+ flex-direction: column;
+ box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+ }
+ .modal-head {
+ display: flex;
+ justify-content: space-between;
+ align-items: flex-start;
+ gap: 16px;
+ padding: 16px 20px;
+ border-bottom: 1px solid #e8e3d6;
+ }
+ .modal-head h2 {
+ margin: 0;
+ font-family: 'Source Serif Pro', Georgia, serif;
+ font-size: 18px;
+ font-weight: 600;
+ }
+ .modal-body { padding: 16px 20px; overflow: auto; flex: 1; }
+ .modal-foot {
+ padding: 12px 20px;
+ border-top: 1px solid #e8e3d6;
+ display: flex;
+ justify-content: flex-end;
+ gap: 8px;
+ }
+ .manifest {
+ margin: 0;
+ padding: 12px;
+ background: #1f1c17;
+ color: #e8e3d6;
+ border-radius: 4px;
+ font-family: 'Menlo', 'Monaco', monospace;
+ font-size: 12px;
+ line-height: 1.5;
+ overflow: auto;
+ max-height: 60vh;
+ }
 </style>

@@ -11,7 +11,7 @@ from ._common import (
 )
 from dash.pptx_renderer.markdown_runs import render_markdown_text
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING: # pragma: no cover
     from pptx.slide import Slide
     from dash.pptx_renderer.themes import Theme
 
@@ -50,7 +50,7 @@ def _grid_cards(slide, cards, opts, theme):
     # light bg, muted_light on dark bg — falls back to steel.
     from ._common import bg_is_dark as _bg_is_dark
     if _bg_is_dark(theme):
-        # On dark cards, ink_soft (A8A29A) is too dim → use bright ink for readability.
+        # On dark cards, ink_soft (A8A29A) is too dim > use bright ink for readability.
         body_hex = getattr(theme, "ink", None) or PALETTE["white"]
     else:
         body_hex = (
@@ -117,7 +117,7 @@ def render(slide: "Slide", data: dict, theme: "Theme") -> None:
     """Render a content-grid slide.
 
     Accepts both shapes:
-      - {title, eyebrow?, action_line?, bullets: [str]}  (spec from this file)
+      - {title, eyebrow?, action_line?, bullets: [str]} (spec from this file)
       - {title, eyebrow?, action_line?, cards: [{title, body, rail_color?}]}
         (richer shape from prior python-pptx renderer)
     """
@@ -136,7 +136,7 @@ def render(slide: "Slide", data: dict, theme: "Theme") -> None:
             color=action_color,
         )
 
-    # Normalize bullets → cards
+    # Normalize bullets > cards
     cards = data.get("cards")
     if not (isinstance(cards, list) and cards):
         bullets = data.get("bullets")

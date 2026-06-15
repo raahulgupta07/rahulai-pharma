@@ -3,14 +3,14 @@
 Each transform:
 - Returns a *mutated copy*, never mutates input.
 - Try/except per slide — a single bad slide never crashes the pipeline.
-- LLM tasks use task="extraction" → LITE_MODEL (cheap, fast).
+- LLM tasks use task="extraction" > LITE_MODEL (cheap, fast).
 - Visual picker is pure rules ($0, no LLM).
 
 Functions:
-    apply_action_titles(slides, narrative)      — label → action-sentence titles
-    apply_evidence_citer(slides, executed)      — enforce (Source: [Qn]) on numeric claims
-    apply_visual_picker(slide, data)            — set slide.chart_type by data shape (mutates one slide)
-    apply_narrative_arc(slides, narrative)      — reorder situation → complication → resolution → recommendation
+    apply_action_titles(slides, narrative) — label > action-sentence titles
+    apply_evidence_citer(slides, executed) — enforce (Source: [Qn]) on numeric claims
+    apply_visual_picker(slide, data) — set slide.chart_type by data shape (mutates one slide)
+    apply_narrative_arc(slides, narrative) — reorder situation > complication > resolution > recommendation
 """
 from __future__ import annotations
 
@@ -28,9 +28,9 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────────────────────
 
 _NUMERIC_CLAIM_RE = re.compile(
-    r"(\$?\s?\d{1,3}(?:[,.]\d{3})*(?:\.\d+)?\s?%?|"     # 1,234 / 12.5% / $1.2M
-    r"\$\s?\d+(?:\.\d+)?\s?[KMB]?|"                       # $12K / $1.2M
-    r"\b\d+(?:\.\d+)?\s?(?:x|×)\b)",                      # 2.5x / 3×
+    r"(\$?\s?\d{1,3}(?:[,.]\d{3})*(?:\.\d+)?\s?%?|" # 1,234 / 12.5% / $1.2M
+    r"\$\s?\d+(?:\.\d+)?\s?[KMB]?|" # $12K / $1.2M
+    r"\b\d+(?:\.\d+)?\s?(?:x|×)\b)", # 2.5x / 3×
     re.IGNORECASE,
 )
 _HAS_SOURCE_RE = re.compile(r"\(\s*Source\s*:\s*\[?Q\d+\]?\s*\)", re.IGNORECASE)
@@ -77,17 +77,17 @@ def _parse_json_loose(raw: Optional[str]) -> Optional[Any]:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 1. Action Titles — label → full-sentence insight
+# 1. Action Titles — label > full-sentence insight
 # ──────────────────────────────────────────────────────────────────────────────
 
 _ACTION_TITLE_PROMPT = """You rewrite slide titles using the McKinsey "ghost-deck" rule.
 
 RULE: Every slide title must be a FULL SENTENCE that conveys the takeaway, NOT a topic label.
 
-BAD  (label):  "Revenue by Channel"
+BAD (label): "Revenue by Channel"
 GOOD (action): "Bakery drives 69% of revenue with 28% YoY growth"
 
-BAD  (label):  "Customer Segmentation"
+BAD (label): "Customer Segmentation"
 GOOD (action): "Top 20% of customers generate 73% of revenue"
 
 INPUTS:
@@ -197,9 +197,9 @@ def apply_evidence_citer(
     out = copy.deepcopy(slides) if slides else []
     q_index = _build_executed_index(executed or [])
     if not q_index:
-        return out  # no queries to cite against — pass through
+        return out # no queries to cite against — pass through
     queries_block = "\n".join(
-        f"- {q['qn']}: {q['question']} → {q['summary'] or q['sql']}" for q in q_index
+        f"- {q['qn']}: {q['question']} > {q['summary'] or q['sql']}" for q in q_index
     )
 
     for idx, slide in enumerate(out):
@@ -353,14 +353,14 @@ def apply_visual_picker(slide: Dict[str, Any], data: Dict[str, Any]) -> Dict[str
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 4. Narrative Arc — reorder into situation → complication → resolution → recommendation
+# 4. Narrative Arc — reorder into situation > complication > resolution > recommendation
 # ──────────────────────────────────────────────────────────────────────────────
 
 _ARC_TAGS = ("situation", "complication", "resolution", "recommendation")
 _ARC_TARGET_COUNTS = {
     "situation": 1,
-    "complication": 3,      # 2-3
-    "resolution": 3,        # 2-3
+    "complication": 3, # 2-3
+    "resolution": 3, # 2-3
     "recommendation": 1,
 }
 _ARC_ORDER = {tag: i for i, tag in enumerate(_ARC_TAGS)}
@@ -368,9 +368,9 @@ _ARC_ORDER = {tag: i for i, tag in enumerate(_ARC_TAGS)}
 _ARC_PROMPT = """Tag each slide with ONE of: situation, complication, resolution, recommendation.
 
 Narrative arc rules:
-- situation     = sets context, current state, baseline ("here is what we see")
-- complication  = the problem, gap, risk, surprising fact ("here is what's wrong")
-- resolution    = the analysis, drivers, root cause, opportunity ("here is why / what to do")
+- situation = sets context, current state, baseline ("here is what we see")
+- complication = the problem, gap, risk, surprising fact ("here is what's wrong")
+- resolution = the analysis, drivers, root cause, opportunity ("here is why / what to do")
 - recommendation = concrete action, decision, ask ("here is the ask")
 
 DECK NARRATIVE: {narrative}
@@ -393,7 +393,7 @@ def apply_narrative_arc(
     slides: List[Dict[str, Any]],
     narrative: str,
 ) -> List[Dict[str, Any]]:
-    """Tag each slide with arc role via LITE_MODEL, then sort situation→...→recommendation."""
+    """Tag each slide with arc role via LITE_MODEL, then sort situation>...>recommendation."""
     from dash.settings import training_llm_call
 
     if not slides:

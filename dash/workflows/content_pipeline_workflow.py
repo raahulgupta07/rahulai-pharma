@@ -1,6 +1,6 @@
 """Content pipeline workflow.
 
-Pattern: research → outline → draft → review → revise (loop max 3
+Pattern: research > outline > draft > review > revise (loop max 3
 iterations with end condition).
 
 End condition: critic returns ``quality_score >= 0.85`` OR
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 WORKFLOW_META = {
     "name": "content_pipeline",
     "schedule": "manual",
-    "description": "research→outline→draft→review→revise loop with quality-gated end condition.",
+    "description": "research>outline>draft>review>revise loop with quality-gated end condition.",
     "tags": ["content", "loop", "critic", "deep"],
 }
 

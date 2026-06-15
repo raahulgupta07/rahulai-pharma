@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount, onDestroy } from 'svelte';
  import { page } from '$app/state';
  import { goto } from '$app/navigation';
@@ -163,28 +163,28 @@
  }
 
  async function convertToDeck() {
-   if (convertingDeck || !dashId) return;
-   convertingDeck = true;
-   deckError = '';
-   deckProgress = 'Converting dashboard to deck…';
-   try {
-     const r = await fetch(`/api/dashboards/${dashId}/to-deck`, {
-       method: 'POST',
-       headers: { ..._headers(), 'Content-Type': 'application/json' },
-       body: JSON.stringify({})
-     });
-     const data = await r.json();
-     if (!r.ok || data.ok === false) {
-       throw new Error(data.detail || data.error || `HTTP ${r.status}`);
-     }
-     deckProgress = `Deck ready · ${data.slide_count} slides · presentation #${data.presentation_id}`;
-     setTimeout(() => { goto(`${base}/presentations`); }, 600);
-   } catch (e: any) {
-     deckError = `Failed: ${e?.message || e}`;
-     deckProgress = '';
-   } finally {
-     convertingDeck = false;
-   }
+ if (convertingDeck || !dashId) return;
+ convertingDeck = true;
+ deckError = '';
+ deckProgress = 'Converting dashboard to deck…';
+ try {
+ const r = await fetch(`/api/dashboards/${dashId}/to-deck`, {
+ method: 'POST',
+ headers: { ..._headers(), 'Content-Type': 'application/json' },
+ body: JSON.stringify({})
+ });
+ const data = await r.json();
+ if (!r.ok || data.ok === false) {
+ throw new Error(data.detail || data.error || `HTTP ${r.status}`);
+ }
+ deckProgress = `Deck ready · ${data.slide_count} slides · presentation #${data.presentation_id}`;
+ setTimeout(() => { goto(`${base}/presentations`); }, 600);
+ } catch (e: any) {
+ deckError = `Failed: ${e?.message || e}`;
+ deckProgress = '';
+ } finally {
+ convertingDeck = false;
+ }
  }
 </script>
 
@@ -194,7 +194,7 @@
   {:else if error}
     <div class="msg err">{error}</div>
   {:else if spec}
-    <button class="back-btn" onclick={() => goto(`${base}/project/${projectSlug}`)}>← Back to chat</button>
+    <button class="back-btn" onclick={() => goto(`${base}/project/${projectSlug}`)}><Icon name="arrow-left" size={16} /> Back to chat</button>
     <div class="header">
       <h1>{spec.title || 'Dashboard'}</h1>
       <div class="actions">
@@ -203,7 +203,7 @@
         <button class="btn" onclick={toggleCompare}>{spec.compare_to ? 'COMPARE ON' : 'COMPARE'}</button>
         <button class="btn" onclick={exportPng}>EXPORT PNG</button>
         <button class="btn deck" onclick={convertToDeck} disabled={convertingDeck} title="Convert this dashboard to a PowerPoint deck">
-          {convertingDeck ? 'CONVERTING…' : '→ CONVERT TO DECK'}
+          {convertingDeck ? 'CONVERTING…' : '&gt; CONVERT TO DECK'}
         </button>
         <button class="btn" onclick={() => (showShare = !showShare)}>SHARE</button>
         <button class="btn" class:active={showEdit} onclick={() => (showEdit = !showEdit)}>EDIT</button>

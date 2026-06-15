@@ -2,13 +2,13 @@
 project pool into the central Company Brain pool.
 
 Stages:
-    1. find_candidates    — VERIFIED + NOT promoted_to_central yet, opt-in
-    2. screen_pii         — regex strip emails/phones/SSN/currency/names
-    3. screen_generalize  — LLM verdict A/B/C (universal/pattern/specific)
+    1. find_candidates — VERIFIED + NOT promoted_to_central yet, opt-in
+    2. screen_pii — regex strip emails/phones/SSN/currency/names
+    3. screen_generalize — LLM verdict A/B/C (universal/pattern/specific)
     4. check_triangulation — same fact verified across N distinct projects
-    5. promote            — INSERT central row + audit + flip flag
+    5. promote — INSERT central row + audit + flip flag
 
-Project opt-out: dash_projects.contribute_to_central = FALSE → skip.
+Project opt-out: dash_projects.contribute_to_central = FALSE > skip.
 
 Audit trail: every attempt (success or rejection) writes a
 dash_promotion_log row with the rejection_reason.
@@ -32,15 +32,15 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# PII regex blockers — any match → reject candidate
+# PII regex blockers — any match > reject candidate
 # ---------------------------------------------------------------------------
 _PII_BLOCKERS: list[re.Pattern] = [
-    re.compile(r'[\w.+-]+@[\w-]+(\.[\w-]+)+'),     # email
-    re.compile(r'\+?\d{10,15}'),                    # phone
-    re.compile(r'\d{3}-?\d{2}-?\d{4}'),             # SSN
-    re.compile(r'\$[\d,]+\.\d{2}'),                 # currency w/ specific value
-    re.compile(r'\b\d{4}-\d{2}-\d{2}\b'),           # specific date
-    re.compile(r'\b[A-Z][a-z]+ [A-Z][a-z]+\b'),     # likely person name (FirstLast)
+    re.compile(r'[\w.+-]+@[\w-]+(\.[\w-]+)+'), # email
+    re.compile(r'\+?\d{10,15}'), # phone
+    re.compile(r'\d{3}-?\d{2}-?\d{4}'), # SSN
+    re.compile(r'\$[\d,]+\.\d{2}'), # currency w/ specific value
+    re.compile(r'\b\d{4}-\d{2}-\d{2}\b'), # specific date
+    re.compile(r'\b[A-Z][a-z]+ [A-Z][a-z]+\b'), # likely person name (FirstLast)
 ]
 
 # Hypothesis types that need only 1 verified instance + LLM gate
@@ -62,20 +62,20 @@ B) A pattern that holds for many businesses (e.g. "weekend traffic peaks for ret
 C) A specific finding for one dataset (e.g. "Customer 12345 churned in March")?
 
 Answer JSON: {{"verdict": "A|B|C", "reason": "..."}}
-A or B → safe to promote to central pool.
-C → keep project-only.
+A or B > safe to promote to central pool.
+C > keep project-only.
 """
 
 
 class PromotionPipeline:
-    """Top-level orchestration for project → central knowledge promotion."""
+    """Top-level orchestration for project > central knowledge promotion."""
 
     def __init__(self, llm_call_fn=None, dash_engine=None):
         self.llm_call_fn = llm_call_fn
         self.dash_engine = dash_engine
 
     # ------------------------------------------------------------------ #
-    # Helpers                                                            #
+    # Helpers #
     # ------------------------------------------------------------------ #
     def _engine(self):
         if self.dash_engine is not None:
@@ -95,7 +95,7 @@ class PromotionPipeline:
         return t[:60]
 
     # ------------------------------------------------------------------ #
-    # Stage 1: discover candidates                                       #
+    # Stage 1: discover candidates #
     # ------------------------------------------------------------------ #
     def find_candidates(
         self, *, min_confidence: float = 0.85, limit: int = 50
@@ -108,16 +108,16 @@ class PromotionPipeline:
             from sqlalchemy import text
             sql = text(
                 "SELECT h.id, h.project_slug, h.statement, h.hypothesis_type, "
-                "       h.triangulation_count "
+                " h.triangulation_count "
                 "FROM public.dash_hypotheses h "
                 "LEFT JOIN public.dash_projects p "
-                "       ON p.slug = h.project_slug "
+                " ON p.slug = h.project_slug "
                 "WHERE h.verification_status = :verified "
-                "  AND (h.promoted_to_central IS NULL OR h.promoted_to_central = FALSE) "
-                "  AND h.confidence >= :conf "
-                "  AND h.project_slug IS NOT NULL "
-                "  AND (p.contribute_to_central IS NULL "
-                "       OR p.contribute_to_central = TRUE) "
+                " AND (h.promoted_to_central IS NULL OR h.promoted_to_central = FALSE) "
+                " AND h.confidence >= :conf "
+                " AND h.project_slug IS NOT NULL "
+                " AND (p.contribute_to_central IS NULL "
+                " OR p.contribute_to_central = TRUE) "
                 "ORDER BY h.confidence DESC "
                 "LIMIT :lim"
             )
@@ -146,7 +146,7 @@ class PromotionPipeline:
         return out
 
     # ------------------------------------------------------------------ #
-    # Stage 2: PII screen                                                #
+    # Stage 2: PII screen #
     # ------------------------------------------------------------------ #
     def screen_pii(self, candidate: PromotionCandidate) -> bool:
         """True if PII-safe."""
@@ -164,7 +164,7 @@ class PromotionPipeline:
         return True
 
     # ------------------------------------------------------------------ #
-    # Stage 3: generalization gate                                       #
+    # Stage 3: generalization gate #
     # ------------------------------------------------------------------ #
     def screen_generalizable(
         self, candidate: PromotionCandidate
@@ -207,12 +207,12 @@ class PromotionPipeline:
         if verdict == "C":
             candidate.rejection_reason = "not_generalizable_C"
             return False, f"verdict=C {reason}"
-        # Ambiguous → conservative: reject
+        # Ambiguous > conservative: reject
         candidate.rejection_reason = "verdict_unparseable"
         return False, f"verdict_unknown raw={(raw or '')[:80]}"
 
     # ------------------------------------------------------------------ #
-    # Stage 4: triangulation                                             #
+    # Stage 4: triangulation #
     # ------------------------------------------------------------------ #
     def check_triangulation(self, candidate: PromotionCandidate) -> int:
         """Count distinct projects with same/similar verified hypothesis."""
@@ -228,8 +228,8 @@ class PromotionPipeline:
                 "SELECT COUNT(DISTINCT project_slug) "
                 "FROM public.dash_hypotheses "
                 "WHERE verification_status = :verified "
-                "  AND project_slug IS NOT NULL "
-                "  AND LOWER(SUBSTRING(TRIM(statement) FROM 1 FOR 60)) = :key"
+                " AND project_slug IS NOT NULL "
+                " AND LOWER(SUBSTRING(TRIM(statement) FROM 1 FOR 60)) = :key"
             )
             with eng.connect() as conn:
                 row = conn.execute(sql, {
@@ -246,7 +246,7 @@ class PromotionPipeline:
             return 0
 
     # ------------------------------------------------------------------ #
-    # Stage 5: promote                                                   #
+    # Stage 5: promote #
     # ------------------------------------------------------------------ #
     def promote(self, candidate: PromotionCandidate) -> bool:
         """Insert into central Brain + audit log + flip promoted flag."""
@@ -263,7 +263,7 @@ class PromotionPipeline:
             method = self._decide_method(candidate)
 
             with eng.connect() as conn:
-                # 1) Central brain row (project_slug=NULL → central pool)
+                # 1) Central brain row (project_slug=NULL > central pool)
                 conn.execute(text(
                     "INSERT INTO public.dash_company_brain "
                     "(project_slug, source_id, name, definition, category, metadata) "
@@ -302,7 +302,7 @@ class PromotionPipeline:
         return True
 
     # ------------------------------------------------------------------ #
-    # Audit log                                                          #
+    # Audit log #
     # ------------------------------------------------------------------ #
     def _audit(
         self,
@@ -324,7 +324,7 @@ class PromotionPipeline:
                     " approval_method, pii_scrubbed, triangulation_count, "
                     " approver, rejection_reason) "
                     "VALUES (:slug, :hid, :ft, :ftype, :method, :pii, :tri, "
-                    "        :approver, :rej)"
+                    " :approver, :rej)"
                 ), {
                     "slug": candidate.source_project_slug,
                     "hid": candidate.hypothesis_id,
@@ -341,7 +341,7 @@ class PromotionPipeline:
             logger.warning(f"_audit: {e}")
 
     # ------------------------------------------------------------------ #
-    # Run cycle                                                          #
+    # Run cycle #
     # ------------------------------------------------------------------ #
     def run_promotion_cycle(self) -> dict:
         """Top-level: scan, screen, promote. Returns counts."""
@@ -410,7 +410,7 @@ class PromotionPipeline:
         return stats
 
     # ------------------------------------------------------------------ #
-    # Misc utilities                                                     #
+    # Misc utilities #
     # ------------------------------------------------------------------ #
     @staticmethod
     def _brain_category(fact_type: str) -> str:

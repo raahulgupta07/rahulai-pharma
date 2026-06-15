@@ -1,7 +1,7 @@
 """End-to-end RLS test against real Postgres + real rewriter + real audit.
 
 Run with: docker exec dash-api python -m pytest tests/test_rls_e2e.py -v
-Or:       python -m pytest tests/test_rls_e2e.py -v   (from inside container)
+Or: python -m pytest tests/test_rls_e2e.py -v (from inside container)
 
 Tests use a real test schema 'rls_e2e_test' that's set up + torn down per test.
 """
@@ -91,7 +91,7 @@ def test_rewrite_isolates_store(db, setup_project):
 
 
 def test_default_deny_blocks_missing_attr(db, setup_project):
-    """default_deny + missing user_attr → PermissionError."""
+    """default_deny + missing user_attr > PermissionError."""
     with db.begin() as conn:
         conn.execute(text("""
             INSERT INTO dash_project_rls_config
@@ -156,15 +156,15 @@ def test_pg_rls_session_var(db, setup_project):
                 user_attr_keys=ARRAY['store_id'], table_filters=EXCLUDED.table_filters
         """), {"s": TEST_SLUG, "f": json.dumps({"sales": "(store_id)::text = :store_id"})})
 
-    # Override schema for apply (default uses slug→underscore; we use TEST_SCHEMA)
+    # Override schema for apply (default uses slug>underscore; we use TEST_SCHEMA)
     result = apply_policies(TEST_SLUG, schema=TEST_SCHEMA)
     assert result["status"] in ("ok", "partial"), f"apply_policies failed: {result}"
 
-    # Without SET LOCAL → should see 0 rows (current_setting returns '' → no match)
+    # Without SET LOCAL > should see 0 rows (current_setting returns '' > no match)
     with db.connect() as conn:
         with conn.begin():
             n_no_setting = conn.execute(text(f'SELECT count(*) FROM "{TEST_SCHEMA}".sales')).scalar()
-    # With SET LOCAL store_id=1 → 2 rows
+    # With SET LOCAL store_id=1 > 2 rows
     with db.connect() as conn:
         with conn.begin():
             conn.execute(text("SET LOCAL app.store_id = '1'"))

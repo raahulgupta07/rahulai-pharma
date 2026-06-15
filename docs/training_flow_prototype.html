@@ -122,13 +122,13 @@
     </div>
   </div>
   <div class="legend">
-    states: ◉ running · ✓ done · · idle · ⊘ gated &nbsp; models:
+    states: ◉ running · OK done · · idle · ⊘ gated &nbsp; models:
     <span><b style="background:var(--flash)">FLASH</b></span><span><b style="background:var(--deep)">DEEP</b></span>
     <span><b style="background:var(--lite)">LITE</b></span><span><b style="background:var(--embed)">EMBED</b></span><span><b style="background:var(--sql)">SQL</b></span>
   </div>
   <div class="ctl">
     <button class="pri" id="play">▸ Play full run</button>
-    <button id="reset">↻ Reset</button>
+    <button id="reset">> Reset</button>
     <label class="note"><input type="checkbox" id="enrichTog"> CATALOG_ENRICH</label>
     <span class="note">prototype — 55 steps · 10 layers · simulated realtime (prod binds /auto-train/status + /auto-train/log)</span>
   </div>
@@ -136,25 +136,25 @@
 
 <script>
 const STORES = [
-  {k:'STAGE', i:'📥', n:'staging + manifest'},
-  {k:'CONTRACT', i:'📋', n:'dataset contracts'},
-  {k:'PG', i:'🗄️', n:'Postgres tables'},
-  {k:'QA', i:'❓', n:'dash_training_qa'},
-  {k:'META', i:'🏷️', n:'dash_table_metadata'},
-  {k:'REL', i:'🔗', n:'dash_relationships'},
-  {k:'VEC', i:'🔢', n:'PgVector'},
-  {k:'AGE', i:'🕸️', n:'Apache AGE graph'},
+  {k:'STAGE', i:'', n:'staging + manifest'},
+  {k:'CONTRACT', i:'', n:'dataset contracts'},
+  {k:'PG', i:'', n:'Postgres tables'},
+  {k:'QA', i:'', n:'dash_training_qa'},
+  {k:'META', i:'', n:'dash_table_metadata'},
+  {k:'REL', i:'', n:'dash_relationships'},
+  {k:'VEC', i:'', n:'PgVector'},
+  {k:'AGE', i:'', n:'Apache AGE graph'},
   {k:'MV', i:'◆', n:'matviews'},
-  {k:'ENR', i:'💊', n:'catalog_enrichment'},
-  {k:'EVAL', i:'✅', n:'dash_eval_runs'},
+  {k:'ENR', i:'', n:'catalog_enrichment'},
+  {k:'EVAL', i:'', n:'dash_eval_runs'},
 ];
 // [name, model, detail, store, gate]
 const L = [
  ['LAYER 0 · STAGING','s','dash/ingest — review before DB',[
    ['POST /upload/stage','','receive file(s), batch_id','STAGE',null],
-   ['sheet split','','xlsx → per-sheet entry','STAGE',null],
+   ['sheet split','','xlsx > per-sheet entry','STAGE',null],
    ['content_hash','','sha of bytes (dedup key)','STAGE',null],
-   ['quality scan','','empty/broken → quarantine','STAGE',null],
+   ['quality scan','','empty/broken > quarantine','STAGE',null],
    ['write_manifest','','status=staged, hashes','STAGE',null],
  ]],
  ['LAYER 1 · DRY-RUN','s','preview, no DB write',[
@@ -162,11 +162,11 @@ const L = [
    ['check_against_contract','','schema-drift vs prior','CONTRACT',null],
    ['detect_load_key','','PK / composite key','CONTRACT',null],
  ]],
- ['LAYER 2 · PROMOTE → INGEST','s','staged → Postgres',[
-   ['drift gate','','drift → quarantine','STAGE',null],
+ ['LAYER 2 · PROMOTE > INGEST','s','staged > Postgres',[
+   ['drift gate','','drift > quarantine','STAGE',null],
    ['file_hash_seen','','skip loaded (dedup)','PG',null],
    ['delete_where_period','','clean reload','PG',null],
-   ['_is_id_colname → TEXT','','code cols stay text','PG',null],
+   ['_is_id_colname > TEXT','','code cols stay text','PG',null],
    ['copy_csv / stream_xlsx','','streaming COPY (no OOM)','PG',null],
    ['stamp_lineage','','source/period/batch/hash','PG',null],
  ]],
@@ -175,7 +175,7 @@ const L = [
    ['profile_v2','SQL','types·roles·pg_stats','META',null],
    ['dimension_catalog','SQL','top-20 vals/col','META',null],
    ['deep_analysis','DEEP','narrative analysis','PG',null],
-   ['qa_generation','FLASH','Q→SQL pairs','QA',null],
+   ['qa_generation','FLASH','Q>SQL pairs','QA',null],
    ['persona','FLASH','agent persona','PG',null],
    ['synthesis','FLASH','table summary','PG',null],
    ['workflows','FLASH','multi-step flows','PG',null],
@@ -187,17 +187,17 @@ const L = [
  ['LAYER 4 · RELATIONSHIPS','t','cross-table',[
    ['_discover_relationships','FLASH','LLM FK candidates','REL',null],
    ['verify (SQL containment)','SQL','overlap%, timeout 30s','REL',null],
-   ['_seed_cross_table_qa','FLASH','JOIN Q→SQL','QA',null],
+   ['_seed_cross_table_qa','FLASH','JOIN Q>SQL','QA',null],
  ]],
  ['LAYER 5 · ◆ SEMANTIC LAYER','t','Engineer designs matviews',[
-   ['Engineer.inspect_schema','DEEP','READ-ONLY cols+roles','',  'ENG'],
+   ['Engineer.inspect_schema','DEEP','READ-ONLY cols+roles','', 'ENG'],
    ['Engineer.get_relationships','DEEP','READ-ONLY join keys','','ENG'],
    ['Engineer.sample_rows','DEEP','READ-ONLY 5 rows','','ENG'],
    ['Engineer.dry_run_sql','DEEP','EXPLAIN, iterate','','ENG'],
-   ['→ SemanticLayerPlan','','═ TRUST BOUNDARY ═','','ENG'],
+   ['> SemanticLayerPlan','','═ TRUST BOUNDARY ═','','ENG'],
    ['validate_matview_spec','','whitelist gate','','ENG'],
    ['EXPLAIN dry-run (server)','SQL','reject on error','','ENG'],
-   ['build_ddl + CREATE (1 txn)','SQL','DROP→CREATE→idx','MV','ENG'],
+   ['build_ddl + CREATE (1 txn)','SQL','DROP>CREATE>idx','MV','ENG'],
    ['register','','semantic_layer=true','META','ENG'],
  ]],
  ['LAYER 6 · GRAPH + BACKFILL','t','',[
@@ -210,7 +210,7 @@ const L = [
    ['scope','','feature scope','META',null],
    ['goals','','learning_goals.md','PG',null],
    ['ml','','NO-OP (removed)','',null],
-   ['evals (gen+run)','FLASH','golden→run→score','EVAL',null],
+   ['evals (gen+run)','FLASH','golden>run>score','EVAL',null],
    ['auto_configure','','vertical detect','META',null],
  ]],
  ['LAYER 8 · POST-HOOKS','t','sequential — order matters',[
@@ -219,14 +219,14 @@ const L = [
    ['◆ articles_enriched view','SQL','ALWAYS: COALESCE+flag','PG',null],
    ['◆ detect_gaps','SQL','blank counts','ENR','ENR'],
    ['◆ retrieve_examples','SQL','ground few-shot','ENR','ENR'],
-   ['◆ run_enrichment','FLASH','suggest → pending','ENR','ENR'],
+   ['◆ run_enrichment','FLASH','suggest > pending','ENR','ENR'],
    ['◆ auto_apply_low_risk','','cat/indic ≥0.9; clinical NEVER','ENR','ENR'],
    ['◆ rebuild enriched view','SQL','reflect approvals','PG','ENR'],
    ['shop_flat build','SQL','reads enriched·_norm·orphans','PG',null],
    ['◆ matview refresh','SQL','REFRESH CONCURRENTLY','MV','ENG'],
  ]],
  ['LAYER 9 · DONE','t','',[
-   ['status finalizing→done','','flip after post-hooks','EVAL',null],
+   ['status finalizing>done','','flip after post-hooks','EVAL',null],
    ['watchdog clear','','_reap_stale_runs','EVAL',null],
    ['UI panels live','','Semantic+Gaps+flow','',null],
  ]],
@@ -250,7 +250,7 @@ function buildSchem(){
     card.innerHTML=`<div class="st"><span>L${li}</span><span class="ck" id="sck-${li}"></span></div>
       <div class="sl">${short.split(' ').slice(0,2).join(' ')}</div>
       <div class="sd">${steps[0][0]}${steps.length>1?'<br>'+steps[1][0]:''}</div>
-      <div class="sf">${live} steps · → ${stores.slice(0,2).join(',')||'—'}</div>`;
+      <div class="sf">${live} steps · > ${stores.slice(0,2).join(',')||'—'}</div>`;
     card.onclick=()=>drill(li);
     schem.appendChild(card);
     if(li<L.length-1){const cn=document.createElement('div');cn.className='sconn';cn.id='cn-'+li;
@@ -268,7 +268,7 @@ const storeEl={};
 STORES.forEach(s=>{const d=document.createElement('div');d.className='store';d.id='store-'+s.k;
   d.innerHTML=`<span class="si">${s.i}</span><span class="sn">${s.n}</span><span class="sc">0</span>`;storesBox.appendChild(d);storeEl[s.k]={el:d,n:0};});
 
-function gated(g){return g==='ENG'&&false || (g==='ENR'&&!ENRICH);}  // ENG always on in proto
+function gated(g){return g==='ENG'&&false || (g==='ENR'&&!ENRICH);} // ENG always on in proto
 function build(){
   flow.innerHTML='';
   L.forEach((ly,li)=>{
@@ -280,7 +280,7 @@ function build(){
       const row=document.createElement('div');row.className='step'+(g?' gated':'');row.id=`st-${li}-${si}`;
       row.innerHTML=`<span class="g">${g?'⊘':'·'}</span><span class="nm">${nm}</span>`+
         (model?`<span class="badge" style="background:${MC[model]}">${model}</span>`:'')+
-        `<span class="dt">${dt}</span>`+(store?`<span class="wr">→ ${store}</span>`:'');
+        `<span class="dt">${dt}</span>`+(store?`<span class="wr">> ${store}</span>`:'');
       sec.appendChild(row);
     });
     flow.appendChild(sec);
@@ -310,18 +310,18 @@ function play(){
     document.getElementById('eta').textContent=fmt(Math.max(0,(FLAT.length-k)*0.34));},200);
   let k=0,curLayer=-1;
   const step=()=>{
-    if(k>0){const p=FLAT[k-1];const pr=document.getElementById(`st-${p.LI}-${p.SI}`);if(pr&&!pr.classList.contains('gated')){pr.className='step done';pr.querySelector('.g').textContent='✓';hitStore(p.st[3]);}}
+    if(k>0){const p=FLAT[k-1];const pr=document.getElementById(`st-${p.LI}-${p.SI}`);if(pr&&!pr.classList.contains('gated')){pr.className='step done';pr.querySelector('.g').textContent='OK';hitStore(p.st[3]);}}
     // skip gated
     while(k<FLAT.length){const f=FLAT[k];if(gated(f.st[4])){k++;continue;}break;}
     if(k>=FLAT.length){clearInterval(tick);running=false;
-      const lv=document.getElementById('live');lv.innerHTML='✓ DONE';lv.style.color='var(--pw-success)';lv.style.background='var(--pw-success-soft)';
+      const lv=document.getElementById('live');lv.innerHTML='OK DONE';lv.style.color='var(--pw-success)';lv.style.background='var(--pw-success-soft)';
       document.getElementById('layer').textContent='layer 10/10';
-      addLog('ok',fmt((Date.now()-t0)/1000),'✓ pipeline complete · 3 matviews · eval 86.7%');return;}
+      addLog('ok',fmt((Date.now()-t0)/1000),'OK pipeline complete · 3 matviews · eval 86.7%');return;}
     const f=FLAT[k];
     if(f.LI!==curLayer){
       if(curLayer>=0){document.getElementById('ly-'+curLayer).classList.remove('on');
         const psc=document.getElementById('sc-'+curLayer);psc.classList.remove('on');psc.classList.add('done');
-        const psck=document.getElementById('sck-'+curLayer);if(psck)psck.textContent='✓';
+        const psck=document.getElementById('sck-'+curLayer);if(psck)psck.textContent='OK';
         const pcn=document.getElementById('cn-'+curLayer);if(pcn){pcn.classList.remove('flow');pcn.classList.add('dn');}}
       curLayer=f.LI;const sec=document.getElementById('ly-'+curLayer);sec.classList.add('on');sec.scrollIntoView({block:'center',behavior:'smooth'});
       const sc=document.getElementById('sc-'+curLayer);if(sc){sc.classList.add('on');sc.scrollIntoView({inline:'center',block:'nearest',behavior:'smooth'});}

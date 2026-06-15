@@ -1,11 +1,11 @@
 """Brain Wiki — auto-generated, backlinked concept pages.
 
 A human-readable wiki built live from what the agent already knows:
-  - public.dash_company_brain  (glossary / formula / alias / kpi / pattern / org)
-  - public.dash_knowledge_triples  (subject -predicate-> object) → backlinks
+  - public.dash_company_brain (glossary / formula / alias / kpi / pattern / org)
+  - public.dash_knowledge_triples (subject -predicate-> object) > backlinks
 
-  GET /api/projects/{slug}/wiki              -> concept index (grouped, searchable)
-  GET /api/projects/{slug}/wiki/page?name=   -> one page + links-out + backlinks
+  GET /api/projects/{slug}/wiki -> concept index (grouped, searchable)
+  GET /api/projects/{slug}/wiki/page?name= -> one page + links-out + backlinks
 
 No LLM, no new tables — pure projection of the agent's knowledge. The graph is
 the map; this is the readable wiki. Fail-soft throughout.
@@ -52,7 +52,7 @@ def _is_junk_entity(name: str) -> bool:
         return True
     if n in _JUNK_ENTITIES:
         return True
-    if not any(c.isalnum() for c in n):  # pure punctuation/control
+    if not any(c.isalnum() for c in n): # pure punctuation/control
         return True
     return False
 
@@ -101,7 +101,7 @@ def _build_index(slug: str) -> dict:
         except Exception:
             logger.exception("wiki brain %s", slug)
 
-        # KG triples → links + entity nodes
+        # KG triples > links + entity nodes
         try:
             rows = conn.execute(text(
                 "SELECT subject, predicate, object FROM public.dash_knowledge_triples "
@@ -112,7 +112,7 @@ def _build_index(slug: str) -> dict:
                     continue
                 sn = node(subj)
                 on = node(obj)
-                if not sn or not on:  # one side filtered as junk → drop the edge
+                if not sn or not on: # one side filtered as junk > drop the edge
                     continue
                 sn["out"].append({"predicate": pred or "related", "target": obj.strip()})
                 on["back"].append({"predicate": pred or "related", "source": subj.strip()})

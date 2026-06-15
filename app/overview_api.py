@@ -113,7 +113,7 @@ _GROUP_COLORS = {
 
 
 def _pack(nodes: dict, edges: list) -> dict:
-    """nodes: {id: {label, group}}  edges: [(src,dst,rel)] -> sigma-ready payload
+    """nodes: {id: {label, group}} edges: [(src,dst,rel)] -> sigma-ready payload
     with degree-driven val + group color."""
     deg: dict = {}
     for s, d, _ in edges:
@@ -142,7 +142,7 @@ def _pack(nodes: dict, edges: list) -> dict:
 def graph_view(slug: str, request: Request, source: str = "pharma",
                focus: str = "", hops: int = 2, limit: int = 4000):
     """Force-graph data. source=brain (KG triples) | pharma (AGE drug web).
-    pharma + focus=<brand> → ego-graph N hops around that drug."""
+    pharma + focus=<brand> > ego-graph N hops around that drug."""
     user = _get_user(request)
     _check_access(user, slug)
     limit = max(1, min(limit, 20000))
@@ -412,7 +412,7 @@ def graph_hub(slug: str, request: Request, type: str = "", id: str = ""):
                     ), {"c": codes}).fetchall()
                     code_qty = {r[0]: int(r[1] or 0) for r in qr}
 
-            # member list (dedup by brand, keep best stock) → top 30 by qty
+            # member list (dedup by brand, keep best stock) > top 30 by qty
             by_brand: dict = {}
             for r in rows:
                 b = (r["brand_name"] or "").strip()

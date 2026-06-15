@@ -70,7 +70,7 @@ def format_semantic_model(model: dict[str, Any]) -> str:
             fk_parts = []
             for fk in table["foreign_keys"]:
                 if isinstance(fk, dict):
-                    fk_parts.append(f"`{fk.get('column', '')}` → `{fk.get('references', '')}` ({fk.get('relationship', '')})")
+                    fk_parts.append(f"`{fk.get('column', '')}` > `{fk.get('references', '')}` ({fk.get('relationship', '')})")
                 else:
                     fk_parts.append(str(fk))
             lines.append(f"**Foreign keys:** {'; '.join(fk_parts)}")
@@ -79,11 +79,11 @@ def format_semantic_model(model: dict[str, Any]) -> str:
             for col in table["columns"]:
                 col_type = col.get("type", "")
                 col_desc = col.get("description", "")
-                lines.append(f"  - `{col['name']}` ({col_type}) — {col_desc}")
+                lines.append(f" - `{col['name']}` ({col_type}) — {col_desc}")
         if table.get("usage_patterns"):
             lines.append("**Usage patterns:**")
             for p in table["usage_patterns"]:
-                lines.append(f"  - {p}")
+                lines.append(f" - {p}")
         if table.get("alternate_tables"):
             lines.append(f"**Alternate tables:** {table['alternate_tables']}")
         if table.get("freshness"):
@@ -93,14 +93,14 @@ def format_semantic_model(model: dict[str, Any]) -> str:
         if table.get("data_quality_notes"):
             lines.append("**Data quality:**")
             for note in table["data_quality_notes"]:
-                lines.append(f"  - {note}")
+                lines.append(f" - {note}")
         # Dimension values — exact values for WHERE clauses
         if table.get("dimensions"):
             lines.append("**DIMENSION VALUES (use exact case in WHERE):**")
             for col, vals in table["dimensions"].items():
                 if isinstance(vals, list) and vals:
                     val_str = ", ".join(f"{v['value']}({v['pct']}%)" if isinstance(v, dict) else str(v) for v in vals[:15])
-                    lines.append(f"  - `{col}`: {val_str}")
+                    lines.append(f" - `{col}`: {val_str}")
         # Column profiles — type classification
         if table.get("column_profiles"):
             dim_cols = [n for n, p in table["column_profiles"].items() if p.get("classification") == "dimension"]
@@ -111,7 +111,7 @@ def format_semantic_model(model: dict[str, Any]) -> str:
                 lines.append(f"**Measures (SUM/AVG):** {', '.join(meas_cols)}")
         # Hierarchies
         if table.get("hierarchies"):
-            hier_strs = [f"{h['parent']}({h['parent_count']}) → {h['child']}({h['child_count']})" for h in table["hierarchies"]]
+            hier_strs = [f"{h['parent']}({h['parent_count']}) > {h['child']}({h['child_count']})" for h in table["hierarchies"]]
             lines.append(f"**Hierarchies (drill-down):** {', '.join(hier_strs)}")
         lines.append("")
 

@@ -20,7 +20,7 @@ DEFAULT_CONFIG: dict = {
         "query": True,
         "chart": True,
         "sources": True,
-        "exec_view": True,    # 2026-05-26: default ON — consistent AnswerCard render across cached+full agent paths
+        "exec_view": True, # 2026-05-26: default ON — consistent AnswerCard render across cached+full agent paths
     },
     # 2026-06-07: HARDCODED for the fixed CityPharma chemist agent — CORE ONLY.
     # This is a single locked pharma agent, not a multi-vertical tenant. The
@@ -32,9 +32,9 @@ DEFAULT_CONFIG: dict = {
         "sql": True,
         "charts": True,
         "dashboards": True,
-        "forecast": False,               # off — chemist counter agent, no demand-forecasting
-        "anomaly": False,                # off — no outlier/diagnostics lane
-        "auto_campaign_daemon": False,   # off — no marketing campaigns
+        "forecast": False, # off — chemist counter agent, no demand-forecasting
+        "anomaly": False, # off — no outlier/diagnostics lane
+        "auto_campaign_daemon": False, # off — no marketing campaigns
         "office_skills": False,
         "table_usage_boost": False,
     },
@@ -44,10 +44,10 @@ DEFAULT_CONFIG: dict = {
         "researcher": True,
         # Venture/portfolio agents — permanently OFF for the pharma chemist.
         "customer_strategist": False,
-        "deal_analyst": False,           # VentureDesk: DCF/IRR/MOIC
-        "market_sentinel": False,        # external intel — needs web access
-        "ops_optimizer": False,          # KPI tracking — needs portfolio data
-        "supply_sentry": False,          # supply risk — needs supplier data
+        "deal_analyst": False, # VentureDesk: DCF/IRR/MOIC
+        "market_sentinel": False, # external intel — needs web access
+        "ops_optimizer": False, # KPI tracking — needs portfolio data
+        "supply_sentry": False, # supply risk — needs supplier data
     },
     # Auto-scope guardrail — populated by training step `derive_scope`.
     # Empty dict means "no scope filter" (legacy behavior).
@@ -212,11 +212,11 @@ def derive_recommended_config(project_slug: str) -> dict:
     """Inspect the project's trained schema and recommend a feature_config.
 
     Heuristics (fail-soft — any error returns DEFAULT_CONFIG with a note):
-      - tables present              → sql, analyst, engineer, charts, dashboards ON
-      - no tables                   → sql OFF (doc-only project), researcher only
-      - date col + numeric col      → forecasting ON
-      - numeric depth (≥1 numeric)  → anomaly/diagnostics ON
-      - auto_campaign_daemon        → always OFF (niche background daemon)
+      - tables present > sql, analyst, engineer, charts, dashboards ON
+      - no tables > sql OFF (doc-only project), researcher only
+      - date col + numeric col > forecasting ON
+      - numeric depth (≥1 numeric) > anomaly/diagnostics ON
+      - auto_campaign_daemon > always OFF (niche background daemon)
 
     Returns {"config": <feature_config>, "reasons": [str, ...]}.
     """
@@ -234,7 +234,7 @@ def derive_recommended_config(project_slug: str) -> dict:
             ), {"s": project_slug}).fetchall()
         for t, col, dt in rows:
             tables.setdefault(t, []).append((str(col).lower(), str(dt).lower()))
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.warning("derive_recommended_config: introspect failed for %s: %s", project_slug, e)
         return {"config": _merge(DEFAULT_CONFIG, {}), "reasons": [
             "Could not read schema — returning safe defaults (all on)."]}
@@ -274,17 +274,17 @@ def derive_recommended_config(project_slug: str) -> dict:
 
     # Human-readable rationale.
     if n_tables > 0:
-        reasons.append(f"{n_tables} table(s) detected → SQL + charts + dashboards ON.")
+        reasons.append(f"{n_tables} table(s) detected > SQL + charts + dashboards ON.")
     else:
-        reasons.append("No data tables → SQL/charts OFF, document research only.")
+        reasons.append("No data tables > SQL/charts OFF, document research only.")
     if tools["forecast"]:
-        reasons.append("Date + numeric columns → Forecasting ON.")
+        reasons.append("Date + numeric columns > Forecasting ON.")
     else:
-        reasons.append("No clear time-series → Forecasting OFF.")
+        reasons.append("No clear time-series > Forecasting OFF.")
     if tools["anomaly"]:
-        reasons.append("Numeric data present → Anomaly + diagnostics ON.")
+        reasons.append("Numeric data present > Anomaly + diagnostics ON.")
     else:
-        reasons.append("No customer/transaction signal → ML models OFF.")
+        reasons.append("No customer/transaction signal > ML models OFF.")
     reasons.append("Auto-campaign daemon left OFF (niche background job).")
 
     return {"config": {"tabs": tabs, "tools": tools, "agents": agents}, "reasons": reasons}
@@ -294,7 +294,7 @@ def _config_is_untouched(project_slug: str) -> bool:
     """True if no feature_config has ever been persisted for this project.
 
     We treat a stored config that lacks a 'tools' key as untouched (defaults
-    only). Once auto-applied or manually saved, 'tools' exists → leave alone.
+    only). Once auto-applied or manually saved, 'tools' exists > leave alone.
     """
     try:
         from dash.tools.skill_refinery import _get_engine
@@ -304,7 +304,7 @@ def _config_is_untouched(project_slug: str) -> bool:
             row = conn.execute(text(
                 "SELECT feature_config FROM public.dash_projects WHERE slug = :s"
             ), {"s": project_slug}).first()
-    except Exception:  # noqa: BLE001
+    except Exception: # noqa: BLE001
         return False
     if not row or not row[0]:
         return True
@@ -337,6 +337,6 @@ def apply_recommended_if_unset(project_slug: str) -> dict | None:
         payload["scope"] = existing_scope
     try:
         return set_feature_config(project_slug, payload)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.warning("apply_recommended_if_unset failed for %s: %s", project_slug, e)
         return None

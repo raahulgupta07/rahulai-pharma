@@ -1,7 +1,7 @@
 """ε-Differential Privacy noise utilities for numeric SQL aggregates.
 
 Laplace mechanism: noise ~ Lap(sensitivity / epsilon). Lower ε = more privacy.
-Counts → integer Laplace noise. Sums → float Laplace.
+Counts > integer Laplace noise. Sums > float Laplace.
 
 Per-(project, user, day) budget tracker in dash.dash_dp_budget. Gated by
 feature_config.privacy.differential_privacy_enabled (default False, opt-in).
@@ -45,7 +45,7 @@ def add_laplace_noise(value: float, epsilon: float = 1.0, sensitivity: float = 1
 
 
 def noisy_count(true_count: int, epsilon: float = 1.0) -> int:
-    """DP count. Sensitivity = 1 (one row add/remove → count ±1). Clamped >= 0."""
+    """DP count. Sensitivity = 1 (one row add/remove > count ±1). Clamped >= 0."""
     noisy = add_laplace_noise(float(true_count), epsilon=epsilon, sensitivity=1.0)
     return max(0, int(round(noisy)))
 

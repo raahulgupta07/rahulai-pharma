@@ -1,424 +1,425 @@
 <script lang="ts">
-  import { dashFetch } from '$lib/api';
-  import { onMount, onDestroy } from 'svelte';
+  import Icon from '$lib/Icon.svelte';
+ import { dashFetch } from '$lib/api';
+ import { onMount, onDestroy } from 'svelte';
 
-  let { embedded = false } = $props();
+ let { embedded = false } = $props();
 
-  // ---- left-rail nav (grouped, admin-Overview style) ----
-  const NAV = [
-    { label: 'Overview', items: [['overview', 'Overview', 'grid'], ['performance', 'Performance', 'gauge'], ['errors', 'Errors', 'alert']] },
-    { label: 'Models & Tokens', items: [['models', 'Models', 'cube'], ['tokens', 'Tokens', 'coins'], ['embeddings', 'Embeddings', 'vector']] },
-    { label: 'Learning', items: [['learning', 'Like / Dislike', 'thumb']] },
-    { label: 'People', items: [['people', 'People', 'people2']] },
-    { label: 'Analytics', items: [['keywords', 'Keywords', 'thumb'], ['tools', 'Tools', 'wrench'], ['security', 'Security', 'shield'], ['entities', 'Entities', 'users']] },
-    { label: 'Answer Cache', items: [['cache', 'Answer Cache', 'vector']] },
-    { label: 'Query Bank', items: [['querybank', 'Query Bank', 'wrench']] },
-    { label: 'Billing', items: [['billing', 'Billing', 'receipt'], ['live', 'Live', 'bolt']] },
-  ] as { label: string; items: [string, string, string][] }[];
-  const ICONS: Record<string, string> = {
-    grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
-    gauge: '<path d="M12 14l4-4"/><circle cx="12" cy="13" r="8"/>',
-    alert: '<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
-    wrench: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8 6.2 21l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.1-2.1z"/>',
-    shield: '<path d="M12 3l8 3v5c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/>',
-    users: '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 6a3 3 0 0 1 0 6M21 20a6 6 0 0 0-4-5.6"/>',
-    receipt: '<path d="M5 3v18l2-1 2 1 2-1 2 1 2-1 2 1V3l-2 1-2-1-2 1-2-1-2 1z"/><path d="M9 8h6M9 12h6"/>',
-    bolt: '<path d="M13 2 4 14h6l-1 8 9-12h-6z"/>',
-    people2: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
-    cube: '<path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/>',
-    coins: '<ellipse cx="9" cy="6" rx="6" ry="3"/><path d="M3 6v6c0 1.7 2.7 3 6 3s6-1.3 6-3V6"/><path d="M15 12c2.8.2 6 1.3 6 3v0c0 1.7-2.7 3-6 3-1 0-2-.1-3-.3"/>',
-    vector: '<circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M6.7 7.3 10.5 16M17.3 7.3 13.5 16M7 6h10"/>',
-    thumb: '<path d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z"/><path d="M7 11l4-8a2 2 0 0 1 2 2v3h5a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 16.8 20H7"/>',
-  };
-  let tab = $state('overview');
-  let loaded: Record<string, boolean> = $state({});
-  let lastMs = $state(0); // last fetch latency for the live·Xms badge
+ // ---- left-rail nav (grouped, admin-Overview style) ----
+ const NAV = [
+ { label: 'Overview', items: [['overview', 'Overview', 'grid'], ['performance', 'Performance', 'gauge'], ['errors', 'Errors', 'alert']] },
+ { label: 'Models & Tokens', items: [['models', 'Models', 'cube'], ['tokens', 'Tokens', 'coins'], ['embeddings', 'Embeddings', 'vector']] },
+ { label: 'Learning', items: [['learning', 'Like / Dislike', 'thumb']] },
+ { label: 'People', items: [['people', 'People', 'people2']] },
+ { label: 'Analytics', items: [['keywords', 'Keywords', 'thumb'], ['tools', 'Tools', 'wrench'], ['security', 'Security', 'shield'], ['entities', 'Entities', 'users']] },
+ { label: 'Answer Cache', items: [['cache', 'Answer Cache', 'vector']] },
+ { label: 'Query Bank', items: [['querybank', 'Query Bank', 'wrench']] },
+ { label: 'Billing', items: [['billing', 'Billing', 'receipt'], ['live', 'Live', 'bolt']] },
+ ] as { label: string; items: [string, string, string][] }[];
+ const ICONS: Record<string, string> = {
+ grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+ gauge: '<path d="M12 14l4-4"/><circle cx="12" cy="13" r="8"/>',
+ alert: '<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
+ wrench: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8 6.2 21l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.1-2.1z"/>',
+ shield: '<path d="M12 3l8 3v5c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/>',
+ users: '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 6a3 3 0 0 1 0 6M21 20a6 6 0 0 0-4-5.6"/>',
+ receipt: '<path d="M5 3v18l2-1 2 1 2-1 2 1 2-1 2 1V3l-2 1-2-1-2 1-2-1-2 1z"/><path d="M9 8h6M9 12h6"/>',
+ bolt: '<path d="M13 2 4 14h6l-1 8 9-12h-6z"/>',
+ people2: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+ cube: '<path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/>',
+ coins: '<ellipse cx="9" cy="6" rx="6" ry="3"/><path d="M3 6v6c0 1.7 2.7 3 6 3s6-1.3 6-3V6"/><path d="M15 12c2.8.2 6 1.3 6 3v0c0 1.7-2.7 3-6 3-1 0-2-.1-3-.3"/>',
+ vector: '<circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M6.7 7.3 10.5 16M17.3 7.3 13.5 16M7 6h10"/>',
+ thumb: '<path d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z"/><path d="M7 11l4-8a2 2 0 0 1 2 2v3h5a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 16.8 20H7"/>',
+ };
+ let tab = $state('overview');
+ let loaded: Record<string, boolean> = $state({});
+ let lastMs = $state(0); // last fetch latency for the live·Xms badge
 
-  // ---- shared filters ----
-  const SOURCES = [
-    { id: 'platform', label: 'Platform' }, { id: 'api_key', label: 'API Keys' },
-    { id: 'embedding', label: 'Embedding' }, { id: 'training', label: 'Training' },
-    { id: 'embed', label: 'Embed' },
-  ];
-  let selSrc: Record<string, boolean> = $state(Object.fromEntries(SOURCES.map((s) => [s.id, true])));
-  let preset = $state('7d');
-  let fromStr = $state(''); let toStr = $state('');
-  let fModel = $state(''); let fStore = $state(''); let fActor = $state(''); let fStatus = $state('');
-  let groupBy = $state('actor');
+ // ---- shared filters ----
+ const SOURCES = [
+ { id: 'platform', label: 'Platform' }, { id: 'api_key', label: 'API Keys' },
+ { id: 'embedding', label: 'Embedding' }, { id: 'training', label: 'Training' },
+ { id: 'embed', label: 'Embed' },
+ ];
+ let selSrc: Record<string, boolean> = $state(Object.fromEntries(SOURCES.map((s) => [s.id, true])));
+ let preset = $state('7d');
+ let fromStr = $state(''); let toStr = $state('');
+ let fModel = $state(''); let fStore = $state(''); let fActor = $state(''); let fStatus = $state('');
+ let groupBy = $state('actor');
 
-  // ---- per-tab data ----
-  let ov: any = $state(null), perf: any = $state(null), errs: any = $state(null);
-  let tools: any = $state(null), sec: any = $state(null), live: any = $state(null);
-  let budget: any = $state(null), invoice: any = $state(null);
-  // analytics expansion
-  let modelsData: any = $state(null), tokensData: any = $state(null);
-  let embedsData: any = $state(null), feedbackData: any = $state(null);
-  let fbBusy: number = $state(0), fbActionMsg = $state('');
-  // privacy: keyword analytics + per-row audited reveal (train review only)
-  let keywordsData: any = $state(null), keyTopics: any = $state(null);
-  let revealed: Record<number, any> = $state({});
-  let revealBusy: number = $state(0);
-  // client-side keyword masking for the few project-scoped tables that still
-  // send question text (cache / query bank). The dashboard shows chips, not prose.
-  const _STOPW = new Set(('the a an and or but if of to in on for is are was how what which who this that '
-    + 'with at by from as can could would should will may have has please show tell give want need get '
-    + 'find list about all any some no not more me my our your you we they it do does').split(' '));
-  function kw(s: string, n = 5): string[] {
-    const seen = new Set<string>(); const out: string[] = [];
-    for (const m of (s || '').toLowerCase().match(/[a-z][a-z0-9\-]{2,}|[က-႟]+/g) || []) {
-      if (_STOPW.has(m) || seen.has(m)) continue; seen.add(m); out.push(m); if (out.length >= n) break;
-    }
-    return out;
-  }
-  async function revealFeedback(d: any) {
-    revealBusy = d.id;
-    try { revealed = { ...revealed, [d.id]: await jget(`/api/admin/usage/feedback/${d.id}/reveal`) }; }
-    catch (e: any) { fbActionMsg = `Reveal failed: ${e.message}`; }
-    revealBusy = 0;
-  }
-  let entUsers: any[] = $state([]), entStores: any[] = $state([]);
-  let logins: any[] = $state([]);
-  // people activity
-  let people: any = $state(null);
-  let peopleSort = $state('requests'); let peopleDesc = $state(true);
-  let showService = $state(true); let peopleSearch = $state('');
-  let peopleSeg = $state('app'); // 'app' (registered) | 'embed' (anonymous widget visitors)
-  let embedPeople: any = $state(null); let embedView = $state('session'); // 'session' | 'widget'
-  let loading = $state(false); let error = $state('');
+ // ---- per-tab data ----
+ let ov: any = $state(null), perf: any = $state(null), errs: any = $state(null);
+ let tools: any = $state(null), sec: any = $state(null), live: any = $state(null);
+ let budget: any = $state(null), invoice: any = $state(null);
+ // analytics expansion
+ let modelsData: any = $state(null), tokensData: any = $state(null);
+ let embedsData: any = $state(null), feedbackData: any = $state(null);
+ let fbBusy: number = $state(0), fbActionMsg = $state('');
+ // privacy: keyword analytics + per-row audited reveal (train review only)
+ let keywordsData: any = $state(null), keyTopics: any = $state(null);
+ let revealed: Record<number, any> = $state({});
+ let revealBusy: number = $state(0);
+ // client-side keyword masking for the few project-scoped tables that still
+ // send question text (cache / query bank). The dashboard shows chips, not prose.
+ const _STOPW = new Set(('the a an and or but if of to in on for is are was how what which who this that '
+ + 'with at by from as can could would should will may have has please show tell give want need get '
+ + 'find list about all any some no not more me my our your you we they it do does').split(' '));
+ function kw(s: string, n = 5): string[] {
+ const seen = new Set<string>(); const out: string[] = [];
+ for (const m of (s || '').toLowerCase().match(/[a-z][a-z0-9\-]{2,}|[က-႟]+/g) || []) {
+ if (_STOPW.has(m) || seen.has(m)) continue; seen.add(m); out.push(m); if (out.length >= n) break;
+ }
+ return out;
+ }
+ async function revealFeedback(d: any) {
+ revealBusy = d.id;
+ try { revealed = { ...revealed, [d.id]: await jget(`/api/admin/usage/feedback/${d.id}/reveal`) }; }
+ catch (e: any) { fbActionMsg = `Reveal failed: ${e.message}`; }
+ revealBusy = 0;
+ }
+ let entUsers: any[] = $state([]), entStores: any[] = $state([]);
+ let logins: any[] = $state([]);
+ // people activity
+ let people: any = $state(null);
+ let peopleSort = $state('requests'); let peopleDesc = $state(true);
+ let showService = $state(true); let peopleSearch = $state('');
+ let peopleSeg = $state('app'); // 'app' (registered) | 'embed' (anonymous widget visitors)
+ let embedPeople: any = $state(null); let embedView = $state('session'); // 'session' | 'widget'
+ let loading = $state(false); let error = $state('');
 
-  // budget edit
-  let bDaily = $state(0); let bMonthly = $state(0); let bSaving = $state(false);
-  let invGroup = $state('store');
+ // budget edit
+ let bDaily = $state(0); let bMonthly = $state(0); let bSaving = $state(false);
+ let invGroup = $state('store');
 
-  // answer cache (P4) — leader-driven repeated-question cache
-  let cacheSlug = $state('');
-  let cacheStats: any = $state(null);
-  let cacheClusters: any[] = $state([]);
-  let cacheRows: any[] = $state([]);
-  let cacheBusy = $state('');          // question/id currently acting on
-  let cacheMsg = $state('');
+ // answer cache (P4) — leader-driven repeated-question cache
+ let cacheSlug = $state('');
+ let cacheStats: any = $state(null);
+ let cacheClusters: any[] = $state([]);
+ let cacheRows: any[] = $state([]);
+ let cacheBusy = $state(''); // question/id currently acting on
+ let cacheMsg = $state('');
 
-  // ── Query Bank (continuous query learning) ──────────────────────────────
-  let qbStats: any = $state(null);
-  let qbPatterns: any[] = $state([]);
-  let qbFilter = $state('pending');    // pending | candidate | proven | demoted | ''
-  let qbBusy = $state('');
-  let qbMsg = $state('');
-  async function loadQueryBank() {
-    if (!cacheSlug) {
-      try { const f = await jget('/api/flags'); cacheSlug = f?.locked_slug || f?.slug || 'citypharma'; }
-      catch { cacheSlug = 'citypharma'; }
-    }
-    const base = `/api/projects/${cacheSlug}/query-bank`;
-    const [s, p] = await Promise.all([
-      jget(`${base}/stats`),
-      jget(`${base}/patterns?${qbFilter ? 'status=' + qbFilter + '&' : ''}limit=200`),
-    ]);
-    qbStats = s; qbPatterns = p?.patterns ?? [];
-  }
-  async function qbAct(id: number, action: string) {
-    qbBusy = String(id) + action; qbMsg = '';
-    try {
-      const r = await jpost(`/api/projects/${cacheSlug}/query-bank/${id}/${action}`, {});
-      qbMsg = r?.ok ? `#${id} → ${r.status}` : `#${id} ${action} failed — ${r?.error || ''}`;
-      await loadQueryBank();
-    } catch (e: any) { qbMsg = `Failed: ${e.message}`; }
-    qbBusy = '';
-  }
-  async function qbCurate(dry: boolean) {
-    qbBusy = 'curate'; qbMsg = '';
-    try {
-      const r = await jpost(`/api/projects/${cacheSlug}/query-bank/curate?dry_run=${dry}`, {});
-      qbMsg = `Curate (${dry ? 'preview' : 'applied'}): scanned ${r.scanned ?? 0}, promote ${r.promoted ?? 0}, demote ${r.demoted ?? 0}, keep ${r.kept ?? 0}`;
-      if (!dry) await loadQueryBank();
-    } catch (e: any) { qbMsg = `Failed: ${e.message}`; }
-    qbBusy = '';
-  }
-  async function qbGeneralize(dry: boolean) {
-    qbBusy = 'gen'; qbMsg = '';
-    try {
-      const r = await jpost(`/api/projects/${cacheSlug}/query-bank/generalize?dry_run=${dry}`, {});
-      qbMsg = `Generalize (${dry ? 'preview' : 'written'}): ${r.clusters ?? 0} clusters, ${r.proposed ?? 0} templates${dry ? '' : ', ' + (r.written ?? 0) + ' written for review'}`;
-      if (!dry) await loadQueryBank();
-    } catch (e: any) { qbMsg = `Failed: ${e.message}`; }
-    qbBusy = '';
-  }
-  function qbSetFilter(f: string) { qbFilter = f; loadQueryBank(); }
-  let curatePreview: any[] | null = $state(null);
-  let curateBusy = $state(false);
+ // ── Query Bank (continuous query learning) ──────────────────────────────
+ let qbStats: any = $state(null);
+ let qbPatterns: any[] = $state([]);
+ let qbFilter = $state('pending'); // pending | candidate | proven | demoted | ''
+ let qbBusy = $state('');
+ let qbMsg = $state('');
+ async function loadQueryBank() {
+ if (!cacheSlug) {
+ try { const f = await jget('/api/flags'); cacheSlug = f?.locked_slug || f?.slug || 'citypharma'; }
+ catch { cacheSlug = 'citypharma'; }
+ }
+ const base = `/api/projects/${cacheSlug}/query-bank`;
+ const [s, p] = await Promise.all([
+ jget(`${base}/stats`),
+ jget(`${base}/patterns?${qbFilter ? 'status=' + qbFilter + '&' : ''}limit=200`),
+ ]);
+ qbStats = s; qbPatterns = p?.patterns ?? [];
+ }
+ async function qbAct(id: number, action: string) {
+ qbBusy = String(id) + action; qbMsg = '';
+ try {
+ const r = await jpost(`/api/projects/${cacheSlug}/query-bank/${id}/${action}`, {});
+ qbMsg = r?.ok ? `#${id} > ${r.status}` : `#${id} ${action} failed — ${r?.error || ''}`;
+ await loadQueryBank();
+ } catch (e: any) { qbMsg = `Failed: ${e.message}`; }
+ qbBusy = '';
+ }
+ async function qbCurate(dry: boolean) {
+ qbBusy = 'curate'; qbMsg = '';
+ try {
+ const r = await jpost(`/api/projects/${cacheSlug}/query-bank/curate?dry_run=${dry}`, {});
+ qbMsg = `Curate (${dry ? 'preview' : 'applied'}): scanned ${r.scanned ?? 0}, promote ${r.promoted ?? 0}, demote ${r.demoted ?? 0}, keep ${r.kept ?? 0}`;
+ if (!dry) await loadQueryBank();
+ } catch (e: any) { qbMsg = `Failed: ${e.message}`; }
+ qbBusy = '';
+ }
+ async function qbGeneralize(dry: boolean) {
+ qbBusy = 'gen'; qbMsg = '';
+ try {
+ const r = await jpost(`/api/projects/${cacheSlug}/query-bank/generalize?dry_run=${dry}`, {});
+ qbMsg = `Generalize (${dry ? 'preview' : 'written'}): ${r.clusters ?? 0} clusters, ${r.proposed ?? 0} templates${dry ? '' : ', ' + (r.written ?? 0) + ' written for review'}`;
+ if (!dry) await loadQueryBank();
+ } catch (e: any) { qbMsg = `Failed: ${e.message}`; }
+ qbBusy = '';
+ }
+ function qbSetFilter(f: string) { qbFilter = f; loadQueryBank(); }
+ let curatePreview: any[] | null = $state(null);
+ let curateBusy = $state(false);
 
-  async function loadCache() {
-    if (!cacheSlug) {
-      try { const f = await jget('/api/flags'); cacheSlug = f?.locked_slug || f?.slug || 'citypharma'; }
-      catch { cacheSlug = 'citypharma'; }
-    }
-    const base = `/api/projects/${cacheSlug}/cache`;
-    const [s, c, l] = await Promise.all([
-      jget(`${base}/stats`), jget(`${base}/clusters?min_count=3`), jget(`${base}/list`),
-    ]);
-    cacheStats = s; cacheClusters = c?.clusters ?? []; cacheRows = l?.rows ?? [];
-  }
-  async function cacheThis(q: string) {
-    cacheBusy = q; cacheMsg = '';
-    try {
-      const r = await jpost(`/api/projects/${cacheSlug}/cache/promote`, { question: q });
-      cacheMsg = r?.ok ? `Cached: "${q.slice(0, 48)}…"` : `Not cached — ${r?.reason || r?.error || 'leader declined'}`;
-      await loadCache();
-    } catch (e: any) { cacheMsg = `Failed: ${e.message}`; }
-    cacheBusy = '';
-  }
-  async function evictRow(id: number) {
-    cacheBusy = String(id); cacheMsg = '';
-    try { await jpost(`/api/projects/${cacheSlug}/cache/${id}/evict`, {}); cacheMsg = 'Evicted.'; await loadCache(); }
-    catch (e: any) { cacheMsg = `Evict failed: ${e.message}`; }
-    cacheBusy = '';
-  }
-  async function runPreview() {
-    curateBusy = true; cacheMsg = ''; curatePreview = null;
-    try {
-      const r = await jpost(`/api/projects/${cacheSlug}/cache/curate?dry_run=1&max_promote=10`, {});
-      curatePreview = r?.candidates ?? [];
-      if (!curatePreview.length) cacheMsg = `No new cacheable questions (${(r?.skipped ?? []).length} skipped).`;
-    } catch (e: any) { cacheMsg = `Preview failed: ${e.message}`; }
-    curateBusy = false;
-  }
-  async function promoteAll() {
-    curateBusy = true; cacheMsg = '';
-    try {
-      const r = await jpost(`/api/projects/${cacheSlug}/cache/curate?dry_run=0&max_promote=10`, {});
-      cacheMsg = `Promoted ${(r?.promoted ?? []).length} answer(s).`;
-      curatePreview = null; await loadCache();
-    } catch (e: any) { cacheMsg = `Promote failed: ${e.message}`; }
-    curateBusy = false;
-  }
+ async function loadCache() {
+ if (!cacheSlug) {
+ try { const f = await jget('/api/flags'); cacheSlug = f?.locked_slug || f?.slug || 'citypharma'; }
+ catch { cacheSlug = 'citypharma'; }
+ }
+ const base = `/api/projects/${cacheSlug}/cache`;
+ const [s, c, l] = await Promise.all([
+ jget(`${base}/stats`), jget(`${base}/clusters?min_count=3`), jget(`${base}/list`),
+ ]);
+ cacheStats = s; cacheClusters = c?.clusters ?? []; cacheRows = l?.rows ?? [];
+ }
+ async function cacheThis(q: string) {
+ cacheBusy = q; cacheMsg = '';
+ try {
+ const r = await jpost(`/api/projects/${cacheSlug}/cache/promote`, { question: q });
+ cacheMsg = r?.ok ? `Cached: "${q.slice(0, 48)}…"` : `Not cached — ${r?.reason || r?.error || 'leader declined'}`;
+ await loadCache();
+ } catch (e: any) { cacheMsg = `Failed: ${e.message}`; }
+ cacheBusy = '';
+ }
+ async function evictRow(id: number) {
+ cacheBusy = String(id); cacheMsg = '';
+ try { await jpost(`/api/projects/${cacheSlug}/cache/${id}/evict`, {}); cacheMsg = 'Evicted.'; await loadCache(); }
+ catch (e: any) { cacheMsg = `Evict failed: ${e.message}`; }
+ cacheBusy = '';
+ }
+ async function runPreview() {
+ curateBusy = true; cacheMsg = ''; curatePreview = null;
+ try {
+ const r = await jpost(`/api/projects/${cacheSlug}/cache/curate?dry_run=1&max_promote=10`, {});
+ curatePreview = r?.candidates ?? [];
+ if (!curatePreview.length) cacheMsg = `No new cacheable questions (${(r?.skipped ?? []).length} skipped).`;
+ } catch (e: any) { cacheMsg = `Preview failed: ${e.message}`; }
+ curateBusy = false;
+ }
+ async function promoteAll() {
+ curateBusy = true; cacheMsg = '';
+ try {
+ const r = await jpost(`/api/projects/${cacheSlug}/cache/curate?dry_run=0&max_promote=10`, {});
+ cacheMsg = `Promoted ${(r?.promoted ?? []).length} answer(s).`;
+ curatePreview = null; await loadCache();
+ } catch (e: any) { cacheMsg = `Promote failed: ${e.message}`; }
+ curateBusy = false;
+ }
 
-  // drawer
-  let drawerOpen = $state(false); let drawerType = $state(''); let drawerId = $state('');
-  let drawerData: any = $state(null); let drawerLoading = $state(false);
+ // drawer
+ let drawerOpen = $state(false); let drawerType = $state(''); let drawerId = $state('');
+ let drawerData: any = $state(null); let drawerLoading = $state(false);
 
-  // live auto-refresh
-  let autoRefresh = $state(false); let timer: any = null;
+ // live auto-refresh
+ let autoRefresh = $state(false); let timer: any = null;
 
-  function presetRange(p: string) {
-    const now = new Date(); const end = now.toISOString(); const d = new Date(now);
-    if (p === '24h') d.setDate(d.getDate() - 1);
-    else if (p === '7d') d.setDate(d.getDate() - 7);
-    else if (p === '30d') d.setDate(d.getDate() - 30);
-    else if (p === 'mtd') { d.setDate(1); d.setHours(0, 0, 0, 0); }
-    return { from: d.toISOString(), to: end };
-  }
-  function qs(extra: Record<string, string> = {}): string {
-    let from: string, to: string;
-    if (preset === 'custom' && fromStr) { from = fromStr; to = toStr || new Date().toISOString(); }
-    else { const r = presetRange(preset); from = r.from; to = r.to; }
-    const q = new URLSearchParams({ from, to });
-    const srcs = SOURCES.filter((s) => selSrc[s.id]).map((s) => s.id);
-    if (srcs.length && srcs.length < SOURCES.length) q.set('src', srcs.join(','));
-    if (fModel) q.set('model', fModel); if (fStore) q.set('store', fStore);
-    if (fActor) q.set('actor', fActor); if (fStatus) q.set('status', fStatus);
-    for (const k in extra) q.set(k, extra[k]);
-    return q.toString();
-  }
-  async function jget(url: string, _retry = 0): Promise<any> {
-    const r = await dashFetch(url, { headers: { Accept: 'application/json' } });
-    if (r.status === 429 && _retry < 2) {
-      // rate limited — honour Retry-After (capped) then retry once or twice
-      const ra = Math.min(5, Math.max(1, parseInt(r.headers.get('Retry-After') || '1') || 1));
-      await new Promise((res) => setTimeout(res, ra * 1000));
-      return jget(url, _retry + 1);
-    }
-    if (r.status === 429) throw new Error('Too many requests — please wait a moment and refresh.');
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
-  }
+ function presetRange(p: string) {
+ const now = new Date(); const end = now.toISOString(); const d = new Date(now);
+ if (p === '24h') d.setDate(d.getDate() - 1);
+ else if (p === '7d') d.setDate(d.getDate() - 7);
+ else if (p === '30d') d.setDate(d.getDate() - 30);
+ else if (p === 'mtd') { d.setDate(1); d.setHours(0, 0, 0, 0); }
+ return { from: d.toISOString(), to: end };
+ }
+ function qs(extra: Record<string, string> = {}): string {
+ let from: string, to: string;
+ if (preset === 'custom' && fromStr) { from = fromStr; to = toStr || new Date().toISOString(); }
+ else { const r = presetRange(preset); from = r.from; to = r.to; }
+ const q = new URLSearchParams({ from, to });
+ const srcs = SOURCES.filter((s) => selSrc[s.id]).map((s) => s.id);
+ if (srcs.length && srcs.length < SOURCES.length) q.set('src', srcs.join(','));
+ if (fModel) q.set('model', fModel); if (fStore) q.set('store', fStore);
+ if (fActor) q.set('actor', fActor); if (fStatus) q.set('status', fStatus);
+ for (const k in extra) q.set(k, extra[k]);
+ return q.toString();
+ }
+ async function jget(url: string, _retry = 0): Promise<any> {
+ const r = await dashFetch(url, { headers: { Accept: 'application/json' } });
+ if (r.status === 429 && _retry < 2) {
+ // rate limited — honour Retry-After (capped) then retry once or twice
+ const ra = Math.min(5, Math.max(1, parseInt(r.headers.get('Retry-After') || '1') || 1));
+ await new Promise((res) => setTimeout(res, ra * 1000));
+ return jget(url, _retry + 1);
+ }
+ if (r.status === 429) throw new Error('Too many requests — please wait a moment and refresh.');
+ if (!r.ok) throw new Error(`HTTP ${r.status}`);
+ return r.json();
+ }
 
-  async function jpost(url: string, bodyObj: any = {}): Promise<any> {
-    const r = await dashFetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(bodyObj),
-    });
-    if (!r.ok) {
-      let msg = `HTTP ${r.status}`;
-      try { const j = await r.json(); msg = j?.detail || j?.error || msg; } catch {}
-      throw new Error(msg);
-    }
-    return r.json();
-  }
+ async function jpost(url: string, bodyObj: any = {}): Promise<any> {
+ const r = await dashFetch(url, {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+ body: JSON.stringify(bodyObj),
+ });
+ if (!r.ok) {
+ let msg = `HTTP ${r.status}`;
+ try { const j = await r.json(); msg = j?.detail || j?.error || msg; } catch {}
+ throw new Error(msg);
+ }
+ return r.json();
+ }
 
-  async function promoteCorrection(d: any) {
-    fbBusy = d.id; fbActionMsg = '';
-    try {
-      const res = await jpost(`/api/admin/usage/feedback/${d.id}/promote`, {});
-      d.correction_status = 'promoted';
-      fbActionMsg = `Promoted to golden (${res?.total_goldens ?? '?'} total).`;
-    } catch (e: any) { fbActionMsg = `Promote failed: ${e.message}`; }
-    fbBusy = 0;
-  }
-  async function dismissCorrection(d: any) {
-    fbBusy = d.id; fbActionMsg = '';
-    try {
-      await jpost(`/api/admin/usage/feedback/${d.id}/dismiss`, {});
-      d.correction_status = 'dismissed';
-      fbActionMsg = 'Dismissed.';
-    } catch (e: any) { fbActionMsg = `Dismiss failed: ${e.message}`; }
-    fbBusy = 0;
-  }
+ async function promoteCorrection(d: any) {
+ fbBusy = d.id; fbActionMsg = '';
+ try {
+ const res = await jpost(`/api/admin/usage/feedback/${d.id}/promote`, {});
+ d.correction_status = 'promoted';
+ fbActionMsg = `Promoted to golden (${res?.total_goldens ?? '?'} total).`;
+ } catch (e: any) { fbActionMsg = `Promote failed: ${e.message}`; }
+ fbBusy = 0;
+ }
+ async function dismissCorrection(d: any) {
+ fbBusy = d.id; fbActionMsg = '';
+ try {
+ await jpost(`/api/admin/usage/feedback/${d.id}/dismiss`, {});
+ d.correction_status = 'dismissed';
+ fbActionMsg = 'Dismissed.';
+ } catch (e: any) { fbActionMsg = `Dismiss failed: ${e.message}`; }
+ fbBusy = 0;
+ }
 
-  async function loadTab(t: string, force = false) {
-    if (loaded[t] && !force) return;
-    loading = true; error = ''; const _t0 = Date.now();
-    try {
-      if (t === 'overview') {
-        const [a, b] = await Promise.all([jget(`/api/admin/usage?${qs({ group_by: groupBy })}`), jget(`/api/admin/usage/logins?${qs()}`)]);
-        ov = a; logins = b?.logins ?? []; if (a?.error) error = a.error;
-      } else if (t === 'performance') perf = await jget(`/api/admin/usage/performance?${qs()}`);
-      else if (t === 'models') modelsData = await jget(`/api/admin/usage/models?${qs()}`);
-      else if (t === 'tokens') tokensData = await jget(`/api/admin/usage/tokens?${qs()}`);
-      else if (t === 'embeddings') embedsData = await jget(`/api/admin/usage/embeddings?${qs()}`);
-      else if (t === 'learning') feedbackData = await jget(`/api/admin/usage/feedback?${qs()}`);
-      else if (t === 'keywords') {
-        const [k, tp] = await Promise.all([
-          jget(`/api/admin/usage/keywords?${qs()}`),
-          jget(`/api/admin/usage/keyword-topics`),
-        ]);
-        keywordsData = k; keyTopics = tp;
-      }
-      else if (t === 'errors') errs = await jget(`/api/admin/usage/errors?${qs()}`);
-      else if (t === 'tools') tools = await jget(`/api/admin/usage/tools?${qs()}`);
-      else if (t === 'security') sec = await jget(`/api/admin/usage/security?${qs()}`);
-      else if (t === 'live') live = await jget(`/api/admin/usage/live`);
-      else if (t === 'billing') {
-        const [b, i] = await Promise.all([jget(`/api/admin/usage/budget`), jget(`/api/admin/usage/invoice?${qs({ group: invGroup })}`)]);
-        budget = b; invoice = i; bDaily = b?.daily_usd ?? 0; bMonthly = b?.monthly_usd ?? 0;
-      } else if (t === 'people') {
-        if (peopleSeg === 'embed') {
-          embedPeople = await jget(`/api/admin/usage/embed-people?${qs()}`);
-          if (embedPeople?.error) error = embedPeople.error;
-        } else {
-          people = await jget(`/api/admin/usage/people?${qs({ include_service: String(showService) })}`);
-          if (people?.error) error = people.error;
-        }
-      } else if (t === 'entities') {
-        const u = await jget(`/api/admin/usage?${qs({ group_by: 'actor', limit: '1' })}`);
-        const s = await jget(`/api/admin/usage?${qs({ group_by: 'store_id', limit: '1' })}`);
-        entUsers = u?.breakdown ?? []; entStores = s?.breakdown ?? [];
-      } else if (t === 'cache') {
-        await loadCache();
-      } else if (t === 'querybank') {
-        await loadQueryBank();
-      }
-      loaded[t] = true; loaded = { ...loaded };
-    } catch (e: any) { error = e?.message || String(e); }
-    finally { loading = false; lastMs = Date.now() - _t0; }
-  }
-  function switchTab(t: string) { tab = t; loadTab(t); }
-  function reloadAll() { loaded = {}; loadTab(tab, true); }
+ async function loadTab(t: string, force = false) {
+ if (loaded[t] && !force) return;
+ loading = true; error = ''; const _t0 = Date.now();
+ try {
+ if (t === 'overview') {
+ const [a, b] = await Promise.all([jget(`/api/admin/usage?${qs({ group_by: groupBy })}`), jget(`/api/admin/usage/logins?${qs()}`)]);
+ ov = a; logins = b?.logins ?? []; if (a?.error) error = a.error;
+ } else if (t === 'performance') perf = await jget(`/api/admin/usage/performance?${qs()}`);
+ else if (t === 'models') modelsData = await jget(`/api/admin/usage/models?${qs()}`);
+ else if (t === 'tokens') tokensData = await jget(`/api/admin/usage/tokens?${qs()}`);
+ else if (t === 'embeddings') embedsData = await jget(`/api/admin/usage/embeddings?${qs()}`);
+ else if (t === 'learning') feedbackData = await jget(`/api/admin/usage/feedback?${qs()}`);
+ else if (t === 'keywords') {
+ const [k, tp] = await Promise.all([
+ jget(`/api/admin/usage/keywords?${qs()}`),
+ jget(`/api/admin/usage/keyword-topics`),
+ ]);
+ keywordsData = k; keyTopics = tp;
+ }
+ else if (t === 'errors') errs = await jget(`/api/admin/usage/errors?${qs()}`);
+ else if (t === 'tools') tools = await jget(`/api/admin/usage/tools?${qs()}`);
+ else if (t === 'security') sec = await jget(`/api/admin/usage/security?${qs()}`);
+ else if (t === 'live') live = await jget(`/api/admin/usage/live`);
+ else if (t === 'billing') {
+ const [b, i] = await Promise.all([jget(`/api/admin/usage/budget`), jget(`/api/admin/usage/invoice?${qs({ group: invGroup })}`)]);
+ budget = b; invoice = i; bDaily = b?.daily_usd ?? 0; bMonthly = b?.monthly_usd ?? 0;
+ } else if (t === 'people') {
+ if (peopleSeg === 'embed') {
+ embedPeople = await jget(`/api/admin/usage/embed-people?${qs()}`);
+ if (embedPeople?.error) error = embedPeople.error;
+ } else {
+ people = await jget(`/api/admin/usage/people?${qs({ include_service: String(showService) })}`);
+ if (people?.error) error = people.error;
+ }
+ } else if (t === 'entities') {
+ const u = await jget(`/api/admin/usage?${qs({ group_by: 'actor', limit: '1' })}`);
+ const s = await jget(`/api/admin/usage?${qs({ group_by: 'store_id', limit: '1' })}`);
+ entUsers = u?.breakdown ?? []; entStores = s?.breakdown ?? [];
+ } else if (t === 'cache') {
+ await loadCache();
+ } else if (t === 'querybank') {
+ await loadQueryBank();
+ }
+ loaded[t] = true; loaded = { ...loaded };
+ } catch (e: any) { error = e?.message || String(e); }
+ finally { loading = false; lastMs = Date.now() - _t0; }
+ }
+ function switchTab(t: string) { tab = t; loadTab(t); }
+ function reloadAll() { loaded = {}; loadTab(tab, true); }
 
-  async function openDrawer(type: string, id: string) {
-    drawerOpen = true; drawerType = type; drawerId = id; drawerData = null; drawerLoading = true;
-    try { drawerData = await jget(`/api/admin/usage/entity?type=${type}&id=${encodeURIComponent(id)}&${qs()}`); }
-    catch (e: any) { drawerData = { error: e?.message }; }
-    finally { drawerLoading = false; }
-  }
-  function closeDrawer() { drawerOpen = false; drawerData = null; }
+ async function openDrawer(type: string, id: string) {
+ drawerOpen = true; drawerType = type; drawerId = id; drawerData = null; drawerLoading = true;
+ try { drawerData = await jget(`/api/admin/usage/entity?type=${type}&id=${encodeURIComponent(id)}&${qs()}`); }
+ catch (e: any) { drawerData = { error: e?.message }; }
+ finally { drawerLoading = false; }
+ }
+ function closeDrawer() { drawerOpen = false; drawerData = null; }
 
-  async function openPerson(username: string) {
-    drawerOpen = true; drawerType = 'person'; drawerId = username; drawerData = null; drawerLoading = true;
-    try { drawerData = await jget(`/api/admin/usage/person?username=${encodeURIComponent(username)}&${qs()}`); }
-    catch (e: any) { drawerData = { error: e?.message }; }
-    finally { drawerLoading = false; }
-  }
-  async function openEmbedSession(session: string, label: string) {
-    drawerOpen = true; drawerType = 'embed'; drawerId = label || session; drawerData = null; drawerLoading = true;
-    try { drawerData = await jget(`/api/admin/usage/embed-session?session=${encodeURIComponent(session)}&${qs()}`); }
-    catch (e: any) { drawerData = { error: e?.message }; }
-    finally { drawerLoading = false; }
-  }
-  function switchSeg(seg: string) { peopleSeg = seg; loadTab('people', true); }
-  function setPeopleSort(col: string) { if (peopleSort === col) peopleDesc = !peopleDesc; else { peopleSort = col; peopleDesc = true; } }
-  const sortedPeople = $derived.by(() => {
-    let rows = [...((people?.people ?? []) as any[])];
-    const q = peopleSearch.trim().toLowerCase();
-    if (q) rows = rows.filter((r) => (r.username || '').toLowerCase().includes(q) || (r.email || '').toLowerCase().includes(q));
-    const k = peopleSort;
-    rows.sort((a, b) => {
-      let av = a[k], bv = b[k];
-      if (k === 'last_active') { av = av ? new Date(av).getTime() : 0; bv = bv ? new Date(bv).getTime() : 0; }
-      else if (k === 'username') { av = (av || '').toLowerCase(); bv = (bv || '').toLowerCase(); return peopleDesc ? bv.localeCompare(av) : av.localeCompare(bv); }
-      else if (k === 'satisfaction') { av = av ?? -1; bv = bv ?? -1; }
-      else { av = av ?? 0; bv = bv ?? 0; }
-      return peopleDesc ? (bv - av) : (av - bv);
-    });
-    return rows;
-  });
+ async function openPerson(username: string) {
+ drawerOpen = true; drawerType = 'person'; drawerId = username; drawerData = null; drawerLoading = true;
+ try { drawerData = await jget(`/api/admin/usage/person?username=${encodeURIComponent(username)}&${qs()}`); }
+ catch (e: any) { drawerData = { error: e?.message }; }
+ finally { drawerLoading = false; }
+ }
+ async function openEmbedSession(session: string, label: string) {
+ drawerOpen = true; drawerType = 'embed'; drawerId = label || session; drawerData = null; drawerLoading = true;
+ try { drawerData = await jget(`/api/admin/usage/embed-session?session=${encodeURIComponent(session)}&${qs()}`); }
+ catch (e: any) { drawerData = { error: e?.message }; }
+ finally { drawerLoading = false; }
+ }
+ function switchSeg(seg: string) { peopleSeg = seg; loadTab('people', true); }
+ function setPeopleSort(col: string) { if (peopleSort === col) peopleDesc = !peopleDesc; else { peopleSort = col; peopleDesc = true; } }
+ const sortedPeople = $derived.by(() => {
+ let rows = [...((people?.people ?? []) as any[])];
+ const q = peopleSearch.trim().toLowerCase();
+ if (q) rows = rows.filter((r) => (r.username || '').toLowerCase().includes(q) || (r.email || '').toLowerCase().includes(q));
+ const k = peopleSort;
+ rows.sort((a, b) => {
+ let av = a[k], bv = b[k];
+ if (k === 'last_active') { av = av ? new Date(av).getTime() : 0; bv = bv ? new Date(bv).getTime() : 0; }
+ else if (k === 'username') { av = (av || '').toLowerCase(); bv = (bv || '').toLowerCase(); return peopleDesc ? bv.localeCompare(av) : av.localeCompare(bv); }
+ else if (k === 'satisfaction') { av = av ?? -1; bv = bv ?? -1; }
+ else { av = av ?? 0; bv = bv ?? 0; }
+ return peopleDesc ? (bv - av) : (av - bv);
+ });
+ return rows;
+ });
 
-  async function saveBudget() {
-    bSaving = true;
-    try {
-      await dashFetch('/api/admin/usage/budget', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ daily_usd: Number(bDaily), monthly_usd: Number(bMonthly) }) });
-      await loadTab('billing', true);
-    } catch (e: any) { error = e?.message; } finally { bSaving = false; }
-  }
+ async function saveBudget() {
+ bSaving = true;
+ try {
+ await dashFetch('/api/admin/usage/budget', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ daily_usd: Number(bDaily), monthly_usd: Number(bMonthly) }) });
+ await loadTab('billing', true);
+ } catch (e: any) { error = e?.message; } finally { bSaving = false; }
+ }
 
-  function toggleAuto() {
-    autoRefresh = !autoRefresh;
-    if (autoRefresh) { timer = setInterval(() => loadTab('live', true), 5000); }
-    else if (timer) { clearInterval(timer); timer = null; }
-  }
-  onDestroy(() => { if (timer) clearInterval(timer); });
+ function toggleAuto() {
+ autoRefresh = !autoRefresh;
+ if (autoRefresh) { timer = setInterval(() => loadTab('live', true), 5000); }
+ else if (timer) { clearInterval(timer); timer = null; }
+ }
+ onDestroy(() => { if (timer) clearInterval(timer); });
 
-  // ---- formatters ----
-  function usd(n: number): string { if (n == null) return '$0'; if (n > 0 && n < 0.01) return '$' + n.toFixed(4); return '$' + n.toFixed(2); }
-  function compact(n: number): string { if (n == null) return '0'; if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M'; if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K'; return String(n); }
-  function ms(n: number): string { if (n == null) return '—'; if (n >= 1000) return (n / 1000).toFixed(2) + 's'; return Math.round(n) + 'ms'; }
-  function srcLabel(id: string): string { return SOURCES.find((s) => s.id === id)?.label ?? id; }
-  function shortTs(ts: string): string { const d = new Date(ts); if (isNaN(d.getTime())) return ts; return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
-  function ago(ts: string | null): string { if (!ts) return '—'; const d = new Date(ts).getTime(); if (!d) return '—'; const s = Math.floor((Date.now() - d) / 1000); if (s < 60) return s + 's'; if (s < 3600) return Math.floor(s / 60) + 'm'; if (s < 86400) return Math.floor(s / 3600) + 'h'; return Math.floor(s / 86400) + 'd'; }
-  function delta(cur: number, prev: number): { txt: string; up: boolean; flat: boolean } {
-    if (!prev) return { txt: cur ? 'new' : '—', up: true, flat: !cur };
-    const p = ((cur - prev) / prev) * 100;
-    return { txt: (p >= 0 ? '▲' : '▼') + Math.abs(p).toFixed(0) + '%', up: p >= 0, flat: Math.abs(p) < 1 };
-  }
+ // ---- formatters ----
+ function usd(n: number): string { if (n == null) return '$0'; if (n > 0 && n < 0.01) return '$' + n.toFixed(4); return '$' + n.toFixed(2); }
+ function compact(n: number): string { if (n == null) return '0'; if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M'; if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K'; return String(n); }
+ function ms(n: number): string { if (n == null) return '—'; if (n >= 1000) return (n / 1000).toFixed(2) + 's'; return Math.round(n) + 'ms'; }
+ function srcLabel(id: string): string { return SOURCES.find((s) => s.id === id)?.label ?? id; }
+ function shortTs(ts: string): string { const d = new Date(ts); if (isNaN(d.getTime())) return ts; return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+ function ago(ts: string | null): string { if (!ts) return '—'; const d = new Date(ts).getTime(); if (!d) return '—'; const s = Math.floor((Date.now() - d) / 1000); if (s < 60) return s + 's'; if (s < 3600) return Math.floor(s / 60) + 'm'; if (s < 86400) return Math.floor(s / 3600) + 'h'; return Math.floor(s / 86400) + 'd'; }
+ function delta(cur: number, prev: number): { txt: string; up: boolean; flat: boolean } {
+ if (!prev) return { txt: cur ? 'new' : '—', up: true, flat: !cur };
+ const p = ((cur - prev) / prev) * 100;
+ return { txt: (p >= 0 ? '▲' : '▼') + Math.abs(p).toFixed(0) + '%', up: p >= 0, flat: Math.abs(p) < 1 };
+ }
 
-  // ---- overview stacked charts (shared color map) ----
-  const COLORS = ['#a855c9', '#84cc16', '#f97316', '#06b6d4', '#3b82f6', '#ec4899'];
-  const OTHER_C = '#9ca3af';
-  const modelSeries = $derived((ov?.model_series ?? []) as any[]);
-  const modelColor: Record<string, string> = $derived.by(() => {
-    const t: Record<string, number> = {}; for (const r of modelSeries) t[r.model] = (t[r.model] || 0) + (r.tokens || 0);
-    const ranked = Object.keys(t).sort((a, b) => t[b] - t[a]); const m: Record<string, string> = {};
-    ranked.slice(0, COLORS.length).forEach((x, i) => (m[x] = COLORS[i])); return m;
-  });
-  function mval(r: any, k: string) { return k === 'cost' ? (r.cost || 0) : k === 'requests' ? (r.requests || 0) : (r.tokens || 0); }
-  function buildChart(metric: string) {
-    const bmap: Record<string, Record<string, number>> = {}; const order: string[] = [];
-    for (const r of modelSeries) { if (!bmap[r.bucket]) { bmap[r.bucket] = {}; order.push(r.bucket); } const k = modelColor[r.model] ? r.model : '__o'; bmap[r.bucket][k] = (bmap[r.bucket][k] || 0) + mval(r, metric); }
-    const buckets = order.map((b) => { const segs: any[] = []; let total = 0; for (const k in bmap[b]) { const v = bmap[b][k]; total += v; segs.push({ val: v, color: k === '__o' ? OTHER_C : modelColor[k] }); } return { segs, total }; });
-    const maxT = Math.max(1e-9, ...buckets.map((x) => x.total));
-    const lt: Record<string, number> = {}; for (const r of modelSeries) { const k = modelColor[r.model] ? r.model : '__o'; lt[k] = (lt[k] || 0) + mval(r, metric); }
-    const legend = Object.keys(lt).sort((a, b) => lt[b] - lt[a]).slice(0, 4).map((k) => ({ label: k === '__o' ? 'Others' : k, value: lt[k], color: k === '__o' ? OTHER_C : modelColor[k] }));
-    return { buckets, maxT, legend, grand: buckets.reduce((s, x) => s + x.total, 0) };
-  }
-  const spendChart = $derived(buildChart('cost'));
-  const reqChart = $derived(buildChart('requests'));
-  const tokChart = $derived(buildChart('tokens'));
+ // ---- overview stacked charts (shared color map) ----
+ const COLORS = ['#a855c9', '#84cc16', '#f97316', '#06b6d4', '#3b82f6', '#ec4899'];
+ const OTHER_C = '#9ca3af';
+ const modelSeries = $derived((ov?.model_series ?? []) as any[]);
+ const modelColor: Record<string, string> = $derived.by(() => {
+ const t: Record<string, number> = {}; for (const r of modelSeries) t[r.model] = (t[r.model] || 0) + (r.tokens || 0);
+ const ranked = Object.keys(t).sort((a, b) => t[b] - t[a]); const m: Record<string, string> = {};
+ ranked.slice(0, COLORS.length).forEach((x, i) => (m[x] = COLORS[i])); return m;
+ });
+ function mval(r: any, k: string) { return k === 'cost' ? (r.cost || 0) : k === 'requests' ? (r.requests || 0) : (r.tokens || 0); }
+ function buildChart(metric: string) {
+ const bmap: Record<string, Record<string, number>> = {}; const order: string[] = [];
+ for (const r of modelSeries) { if (!bmap[r.bucket]) { bmap[r.bucket] = {}; order.push(r.bucket); } const k = modelColor[r.model] ? r.model : '__o'; bmap[r.bucket][k] = (bmap[r.bucket][k] || 0) + mval(r, metric); }
+ const buckets = order.map((b) => { const segs: any[] = []; let total = 0; for (const k in bmap[b]) { const v = bmap[b][k]; total += v; segs.push({ val: v, color: k === '__o' ? OTHER_C : modelColor[k] }); } return { segs, total }; });
+ const maxT = Math.max(1e-9, ...buckets.map((x) => x.total));
+ const lt: Record<string, number> = {}; for (const r of modelSeries) { const k = modelColor[r.model] ? r.model : '__o'; lt[k] = (lt[k] || 0) + mval(r, metric); }
+ const legend = Object.keys(lt).sort((a, b) => lt[b] - lt[a]).slice(0, 4).map((k) => ({ label: k === '__o' ? 'Others' : k, value: lt[k], color: k === '__o' ? OTHER_C : modelColor[k] }));
+ return { buckets, maxT, legend, grand: buckets.reduce((s, x) => s + x.total, 0) };
+ }
+ const spendChart = $derived(buildChart('cost'));
+ const reqChart = $derived(buildChart('requests'));
+ const tokChart = $derived(buildChart('tokens'));
 
-  // heatmap
-  const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const heatMax = $derived(Math.max(1, ...((ov?.heatmap ?? []).map((h: any) => h.requests))));
-  function heatVal(dow: number, hour: number): number { const h = (ov?.heatmap ?? []).find((x: any) => x.dow === dow && x.hour === hour); return h ? h.requests : 0; }
+ // heatmap
+ const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+ const heatMax = $derived(Math.max(1, ...((ov?.heatmap ?? []).map((h: any) => h.requests))));
+ function heatVal(dow: number, hour: number): number { const h = (ov?.heatmap ?? []).find((x: any) => x.dow === dow && x.hour === hour); return h ? h.requests : 0; }
 
-  function exportRows(rows: any[][], name: string) {
-    const csv = rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-    const u = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    const a = document.createElement('a'); a.href = u; a.download = name; a.click(); URL.revokeObjectURL(u);
-  }
-  function exportActivity() { const r = [['ts', 'src', 'actor', 'store', 'model', 'tokens', 'cost', 'latency_ms', 'status'], ...(ov?.activity ?? []).map((a: any) => [a.ts, a.src, a.actor, a.store_id, a.model, a.tokens, a.cost, a.latency_ms, a.status])]; exportRows(r, 'usage_activity.csv'); }
-  function exportInvoice() { const r = [[invGroup, 'requests', 'tokens', 'cost'], ...(invoice?.rows ?? []).map((x: any) => [x.key, x.requests, x.tokens, x.cost])]; exportRows(r, `invoice_${invGroup}.csv`); }
+ function exportRows(rows: any[][], name: string) {
+ const csv = rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+ const u = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+ const a = document.createElement('a'); a.href = u; a.download = name; a.click(); URL.revokeObjectURL(u);
+ }
+ function exportActivity() { const r = [['ts', 'src', 'actor', 'store', 'model', 'tokens', 'cost', 'latency_ms', 'status'], ...(ov?.activity ?? []).map((a: any) => [a.ts, a.src, a.actor, a.store_id, a.model, a.tokens, a.cost, a.latency_ms, a.status])]; exportRows(r, 'usage_activity.csv'); }
+ function exportInvoice() { const r = [[invGroup, 'requests', 'tokens', 'cost'], ...(invoice?.rows ?? []).map((x: any) => [x.key, x.requests, x.tokens, x.cost])]; exportRows(r, `invoice_${invGroup}.csv`); }
 
-  onMount(() => loadTab('overview'));
+ onMount(() => loadTab('overview'));
 </script>
 
 <div class="usage" class:embedded>
@@ -455,10 +456,10 @@
           <button class="u-chip" class:on={preset === p} onclick={() => { preset = p; if (p !== 'custom') reloadAll(); }}>{l}</button>
         {/each}
         {#if preset === 'custom'}
-          <input class="u-date" type="datetime-local" bind:value={fromStr} /><span class="u-arrow">→</span>
+          <input class="u-date" type="datetime-local" bind:value={fromStr} /><span class="u-arrow"><Icon name="arrow-right" size={16} /></span>
           <input class="u-date" type="datetime-local" bind:value={toStr} /><button class="u-btn" onclick={reloadAll}>Apply</button>
         {/if}
-        <button class="u-btn ghost" onclick={reloadAll} title="Refresh">↻</button>
+        <button class="u-btn ghost" onclick={reloadAll} title="Refresh"><Icon name="refresh" size={16} /></button>
       </div>
       <div class="u-frow">
         <span class="u-lbl">Source</span>
@@ -470,7 +471,7 @@
     </div>
   {/if}
 
-  {#if error}<div class="u-err">⚠ {error}</div>{/if}
+  {#if error}<div class="u-err"><Icon name="alert-triangle" size={16} /> {error}</div>{/if}
   {#if loading}<div class="u-load">loading…</div>{/if}
 
   <!-- ============ OVERVIEW ============ -->
@@ -593,8 +594,8 @@
                 <span class="ua-tcost">{usd(t.cost)}</span>
                 {#if t.is_new}<span class="ua-tnew">▲ New</span>
                 {:else if t.pct == null}<span class="ua-tflat">—</span>
-                {:else if t.pct >= 0}<span class="ua-tup">↑ {t.pct}%</span>
-                {:else}<span class="ua-tdown">↓ {Math.abs(t.pct)}%</span>{/if}
+                {:else if t.pct >= 0}<span class="ua-tup"><Icon name="arrow-up" size={16} /> {t.pct}%</span>
+                {:else}<span class="ua-tdown"><Icon name="arrow-down" size={16} /> {Math.abs(t.pct)}%</span>{/if}
               </div>
             {/each}
             {#if !(modelsData.trending ?? []).length}<div class="u-empty">no trend data</div>{/if}
@@ -614,8 +615,8 @@
       <div class="ua-kpis">
         <div class="ua-kpi"><div class="ua-kn">{compact(td.prompt)}</div><div class="ua-kl">Prompt tokens</div></div>
         <div class="ua-kpi"><div class="ua-kn">{compact(td.completion)}</div><div class="ua-kl">Completion</div></div>
-        <div class="ua-kpi"><div class="ua-kn">{compact(td.reasoning)}</div><div class="ua-kl">⚙ Reasoning</div></div>
-        <div class="ua-kpi"><div class="ua-kn">{compact(td.cached)}</div><div class="ua-kl">⚡ Cached</div></div>
+        <div class="ua-kpi"><div class="ua-kn">{compact(td.reasoning)}</div><div class="ua-kl"><Icon name="settings" size={16} /> Reasoning</div></div>
+        <div class="ua-kpi"><div class="ua-kn">{compact(td.cached)}</div><div class="ua-kl"><Icon name="zap" size={16} /> Cached</div></div>
         <div class="ua-kpi ua-kpi-accent"><div class="ua-kn">{td.cache_hit_rate}%</div><div class="ua-kl">Cache hit rate</div></div>
       </div>
       <div class="ua-card">
@@ -676,8 +677,8 @@
     {@const t = feedbackData.totals ?? {}}
     <section class="ua">
       <div class="ua-kpis">
-        <div class="ua-kpi ua-kpi-good"><div class="ua-kn">👍 {compact(t.up)}</div><div class="ua-kl">Liked</div></div>
-        <div class="ua-kpi ua-kpi-bad"><div class="ua-kn">👎 {compact(t.down)}</div><div class="ua-kl">Disliked</div></div>
+        <div class="ua-kpi ua-kpi-good"><div class="ua-kn"><Icon name="thumbs-up" size={16} /> {compact(t.up)}</div><div class="ua-kl">Liked</div></div>
+        <div class="ua-kpi ua-kpi-bad"><div class="ua-kn"><Icon name="thumbs-down" size={16} /> {compact(t.down)}</div><div class="ua-kl">Disliked</div></div>
         <div class="ua-kpi"><div class="ua-kn">{compact(t.total)}</div><div class="ua-kl">Total rated</div></div>
         <div class="ua-kpi ua-kpi-accent"><div class="ua-kn">{t.satisfaction != null ? t.satisfaction + '%' : '—'}</div><div class="ua-kl">Satisfaction</div></div>
       </div>
@@ -685,7 +686,7 @@
         <div class="ua-card">
           <div class="ua-h">Satisfaction by project</div>
           <table class="ua-tbl">
-            <thead><tr><th>Project</th><th class="r">👍</th><th class="r">👎</th><th class="r">Sat.</th></tr></thead>
+            <thead><tr><th>Project</th><th class="r"><Icon name="thumbs-up" size={16} /></th><th class="r"><Icon name="thumbs-down" size={16} /></th><th class="r">Sat.</th></tr></thead>
             <tbody>
               {#each (feedbackData.by_project ?? []) as r}
                 <tr><td class="mono">{r.project}</td><td class="r">{r.up}</td><td class="r">{r.down}</td>
@@ -696,7 +697,7 @@
           </table>
         </div>
         <div class="ua-card">
-          <div class="ua-h">👎 Top disliked answers <span class="ua-sub">retrain candidates</span></div>
+          <div class="ua-h"><Icon name="thumbs-down" size={16} /> Top disliked answers <span class="ua-sub">retrain candidates</span></div>
           {#if fbActionMsg}<div class="ua-fbmsg">{fbActionMsg}</div>{/if}
           <div class="ua-disliked">
             {#each (feedbackData.disliked ?? []) as d}
@@ -715,30 +716,30 @@
                     {#each (d.keywords ?? []) as k}<span class="ua-dtag">{k}</span>{/each}
                     {#if !(d.keywords ?? []).length}<span class="ua-muted">no keywords</span>{/if}
                   </div>
-                  <div class="ua-dchars">Q · {d.q_chars ?? 0} chars{#if d.a_chars} · A · {d.a_chars} chars{/if}{#if d.has_correction} · ✎ correction on file{/if}</div>
+                  <div class="ua-dchars">Q · {d.q_chars ?? 0} chars{#if d.a_chars} · A · {d.a_chars} chars{/if}{#if d.has_correction} · (edit) correction on file{/if}</div>
                 {/if}
                 {#if (d.tags ?? []).length}
                   <div class="ua-dtags">{#each d.tags as tg}<span class="ua-dtag">{tg}</span>{/each}</div>
                 {/if}
                 <div class="ua-dmeta">
                   {d.project} · {d.ts ? new Date(d.ts).toLocaleString() : ''}
-                  {#if !rv}<button class="ua-reveal" disabled={revealBusy === d.id} onclick={() => revealFeedback(d)} title="Audited — logged to the security trail">{revealBusy === d.id ? '…' : '🔓 Reveal for review'}</button>{/if}
+                  {#if !rv}<button class="ua-reveal" disabled={revealBusy === d.id} onclick={() => revealFeedback(d)} title="Audited — logged to the security trail">{revealBusy === d.id ? '…' : ' Reveal for review'}</button>{/if}
                 </div>
                 {#if d.has_correction}
                   {#if d.correction_status === 'promoted'}
-                    <div class="ua-dstat ok">✓ promoted to golden</div>
+                    <div class="ua-dstat ok"><Icon name="check" size={16} /> promoted to golden</div>
                   {:else if d.correction_status === 'dismissed'}
                     <div class="ua-dstat muted">dismissed</div>
                   {:else}
                     <div class="ua-dacts">
-                      <button class="ua-pbtn ok" disabled={fbBusy === d.id} onclick={() => promoteCorrection(d)}>{fbBusy === d.id ? '…' : '▲ Promote correction → golden'}</button>
+                      <button class="ua-pbtn ok" disabled={fbBusy === d.id} onclick={() => promoteCorrection(d)}>{fbBusy === d.id ? '…' : '▲ Promote correction &gt; golden'}</button>
                       <button class="ua-pbtn" disabled={fbBusy === d.id} onclick={() => dismissCorrection(d)}>Dismiss</button>
                     </div>
                   {/if}
                 {/if}
               </div>
             {/each}
-            {#if !(feedbackData.disliked ?? []).length}<div class="u-empty">no disliked answers 🎉</div>{/if}
+            {#if !(feedbackData.disliked ?? []).length}<div class="u-empty">no disliked answers <Icon name="party" size={16} /></div>{/if}
           </div>
         </div>
       </div>
@@ -750,7 +751,7 @@
     {@const kd = keywordsData ?? {}}
     {@const kmax = Math.max(1, ...((kd.keywords ?? []).map((k: any) => k.count)))}
     <section class="ua">
-      <div class="u-note">🔒 Privacy mode — these dashboards show keyword &amp; topic analysis only. Raw questions and answers are never displayed.</div>
+      <div class="u-note"><Icon name="lock" size={16} /> Privacy mode — these dashboards show keyword &amp; topic analysis only. Raw questions and answers are never displayed.</div>
       <div class="ua-kpis">
         <div class="ua-kpi"><div class="ua-kn">{compact(kd.total_questions ?? 0)}</div><div class="ua-kl">Questions analysed</div></div>
         <div class="ua-kpi"><div class="ua-kn">{compact((kd.keywords ?? []).length)}</div><div class="ua-kl">Distinct terms</div></div>
@@ -845,7 +846,7 @@
       <div class="u-tile"><b>{s.active ?? 0}<small>/{s.total_users ?? 0}</small></b><span>Active users</span></div>
       <div class="u-tile"><b>{s.most_active ?? '—'}</b><span>Most active · {compact(s.most_active_reqs ?? 0)} req</span></div>
       <div class="u-tile"><b>{s.avg_q_per_user ?? 0}</b><span>Avg questions / user</span></div>
-      <div class="u-tile"><b>{s.satisfaction != null ? s.satisfaction + '%' : '—'}</b><span>Satisfaction 👍</span></div>
+      <div class="u-tile"><b>{s.satisfaction != null ? s.satisfaction + '%' : '—'}</b><span>Satisfaction <Icon name="thumbs-up" size={16} /></span></div>
       <div class="u-tile"><b>{s.humans ?? 0}<small> + {s.service_accounts ?? 0} keys</small></b><span>Humans · API keys</span></div>
     </div>
     <section class="u-sec">
@@ -856,11 +857,11 @@
       <div class="u-frow" style="margin-bottom:.6rem">
         <input class="u-in" placeholder="search user / email…" bind:value={peopleSearch} style="min-width:180px" />
         <button class="u-chip" class:on={showService} onclick={() => { showService = !showService; loadTab('people', true); }}>{showService ? '● incl. API keys' : '○ humans only'}</button>
-        <span class="u-hint" style="margin-left:auto">click a row → full activity drill-down</span>
+        <span class="u-hint" style="margin-left:auto">click a row <Icon name="arrow-right" size={16} /> full activity drill-down</span>
       </div>
       <table class="u-tbl u-ppl">
         <thead><tr>
-          {#each [['username','User'],['last_active','Last active'],['sessions','Sessions'],['requests','Questions'],['q_per_session','Q/sess'],['satisfaction','👍/👎'],['tokens','Tokens'],['cost','Cost'],['err_pct','Err%']] as [col,lbl]}
+          {#each [['username','User'],['last_active','Last active'],['sessions','Sessions'],['requests','Questions'],['q_per_session','Q/sess'],['satisfaction','/'],['tokens','Tokens'],['cost','Cost'],['err_pct','Err%']] as [col,lbl]}
             <th class="sortable" class:numh={col!=='username'} onclick={() => setPeopleSort(col)}>
               {lbl}{#if peopleSort === col}<span class="sarrow">{peopleDesc ? '▾' : '▴'}</span>{/if}
             </th>
@@ -917,7 +918,7 @@
           <button class="u-segbtn" class:on={embedView === 'widget'} onclick={() => embedView = 'widget'}>By widget</button>
         </div>
         {#if (s.tokens ?? 0) === 0}<span class="u-hint">older calls logged $0 tokens — only new traffic prices</span>{/if}
-        <span class="u-hint" style="margin-left:auto">click a session → message history</span>
+        <span class="u-hint" style="margin-left:auto">click a session <Icon name="arrow-right" size={16} /> message history</span>
       </div>
       {#if embedView === 'session'}
         <table class="u-tbl">
@@ -1062,7 +1063,7 @@
         </tbody></table>
       </div>
     </div>
-    <p class="u-hint">Click any row → full drilldown drawer.</p>
+    <p class="u-hint">Click any row <Icon name="arrow-right" size={16} /> full drilldown drawer.</p>
   {/if}
 
   <!-- ============ BILLING ============ -->
@@ -1095,7 +1096,7 @@
   <!-- ============ LIVE ============ -->
   {#if tab === 'live'}
     <div class="u-frow" style="margin-bottom:.75rem">
-      <button class="u-btn ghost" onclick={() => loadTab('live', true)}>↻ refresh</button>
+      <button class="u-btn ghost" onclick={() => loadTab('live', true)}><Icon name="refresh" size={16} /> refresh</button>
       <button class="u-chip" class:on={autoRefresh} onclick={toggleAuto}>{autoRefresh ? '● auto 5s' : '○ auto-refresh'}</button>
     </div>
     {#if live}
@@ -1123,8 +1124,8 @@
   <!-- ============ ANSWER CACHE (P4) ============ -->
   {#if tab === 'cache'}
     <div class="u-frow" style="margin-bottom:.75rem; align-items:center">
-      <button class="u-btn ghost" onclick={() => loadTab('cache', true)}>↻ refresh</button>
-      <button class="u-btn" onclick={runPreview} disabled={curateBusy}>{curateBusy ? 'running…' : '▶ Run curation preview'}</button>
+      <button class="u-btn ghost" onclick={() => loadTab('cache', true)}><Icon name="refresh" size={16} /> refresh</button>
+      <button class="u-btn" onclick={runPreview} disabled={curateBusy}>{curateBusy ? 'running…' : ' Run curation preview'}</button>
       {#if cacheMsg}<span class="u-st">{cacheMsg}</span>{/if}
     </div>
 
@@ -1157,7 +1158,7 @@
             <td>{#each (c.keywords ?? kw(c.representative)) as k}<span class="kwchip">{k}</span>{/each}{#if !((c.keywords ?? kw(c.representative)).length)}<span class="dim">—</span>{/if}</td>
             <td style="text-align:right">
               <button class="u-btn ghost sm" onclick={() => cacheThis(c.representative)} disabled={cacheBusy === c.representative}>
-                {cacheBusy === c.representative ? 'caching…' : 'Cache this →'}
+                {cacheBusy === c.representative ? 'caching…' : 'Cache this &gt;'}
               </button>
             </td>
           </tr>
@@ -1173,7 +1174,7 @@
             <td>{#each (r.keywords ?? kw(r.question)) as k}<span class="kwchip">{k}</span>{/each}{#if !(r.keywords ?? kw(r.question)).length}<span class="dim">—</span>{/if}</td>
             <td class="num">{r.hit_count}</td>
             <td class="mono dim">{(r.source_tables ?? []).join(', ') || '—'}</td>
-            <td>{#if r.schema_fresh}<span class="u-st">✓</span>{:else}<span class="u-st error">⚠ drift</span>{/if}</td>
+            <td>{#if r.schema_fresh}<span class="u-st"><Icon name="check" size={16} /></span>{:else}<span class="u-st error"><Icon name="alert-triangle" size={16} /> drift</span>{/if}</td>
             <td class="dim">{r.promoted_by}</td>
             <td style="text-align:right"><button class="u-btn ghost sm" onclick={() => evictRow(r.id)} disabled={cacheBusy === String(r.id)}>{cacheBusy === String(r.id) ? '…' : 'Evict'}</button></td>
           </tr>
@@ -1186,10 +1187,10 @@
 
   {#if tab === 'querybank'}
     <div class="u-frow" style="margin-bottom:.75rem; align-items:center; flex-wrap:wrap; gap:.4rem">
-      <button class="u-btn ghost" onclick={() => loadTab('querybank', true)}>↻ refresh</button>
-      <button class="u-btn" onclick={() => qbCurate(true)} disabled={qbBusy === 'curate'}>{qbBusy === 'curate' ? 'running…' : '▶ Curate preview'}</button>
+      <button class="u-btn ghost" onclick={() => loadTab('querybank', true)}><Icon name="refresh" size={16} /> refresh</button>
+      <button class="u-btn" onclick={() => qbCurate(true)} disabled={qbBusy === 'curate'}>{qbBusy === 'curate' ? 'running…' : ' Curate preview'}</button>
       <button class="u-btn ghost" onclick={() => qbCurate(false)} disabled={qbBusy === 'curate'}>Apply curation</button>
-      <button class="u-btn ghost" onclick={() => qbGeneralize(true)} disabled={qbBusy === 'gen'}>{qbBusy === 'gen' ? '…' : '✨ Generalize preview'}</button>
+      <button class="u-btn ghost" onclick={() => qbGeneralize(true)} disabled={qbBusy === 'gen'}>{qbBusy === 'gen' ? '…' : ' Generalize preview'}</button>
       {#if qbMsg}<span class="u-st">{qbMsg}</span>{/if}
     </div>
 
@@ -1237,7 +1238,7 @@
         {#if !qbPatterns.length}<tr><td colspan="6" class="u-empty">no {qbFilter || ''} learned queries yet — ask the assistant analytical questions to fill the bank</td></tr>{/if}
       </tbody></table>
     </div>
-    <p class="u-hint">The assistant captures the SQL it writes in live chat (<code>pending</code>). Approve → <code>candidate</code> (used as a hint the agent adapts); Promote → <code>proven</code> (re-served verbatim with fresh numbers, zero LLM). 👎+correction auto-demotes. Curator daemon auto-verifies candidates (default OFF — <code>QUERY_CURATOR_ENABLED=1</code>). Generalize turns a family of similar proven queries into one parameterized template (review-gated).</p>
+    <p class="u-hint">The assistant captures the SQL it writes in live chat (<code>pending</code>). Approve <Icon name="arrow-right" size={16} /> <code>candidate</code> (used as a hint the agent adapts); Promote <Icon name="arrow-right" size={16} /> <code>proven</code> (re-served verbatim with fresh numbers, zero LLM). <Icon name="thumbs-down" size={16} />+correction auto-demotes. Curator daemon auto-verifies candidates (default OFF — <code>QUERY_CURATOR_ENABLED=1</code>). Generalize turns a family of similar proven queries into one parameterized template (review-gated).</p>
   {/if}
 
   </div><!-- /u-main -->
@@ -1307,7 +1308,7 @@
               <div class="u-kpi" class:bad={h.err_pct > 5}><span class="k">ERROR %</span><b>{h.err_pct}%</b></div>
             </div>
             <div class="u-substats" style="margin:0 0 1rem">
-              <span>👍 <b>{h.ups}</b></span><span>👎 <b>{h.downs}</b></span>
+              <span><Icon name="thumbs-up" size={16} /> <b>{h.ups}</b></span><span><Icon name="thumbs-down" size={16} /> <b>{h.downs}</b></span>
               <span>Last active <b>{ago(h.last_active)}</b></span>
               <span>Last login <b>{ago(h.last_login)}</b></span>
               {#if h.created}<span>Joined <b>{shortTs(h.created)}</b></span>{/if}
@@ -1331,8 +1332,8 @@
               {#if !(drawerData.sessions ?? []).length}<tr><td colspan="2" class="u-empty">no sessions in window</td></tr>{/if}
             </tbody></table>
             <div class="u-ctitle" style="margin-top:1rem">Rated questions ({drawerData.questions?.length ?? 0})</div>
-            <table class="u-tbl"><thead><tr><th>when</th><th>question</th><th>👍/👎</th></tr></thead><tbody>
-              {#each drawerData.questions ?? [] as r}<tr><td class="dim">{shortTs(r.ts)}</td><td class="dw-q dim">[Q · {r.q_chars ?? 0} chars]</td><td>{#if r.rating === 'up'}<span class="sat good">👍</span>{:else}<span class="sat bad">👎</span>{/if}</td></tr>{/each}
+            <table class="u-tbl"><thead><tr><th>when</th><th>question</th><th><Icon name="thumbs-up" size={16} />/<Icon name="thumbs-down" size={16} /></th></tr></thead><tbody>
+              {#each drawerData.questions ?? [] as r}<tr><td class="dim">{shortTs(r.ts)}</td><td class="dw-q dim">[Q · {r.q_chars ?? 0} chars]</td><td>{#if r.rating === 'up'}<span class="sat good"><Icon name="thumbs-up" size={16} /></span>{:else}<span class="sat bad"><Icon name="thumbs-down" size={16} /></span>{/if}</td></tr>{/each}
               {#if !(drawerData.questions ?? []).length}<tr><td colspan="3" class="u-empty">no rated questions (only thumbs-rated answers show here)</td></tr>{/if}
             </tbody></table>
           {/if}
@@ -1359,235 +1360,235 @@
 </div>
 
 <style>
-  /* pass the page height down to .u-shell so rail + main scroll independently */
-  .usage { color: #2c2620; font-size: 13px; height: 100%; min-height: 0; display: flex; flex-direction: column; }
-  .usage.embedded { display: block; height: auto; }
-  /* shell = rail + main, admin-Overview layout */
-  /* Admin Clean — matches command-center .cc-rail exactly (flush, flat bg, white-card active) */
-  /* Independent scroll: shell fills the layout <main>; rail + main-pane each scroll on their own */
-  .u-shell { display: flex; align-items: stretch; gap: 0; flex: 1; min-height: 0; overflow: hidden; }
-  .u-rail { flex: none; width: 220px; padding: 0 8px 40px; border-right: 1px solid var(--pw-border, #e8e6dd); background: var(--pw-bg-alt, #f7f6f3); align-self: stretch; overflow-y: auto; overscroll-behavior: contain; }
-  .u-rail::-webkit-scrollbar { width: 6px; }
-  .u-rail::-webkit-scrollbar-thumb { background: var(--pw-border, #e8e6dd); border-radius: 3px; }
-  .u-rail::-webkit-scrollbar-track { background: transparent; }
-  .u-railgrp { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--pw-muted, #6f6e69); padding: 12px 14px 6px; }
-  .u-railitem { position: relative; width: 100%; display: flex; align-items: center; gap: 10px; border: none; background: transparent; cursor: pointer; padding: 8px 12px; border-radius: 8px; font-size: 12px; line-height: 1.3; color: var(--pw-ink, #2c2c2c); text-align: left; transition: background .15s ease, color .15s ease, transform .12s ease; }
-  .u-railitem:hover { background: rgba(201,99,66,.06); color: var(--pw-ink, #2c2c2c); }
-  .u-railitem:active { transform: translateY(.5px); }
-  .u-railitem.on { background: #fff; color: var(--pw-accent, #c96342); font-weight: 600; box-shadow: 0 1px 3px rgba(201,99,66,.08), 0 0 0 1px rgba(201,99,66,.14); }
-  .u-railitem.on::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 3px; height: 60%; border-radius: 3px; background: linear-gradient(180deg, #c96342, var(--pw-accent, #c96342)); }
-  .u-ricon { width: 14px; height: 14px; flex: 0 0 auto; color: var(--pw-muted, #6f6e69); transition: color .15s ease; }
-  .u-railitem.on .u-ricon { color: var(--pw-accent, #c96342); }
-  .u-rlbl { flex: 1; }
-  .u-rdot { width: 7px; height: 7px; border-radius: 50%; background: #2f6b3a; flex: none; box-shadow: 0 0 0 3px rgba(47,107,58,.15); animation: u-pulse 2s ease-in-out infinite; }
-  @keyframes u-pulse { 0%,100% { box-shadow: 0 0 0 3px rgba(47,107,58,.15); } 50% { box-shadow: 0 0 0 5px rgba(47,107,58,.06); } }
-  .u-main { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 1.1rem 1.25rem; }
-  .u-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1rem; }
-  .u-head h1 { margin: 0; font-size: 1.35rem; }
-  .u-sub { margin: .2rem 0 0; font-size: 12px; color: #9a8f80; }
-  .u-livebadge { font-size: 11px; color: #2f6b3a; white-space: nowrap; padding-top: .35rem; }
-  /* KPI tiles (admin Overview big-number style) */
-  .u-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: .75rem; margin-bottom: 1.1rem; }
-  .u-tile { background: #fff; border: 1px solid #ece2d4; border-radius: 12px; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .3rem; }
-  .u-tile b { font-size: 1.85rem; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
-  .u-tile b small { font-size: .9rem; font-weight: 600; color: #9a8f80; }
-  .u-tile span { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: #9a8f80; }
-  .u-tile.bad b { color: #b3261e; }
-  @media (max-width: 900px) { .u-rail { width: 56px; } .u-railgrp, .u-rlbl { display: none; } .u-railitem { justify-content: center; } .u-tiles { grid-template-columns: repeat(2, 1fr); } }
-  .u-filters { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; }
-  .u-frow { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
-  .u-lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #9a8f80; }
-  .u-chip { border: 1px solid #e0d6c8; background: #fff; color: #6b6052; padding: .25rem .6rem; border-radius: 999px; cursor: pointer; font-size: 12px; }
-  .u-chip.on { background: #9a4a2f; border-color: #9a4a2f; color: #fff; }
-  .u-chip.src.on { background: #f3ece1; color: #9a4a2f; border-color: #d8b69a; }
-  .u-date, .u-in, .u-mini { border: 1px solid #e0d6c8; border-radius: 6px; padding: .25rem .45rem; font-size: 12px; background: #fff; color: #2c2620; }
-  .u-in { min-width: 90px; } .u-arrow { color: #9a8f80; }
-  .u-btn { border: 1px solid #9a4a2f; background: #9a4a2f; color: #fff; border-radius: 6px; padding: .25rem .7rem; cursor: pointer; font-size: 12px; }
-  .u-btn.ghost { background: #fff; color: #9a4a2f; } .u-btn.sm { padding: .1rem .5rem; font-size: 11px; float: right; }
-  .u-btn:disabled { opacity: .5; }
-  .u-cards3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: .75rem; }
-  .oc { background: #fff; border: 1px solid #ece2d4; border-radius: 12px; padding: 1rem 1.1rem; display: flex; flex-direction: column; }
-  .oc-head { font-size: 13px; font-weight: 600; color: #6b6052; display: flex; justify-content: space-between; align-items: center; }
-  .oc-delta { font-size: 11px; font-weight: 600; color: #b3261e; } .oc-delta.up { color: #2f6b3a; } .oc-delta.flat { color: #9a8f80; }
-  .oc-total { font-size: 1.9rem; font-weight: 700; margin: .15rem 0 .6rem; letter-spacing: -.02em; }
-  .oc-bars { display: flex; align-items: flex-end; gap: 3px; height: 150px; }
-  .oc-col { flex: 1; min-width: 2px; height: 100%; display: flex; align-items: flex-end; }
-  .oc-stack { width: 100%; display: flex; flex-direction: column-reverse; border-radius: 2px 2px 0 0; overflow: hidden; min-height: 2px; }
-  .oc-seg { width: 100%; min-height: 1px; }
-  .oc-legend { margin-top: .75rem; display: flex; flex-direction: column; gap: .35rem; }
-  .oc-leg { display: flex; align-items: center; gap: .5rem; font-size: 12px; }
-  .oc-leg .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
-  .oc-leg .lbl { color: #2c2620; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .oc-leg .val { margin-left: auto; color: #6b6052; font-variant-numeric: tabular-nums; }
-  .u-substats { display: flex; gap: 1.5rem; font-size: 12px; color: #9a8f80; margin-bottom: 1rem; padding: 0 .2rem; flex-wrap: wrap; }
-  .u-substats b { color: #2c2620; } .u-substats b.bad { color: #b3261e; }
-  .u-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: .75rem; margin-bottom: 1rem; }
-  .u-kpi { background: #faf6f0; border: 1px solid #ece2d4; border-radius: 10px; padding: .75rem .9rem; display: flex; flex-direction: column; gap: .25rem; }
-  .u-kpi .k { font-size: 10px; letter-spacing: .06em; color: #9a8f80; text-transform: uppercase; }
-  .u-kpi b { font-size: 1.4rem; font-weight: 700; } .u-kpi.bad b { color: #b3261e; }
-  .u-card { background: #fff; border: 1px solid #ece2d4; border-radius: 10px; padding: .75rem .9rem; margin-bottom: 1rem; }
-  .u-ctitle { font-size: 12px; font-weight: 600; color: #6b6052; margin-bottom: .5rem; text-transform: uppercase; letter-spacing: .03em; }
-  .u-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-  /* Users & activity: 2 tables stacked top/bottom, each scrolls internally */
-  .u-stack2 { display: flex; flex-direction: column; gap: 1rem; }
-  .u-scroll { max-height: 400px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid #f0e9de; border-radius: 8px; }
-  .u-scroll .u-tbl thead th { position: sticky; top: 0; z-index: 1; background: #fff; box-shadow: 0 1px 0 #ece2d4; }
-  /* Admin-Overview section panels (◷ TITLE + live badge) */
-  .u-sec { border: 1px solid #ece2d4; border-radius: 10px; padding: 1rem 1.1rem; background: #fff; margin-bottom: 1rem; }
-  .u-sech { display: flex; align-items: center; justify-content: space-between; margin-bottom: .9rem; }
-  .u-sect { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; color: #9a4a2f; }
-  .u-sect::before { content: '◷'; margin-right: .4rem; opacity: .8; }
-  .u-secbadge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #9a8f80; font-family: ui-monospace, Menlo, monospace; }
-  .u-sec .u-cards3, .u-sec .u-substats { margin-bottom: 0; }
-  .u-sec .u-substats { margin-top: .75rem; }
-  .u-sec > .u-card:last-child, .u-sec .u-grid2 .u-card, .u-sec .u-stack2 .u-card { margin-bottom: 0; }
-  .u-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
-  .u-tbl th { text-align: left; font-weight: 600; color: #9a8f80; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; padding: .3rem .4rem; border-bottom: 1px solid #ece2d4; }
-  .u-tbl td { padding: .3rem .4rem; border-bottom: 1px solid #f5efe7; }
-  .u-tbl td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .u-tbl td.dim { color: #9a8f80; } .u-tbl td.bad, .u-tbl td:has(+ td) .bad { color: #b3261e; }
-  .u-tbl tr.click { cursor: pointer; } .u-tbl tr.click:hover { background: #faf6f0; }
-  .mono { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
-  .u-empty { color: #b8ad9c; text-align: center; padding: .6rem; }
-  .u-hint { font-size: 11px; color: #9a8f80; }
-  .u-tag { font-size: 10.5px; padding: .1rem .4rem; border-radius: 4px; background: #f3ece1; color: #6b6052; }
-  .u-tag.platform { background: #e7f0e7; color: #2f6b3a; } .u-tag.api_key { background: #f3ece1; color: #9a4a2f; }
-  .u-tag.training { background: #ece7f5; color: #5a3a9a; } .u-tag.embedding { background: #e7eef5; color: #2f5a9a; }
-  .u-tag.embed { background: #f5efe7; color: #8a7a5a; }
-  .u-st { font-size: 10.5px; padding: .05rem .35rem; border-radius: 4px; color: #2f6b3a; }
-  .u-st.error { background: #fbe9e7; color: #b3261e; }
-  .u-err { background: #fbe9e7; color: #b3261e; padding: .5rem .75rem; border-radius: 8px; margin-bottom: .75rem; }
-  .u-load { color: #9a8f80; padding: 1rem; }
-  /* heatmap */
-  .heat { display: flex; flex-direction: column; gap: 2px; overflow-x: auto; }
-  .heat-row { display: flex; gap: 2px; align-items: center; }
-  .heat-lbl { width: 30px; font-size: 10px; color: #9a8f80; flex: none; }
-  .heat-h { flex: 1; min-width: 12px; font-size: 9px; color: #b8ad9c; text-align: center; }
-  .heat-c { flex: 1; min-width: 12px; height: 16px; border-radius: 2px; }
-  /* drawer */
-  .dw-backdrop { position: fixed; inset: 0; background: rgba(31,28,23,.4); z-index: 9998; }
-  .dw { position: fixed; top: 0; right: 0; width: 540px; max-width: 92vw; height: 100vh; background: #fff; border-left: 1px solid #ece2d4; z-index: 9999; box-shadow: -8px 0 28px rgba(0,0,0,.14); overflow-y: auto; }
-  .dw-head { display: flex; justify-content: space-between; align-items: flex-start; padding: 1rem 1.25rem; border-bottom: 1px solid #ece2d4; position: sticky; top: 0; background: #fff; }
-  .dw-type { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: #9a8f80; }
-  .dw-head h2 { margin: .15rem 0 0; font-size: 1rem; }
-  .dw-x { border: none; background: none; font-size: 1.5rem; cursor: pointer; color: #9a8f80; line-height: 1; }
-  .dw-body { padding: 1.25rem; } .dw-kpis { grid-template-columns: repeat(3, 1fr); }
-  /* people leaderboard */
-  .u-tbl th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
-  .u-tbl th.sortable:hover { color: #9a4a2f; }
-  .u-tbl th.numh { text-align: right; }
-  .sarrow { margin-left: 2px; color: #9a4a2f; }
-  .u-ppl td { vertical-align: top; }
-  .ppl-name { font-weight: 600; color: #2c2620; }
-  .ppl-email { font-size: 10.5px; color: #b8ad9c; margin-top: 1px; }
-  .ppl-badge { font-size: 9px; text-transform: uppercase; letter-spacing: .04em; padding: .05rem .3rem; border-radius: 4px; background: #f3ece1; color: #8a7a5a; margin-left: .35rem; vertical-align: middle; }
-  .ppl-badge.svc { background: #e7eef5; color: #2f5a9a; }
-  .ppl-badge.off { background: #fbe9e7; color: #b3261e; }
-  .sat { font-weight: 600; color: #6b6052; } .sat.good { color: #2f6b3a; } .sat.bad { color: #b3261e; }
-  /* person drawer extras */
-  .dw-meta { display: flex; align-items: center; gap: .5rem; font-size: 12px; margin-bottom: 1rem; flex-wrap: wrap; }
-  .dw-meta .ppl-badge { margin-left: 0; }
-  .dw-spark { display: flex; align-items: flex-end; gap: 2px; height: 70px; padding: .25rem 0; }
-  .dw-bar { flex: 1; min-width: 2px; background: linear-gradient(180deg, #c96342, #9a4a2f); border-radius: 2px 2px 0 0; min-height: 2px; opacity: .85; }
-  .dw-q { font-size: 11.5px; color: #2c2620; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* segment toggle (App users / Embed users) */
-  .u-seg { display: inline-flex; border: 1px solid #e0d6c8; border-radius: 8px; overflow: hidden; background: #fff; }
-  .u-segbtn { border: none; background: #fff; color: #6b6052; padding: .4rem .9rem; cursor: pointer; font-size: 12px; font-weight: 600; border-right: 1px solid #e0d6c8; }
-  .u-segbtn:last-child { border-right: none; }
-  .u-segbtn.on { background: #9a4a2f; color: #fff; }
-  .u-seg.sm .u-segbtn { padding: .25rem .65rem; font-size: 11px; }
-  /* embed conversation turns */
-  .emc { border: 1px solid #ece2d4; border-radius: 8px; padding: .6rem .7rem; margin-bottom: .6rem; background: #faf6f0; }
-  .emc-ts { font-size: 10px; color: #9a8f80; margin-bottom: .35rem; }
-  .emc-q { font-size: 12px; color: #2c2620; font-weight: 600; margin-bottom: .3rem; white-space: pre-wrap; }
-  .emc-a { font-size: 11.5px; color: #6b6052; white-space: pre-wrap; }
-  .emc-q.dim, .emc-a.dim { font-weight: 400; color: #b8ad9c; font-style: italic; }
-  /* ── analytics expansion (models / tokens / embeddings / learning) ── */
-  .ua { display: flex; flex-direction: column; gap: 1rem; }
-  .ua-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-  @media (max-width: 820px) { .ua-grid2 { grid-template-columns: 1fr; } }
-  .ua-card { background: #fff; border: 1px solid #ece2d4; border-radius: 10px; padding: .85rem 1rem; }
-  .ua-h { font-size: 13px; font-weight: 700; color: #2c2620; margin-bottom: .6rem; }
-  .ua-sub { font-size: 11px; font-weight: 500; color: #9a8f80; margin-left: .35rem; }
-  .ua-note { font-size: 11px; color: #9a8f80; font-style: italic; }
-  .ua-warn { font-size: 11.5px; color: #8a5a00; background: #fdf3e0; border: 1px solid #f0dcb8; border-radius: 8px; padding: .5rem .7rem; margin-bottom: .6rem; }
-  .ua-warn code { background: #f3ece1; padding: 1px 5px; border-radius: 4px; color: #9a4a2f; }
-  .ua-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: .8rem; }
-  .ua-kpi { background: #faf6f0; border: 1px solid #ece2d4; border-radius: 10px; padding: .75rem .9rem; }
-  .ua-kn { font-size: 1.5rem; font-weight: 800; color: #2c2620; line-height: 1; }
-  .ua-kl { font-size: 10.5px; letter-spacing: .04em; color: #9a8f80; text-transform: uppercase; margin-top: .3rem; }
-  .ua-kpi-accent { border-color: #e3b8a8; background: #fbeee8; } .ua-kpi-accent .ua-kn { color: #c96342; }
-  .ua-kpi-good { border-color: #bfe0c8; background: #eef8f0; } .ua-kpi-good .ua-kn { color: #2d8a4e; }
-  .ua-kpi-bad { border-color: #ecc4bd; background: #fdeeeb; } .ua-kpi-bad .ua-kn { color: #c0392b; }
-  .ua-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
-  .ua-tbl th { text-align: left; font-weight: 600; color: #9a8f80; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; padding: .3rem .45rem; border-bottom: 1px solid #ece2d4; }
-  .ua-tbl th.r, .ua-tbl td.r { text-align: right; font-variant-numeric: tabular-nums; }
-  .ua-tbl td { padding: .35rem .45rem; border-bottom: 1px solid #f5efe7; vertical-align: top; }
-  .ua-tbl .mono { font-family: ui-monospace, monospace; font-size: 11px; }
-  .ua-tbl .nowrap { white-space: nowrap; color: #9a8f80; font-size: 11px; }
-  .ua-text { max-width: 360px; color: #4a4036; }
-  .ua-lo { color: #c0392b; font-weight: 700; }
-  .barcell { width: 90px; } .barcell .bar { display: block; height: 8px; background: #c96342; border-radius: 4px; }
-  .ua-trend { display: flex; flex-direction: column; gap: .15rem; }
-  .ua-trow { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: .6rem; padding: .35rem .4rem; border-bottom: 1px solid #f5efe7; }
-  .ua-tmodel { font-family: ui-monospace, monospace; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ua-tcost { font-variant-numeric: tabular-nums; font-size: 12px; color: #4a4036; }
-  .ua-tnew { font-size: 11px; font-weight: 700; color: #2d8a4e; } .ua-tup { font-size: 11px; font-weight: 700; color: #2d8a4e; }
-  .ua-tdown { font-size: 11px; font-weight: 700; color: #c0392b; } .ua-tflat { color: #b8ab98; }
-  .ua-stack { display: flex; height: 22px; border-radius: 6px; overflow: hidden; background: #f0e9df; }
-  .ua-stack .seg { height: 100%; }
-  .seg.s-prompt { background: #4f86d6; } .seg.s-compl { background: #7c3aed; } .seg.s-reason { background: #e05a4a; }
-  .seg.s-cached { background: #d4930e; } .seg.s-uncached { background: #b8ab98; }
-  .ua-legend { display: flex; gap: 1rem; margin-top: .5rem; font-size: 11px; color: #6b6052; }
-  .ua-legend i.dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
-  i.dot.s-prompt { background: #4f86d6; } i.dot.s-compl { background: #7c3aed; } i.dot.s-reason { background: #e05a4a; }
-  i.dot.s-cached { background: #d4930e; } i.dot.s-uncached { background: #b8ab98; }
-  .ua-disliked { display: flex; flex-direction: column; gap: .55rem; max-height: 420px; overflow-y: auto; }
-  .ua-dcard { border: 1px solid #ecc4bd; background: #fdf6f4; border-radius: 8px; padding: .55rem .7rem; }
-  .ua-dq { font-size: 12.5px; font-weight: 700; color: #2c2620; }
-  .ua-da { font-size: 11.5px; color: #4a4036; margin-top: .25rem; max-height: 60px; overflow: hidden; }
-  .ua-dsql { display: block; font-size: 10.5px; font-family: ui-monospace, monospace; background: #f3ece1; color: #9a4a2f; padding: .3rem .45rem; border-radius: 5px; margin-top: .35rem; white-space: pre-wrap; word-break: break-word; }
-  .ua-dmeta { font-size: 10px; color: #9a8f80; margin-top: .3rem; }
-  .ua-dtags { display: flex; flex-wrap: wrap; gap: .25rem; margin-top: .35rem; }
-  .ua-dtag { font-size: 9.5px; background: #efe2d6; color: #7a5c43; border-radius: 999px; padding: .1rem .5rem; }
-  .ua-dcmt { font-size: 11px; color: #5a4a3a; margin-top: .35rem; }
-  .ua-dcmt b { color: #9a4a2f; }
-  .ua-dcorr { margin-top: .4rem; }
-  .ua-dcorr b { display: block; font-size: 10px; color: #2f7a4a; text-transform: uppercase; letter-spacing: .04em; margin-bottom: .15rem; }
-  .ua-dcorr code { display: block; font-size: 10.5px; font-family: ui-monospace, monospace; background: #eef7f0; color: #2f7a4a; padding: .3rem .45rem; border-radius: 5px; white-space: pre-wrap; word-break: break-word; }
-  .ua-dacts { display: flex; gap: .4rem; margin-top: .5rem; flex-wrap: wrap; }
-  .ua-pbtn { font-size: 11px; font-weight: 600; border-radius: 6px; padding: .3rem .7rem; cursor: pointer; border: 1px solid #d8c8b8; background: #fff; color: #6b5a48; }
-  .ua-pbtn:hover:not(:disabled) { background: #f3ece4; }
-  .ua-pbtn.ok { background: #2f7a4a; border-color: #2f7a4a; color: #fff; }
-  .ua-pbtn.ok:hover:not(:disabled) { background: #266b3f; }
-  .ua-pbtn:disabled { opacity: .55; cursor: default; }
-  .ua-dstat { font-size: 10.5px; font-weight: 600; margin-top: .5rem; }
-  .ua-dstat.ok { color: #2f7a4a; }
-  .ua-dstat.muted { color: #9a8f80; }
-  .ua-fbmsg { font-size: 11px; color: #2f7a4a; background: #eef7f0; border-radius: 6px; padding: .35rem .6rem; margin-bottom: .5rem; }
-  /* privacy: disliked card chips + reveal */
-  .ua-dchips { display: flex; flex-wrap: wrap; gap: .25rem; }
-  .ua-dchars { font-size: 10px; color: #9a8f80; margin-top: .3rem; }
-  .ua-muted { font-size: 10.5px; color: #b3a695; }
-  .ua-reveal { font-size: 10px; font-weight: 600; border: 1px solid #d8c8b8; background: #fff; color: #8a6a52; border-radius: 6px; padding: .12rem .5rem; cursor: pointer; margin-left: .5rem; }
-  .ua-reveal:hover:not(:disabled) { background: #f3ece4; }
-  .ua-reveal:disabled { opacity: .55; cursor: default; }
-  /* keyword analytics */
-  .u-note { font-size: 11.5px; color: #6b5a48; background: #fbf3ef; border: 1px solid #efd9d0; border-radius: 8px; padding: .5rem .75rem; margin-bottom: 1rem; }
-  .kwcloud { display: flex; flex-wrap: wrap; gap: .4rem; align-items: baseline; }
-  .kwtag { background: #f3ece4; color: #5a4a38; border-radius: 999px; padding: .15rem .6rem; line-height: 1.5; }
-  .kwtag b { color: #c2683f; font-weight: 700; }
-  .kwchips { display: flex; flex-wrap: wrap; gap: .25rem; margin-top: .3rem; }
-  .kwchip { font-size: 9.5px; background: #efe2d6; color: #7a5c43; border-radius: 999px; padding: .1rem .45rem; }
-  .kwbar { display: grid; grid-template-columns: 130px 1fr 80px; align-items: center; gap: .5rem; margin: .35rem 0; font-size: 11.5px; }
-  .kwbar-lbl { color: #5a4a38; }
-  .kwbar-track { background: #f0e7dd; border-radius: 999px; height: 10px; overflow: hidden; }
-  .kwbar-fill { background: #c2683f; height: 100%; border-radius: 999px; }
-  .kwbar-val { color: #9a8f80; text-align: right; font-variant-numeric: tabular-nums; }
-  .ua-tbl td.r.up { color: #2f7a4a; font-weight: 700; }
-  .ua-tbl td.r.down { color: #b3603f; }
-  .kwtopics { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .6rem; margin-top: .3rem; }
-  .kwtopic { border: 1px solid #ece2d6; background: #fdfaf6; border-radius: 8px; padding: .5rem .65rem; }
-  .kwtopic-h { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: #4a3c2c; }
-  .kwtopic-n { font-size: 10px; color: #9a8f80; }
+ /* pass the page height down to .u-shell so rail + main scroll independently */
+ .usage { color: #2c2620; font-size: 13px; height: 100%; min-height: 0; display: flex; flex-direction: column; }
+ .usage.embedded { display: block; height: auto; }
+ /* shell = rail + main, admin-Overview layout */
+ /* Admin Clean — matches command-center .cc-rail exactly (flush, flat bg, white-card active) */
+ /* Independent scroll: shell fills the layout <main>; rail + main-pane each scroll on their own */
+ .u-shell { display: flex; align-items: stretch; gap: 0; flex: 1; min-height: 0; overflow: hidden; }
+ .u-rail { flex: none; width: 220px; padding: 0 8px 40px; border-right: 1px solid var(--pw-border, #e8e6dd); background: var(--pw-bg-alt, #f7f6f3); align-self: stretch; overflow-y: auto; overscroll-behavior: contain; }
+ .u-rail::-webkit-scrollbar { width: 6px; }
+ .u-rail::-webkit-scrollbar-thumb { background: var(--pw-border, #e8e6dd); border-radius: 3px; }
+ .u-rail::-webkit-scrollbar-track { background: transparent; }
+ .u-railgrp { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--pw-muted, #6f6e69); padding: 12px 14px 6px; }
+ .u-railitem { position: relative; width: 100%; display: flex; align-items: center; gap: 10px; border: none; background: transparent; cursor: pointer; padding: 8px 12px; border-radius: 8px; font-size: 12px; line-height: 1.3; color: var(--pw-ink, #2c2c2c); text-align: left; transition: background .15s ease, color .15s ease, transform .12s ease; }
+ .u-railitem:hover { background: rgba(201,99,66,.06); color: var(--pw-ink, #2c2c2c); }
+ .u-railitem:active { transform: translateY(.5px); }
+ .u-railitem.on { background: #fff; color: var(--pw-accent, #c96342); font-weight: 600; box-shadow: 0 1px 3px rgba(201,99,66,.08), 0 0 0 1px rgba(201,99,66,.14); }
+ .u-railitem.on::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 3px; height: 60%; border-radius: 3px; background: linear-gradient(180deg, #c96342, var(--pw-accent, #c96342)); }
+ .u-ricon { width: 14px; height: 14px; flex: 0 0 auto; color: var(--pw-muted, #6f6e69); transition: color .15s ease; }
+ .u-railitem.on .u-ricon { color: var(--pw-accent, #c96342); }
+ .u-rlbl { flex: 1; }
+ .u-rdot { width: 7px; height: 7px; border-radius: 50%; background: #2f6b3a; flex: none; box-shadow: 0 0 0 3px rgba(47,107,58,.15); animation: u-pulse 2s ease-in-out infinite; }
+ @keyframes u-pulse { 0%,100% { box-shadow: 0 0 0 3px rgba(47,107,58,.15); } 50% { box-shadow: 0 0 0 5px rgba(47,107,58,.06); } }
+ .u-main { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 1.1rem 1.25rem; }
+ .u-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1rem; }
+ .u-head h1 { margin: 0; font-size: 1.35rem; }
+ .u-sub { margin: .2rem 0 0; font-size: 12px; color: #9a8f80; }
+ .u-livebadge { font-size: 11px; color: #2f6b3a; white-space: nowrap; padding-top: .35rem; }
+ /* KPI tiles (admin Overview big-number style) */
+ .u-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: .75rem; margin-bottom: 1.1rem; }
+ .u-tile { background: #fff; border: 1px solid #ece2d4; border-radius: 12px; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .3rem; }
+ .u-tile b { font-size: 1.85rem; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+ .u-tile b small { font-size: .9rem; font-weight: 600; color: #9a8f80; }
+ .u-tile span { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: #9a8f80; }
+ .u-tile.bad b { color: #b3261e; }
+ @media (max-width: 900px) { .u-rail { width: 56px; } .u-railgrp, .u-rlbl { display: none; } .u-railitem { justify-content: center; } .u-tiles { grid-template-columns: repeat(2, 1fr); } }
+ .u-filters { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; }
+ .u-frow { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+ .u-lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #9a8f80; }
+ .u-chip { border: 1px solid #e0d6c8; background: #fff; color: #6b6052; padding: .25rem .6rem; border-radius: 999px; cursor: pointer; font-size: 12px; }
+ .u-chip.on { background: #9a4a2f; border-color: #9a4a2f; color: #fff; }
+ .u-chip.src.on { background: #f3ece1; color: #9a4a2f; border-color: #d8b69a; }
+ .u-date, .u-in, .u-mini { border: 1px solid #e0d6c8; border-radius: 6px; padding: .25rem .45rem; font-size: 12px; background: #fff; color: #2c2620; }
+ .u-in { min-width: 90px; } .u-arrow { color: #9a8f80; }
+ .u-btn { border: 1px solid #9a4a2f; background: #9a4a2f; color: #fff; border-radius: 6px; padding: .25rem .7rem; cursor: pointer; font-size: 12px; }
+ .u-btn.ghost { background: #fff; color: #9a4a2f; } .u-btn.sm { padding: .1rem .5rem; font-size: 11px; float: right; }
+ .u-btn:disabled { opacity: .5; }
+ .u-cards3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: .75rem; }
+ .oc { background: #fff; border: 1px solid #ece2d4; border-radius: 12px; padding: 1rem 1.1rem; display: flex; flex-direction: column; }
+ .oc-head { font-size: 13px; font-weight: 600; color: #6b6052; display: flex; justify-content: space-between; align-items: center; }
+ .oc-delta { font-size: 11px; font-weight: 600; color: #b3261e; } .oc-delta.up { color: #2f6b3a; } .oc-delta.flat { color: #9a8f80; }
+ .oc-total { font-size: 1.9rem; font-weight: 700; margin: .15rem 0 .6rem; letter-spacing: -.02em; }
+ .oc-bars { display: flex; align-items: flex-end; gap: 3px; height: 150px; }
+ .oc-col { flex: 1; min-width: 2px; height: 100%; display: flex; align-items: flex-end; }
+ .oc-stack { width: 100%; display: flex; flex-direction: column-reverse; border-radius: 2px 2px 0 0; overflow: hidden; min-height: 2px; }
+ .oc-seg { width: 100%; min-height: 1px; }
+ .oc-legend { margin-top: .75rem; display: flex; flex-direction: column; gap: .35rem; }
+ .oc-leg { display: flex; align-items: center; gap: .5rem; font-size: 12px; }
+ .oc-leg .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+ .oc-leg .lbl { color: #2c2620; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ .oc-leg .val { margin-left: auto; color: #6b6052; font-variant-numeric: tabular-nums; }
+ .u-substats { display: flex; gap: 1.5rem; font-size: 12px; color: #9a8f80; margin-bottom: 1rem; padding: 0 .2rem; flex-wrap: wrap; }
+ .u-substats b { color: #2c2620; } .u-substats b.bad { color: #b3261e; }
+ .u-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: .75rem; margin-bottom: 1rem; }
+ .u-kpi { background: #faf6f0; border: 1px solid #ece2d4; border-radius: 10px; padding: .75rem .9rem; display: flex; flex-direction: column; gap: .25rem; }
+ .u-kpi .k { font-size: 10px; letter-spacing: .06em; color: #9a8f80; text-transform: uppercase; }
+ .u-kpi b { font-size: 1.4rem; font-weight: 700; } .u-kpi.bad b { color: #b3261e; }
+ .u-card { background: #fff; border: 1px solid #ece2d4; border-radius: 10px; padding: .75rem .9rem; margin-bottom: 1rem; }
+ .u-ctitle { font-size: 12px; font-weight: 600; color: #6b6052; margin-bottom: .5rem; text-transform: uppercase; letter-spacing: .03em; }
+ .u-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+ /* Users & activity: 2 tables stacked top/bottom, each scrolls internally */
+ .u-stack2 { display: flex; flex-direction: column; gap: 1rem; }
+ .u-scroll { max-height: 400px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid #f0e9de; border-radius: 8px; }
+ .u-scroll .u-tbl thead th { position: sticky; top: 0; z-index: 1; background: #fff; box-shadow: 0 1px 0 #ece2d4; }
+ /* Admin-Overview section panels (◷ TITLE + live badge) */
+ .u-sec { border: 1px solid #ece2d4; border-radius: 10px; padding: 1rem 1.1rem; background: #fff; margin-bottom: 1rem; }
+ .u-sech { display: flex; align-items: center; justify-content: space-between; margin-bottom: .9rem; }
+ .u-sect { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; color: #9a4a2f; }
+ .u-sect::before { content: '◷'; margin-right: .4rem; opacity: .8; }
+ .u-secbadge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #9a8f80; font-family: ui-monospace, Menlo, monospace; }
+ .u-sec .u-cards3, .u-sec .u-substats { margin-bottom: 0; }
+ .u-sec .u-substats { margin-top: .75rem; }
+ .u-sec > .u-card:last-child, .u-sec .u-grid2 .u-card, .u-sec .u-stack2 .u-card { margin-bottom: 0; }
+ .u-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+ .u-tbl th { text-align: left; font-weight: 600; color: #9a8f80; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; padding: .3rem .4rem; border-bottom: 1px solid #ece2d4; }
+ .u-tbl td { padding: .3rem .4rem; border-bottom: 1px solid #f5efe7; }
+ .u-tbl td.num { text-align: right; font-variant-numeric: tabular-nums; }
+ .u-tbl td.dim { color: #9a8f80; } .u-tbl td.bad, .u-tbl td:has(+ td) .bad { color: #b3261e; }
+ .u-tbl tr.click { cursor: pointer; } .u-tbl tr.click:hover { background: #faf6f0; }
+ .mono { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+ .u-empty { color: #b8ad9c; text-align: center; padding: .6rem; }
+ .u-hint { font-size: 11px; color: #9a8f80; }
+ .u-tag { font-size: 10.5px; padding: .1rem .4rem; border-radius: 4px; background: #f3ece1; color: #6b6052; }
+ .u-tag.platform { background: #e7f0e7; color: #2f6b3a; } .u-tag.api_key { background: #f3ece1; color: #9a4a2f; }
+ .u-tag.training { background: #ece7f5; color: #5a3a9a; } .u-tag.embedding { background: #e7eef5; color: #2f5a9a; }
+ .u-tag.embed { background: #f5efe7; color: #8a7a5a; }
+ .u-st { font-size: 10.5px; padding: .05rem .35rem; border-radius: 4px; color: #2f6b3a; }
+ .u-st.error { background: #fbe9e7; color: #b3261e; }
+ .u-err { background: #fbe9e7; color: #b3261e; padding: .5rem .75rem; border-radius: 8px; margin-bottom: .75rem; }
+ .u-load { color: #9a8f80; padding: 1rem; }
+ /* heatmap */
+ .heat { display: flex; flex-direction: column; gap: 2px; overflow-x: auto; }
+ .heat-row { display: flex; gap: 2px; align-items: center; }
+ .heat-lbl { width: 30px; font-size: 10px; color: #9a8f80; flex: none; }
+ .heat-h { flex: 1; min-width: 12px; font-size: 9px; color: #b8ad9c; text-align: center; }
+ .heat-c { flex: 1; min-width: 12px; height: 16px; border-radius: 2px; }
+ /* drawer */
+ .dw-backdrop { position: fixed; inset: 0; background: rgba(31,28,23,.4); z-index: 9998; }
+ .dw { position: fixed; top: 0; right: 0; width: 540px; max-width: 92vw; height: 100vh; background: #fff; border-left: 1px solid #ece2d4; z-index: 9999; box-shadow: -8px 0 28px rgba(0,0,0,.14); overflow-y: auto; }
+ .dw-head { display: flex; justify-content: space-between; align-items: flex-start; padding: 1rem 1.25rem; border-bottom: 1px solid #ece2d4; position: sticky; top: 0; background: #fff; }
+ .dw-type { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: #9a8f80; }
+ .dw-head h2 { margin: .15rem 0 0; font-size: 1rem; }
+ .dw-x { border: none; background: none; font-size: 1.5rem; cursor: pointer; color: #9a8f80; line-height: 1; }
+ .dw-body { padding: 1.25rem; } .dw-kpis { grid-template-columns: repeat(3, 1fr); }
+ /* people leaderboard */
+ .u-tbl th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+ .u-tbl th.sortable:hover { color: #9a4a2f; }
+ .u-tbl th.numh { text-align: right; }
+ .sarrow { margin-left: 2px; color: #9a4a2f; }
+ .u-ppl td { vertical-align: top; }
+ .ppl-name { font-weight: 600; color: #2c2620; }
+ .ppl-email { font-size: 10.5px; color: #b8ad9c; margin-top: 1px; }
+ .ppl-badge { font-size: 9px; text-transform: uppercase; letter-spacing: .04em; padding: .05rem .3rem; border-radius: 4px; background: #f3ece1; color: #8a7a5a; margin-left: .35rem; vertical-align: middle; }
+ .ppl-badge.svc { background: #e7eef5; color: #2f5a9a; }
+ .ppl-badge.off { background: #fbe9e7; color: #b3261e; }
+ .sat { font-weight: 600; color: #6b6052; } .sat.good { color: #2f6b3a; } .sat.bad { color: #b3261e; }
+ /* person drawer extras */
+ .dw-meta { display: flex; align-items: center; gap: .5rem; font-size: 12px; margin-bottom: 1rem; flex-wrap: wrap; }
+ .dw-meta .ppl-badge { margin-left: 0; }
+ .dw-spark { display: flex; align-items: flex-end; gap: 2px; height: 70px; padding: .25rem 0; }
+ .dw-bar { flex: 1; min-width: 2px; background: linear-gradient(180deg, #c96342, #9a4a2f); border-radius: 2px 2px 0 0; min-height: 2px; opacity: .85; }
+ .dw-q { font-size: 11.5px; color: #2c2620; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ /* segment toggle (App users / Embed users) */
+ .u-seg { display: inline-flex; border: 1px solid #e0d6c8; border-radius: 8px; overflow: hidden; background: #fff; }
+ .u-segbtn { border: none; background: #fff; color: #6b6052; padding: .4rem .9rem; cursor: pointer; font-size: 12px; font-weight: 600; border-right: 1px solid #e0d6c8; }
+ .u-segbtn:last-child { border-right: none; }
+ .u-segbtn.on { background: #9a4a2f; color: #fff; }
+ .u-seg.sm .u-segbtn { padding: .25rem .65rem; font-size: 11px; }
+ /* embed conversation turns */
+ .emc { border: 1px solid #ece2d4; border-radius: 8px; padding: .6rem .7rem; margin-bottom: .6rem; background: #faf6f0; }
+ .emc-ts { font-size: 10px; color: #9a8f80; margin-bottom: .35rem; }
+ .emc-q { font-size: 12px; color: #2c2620; font-weight: 600; margin-bottom: .3rem; white-space: pre-wrap; }
+ .emc-a { font-size: 11.5px; color: #6b6052; white-space: pre-wrap; }
+ .emc-q.dim, .emc-a.dim { font-weight: 400; color: #b8ad9c; font-style: italic; }
+ /* ── analytics expansion (models / tokens / embeddings / learning) ── */
+ .ua { display: flex; flex-direction: column; gap: 1rem; }
+ .ua-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+ @media (max-width: 820px) { .ua-grid2 { grid-template-columns: 1fr; } }
+ .ua-card { background: #fff; border: 1px solid #ece2d4; border-radius: 10px; padding: .85rem 1rem; }
+ .ua-h { font-size: 13px; font-weight: 700; color: #2c2620; margin-bottom: .6rem; }
+ .ua-sub { font-size: 11px; font-weight: 500; color: #9a8f80; margin-left: .35rem; }
+ .ua-note { font-size: 11px; color: #9a8f80; font-style: italic; }
+ .ua-warn { font-size: 11.5px; color: #8a5a00; background: #fdf3e0; border: 1px solid #f0dcb8; border-radius: 8px; padding: .5rem .7rem; margin-bottom: .6rem; }
+ .ua-warn code { background: #f3ece1; padding: 1px 5px; border-radius: 4px; color: #9a4a2f; }
+ .ua-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: .8rem; }
+ .ua-kpi { background: #faf6f0; border: 1px solid #ece2d4; border-radius: 10px; padding: .75rem .9rem; }
+ .ua-kn { font-size: 1.5rem; font-weight: 800; color: #2c2620; line-height: 1; }
+ .ua-kl { font-size: 10.5px; letter-spacing: .04em; color: #9a8f80; text-transform: uppercase; margin-top: .3rem; }
+ .ua-kpi-accent { border-color: #e3b8a8; background: #fbeee8; } .ua-kpi-accent .ua-kn { color: #c96342; }
+ .ua-kpi-good { border-color: #bfe0c8; background: #eef8f0; } .ua-kpi-good .ua-kn { color: #2d8a4e; }
+ .ua-kpi-bad { border-color: #ecc4bd; background: #fdeeeb; } .ua-kpi-bad .ua-kn { color: #c0392b; }
+ .ua-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+ .ua-tbl th { text-align: left; font-weight: 600; color: #9a8f80; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; padding: .3rem .45rem; border-bottom: 1px solid #ece2d4; }
+ .ua-tbl th.r, .ua-tbl td.r { text-align: right; font-variant-numeric: tabular-nums; }
+ .ua-tbl td { padding: .35rem .45rem; border-bottom: 1px solid #f5efe7; vertical-align: top; }
+ .ua-tbl .mono { font-family: ui-monospace, monospace; font-size: 11px; }
+ .ua-tbl .nowrap { white-space: nowrap; color: #9a8f80; font-size: 11px; }
+ .ua-text { max-width: 360px; color: #4a4036; }
+ .ua-lo { color: #c0392b; font-weight: 700; }
+ .barcell { width: 90px; } .barcell .bar { display: block; height: 8px; background: #c96342; border-radius: 4px; }
+ .ua-trend { display: flex; flex-direction: column; gap: .15rem; }
+ .ua-trow { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: .6rem; padding: .35rem .4rem; border-bottom: 1px solid #f5efe7; }
+ .ua-tmodel { font-family: ui-monospace, monospace; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ .ua-tcost { font-variant-numeric: tabular-nums; font-size: 12px; color: #4a4036; }
+ .ua-tnew { font-size: 11px; font-weight: 700; color: #2d8a4e; } .ua-tup { font-size: 11px; font-weight: 700; color: #2d8a4e; }
+ .ua-tdown { font-size: 11px; font-weight: 700; color: #c0392b; } .ua-tflat { color: #b8ab98; }
+ .ua-stack { display: flex; height: 22px; border-radius: 6px; overflow: hidden; background: #f0e9df; }
+ .ua-stack .seg { height: 100%; }
+ .seg.s-prompt { background: #4f86d6; } .seg.s-compl { background: #7c3aed; } .seg.s-reason { background: #e05a4a; }
+ .seg.s-cached { background: #d4930e; } .seg.s-uncached { background: #b8ab98; }
+ .ua-legend { display: flex; gap: 1rem; margin-top: .5rem; font-size: 11px; color: #6b6052; }
+ .ua-legend i.dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+ i.dot.s-prompt { background: #4f86d6; } i.dot.s-compl { background: #7c3aed; } i.dot.s-reason { background: #e05a4a; }
+ i.dot.s-cached { background: #d4930e; } i.dot.s-uncached { background: #b8ab98; }
+ .ua-disliked { display: flex; flex-direction: column; gap: .55rem; max-height: 420px; overflow-y: auto; }
+ .ua-dcard { border: 1px solid #ecc4bd; background: #fdf6f4; border-radius: 8px; padding: .55rem .7rem; }
+ .ua-dq { font-size: 12.5px; font-weight: 700; color: #2c2620; }
+ .ua-da { font-size: 11.5px; color: #4a4036; margin-top: .25rem; max-height: 60px; overflow: hidden; }
+ .ua-dsql { display: block; font-size: 10.5px; font-family: ui-monospace, monospace; background: #f3ece1; color: #9a4a2f; padding: .3rem .45rem; border-radius: 5px; margin-top: .35rem; white-space: pre-wrap; word-break: break-word; }
+ .ua-dmeta { font-size: 10px; color: #9a8f80; margin-top: .3rem; }
+ .ua-dtags { display: flex; flex-wrap: wrap; gap: .25rem; margin-top: .35rem; }
+ .ua-dtag { font-size: 9.5px; background: #efe2d6; color: #7a5c43; border-radius: 999px; padding: .1rem .5rem; }
+ .ua-dcmt { font-size: 11px; color: #5a4a3a; margin-top: .35rem; }
+ .ua-dcmt b { color: #9a4a2f; }
+ .ua-dcorr { margin-top: .4rem; }
+ .ua-dcorr b { display: block; font-size: 10px; color: #2f7a4a; text-transform: uppercase; letter-spacing: .04em; margin-bottom: .15rem; }
+ .ua-dcorr code { display: block; font-size: 10.5px; font-family: ui-monospace, monospace; background: #eef7f0; color: #2f7a4a; padding: .3rem .45rem; border-radius: 5px; white-space: pre-wrap; word-break: break-word; }
+ .ua-dacts { display: flex; gap: .4rem; margin-top: .5rem; flex-wrap: wrap; }
+ .ua-pbtn { font-size: 11px; font-weight: 600; border-radius: 6px; padding: .3rem .7rem; cursor: pointer; border: 1px solid #d8c8b8; background: #fff; color: #6b5a48; }
+ .ua-pbtn:hover:not(:disabled) { background: #f3ece4; }
+ .ua-pbtn.ok { background: #2f7a4a; border-color: #2f7a4a; color: #fff; }
+ .ua-pbtn.ok:hover:not(:disabled) { background: #266b3f; }
+ .ua-pbtn:disabled { opacity: .55; cursor: default; }
+ .ua-dstat { font-size: 10.5px; font-weight: 600; margin-top: .5rem; }
+ .ua-dstat.ok { color: #2f7a4a; }
+ .ua-dstat.muted { color: #9a8f80; }
+ .ua-fbmsg { font-size: 11px; color: #2f7a4a; background: #eef7f0; border-radius: 6px; padding: .35rem .6rem; margin-bottom: .5rem; }
+ /* privacy: disliked card chips + reveal */
+ .ua-dchips { display: flex; flex-wrap: wrap; gap: .25rem; }
+ .ua-dchars { font-size: 10px; color: #9a8f80; margin-top: .3rem; }
+ .ua-muted { font-size: 10.5px; color: #b3a695; }
+ .ua-reveal { font-size: 10px; font-weight: 600; border: 1px solid #d8c8b8; background: #fff; color: #8a6a52; border-radius: 6px; padding: .12rem .5rem; cursor: pointer; margin-left: .5rem; }
+ .ua-reveal:hover:not(:disabled) { background: #f3ece4; }
+ .ua-reveal:disabled { opacity: .55; cursor: default; }
+ /* keyword analytics */
+ .u-note { font-size: 11.5px; color: #6b5a48; background: #fbf3ef; border: 1px solid #efd9d0; border-radius: 8px; padding: .5rem .75rem; margin-bottom: 1rem; }
+ .kwcloud { display: flex; flex-wrap: wrap; gap: .4rem; align-items: baseline; }
+ .kwtag { background: #f3ece4; color: #5a4a38; border-radius: 999px; padding: .15rem .6rem; line-height: 1.5; }
+ .kwtag b { color: #c2683f; font-weight: 700; }
+ .kwchips { display: flex; flex-wrap: wrap; gap: .25rem; margin-top: .3rem; }
+ .kwchip { font-size: 9.5px; background: #efe2d6; color: #7a5c43; border-radius: 999px; padding: .1rem .45rem; }
+ .kwbar { display: grid; grid-template-columns: 130px 1fr 80px; align-items: center; gap: .5rem; margin: .35rem 0; font-size: 11.5px; }
+ .kwbar-lbl { color: #5a4a38; }
+ .kwbar-track { background: #f0e7dd; border-radius: 999px; height: 10px; overflow: hidden; }
+ .kwbar-fill { background: #c2683f; height: 100%; border-radius: 999px; }
+ .kwbar-val { color: #9a8f80; text-align: right; font-variant-numeric: tabular-nums; }
+ .ua-tbl td.r.up { color: #2f7a4a; font-weight: 700; }
+ .ua-tbl td.r.down { color: #b3603f; }
+ .kwtopics { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .6rem; margin-top: .3rem; }
+ .kwtopic { border: 1px solid #ece2d6; background: #fdfaf6; border-radius: 8px; padding: .5rem .65rem; }
+ .kwtopic-h { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: #4a3c2c; }
+ .kwtopic-n { font-size: 10px; color: #9a8f80; }
 </style>

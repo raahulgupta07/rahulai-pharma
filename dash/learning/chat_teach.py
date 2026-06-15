@@ -5,13 +5,13 @@ When a user message carries an explicit TEACH / CORRECTION intent ("remember:",
 fact from it and store it as a ``status='pending'`` memory in
 ``public.dash_memories`` — the SAME review queue the distiller daemon and OKF
 import use (the Intern Rule). It does NOT reach chat until an admin approves it
-in Agent Brain → Memories. This retires the manual OKF-import step for everyday,
+in Agent Brain > Memories. This retires the manual OKF-import step for everyday,
 one-off facts: the user just says "remember X" in chat.
 
 REACTIVE by design — normal questions store NOTHING. The ``wants_to_teach`` gate
 is a zero-cost regex that fires on explicit teaching INTENT only, so the LLM
 extraction (the only cost) runs on a tiny fraction of turns. Mirrors the proven
-distiller pattern (small LLM extract → pending memory) in [dash.learning.distiller].
+distiller pattern (small LLM extract > pending memory) in [dash.learning.distiller].
 """
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ def wants_to_teach(message: str) -> bool:
 
 
 def _extract(message: str) -> str | None:
-    """LLM → one durable fact, or None. Fail-soft (no key / over budget → None)."""
+    """LLM > one durable fact, or None. Fail-soft (no key / over budget > None)."""
     try:
         from dash.settings import training_llm_call
         out = training_llm_call(_EXTRACT_PROMPT.format(msg=message[:600]), task="extraction")
@@ -61,7 +61,7 @@ def _extract(message: str) -> str | None:
         if not fact or fact.upper().startswith("NONE") or len(fact) < 8:
             return None
         return fact[:300]
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         log.debug(f"chat_teach extract failed: {e}")
         return None
 
@@ -122,6 +122,6 @@ def maybe_learn(
             return {"id": mid, "fact": fact}
         finally:
             c.close()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         log.warning(f"chat_teach maybe_learn failed for {slug}: {e}")
         return None

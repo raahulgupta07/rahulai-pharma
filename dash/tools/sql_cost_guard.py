@@ -11,7 +11,7 @@ plan-cost estimate.
 Design rules:
 - ONLY EXPLAIN read statements (SELECT / WITH). Non-read statements skip the
   guard entirely (return ok=True).
-- FAIL-OPEN: any error during EXPLAIN / parsing → ok=True. We never block
+- FAIL-OPEN: any error during EXPLAIN / parsing > ok=True. We never block
   legitimate work because the guard itself broke.
 - Thresholds configurable via env: SQL_COST_MAX, SQL_ROWS_MAX.
 """
@@ -171,7 +171,7 @@ def estimate_query_cost(engine, sql: str) -> dict:
             )
         return result
 
-    except Exception as e:  # noqa: BLE001 — fail-open on ANY guard failure
+    except Exception as e: # noqa: BLE001 — fail-open on ANY guard failure
         logger.debug("SQL cost guard EXPLAIN failed (fail-open): %s", e)
         result["ok"] = True
         result["reason"] = f"guard skipped (EXPLAIN error: {str(e)[:120]})"
@@ -181,7 +181,7 @@ def estimate_query_cost(engine, sql: str) -> dict:
 def guard_or_note(engine, sql: str) -> str | None:
     """Return None if the query is fine to run, else a short human warning.
 
-    Fail-soft: any internal error → None (allow query).
+    Fail-soft: any internal error > None (allow query).
     """
     try:
         est = estimate_query_cost(engine, sql)
@@ -193,6 +193,6 @@ def guard_or_note(engine, sql: str) -> str | None:
             f"Query estimated to scan ~{rows:,} rows / cost {cost:,.0f} — "
             "refine with filters/LIMIT before running."
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: # noqa: BLE001
         logger.debug("guard_or_note failed (fail-soft): %s", e)
         return None

@@ -11,12 +11,12 @@ Why:
 
 Pattern:
   !`SELECT COUNT(*) FROM dash_table_metadata WHERE project_slug='${PROJECT_SLUG}'`
-  → executes at skill-load time
-  → returns scalar result (or "[empty]" / "[error]")
-  → substituted into prompt before LLM sees it
+  > executes at skill-load time
+  > returns scalar result (or "[empty]" / "[error]")
+  > substituted into prompt before LLM sees it
 
 Variables (always substituted first):
-  ${PROJECT_SLUG}  ${SESSION_ID}  ${USER_ID}  ${DATE}  ${UTC_DATE}
+  ${PROJECT_SLUG} ${SESSION_ID} ${USER_ID} ${DATE} ${UTC_DATE}
 
 Safety:
   - SELECT-only via dash.tools.sql_validator.validate_and_fix(strict=True)
@@ -25,10 +25,10 @@ Safety:
   - 256-char output cap per substitution
   - 30-second total preprocessing budget (no runaway)
   - 5-minute cache keyed by (project_slug, template_hash)
-  - Fail-soft: any error → "[error]" placeholder, never raises
+  - Fail-soft: any error > "[error]" placeholder, never raises
 
 Env:
-  SKILL_PREPROCESS_DISABLED=1   → bypass entirely (returns input unchanged)
+  SKILL_PREPROCESS_DISABLED=1 > bypass entirely (returns input unchanged)
 """
 from __future__ import annotations
 
@@ -51,10 +51,10 @@ _TEMPLATE_VAR_RE = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)\}")
 _MAX_OUTPUT_CHARS = 256
 _PER_QUERY_TIMEOUT_S = 2.0
 _TOTAL_BUDGET_S = 30.0
-_CACHE_TTL_S = 300.0  # 5 min
+_CACHE_TTL_S = 300.0 # 5 min
 _DISABLED = os.getenv("SKILL_PREPROCESS_DISABLED", "0") == "1"
 
-# (project_slug, sha256(template)) → (expires_at, processed_text)
+# (project_slug, sha256(template)) > (expires_at, processed_text)
 _cache: dict[tuple[str, str], tuple[float, str]] = {}
 _cache_order: list[tuple[str, str]] = []
 _cache_lock = threading.Lock()
@@ -136,7 +136,7 @@ def preprocess(
     if _DISABLED or not text or not isinstance(text, str):
         return text
 
-    # Fast path: no template syntax → return as-is, no cache write.
+    # Fast path: no template syntax > return as-is, no cache write.
     if "${" not in text and "!`" not in text:
         return text
 
@@ -155,7 +155,7 @@ def preprocess(
 
     def _var_sub(m: re.Match) -> str:
         key = m.group(1)
-        return ctx.get(key, m.group(0))  # leave unrecognized vars alone
+        return ctx.get(key, m.group(0)) # leave unrecognized vars alone
 
     try:
         text = _TEMPLATE_VAR_RE.sub(_var_sub, text)

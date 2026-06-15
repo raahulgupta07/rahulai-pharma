@@ -55,14 +55,14 @@ def classify_poignancy(turn: Dict[str, Any]) -> int:
     """Rule-based 1-10 score per turn. Cheap, sync, no LLM.
 
     Signals (additive):
-      +3  user said thanks/perfect/exactly/great
-      +5  user said no/wrong/not right/incorrect
-      +2  judge_score >= 4
-      +4  judge_score <= 2
-      +6  same question 2nd time in same session
-      +3  tool error encountered
-      +2  auto-correction triggered
-      +1  new entity in KG triples
+      +3 user said thanks/perfect/exactly/great
+      +5 user said no/wrong/not right/incorrect
+      +2 judge_score >= 4
+      +4 judge_score <= 2
+      +6 same question 2nd time in same session
+      +3 tool error encountered
+      +2 auto-correction triggered
+      +1 new entity in KG triples
       base 1 default
     Cap at 10.
     """
@@ -357,7 +357,7 @@ def session_poignancy_sum(session_id: str) -> int:
 def register_post_chat_hook(chat_result: Dict[str, Any]) -> Optional[int]:
     """Take a chat result dict and capture a turn.
 
-    Expected keys (any subset; missing → defaults):
+    Expected keys (any subset; missing > defaults):
       session_id, turn_id, project_slug, user_id, question,
       response, response_summary, tools_used, succeeded,
       judge_score, user_reaction

@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 
 # Supply Chain Sentry — Sprint 3. Graceful skip when backend not deployed.
 try:
-    from dash.tools.supply_tools import summarize_supply_for_memo  # type: ignore
+    from dash.tools.supply_tools import summarize_supply_for_memo # type: ignore
 except Exception:
-    summarize_supply_for_memo = None  # type: ignore
+    summarize_supply_for_memo = None # type: ignore
 
 
 # ---------- helpers ----------
@@ -103,7 +103,7 @@ def _verdict_color_hex(v: Optional[str]) -> str:
     v = (v or "hold").lower()
     if v == "go": return "#2c7a3f"
     if v == "pass": return "#c0392b"
-    return "#c96342"  # hold / coral
+    return "#c96342" # hold / coral
 
 
 def _render_sensitivity_heatmap(scenarios: list[dict]) -> bytes:
@@ -463,7 +463,7 @@ def generate_pdf(deal_id: str) -> bytes:
         if alt:
             story.append(Spacer(1, 4))
             story.append(Paragraph(
-                f"<b>Alt supplier rec:</b> {alt.get('sku', '—')} → "
+                f"<b>Alt supplier rec:</b> {alt.get('sku', '—')} > "
                 f"<b>{alt.get('name', '—')}</b> "
                 f"(switch {_fmt_money(alt.get('switching_cost_usd'))}, "
                 f"lead Δ {alt.get('lead_time_delta_days', '—')}d)",
@@ -536,7 +536,7 @@ def generate_pptx(deal_id: str) -> bytes:
         tf.word_wrap = True
         p = tf.paragraphs[0]
         if align == "center": p.alignment = PP_ALIGN.CENTER
-        if align == "right":  p.alignment = PP_ALIGN.RIGHT
+        if align == "right": p.alignment = PP_ALIGN.RIGHT
         run = p.add_run()
         run.text = str(text)
         run.font.size = Pt(size)
@@ -708,7 +708,7 @@ def generate_pptx(deal_id: str) -> bytes:
         conf = assumptions.get("confidence")
         meta_line = f"Method: {meth}"
         if conf is not None:
-            meta_line += f"  ·  Confidence: {conf:.2f}"
+            meta_line += f" · Confidence: {conf:.2f}"
         _add_text(s, meta_line, Inches(0.6), Inches(2.8), Inches(12),
                   Inches(0.4), size=12, color=MUTED)
         # Top competitors.
@@ -722,7 +722,7 @@ def generate_pptx(deal_id: str) -> bytes:
                 sp = c.get("share_pct")
                 share_str = f"{sp:.1f}%" if sp is not None else "—"
                 geo = c.get("geography") or "—"
-                comp_lines.append(f"• {name}  —  {share_str}  ({geo})")
+                comp_lines.append(f"• {name} — {share_str} ({geo})")
             comp_text = "\n".join(comp_lines)
             _add_text(s, comp_text, Inches(0.6), Inches(3.85), Inches(12),
                       Inches(2), size=16, color=INK)
@@ -781,9 +781,9 @@ def generate_pptx(deal_id: str) -> bytes:
         alt = ssum2.get("key_alt_rec")
         if alt:
             alt_text = (
-                f"Alt rec: {alt.get('sku', '—')} → "
-                f"{alt.get('name', '—')}  |  "
-                f"switch ${alt.get('switching_cost_usd', 0):,.0f}  ·  "
+                f"Alt rec: {alt.get('sku', '—')} > "
+                f"{alt.get('name', '—')} | "
+                f"switch ${alt.get('switching_cost_usd', 0):,.0f} · "
                 f"lead Δ {alt.get('lead_time_delta_days', '—')}d"
             )
             _add_text(s, alt_text, Inches(0.6), Inches(6.4), Inches(12),

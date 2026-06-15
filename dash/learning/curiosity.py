@@ -37,9 +37,9 @@ log = logging.getLogger(__name__)
 def _default_engine() -> Engine | None:
     """Return a NullPool engine pointing at the dash DB, or None on failure."""
     try:
-        from db import db_url  # type: ignore
+        from db import db_url # type: ignore
         return create_engine(db_url, poolclass=NullPool)
-    except Exception as exc:  # pragma: no cover - import-time env issues
+    except Exception as exc: # pragma: no cover - import-time env issues
         log.warning("CuriosityEngine: could not build default engine: %s", exc)
         return None
 
@@ -48,7 +48,7 @@ def _default_engine() -> Engine | None:
 
 def _default_llm_call(prompt: str, task: str = "deep_analysis") -> str | None:
     try:
-        from dash.settings import training_llm_call  # type: ignore
+        from dash.settings import training_llm_call # type: ignore
         return training_llm_call(prompt, task=task)
     except Exception as exc:
         log.warning("CuriosityEngine: training_llm_call unavailable: %s", exc)
@@ -58,7 +58,7 @@ def _default_llm_call(prompt: str, task: str = "deep_analysis") -> str | None:
 # ── Tuple typing helper ─────────────────────────────────────────────────────
 # Each source method returns list[tuple[question, topic, reason, priority, domain]]
 from typing import Optional, Tuple
-QTuple = Tuple[str, str, str, int, Optional[str]]  # 3.9 compat
+QTuple = Tuple[str, str, str, int, Optional[str]] # 3.9 compat
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -92,7 +92,7 @@ class CuriosityEngine:
     ) -> None:
         self.project_slug = project_slug
         self.source_id = source_id
-        self.llm_call_fn = llm_call_fn  # may be None — _topic_gaps will skip
+        self.llm_call_fn = llm_call_fn # may be None — _topic_gaps will skip
         self.engine: Engine | None = dash_engine if dash_engine is not None else _default_engine()
 
     # ── Public API ──────────────────────────────────────────────────────────
@@ -105,16 +105,16 @@ class CuriosityEngine:
         domain, cycle_num, status, project_slug, source_id, metadata.
         """
         sources: list[tuple[str, Callable[[], list[QTuple]]]] = [
-            ("kg_holes",         self._from_kg_holes),
-            ("drift",            self._from_drift),
-            ("failed_qa",        self._from_failed_qa),
-            ("thumbs_down",      self._from_thumbs_down),
-            ("anomalies",        self._from_anomalies),
+            ("kg_holes", self._from_kg_holes),
+            ("drift", self._from_drift),
+            ("failed_qa", self._from_failed_qa),
+            ("thumbs_down", self._from_thumbs_down),
+            ("anomalies", self._from_anomalies),
             ("underused_tables", self._from_underused_tables),
-            ("topic_gaps",       self._from_topic_gaps),
-            ("cross_source",     self._from_cross_source),
-            ("user_request",     self._from_user_request),
-            ("cycle_followup",   self._from_cycle_followup),
+            ("topic_gaps", self._from_topic_gaps),
+            ("cross_source", self._from_cross_source),
+            ("user_request", self._from_user_request),
+            ("cycle_followup", self._from_cycle_followup),
         ]
 
         bucket: list[dict] = []
@@ -205,7 +205,7 @@ class CuriosityEngine:
         return out
 
     def _from_drift(self) -> list[QTuple]:
-        """Recent drift alerts → why did distribution change?"""
+        """Recent drift alerts > why did distribution change?"""
         if self.engine is None or not self.project_slug:
             return []
         sql = """
@@ -313,7 +313,7 @@ class CuriosityEngine:
             return []
         out: list[QTuple] = []
         try:
-            from dash.context.semantic_model import load_semantic_model  # type: ignore
+            from dash.context.semantic_model import load_semantic_model # type: ignore
             sm = load_semantic_model(self.project_slug) or {}
             tables = list((sm.get("tables") or {}).keys()) if isinstance(sm, dict) else []
         except Exception:
@@ -402,11 +402,11 @@ class CuriosityEngine:
                 rows = conn.execute(text(
                     "SELECT t.table_name FROM public.dash_table_metadata t "
                     "WHERE t.project_slug = :s "
-                    "  AND NOT EXISTS ("
-                    "    SELECT 1 FROM public.dash_query_patterns q "
-                    "    WHERE q.project_slug = :s "
-                    "      AND q.sql ILIKE '%' || t.table_name || '%' "
-                    "  ) "
+                    " AND NOT EXISTS ("
+                    " SELECT 1 FROM public.dash_query_patterns q "
+                    " WHERE q.project_slug = :s "
+                    " AND q.sql ILIKE '%' || t.table_name || '%' "
+                    " ) "
                     "LIMIT 3"
                 ), {"s": self.project_slug}).fetchall()
             for r in rows:
@@ -423,7 +423,7 @@ class CuriosityEngine:
                 rows = conn.execute(text(
                     "SELECT description FROM public.dash_proactive_insights "
                     "WHERE project_slug = :s "
-                    "  AND created_at > NOW() - INTERVAL '7 days' "
+                    " AND created_at > NOW() - INTERVAL '7 days' "
                     "ORDER BY created_at DESC LIMIT 3"
                 ), {"s": self.project_slug}).fetchall()
             for r in rows:
@@ -440,11 +440,11 @@ class CuriosityEngine:
             with self.engine.connect() as conn:
                 rows = conn.execute(text(
                     "WITH ent AS ("
-                    "  SELECT subject AS e FROM public.dash_knowledge_triples "
-                    "  WHERE project_slug = :s "
-                    "  UNION ALL "
-                    "  SELECT object AS e FROM public.dash_knowledge_triples "
-                    "  WHERE project_slug = :s "
+                    " SELECT subject AS e FROM public.dash_knowledge_triples "
+                    " WHERE project_slug = :s "
+                    " UNION ALL "
+                    " SELECT object AS e FROM public.dash_knowledge_triples "
+                    " WHERE project_slug = :s "
                     ") SELECT e, COUNT(*) AS c FROM ent "
                     "GROUP BY e HAVING COUNT(*) = 1 "
                     "ORDER BY e LIMIT 3"
@@ -465,7 +465,7 @@ class CuriosityEngine:
                     "SELECT DISTINCT regexp_matches(question, '\\b[A-Z][a-zA-Z]{4,}\\b', 'g') AS m "
                     "FROM public.dash_feedback "
                     "WHERE project_slug = :s "
-                    "  AND created_at > NOW() - INTERVAL '14 days' "
+                    " AND created_at > NOW() - INTERVAL '14 days' "
                     "LIMIT 5"
                 ), {"s": self.project_slug}).fetchall()
             terms = set()
@@ -491,7 +491,7 @@ class CuriosityEngine:
                     "SELECT table_name, column_name "
                     "FROM public.dash_annotations "
                     "WHERE project_slug = :s "
-                    "  AND annotation ILIKE '%dimension%' "
+                    " AND annotation ILIKE '%dimension%' "
                     "ORDER BY column_name LIMIT 3"
                 ), {"s": self.project_slug}).fetchall()
             for r in rows:
@@ -510,7 +510,7 @@ class CuriosityEngine:
                     "SELECT DISTINCT table_name "
                     "FROM public.dash_annotations "
                     "WHERE project_slug = :s "
-                    "  AND (column_name ILIKE '%date%' OR column_name ILIKE '%_at%') "
+                    " AND (column_name ILIKE '%date%' OR column_name ILIKE '%_at%') "
                     "LIMIT 2"
                 ), {"s": self.project_slug}).fetchall()
             for r in rows:
@@ -552,11 +552,11 @@ class CuriosityEngine:
                     "SELECT DISTINCT from_table, to_table "
                     "FROM public.dash_relationships "
                     "WHERE project_slug = :s "
-                    "  AND COALESCE(confidence, 0) < 0.7 "
+                    " AND COALESCE(confidence, 0) < 0.7 "
                     "LIMIT 2"
                 ), {"s": self.project_slug}).fetchall()
             for r in rows:
-                out.append(f"unverified join: {r[0]} ↔ {r[1]}")
+                out.append(f"unverified join: {r[0]} <> {r[1]}")
         except Exception:
             pass
         return out
@@ -571,8 +571,8 @@ class CuriosityEngine:
                 rows = conn.execute(text(
                     "SELECT fact FROM public.dash_memories "
                     "WHERE project_slug = :s "
-                    "  AND COALESCE(confidence_score, 0.5) < 0.4 "
-                    "  AND (archived IS NULL OR archived = FALSE) "
+                    " AND COALESCE(confidence_score, 0.5) < 0.4 "
+                    " AND (archived IS NULL OR archived = FALSE) "
                     "ORDER BY confidence_score ASC LIMIT 2"
                 ), {"s": self.project_slug}).fetchall()
             for r in rows:
@@ -592,7 +592,7 @@ class CuriosityEngine:
                 rows = conn.execute(text(
                     "SELECT question FROM public.dash_evals "
                     "WHERE project_slug = :s "
-                    "  AND UPPER(status) = 'FAIL' "
+                    " AND UPPER(status) = 'FAIL' "
                     "ORDER BY id DESC LIMIT 2"
                 ), {"s": self.project_slug}).fetchall()
             for r in rows:
@@ -606,7 +606,7 @@ class CuriosityEngine:
         """For each gap topic, ask LLM to generate N candidate questions.
         Score each by clarity + specificity + testability. Keep best 1-2.
 
-        Single batched LLM call (not 3 separate calls) → cost-efficient.
+        Single batched LLM call (not 3 separate calls) > cost-efficient.
         """
         if not self.llm_call_fn or not gaps:
             return []
@@ -666,7 +666,7 @@ Output format:
                 spec = int(v.get("specificity", 0) or 0)
                 test_ = int(v.get("testability", 0) or 0)
                 nov = int(v.get("novelty", 0) or 0)
-                total = spec + test_ + nov  # 0-9
+                total = spec + test_ + nov # 0-9
                 scored.append((total, v))
             scored.sort(key=lambda x: x[0], reverse=True)
             if not scored:

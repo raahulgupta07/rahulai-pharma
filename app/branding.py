@@ -88,10 +88,10 @@ def _read_active_tenant() -> str:
             ).fetchone()
         if row and row[0]:
             return str(row[0]).strip()
-    except Exception as e:  # table may not exist on first boot
+    except Exception as e: # table may not exist on first boot
         logger.debug(f"active tenant read failed: {e}")
     if LEGACY_BRANDING_DIR:
-        # Map legacy path → folder name
+        # Map legacy path > folder name
         return Path(LEGACY_BRANDING_DIR).name or DEFAULT_TENANT
     return DEFAULT_TENANT
 
@@ -301,7 +301,7 @@ _ALLOWED_UPLOAD_MIME = {
     "logo": {"image/svg+xml"},
     "favicon": {"image/x-icon", "image/vnd.microsoft.icon", "image/png"},
 }
-_MAX_UPLOAD_BYTES = 500 * 1024  # 500KB
+_MAX_UPLOAD_BYTES = 500 * 1024 # 500KB
 
 
 def _atomic_write(path: Path, data: bytes) -> None:
@@ -341,7 +341,7 @@ def create_tenant(body: CreateTenantBody, request: Request):
         # fall back to DEFAULT_TENANT silently when clone_from omitted; error if explicit
         if body.clone_from:
             raise HTTPException(404, f"clone_from tenant not found: {source_slug}")
-        source_dir = None  # type: ignore[assignment]
+        source_dir = None # type: ignore[assignment]
 
     dest.mkdir(parents=True, exist_ok=False)
 

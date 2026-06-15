@@ -9,10 +9,10 @@ Pipeline (Reciprocal-Rank-Fusion of two retrievers):
   (a) embed the query (existing OpenRouter cascade, dim 1536),
   (b) vector top-30 from dash.dash_vectors (namespace='catalog') by cosine,
   (c) keyword top-30 (tsv plainto_tsquery, ILIKE fallback),
-  (d) RRF fuse (score = Σ 1/(k+rank), k=60) → top `limit`.
+  (d) RRF fuse (score = Σ 1/(k+rank), k=60) > top `limit`.
 
-Fail-soft: if embedding fails → keyword-only. If the catalog namespace is empty
-(vectors not built yet) → pure ILIKE on the LIVE catalog table, so the tool still
+Fail-soft: if embedding fails > keyword-only. If the catalog namespace is empty
+(vectors not built yet) > pure ILIKE on the LIVE catalog table, so the tool still
 answers. Catalog is global — NO store scoping here.
 
 Own read-only direct connection to cp-db (service 'dash-db'). Disable with
@@ -51,7 +51,7 @@ def _conn():
 
 def _embed_query(query: str):
     """Embed the query via the existing async cascade. Returns a pgvector literal
-    string, or None on any failure (→ keyword-only fallback)."""
+    string, or None on any failure (> keyword-only fallback)."""
     try:
         from dash.tools.embeddings_helper import embed_batch, vec_to_pg
         # The tool runs inside team.run on a worker thread with NO running loop,
@@ -133,7 +133,7 @@ def catalog_search(query: str, limit: int = 12) -> dict:
                 (PROJECT, NAMESPACE))
             n_vec = int((cur.fetchone() or [0])[0] or 0)
             if n_vec == 0:
-                # Vectors not built yet → pure ILIKE on the live catalog table.
+                # Vectors not built yet > pure ILIKE on the live catalog table.
                 return _ilike_catalog_fallback(cur, query, limit)
 
             # ── (a) embed ────────────────────────────────────────────────────

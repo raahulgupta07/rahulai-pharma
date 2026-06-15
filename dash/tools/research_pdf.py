@@ -3,7 +3,7 @@
 Renders a full research report via reportlab. Returns PDF bytes via BytesIO.
 
 Layout:
-    Cover  — title / question / date / project
+    Cover — title / question / date / project
     TOC
     §1 Scope + entities
     §2 Hypothesis tree (indented)
@@ -38,7 +38,7 @@ try:
         TableStyle,
     )
     _REPORTLAB_OK = True
-except Exception as _exc:  # pragma: no cover
+except Exception as _exc: # pragma: no cover
     logger.warning("reportlab unavailable: %s — research PDF will fall back to text", _exc)
     _REPORTLAB_OK = False
 
@@ -101,10 +101,10 @@ def _styles():
 
 
 _CONF_COLORS = {
-    "high":   colors.HexColor("#16A34A"),
+    "high": colors.HexColor("#16A34A"),
     "medium": colors.HexColor("#A06000"),
-    "med":    colors.HexColor("#A06000"),
-    "low":    colors.HexColor("#C0392B"),
+    "med": colors.HexColor("#A06000"),
+    "low": colors.HexColor("#C0392B"),
 }
 
 
@@ -126,7 +126,7 @@ def _data_table(rows: List[Dict[str, Any]], columns: Optional[List[str]] = None,
         columns = list(rows[0].keys()) if isinstance(rows[0], dict) else []
     if not columns:
         return None
-    cols = columns[:6]  # cap col count to fit page
+    cols = columns[:6] # cap col count to fit page
     header = [_safe_str(c, 30) for c in cols]
     data = [header]
     for r in rows[:max_rows]:
@@ -289,8 +289,8 @@ def _render_pdf(spec: Dict[str, Any]) -> bytes:
     story.append(Paragraph("6. Methodology + SQL appendix", styles["h1"]))
     story.append(Paragraph(
         "This report is produced by a 9-stage DeepResearch pipeline: "
-        "scope → hypothesis tree → plan SQL → parallel exec → evidence "
-        "ranking → synthesis → cross-check → recommendation → render.",
+        "scope > hypothesis tree > plan SQL > parallel exec > evidence "
+        "ranking > synthesis > cross-check > recommendation > render.",
         styles["body"],
     ))
     sqls = spec.get("sql_appendix") or []
@@ -335,31 +335,31 @@ def _render_text_fallback(spec: Dict[str, Any]) -> bytes:
     scope = spec.get("scope") or {}
     if isinstance(scope, dict):
         for k, v in scope.items():
-            lines.append(f"  {k}: {v}")
+            lines.append(f" {k}: {v}")
     else:
-        lines.append(f"  {scope}")
+        lines.append(f" {scope}")
     lines.append("")
 
     lines.append("2. HYPOTHESIS TREE")
     lines.append("-" * 40)
     for i, n in enumerate(spec.get("hypothesis_tree") or [], 1):
         if isinstance(n, dict):
-            lines.append(f"  H{i}. {n.get('hypothesis', '')}")
+            lines.append(f" H{i}. {n.get('hypothesis', '')}")
             for sq in (n.get("sub_questions") or [])[:6]:
-                lines.append(f"     - {sq}")
+                lines.append(f" - {sq}")
     lines.append("")
 
     lines.append("3. FINDINGS")
     lines.append("-" * 40)
     for i, f in enumerate(spec.get("findings") or [], 1):
         if isinstance(f, dict):
-            lines.append(f"  Finding {i}: {f.get('hypothesis', '')}")
-            lines.append(f"    {f.get('finding') or f.get('text', '')}")
+            lines.append(f" Finding {i}: {f.get('hypothesis', '')}")
+            lines.append(f" {f.get('finding') or f.get('text', '')}")
             rows = f.get("rows") or []
             if rows:
-                lines.append(f"    [{len(rows)} rows, first 10 shown]")
+                lines.append(f" [{len(rows)} rows, first 10 shown]")
                 for r in rows[:10]:
-                    lines.append(f"      {r}")
+                    lines.append(f" {r}")
     lines.append("")
 
     lines.append("4. CROSS-CHECK")
@@ -367,7 +367,7 @@ def _render_text_fallback(spec: Dict[str, Any]) -> bytes:
     cc = spec.get("cross_check") or {}
     if isinstance(cc, dict):
         for k, v in cc.items():
-            lines.append(f"  {k}: {v}")
+            lines.append(f" {k}: {v}")
     lines.append("")
 
     lines.append("5. RECOMMENDATIONS")
@@ -375,19 +375,19 @@ def _render_text_fallback(spec: Dict[str, Any]) -> bytes:
     for i, r in enumerate(spec.get("recommendations") or [], 1):
         if isinstance(r, dict):
             conf = (r.get("confidence") or "").upper()
-            lines.append(f"  {i}. [{conf}] {r.get('action', '')}")
+            lines.append(f" {i}. [{conf}] {r.get('action', '')}")
             if r.get("rationale"):
-                lines.append(f"      {r['rationale']}")
+                lines.append(f" {r['rationale']}")
         else:
-            lines.append(f"  {i}. {r}")
+            lines.append(f" {i}. {r}")
     lines.append("")
 
     lines.append("6. METHODOLOGY + SQL APPENDIX")
     lines.append("-" * 40)
     for i, item in enumerate(spec.get("sql_appendix") or [], 1):
         if isinstance(item, dict):
-            lines.append(f"  Q{i}. {item.get('question', '')}")
+            lines.append(f" Q{i}. {item.get('question', '')}")
             sql_text = item.get("sql") or ""
             for sline in str(sql_text).splitlines():
-                lines.append(f"      {sline}")
+                lines.append(f" {sline}")
     return ("\n".join(lines) + "\n").encode("utf-8")

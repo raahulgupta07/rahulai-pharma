@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte';
+ import Icon from '$lib/Icon.svelte';
  import { onMount, onDestroy, tick } from 'svelte';
  import { goto } from '$app/navigation';
  import { generateSessionId, markdownToHtml, parseMarkdownTables, tableToCsv, hasNumericData, detectChartType, getAvailableTypes, parseChartHint } from '$lib';
@@ -468,7 +468,7 @@ import { parseClarify } from '$lib/chat/tag-parsers';
  }
  const last = _lastAssistant();
  if (a === 'copy' && last) {
- try { await navigator.clipboard.writeText(last.content || ''); _flash('ok', '✓ Copied'); }
+ try { await navigator.clipboard.writeText(last.content || ''); _flash('ok', 'OK Copied'); }
  catch { _flash('err', 'Copy failed'); }
  return;
  }
@@ -514,11 +514,11 @@ import { parseClarify } from '$lib/chat/tag-parsers';
  if (!msg || isStreaming) return;
  let forcedReasoning = '';
  if (msg.startsWith('/deep ')) {
-  forcedReasoning = 'deep';
-  msg = msg.slice(6).trim();
+ forcedReasoning = 'deep';
+ msg = msg.slice(6).trim();
  } else if (msg.startsWith('/quick ')) {
-  forcedReasoning = 'quick';
-  msg = msg.slice(7).trim();
+ forcedReasoning = 'quick';
+ msg = msg.slice(7).trim();
  }
  if (!msg) return;
  inputText = '';
@@ -604,152 +604,152 @@ import { parseClarify } from '$lib/chat/tag-parsers';
  return;
  }
 
-   const onToken = (token: string) => {
-    const last = messages[messages.length - 1];
-    if (last?.role === 'assistant') {
-     messages = [...messages.slice(0, -1), { ...last, content: last.content + token }];
-    }
-    scrollToBottom();
-   };
+ const onToken = (token: string) => {
+ const last = messages[messages.length - 1];
+ if (last?.role === 'assistant') {
+ messages = [...messages.slice(0, -1), { ...last, content: last.content + token }];
+ }
+ scrollToBottom();
+ };
 
-   // Global super-chat routes through the SAME api.ts sendMessage transport
-   // the project page uses (no slug -> /api/super-chat). Single parser keeps
-   // trace/usage/tool handling identical across both chat surfaces.
-   await sendMessage(
-    msg, sessionId,
-    onToken,
-    () => {
-     const last = messages[messages.length - 1];
-     if (last?.role === 'assistant') {
-      const finalizedTools = (last.toolCalls || []).map(t => t.status === 'running' ? { ...t, status: 'done' as const } : t);
-      const finalizedTrace = (Array.isArray(last.trace) ? last.trace : []).map((t) => (t.kind === 'tool' && t.status === 'run') ? { ...t, status: 'done' as const } : t);
-      messages = [...messages.slice(0, -1), {
-       ...last, timestamp: getTimestamp(), status: 'done',
-       toolCalls: finalizedTools,
-       trace: finalizedTrace, traceLive: false, traceDoneAt: Date.now(),
-       suggestions: [], workflowExpanded: false
-      }];
-     }
-     isStreaming = false;
-     scrollToBottom();
-     textareaEl?.focus();
-     loadSessions();
+ // Global super-chat routes through the SAME api.ts sendMessage transport
+ // the project page uses (no slug -> /api/super-chat). Single parser keeps
+ // trace/usage/tool handling identical across both chat surfaces.
+ await sendMessage(
+ msg, sessionId,
+ onToken,
+ () => {
+ const last = messages[messages.length - 1];
+ if (last?.role === 'assistant') {
+ const finalizedTools = (last.toolCalls || []).map(t => t.status === 'running' ? { ...t, status: 'done' as const } : t);
+ const finalizedTrace = (Array.isArray(last.trace) ? last.trace : []).map((t) => (t.kind === 'tool' && t.status === 'run') ? { ...t, status: 'done' as const } : t);
+ messages = [...messages.slice(0, -1), {
+ ...last, timestamp: getTimestamp(), status: 'done',
+ toolCalls: finalizedTools,
+ trace: finalizedTrace, traceLive: false, traceDoneAt: Date.now(),
+ suggestions: [], workflowExpanded: false
+ }];
+ }
+ isStreaming = false;
+ scrollToBottom();
+ textareaEl?.focus();
+ loadSessions();
 
-     const routedSlug = messages[messages.length - 1]?.routing?.slug || (selectedMode !== 'auto' ? selectedMode : projects[0]?.slug);
-     const lastUserMsg = msg;
-     const lastAssistantMsg = messages[messages.length - 1]?.content || '';
-     if (routedSlug && lastUserMsg && lastAssistantMsg) {
-      fetch(`/api/projects/${routedSlug}/extract-context`, {
-       method: 'POST', headers: { ..._headers(), 'Content-Type': 'application/json' },
-       body: JSON.stringify({ question: lastUserMsg, answer: lastAssistantMsg, session_id: sessionId })
-      }).then(r => r.json()).then(d => {
-       const cur = messages[messages.length - 1];
-       if (!cur || cur.role !== 'assistant') return;
-       const autoSaved = d.auto_saved_with_scores || d.auto_saved?.map((f: string) => ({fact: f, score: 90})) || [];
-       const needsApproval = d.facts_with_scores || d.facts?.map((f: string) => ({fact: f, score: 40})) || [];
-       if (autoSaved.length > 0 || needsApproval.length > 0) {
-        messages = [...messages.slice(0, -1), {
-         ...cur,
-         proposedLearnings: needsApproval.length > 0 ? d.facts : undefined,
-         proposedLearningsWithScores: needsApproval.length > 0 ? needsApproval : undefined,
-         autoSavedLearnings: autoSaved.length > 0 ? d.auto_saved : undefined,
-         autoSavedWithScores: autoSaved.length > 0 ? autoSaved : undefined,
-        }];
-       }
-      }).catch(() => {});
+ const routedSlug = messages[messages.length - 1]?.routing?.slug || (selectedMode !== 'auto' ? selectedMode : projects[0]?.slug);
+ const lastUserMsg = msg;
+ const lastAssistantMsg = messages[messages.length - 1]?.content || '';
+ if (routedSlug && lastUserMsg && lastAssistantMsg) {
+ fetch(`/api/projects/${routedSlug}/extract-context`, {
+ method: 'POST', headers: { ..._headers(), 'Content-Type': 'application/json' },
+ body: JSON.stringify({ question: lastUserMsg, answer: lastAssistantMsg, session_id: sessionId })
+ }).then(r => r.json()).then(d => {
+ const cur = messages[messages.length - 1];
+ if (!cur || cur.role !== 'assistant') return;
+ const autoSaved = d.auto_saved_with_scores || d.auto_saved?.map((f: string) => ({fact: f, score: 90})) || [];
+ const needsApproval = d.facts_with_scores || d.facts?.map((f: string) => ({fact: f, score: 40})) || [];
+ if (autoSaved.length > 0 || needsApproval.length > 0) {
+ messages = [...messages.slice(0, -1), {
+ ...cur,
+ proposedLearnings: needsApproval.length > 0 ? d.facts : undefined,
+ proposedLearningsWithScores: needsApproval.length > 0 ? needsApproval : undefined,
+ autoSavedLearnings: autoSaved.length > 0 ? d.auto_saved : undefined,
+ autoSavedWithScores: autoSaved.length > 0 ? autoSaved : undefined,
+ }];
+ }
+ }).catch(() => {});
 
-      setTimeout(async () => {
-       try {
-        const res = await fetch(`/api/projects/${routedSlug}/scores/latest?session_id=${sessionId}`, { headers: _headers() });
-        if (res.ok) {
-         const d = await res.json();
-         if (d.score) {
-          const cur = messages[messages.length - 1];
-          if (cur?.role === 'assistant') {
-           messages = [...messages.slice(0, -1), { ...cur, qualityScore: d.score }];
-          }
-         }
-        }
-       } catch {}
-      }, 5000);
-     }
-    },
-    (error) => {
-     const last = messages[messages.length - 1];
-     if (last?.role === 'assistant') {
-      const errTrace = (Array.isArray(last.trace) ? last.trace : []).map((t) => (t.kind === 'tool' && t.status === 'run') ? { ...t, status: 'done' as const } : t);
-      messages = [...messages.slice(0, -1), { ...last, content: `Error: ${error}`, timestamp: getTimestamp(), status: 'error', trace: errTrace, traceLive: false, traceDoneAt: Date.now() }];
-     }
-     isStreaming = false;
-     scrollToBottom();
-    },
-    (tool: ToolCall) => {
-     const last = messages[messages.length - 1];
-     if (last?.role === 'assistant') {
-      const existing = last.toolCalls || [];
-      const isAgentDoneMarker = tool.status === 'done' && tool.agentName && tool.name === `${tool.agentName} agent`;
-      const idx = existing.findIndex(t =>
-       t.name === tool.name &&
-       (t.agentName || '') === (tool.agentName || '') &&
-       t.status === 'running'
-      );
-      let updated: ToolCall[];
-      if (idx >= 0 && tool.status === 'done') {
-       updated = [...existing];
-       updated[idx] = { ...updated[idx], status: 'done', duration: tool.duration, sqlQuery: tool.sqlQuery || updated[idx].sqlQuery };
-      } else if (tool.status === 'running') {
-       updated = [...existing, tool];
-      } else if (tool.status === 'done') {
-       updated = [...existing, tool];
-      } else {
-       updated = existing;
-      }
-      if (isAgentDoneMarker) {
-       updated = updated.map(t =>
-        t.agentName === tool.agentName && t.status === 'running'
-         ? { ...t, status: 'done' as const }
-         : t
-       );
-      }
-      const sqls = last.sqlQueries || [];
-      if (tool.sqlQuery && !sqls.includes(tool.sqlQuery)) sqls.push(tool.sqlQuery);
-      messages = [...messages.slice(0, -1), { ...last, toolCalls: updated, sqlQueries: sqls }];
-     }
-     scrollToBottom();
-    },
-    undefined,
-    forcedReasoning || '',
-    '',
-    abortController.signal,
-    (item: TraceItem) => {
-     const last = messages[messages.length - 1];
-     if (!last || last.role !== 'assistant') return;
-     const prev = Array.isArray(last.trace) ? last.trace : [];
-     let next: TraceItem[];
-     if (item.kind === 'tool') {
-      const idx = prev.findIndex((t) => t.kind === 'tool' && t.id === item.id);
-      if (idx >= 0) { next = [...prev]; next[idx] = { ...next[idx], ...item }; }
-      else { next = [...prev, item]; }
-     } else {
-      next = [...prev, item];
-     }
-     messages = [...messages.slice(0, -1), { ...last, trace: next }];
-    },
-    (u: { input_tokens: number; output_tokens: number; model?: string }) => {
-     const last = messages[messages.length - 1];
-     if (!last || last.role !== 'assistant') return;
-     const cur = (last as any).usage || { input_tokens: 0, output_tokens: 0 };
-     const merged = { input_tokens: (cur.input_tokens || 0) + (u.input_tokens || 0), output_tokens: (cur.output_tokens || 0) + (u.output_tokens || 0), model: u.model || cur.model };
-     messages = [...messages.slice(0, -1), { ...last, usage: merged }];
-    },
-    selectedMode,
-    (r: unknown) => {
-     const last = messages[messages.length - 1];
-     if (last?.role === 'assistant') {
-      messages = [...messages.slice(0, -1), { ...last, routing: r as RoutingInfo }];
-     }
-    }
-   );
+ setTimeout(async () => {
+ try {
+ const res = await fetch(`/api/projects/${routedSlug}/scores/latest?session_id=${sessionId}`, { headers: _headers() });
+ if (res.ok) {
+ const d = await res.json();
+ if (d.score) {
+ const cur = messages[messages.length - 1];
+ if (cur?.role === 'assistant') {
+ messages = [...messages.slice(0, -1), { ...cur, qualityScore: d.score }];
+ }
+ }
+ }
+ } catch {}
+ }, 5000);
+ }
+ },
+ (error) => {
+ const last = messages[messages.length - 1];
+ if (last?.role === 'assistant') {
+ const errTrace = (Array.isArray(last.trace) ? last.trace : []).map((t) => (t.kind === 'tool' && t.status === 'run') ? { ...t, status: 'done' as const } : t);
+ messages = [...messages.slice(0, -1), { ...last, content: `Error: ${error}`, timestamp: getTimestamp(), status: 'error', trace: errTrace, traceLive: false, traceDoneAt: Date.now() }];
+ }
+ isStreaming = false;
+ scrollToBottom();
+ },
+ (tool: ToolCall) => {
+ const last = messages[messages.length - 1];
+ if (last?.role === 'assistant') {
+ const existing = last.toolCalls || [];
+ const isAgentDoneMarker = tool.status === 'done' && tool.agentName && tool.name === `${tool.agentName} agent`;
+ const idx = existing.findIndex(t =>
+ t.name === tool.name &&
+ (t.agentName || '') === (tool.agentName || '') &&
+ t.status === 'running'
+ );
+ let updated: ToolCall[];
+ if (idx >= 0 && tool.status === 'done') {
+ updated = [...existing];
+ updated[idx] = { ...updated[idx], status: 'done', duration: tool.duration, sqlQuery: tool.sqlQuery || updated[idx].sqlQuery };
+ } else if (tool.status === 'running') {
+ updated = [...existing, tool];
+ } else if (tool.status === 'done') {
+ updated = [...existing, tool];
+ } else {
+ updated = existing;
+ }
+ if (isAgentDoneMarker) {
+ updated = updated.map(t =>
+ t.agentName === tool.agentName && t.status === 'running'
+ ? { ...t, status: 'done' as const }
+ : t
+ );
+ }
+ const sqls = last.sqlQueries || [];
+ if (tool.sqlQuery && !sqls.includes(tool.sqlQuery)) sqls.push(tool.sqlQuery);
+ messages = [...messages.slice(0, -1), { ...last, toolCalls: updated, sqlQueries: sqls }];
+ }
+ scrollToBottom();
+ },
+ undefined,
+ forcedReasoning || '',
+ '',
+ abortController.signal,
+ (item: TraceItem) => {
+ const last = messages[messages.length - 1];
+ if (!last || last.role !== 'assistant') return;
+ const prev = Array.isArray(last.trace) ? last.trace : [];
+ let next: TraceItem[];
+ if (item.kind === 'tool') {
+ const idx = prev.findIndex((t) => t.kind === 'tool' && t.id === item.id);
+ if (idx >= 0) { next = [...prev]; next[idx] = { ...next[idx], ...item }; }
+ else { next = [...prev, item]; }
+ } else {
+ next = [...prev, item];
+ }
+ messages = [...messages.slice(0, -1), { ...last, trace: next }];
+ },
+ (u: { input_tokens: number; output_tokens: number; model?: string }) => {
+ const last = messages[messages.length - 1];
+ if (!last || last.role !== 'assistant') return;
+ const cur = (last as any).usage || { input_tokens: 0, output_tokens: 0 };
+ const merged = { input_tokens: (cur.input_tokens || 0) + (u.input_tokens || 0), output_tokens: (cur.output_tokens || 0) + (u.output_tokens || 0), model: u.model || cur.model };
+ messages = [...messages.slice(0, -1), { ...last, usage: merged }];
+ },
+ selectedMode,
+ (r: unknown) => {
+ const last = messages[messages.length - 1];
+ if (last?.role === 'assistant') {
+ messages = [...messages.slice(0, -1), { ...last, routing: r as RoutingInfo }];
+ }
+ }
+ );
  } catch (err) {
  const last = messages[messages.length - 1];
  if (last?.role === 'assistant') {
@@ -947,16 +947,16 @@ import { parseClarify } from '$lib/chat/tag-parsers';
  }
 
  function openDashboardGenerator() {
-   // Dash Agent (/chat) is cross-project — Deep Dash 9-stage needs a specific
-   // project_slug for schema RAG. Route to last-routed project's chat and let
-   // user click D there (full artifact panel + SSE 9-stage stream).
-   const routedSlug = messages.find(m => m.routing?.slug)?.routing?.slug
-     || (selectedMode !== 'auto' ? selectedMode : projects[0]?.slug);
-   if (routedSlug) {
-     goto(`/ui/project/${routedSlug}?build_dash=1`);
-   } else {
-     goto('/ui/dashboard');
-   }
+ // Dash Agent (/chat) is cross-project — Deep Dash 9-stage needs a specific
+ // project_slug for schema RAG. Route to last-routed project's chat and let
+ // user click D there (full artifact panel + SSE 9-stage stream).
+ const routedSlug = messages.find(m => m.routing?.slug)?.routing?.slug
+ || (selectedMode !== 'auto' ? selectedMode : projects[0]?.slug);
+ if (routedSlug) {
+ goto(`/ui/project/${routedSlug}?build_dash=1`);
+ } else {
+ goto('/ui/dashboard');
+ }
  }
 
  async function generateSlides() {
@@ -1452,7 +1452,7 @@ import { parseClarify } from '$lib/chat/tag-parsers';
                         font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
                         color: var(--pw-ink, #1a1614);
                       "
-                    >📌 Define/Fix metric</button>
+                    ><Icon name="pin" size={16} /> Define/Fix metric</button>
                   </div>
                 {/if}
               {/if}
@@ -1570,7 +1570,7 @@ import { parseClarify } from '$lib/chat/tag-parsers';
             {#if chatMode === 'my_agent'}
               <div class="mode-selector" style="position: relative;">
                 <button onclick={() => { closeOtherDropdowns('fanout'); fanoutDropdownOpen = !fanoutDropdownOpen; }} disabled={isStreaming} title="Fan out across projects">
-                  ⇉ {fanoutLabel(fanout)} <span class="caret">▾</span>
+                  <Icon name="arrow-right" size={16} /> {fanoutLabel(fanout)} <span class="caret">▾</span>
                 </button>
                 {#if fanoutDropdownOpen}
                   <div class="mode-dropdown" style="min-width: 200px; right: 0; left: auto;">
@@ -1667,7 +1667,7 @@ import { parseClarify } from '$lib/chat/tag-parsers';
 {#if scheduleToast}
   <div style="position: fixed; bottom: 20px; right: 20px; z-index: 240; background: var(--pw-ink); color: var(--pw-bg); padding: 10px 14px; border-radius: var(--pw-radius-sm); box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 12px; display: flex; gap: 10px; align-items: center;">
     <span>Saved as workflow #{scheduleToast.wfId}</span>
-    <a href="{base}/ui/agent-os/workflows" style="color: var(--pw-accent-soft, #f0c4b0); text-decoration: underline; font-weight: 700;">View →</a>
+    <a href="{base}/ui/agent-os/workflows" style="color: var(--pw-accent-soft, #f0c4b0); text-decoration: underline; font-weight: 700;">View <Icon name="arrow-right" size={16} /></a>
   </div>
 {/if}
 

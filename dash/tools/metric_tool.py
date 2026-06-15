@@ -4,7 +4,7 @@ Metric Tool
 Generic agent tool for DB-backed, per-project configurable metrics.
 Mirrors the crm_metrics.create_crm_metric_tool pattern:
   - fetches VERIFIED definitions from the DB at build time for the description
-  - at call time: load_definition → run_metric → return JSON
+  - at call time: load_definition > run_metric > return JSON
 
 The tool instructs the agent: "AUTHORITATIVE metric calculator.
 For any of the listed business metrics ALWAYS call this; do NOT write your
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 def _coerce(o):
-    """JSON default — Decimal → float."""
+    """JSON default — Decimal > float."""
     import decimal
     if isinstance(o, decimal.Decimal):
         return float(o)
@@ -54,12 +54,12 @@ def create_metric_tool(project_slug: str):
 
     if verified:
         _metric_lines = "\n".join(
-            f"      • {d['name']}: {d.get('description') or d.get('kind','?')}"
+            f" • {d['name']}: {d.get('description') or d.get('kind','?')}"
             for d in verified
         )
         _name_list = [d["name"] for d in verified]
     else:
-        _metric_lines = "      (no verified metrics yet — add definitions via the Metrics UI)"
+        _metric_lines = " (no verified metrics yet — add definitions via the Metrics UI)"
         _name_list = []
 
     _desc = (
@@ -67,10 +67,10 @@ def create_metric_tool(project_slug: str):
         "ALWAYS call this tool; do NOT write your own SQL — definitions are locked "
         "here and user-verified against ground truth. "
         "Args:\n"
-        "  name (str): metric name (case-insensitive) or a known synonym.\n"
-        "  group_by (str): optional comma-separated list of dimension names. "
+        " name (str): metric name (case-insensitive) or a known synonym.\n"
+        " group_by (str): optional comma-separated list of dimension names. "
         "Empty string = use metric default.\n"
-        "  filters (str): optional JSON array of extra filter objects "
+        " filters (str): optional JSON array of extra filter objects "
         "[{\"col\":\"x\",\"op\":\"=\",\"value\":\"y\"}]. Empty string = no extra filters.\n"
         "Registered verified metrics:\n"
         + _metric_lines

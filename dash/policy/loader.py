@@ -126,7 +126,7 @@ def _ensure_role_tables() -> None:
 
 
 def diff_policies(old: Optional[VisibilityPolicy], new: VisibilityPolicy) -> dict:
-    """Compute per-audience field diff for audit. Shape: {added,removed,modified} → {audience: [col]}."""
+    """Compute per-audience field diff for audit. Shape: {added,removed,modified} > {audience: [col]}."""
     audiences = ("private", "network", "public")
     added: dict[str, list[str]] = {}
     removed: dict[str, list[str]] = {}
@@ -188,7 +188,7 @@ def load_policy(project_slug: str) -> Optional[VisibilityPolicy]:
 
 def save_policy(project_slug: str, policy: VisibilityPolicy, user_id: int | None = None) -> int:
     eng = _engine()
-    # Diff vs current persisted policy for audit (best-effort; missing → empty).
+    # Diff vs current persisted policy for audit (best-effort; missing > empty).
     try:
         prior = load_policy(project_slug)
     except Exception:

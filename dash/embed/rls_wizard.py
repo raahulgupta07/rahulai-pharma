@@ -1,9 +1,9 @@
 """RLS Setup Wizard — deterministic, schema-aware policy generator.
 
 3 hardcoded questions:
-  Q1 audience   — customers / staff / both
-  Q2 scope      — tenant column (site_code, store_id, …) or none
-  Q3 sensitive  — money / qty / pii / codes / timestamps + role overrides
+  Q1 audience — customers / staff / both
+  Q2 scope — tenant column (site_code, store_id, …) or none
+  Q3 sensitive — money / qty / pii / codes / timestamps + role overrides
 
 NO LLM. Pure Python rule-based generator. Output is reviewable before apply.
 
@@ -64,9 +64,9 @@ def build_wizard_options(slug: str) -> dict:
     q1_audience = [
         {"value": "customers", "label": "Customers",
          "desc": "End users — strict, see only own"},
-        {"value": "staff",     "label": "Staff",
+        {"value": "staff", "label": "Staff",
          "desc": "Internal — see by scope"},
-        {"value": "both",      "label": "Both",
+        {"value": "both", "label": "Both",
          "desc": "Mixed — role decides"},
     ]
 
@@ -90,12 +90,12 @@ def build_wizard_options(slug: str) -> dict:
         if len(tlist) < 2:
             continue
         q2_scope.append({
-            "value":       cname,
-            "label":       cname,
-            "table":       tlist[0],
-            "tables":      tlist,
+            "value": cname,
+            "label": cname,
+            "table": tlist[0],
+            "tables": tlist,
             "recommended": cname in fk_like_keys,
-            "found":       True,
+            "found": True,
         })
     q2_scope.append({
         "value": "none", "label": "None (single-tenant)",
@@ -103,8 +103,8 @@ def build_wizard_options(slug: str) -> dict:
     })
 
     q2_hierarchy_options = [
-        {"value": "no",  "label": "Flat — one scope per user"},
-        {"value": "yes", "label": "Hierarchical (e.g. region → store)"},
+        {"value": "no", "label": "Flat — one scope per user"},
+        {"value": "yes", "label": "Hierarchical (e.g. region > store)"},
     ]
 
     # Q3 — sensitive column categories
@@ -118,23 +118,23 @@ def build_wizard_options(slug: str) -> dict:
                     if cname not in matches:
                         matches.append(cname)
         q3_sensitive.append({
-            "key":     key,
-            "label":   _SENSITIVE_LABELS[key],
+            "key": key,
+            "label": _SENSITIVE_LABELS[key],
             "matches": matches[:50],
-            "found":   bool(matches),
+            "found": bool(matches),
         })
 
     q3_role_options = [
-        {"key": "hq_bypass",       "label": "HQ/admin role bypasses everything"},
+        {"key": "hq_bypass", "label": "HQ/admin role bypasses everything"},
         {"key": "auditor_readall", "label": "Auditor role: read-only see-all"},
     ]
 
     return {
-        "q1_audience":          q1_audience,
-        "q2_scope":             q2_scope,
+        "q1_audience": q1_audience,
+        "q2_scope": q2_scope,
         "q2_hierarchy_options": q2_hierarchy_options,
         "q3_sensitive_categories": q3_sensitive,
-        "q3_role_options":      q3_role_options,
+        "q3_role_options": q3_role_options,
     }
 
 
@@ -205,16 +205,16 @@ def generate_policies(slug: str, answers: dict) -> dict:
     # ── Claims ──────────────────────────────────────────────────────────
     if q2_scope and q2_scope != "none":
         claims.append({
-            "key":      q2_scope,
-            "type":     _scope_claim_type(slug, q2_scope),
+            "key": q2_scope,
+            "type": _scope_claim_type(slug, q2_scope),
             "required": True,
         })
 
     if q3_roles:
         claims.append({
-            "key":      "role",
-            "type":     "enum",
-            "values":   ["staff", "manager", "hq", "auditor"],
+            "key": "role",
+            "type": "enum",
+            "values": ["staff", "manager", "hq", "auditor"],
             "required": False,
         })
 
@@ -233,7 +233,7 @@ def generate_policies(slug: str, answers: dict) -> dict:
             policy["bypass_roles"] = [r for r in roles if not (r in seen or seen.add(r))]
         return policy
 
-    # ── Sensitive categories → policies ─────────────────────────────────
+    # ── Sensitive categories > policies ─────────────────────────────────
     protected: set[tuple[str, str]] = set()
 
     if "money" in q3_sens:
@@ -250,11 +250,11 @@ def generate_policies(slug: str, answers: dict) -> dict:
         else:
             for (tbl, col) in _matches_for(cat, "qty"):
                 p = {
-                    "table":  tbl,
+                    "table": tbl,
                     "column": col,
-                    "mode":   "own_value",
+                    "mode": "own_value",
                     "filter": q2_scope,
-                    "claim":  q2_scope,
+                    "claim": q2_scope,
                 }
                 policies.append(_with_bypass(p, include_private_bypass=True))
                 protected.add((tbl, col))
@@ -299,20 +299,20 @@ def generate_policies(slug: str, answers: dict) -> dict:
     if q2_hier == "yes":
         warnings.append(
             "Hierarchical scope selected — wizard emits flat policy; "
-            "extend manually for region→store rollups."
+            "extend manually for region>store rollups."
         )
 
     summary = {
-        "claims_count":             len(claims),
-        "policies_count":           len(policies),
+        "claims_count": len(claims),
+        "policies_count": len(policies),
         "sensitive_cols_protected": len(protected),
     }
 
     return {
-        "claims":   claims,
+        "claims": claims,
         "policies": policies,
         "warnings": warnings,
-        "summary":  summary,
+        "summary": summary,
     }
 
 
@@ -321,14 +321,14 @@ def generate_policies(slug: str, answers: dict) -> dict:
 # ─────────────────────────────────────────────────────────────────────────
 _WIZARD_RUNS_DDL = """
 CREATE TABLE IF NOT EXISTS public.dash_embed_wizard_runs (
-    id              BIGSERIAL PRIMARY KEY,
-    embed_id        TEXT,
-    project_slug    TEXT,
-    user_id         INTEGER,
-    answers         JSONB,
-    generated       JSONB,
-    applied         BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    id BIGSERIAL PRIMARY KEY,
+    embed_id TEXT,
+    project_slug TEXT,
+    user_id INTEGER,
+    answers JSONB,
+    generated JSONB,
+    applied BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_embed_wizard_runs_embed
     ON public.dash_embed_wizard_runs (embed_id);
@@ -378,14 +378,14 @@ def log_wizard_run(
         with eng.begin() as conn:
             conn.execute(_t(
                 "INSERT INTO public.dash_embed_wizard_runs "
-                "  (embed_id, project_slug, user_id, answers, generated, applied) "
+                " (embed_id, project_slug, user_id, answers, generated, applied) "
                 "VALUES (:e, :s, :u, CAST(:a AS jsonb), CAST(:g AS jsonb), :ap)"
             ), {
-                "e":  embed_id,
-                "s":  project_slug,
-                "u":  user_id,
-                "a":  _j.dumps(answers or {}),
-                "g":  _j.dumps(generated or {}),
+                "e": embed_id,
+                "s": project_slug,
+                "u": user_id,
+                "a": _j.dumps(answers or {}),
+                "g": _j.dumps(generated or {}),
                 "ap": bool(applied),
             })
     except Exception:

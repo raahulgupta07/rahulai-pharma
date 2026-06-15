@@ -1,4 +1,4 @@
-"""MetricFlow YAML → MDL_PACK importer.
+"""MetricFlow YAML > MDL_PACK importer.
 
 Reads dbt MetricFlow YAML files (`semantic_models.yml` + `metrics.yml`) and
 translates to MDL_PACK dict shape used by `dash.workflows.verticals.install_mdl`.
@@ -52,9 +52,9 @@ def _walk_yaml_files(path: str) -> tuple[list[str], list[str]]:
     """Walk dir; classify YAML files into (semantic_model_files, metric_files).
 
     Classification heuristic:
-      - file content has `semantic_models:` key → semantic
-      - file content has `metrics:` key → metrics
-      - file may have both → in both lists
+      - file content has `semantic_models:` key > semantic
+      - file content has `metrics:` key > metrics
+      - file may have both > in both lists
     """
     sem_files: list[str] = []
     met_files: list[str] = []
@@ -134,10 +134,10 @@ def load_metricflow_files(semantic_models: list[str],
     return {"semantic_models": sem_list, "metrics": met_list}
 
 
-# ── Pure translator: MetricFlow → MDL ───────────────────────────────────────
+# ── Pure translator: MetricFlow > MDL ───────────────────────────────────────
 
 def metricflow_to_mdl(mf_data: dict) -> dict:
-    """Pure translator: MetricFlow data dict → MDL_PACK dict.
+    """Pure translator: MetricFlow data dict > MDL_PACK dict.
 
     Returns dict with keys: name, models, workflows, metric_definitions,
     _warnings, _skipped.
@@ -153,7 +153,7 @@ def metricflow_to_mdl(mf_data: dict) -> dict:
     # Also flat measure index for metrics that reference measures by name only
     measure_by_name: dict[str, dict] = {}
 
-    # ── Translate semantic_models → MDL models ──────────────────────────────
+    # ── Translate semantic_models > MDL models ──────────────────────────────
     mdl_models: list[dict] = []
     for sm in sem_models:
         name = sm.get("name")
@@ -193,7 +193,7 @@ def metricflow_to_mdl(mf_data: dict) -> dict:
                 )
             virtual_columns.append(vc)
 
-        # Measures → virtual_columns (so they can be referenced) +
+        # Measures > virtual_columns (so they can be referenced) +
         # also index for metrics resolution
         for meas in (sm.get("measures") or []):
             if not isinstance(meas, dict):
@@ -218,7 +218,7 @@ def metricflow_to_mdl(mf_data: dict) -> dict:
                 "type": "numeric",
             })
 
-        # Entities → relationships
+        # Entities > relationships
         relationships: list[dict] = []
         for ent in (sm.get("entities") or []):
             if not isinstance(ent, dict):
@@ -239,7 +239,7 @@ def metricflow_to_mdl(mf_data: dict) -> dict:
             elif etype == "foreign":
                 # Foreign entity = link to another model whose primary entity == ename
                 relationships.append({
-                    "model": ename,  # target model name; resolver matches at install
+                    "model": ename, # target model name; resolver matches at install
                     "on": f"{ename} = {ename}",
                     "type": "many_to_one",
                     "optional": True,
@@ -260,7 +260,7 @@ def metricflow_to_mdl(mf_data: dict) -> dict:
             "relationships": relationships,
         })
 
-    # ── Translate metrics → metric_definitions (semantic SQL strings) ──────
+    # ── Translate metrics > metric_definitions (semantic SQL strings) ──────
     metric_defs: list[dict] = []
     for m in metrics:
         if not isinstance(m, dict):
@@ -273,7 +273,7 @@ def metricflow_to_mdl(mf_data: dict) -> dict:
 
         tp = m.get("type_params") or {}
 
-        # Detect unsupported features → warn + still try
+        # Detect unsupported features > warn + still try
         if m.get("filter"):
             warnings.append(
                 f"metric {mname}: top-level filter not supported, skipped filter"
@@ -386,7 +386,7 @@ def metricflow_to_mdl(mf_data: dict) -> dict:
             "required_cols_any": [],
         },
         "models": mdl_models,
-        "workflows": [],  # MetricFlow has no workflow concept
+        "workflows": [], # MetricFlow has no workflow concept
         "metric_definitions": metric_defs,
         "_warnings": warnings,
         "_skipped": skipped,
@@ -401,8 +401,8 @@ def install_metricflow(project_slug: str, path: str,
     """End-to-end: load + translate + install via existing install_mdl().
 
     Process:
-      1. Walk path (file or dir) → load MetricFlow YAML
-      2. Translate → MDL_PACK dict
+      1. Walk path (file or dir) > load MetricFlow YAML
+      2. Translate > MDL_PACK dict
       3. Register pack at runtime in `dash.workflows.verticals._ALL_MDL_PACKS`
          (under name 'metricflow_imported')
       4. Call install_mdl(project_slug, 'metricflow_imported', owner_user_id)
