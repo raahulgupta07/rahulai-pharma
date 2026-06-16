@@ -2,6 +2,18 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-16 — v1.46.0: Embed widget Claude-style — moody robot, shimmer thinking, animated launcher
+
+Embed chat widget (`dash/embed/widget.js`, static file baked into image — edit → rebuild → `--force-recreate`, NOT hot-copy) overhauled to feel like Claude.
+
+**Moody header robot** — `headerRobotSvg()` (white body / accent face, classed parts `rb-ant`/`rb-eye`/`rb-mouth`). A `mood-*` class on `.header-logo` reacts to the chat lifecycle via `setMood(m)`: idle (blink+antenna) → thinking (eyes glance up, fast antenna) → typing (mouth talks) → done (happy blink, auto-settles to idle after 2.6s) → error (body tint + shake, settles after 2.2s). Wired at bubble-open, submit, first onDelta, onDone, onError, and the catch. Same robot character also drives the live "Thinking" strip head (`thinkBotSvg()` reused, shrunk to 22px) replacing the bare spinner.
+
+**Claude thinking UX** — (1) "Thinking" label now **shimmers** (sliding gradient text, `think-shimmer`) while the trace is live; (2) **killed the floating loading-dots** — the answer row is created lazily (`ensureAnswerRow()`) the moment the first token arrives, so text streams in place right under "Thought for Ns" instead of a disconnected `• • •` bubble; (3) **blinking stream caret** (`stream-caret`) trails the streaming answer instead of bouncing dots. `ensureAnswerRow()` guards onDone/onError/catch (div may be null if no delta arrived).
+
+**Animated robot launcher** — the round accent circle bubble is **replaced by a standalone robot character** (full body: antenna, head, eyes, mouth, body, two arms, feet; accent fill, white face). It bobs (`lr-bob`), blinks, pulses antenna, and **waves** one arm (`lr-wave`, faster on hover), with a CSS `drop-shadow` so it reads on any site. Logo override still falls back to a soft rounded badge. All animations gated by `prefers-reduced-motion`.
+
+Deployed :8011 (image rebuilt + force-recreate, baked verified via `docker exec grep`). Test tooling: `scripts/embed-demo.html` (pharmacy-storefront stand-in on :9999) + `embed_smoke.sh` + `set_embed_origins.sh`. LANDMINE recap: `node --check` before rebuild; widget browser-caches 5min (cache-bust `?v=`); cloudflare quick-tunnel host needs ~10-30s DNS propagation and sometimes registers degraded (1 conn) — relaunch if it won't resolve.
+
 ### Session 2026-06-13 (latest+105) — v1.43.0: Private analytics — keyword/topic dashboards, no raw chat
 
 **Manager policy:** admin/analytics dashboards must show keyword + topic analysis only, NEVER the actual customer question/answer text.

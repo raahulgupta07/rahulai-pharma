@@ -145,24 +145,38 @@
     :host, * { box-sizing: border-box; font-family: ${SANS}; }
     code, pre, code *, pre * { font-family: ${MONO}; }
 
+    /* Launcher = a standalone animated robot character (no circle). It bobs,
+       blinks, pulses its antenna, and waves periodically. Drop-shadow lets it
+       read on any background. */
     .bubble {
-      width: 60px; height: 60px; border-radius: 50%;
-      background: ${t.accent}; color: #fff; cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.08);
-      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+      width: 66px; height: 78px; cursor: pointer; background: transparent;
+      display: flex; align-items: flex-end; justify-content: center;
+      filter: drop-shadow(0 7px 10px rgba(0,0,0,0.22));
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
-    .bubble:hover { transform: scale(1.08) translateY(-2px); box-shadow: 0 10px 28px rgba(0,0,0,0.22); }
-    .bubble:active { transform: scale(0.96); }
-    .bubble svg { width: 34px; height: 34px; overflow: visible; }
-    .bubble-logo { width: 60%; height: 60%; border-radius: 50%; object-fit: cover; }
-    .bubble-bot { animation: bubble-bob 3s ease-in-out infinite; }
-    .bubble:hover .bubble-bot { animation: bubble-bob 1.2s ease-in-out infinite; }
-    .bubble-ant { animation: bubble-ant-pulse 1.8s ease-in-out infinite; transform-origin: center; }
-    .bubble-eye { animation: bubble-blink 4s ease-in-out infinite; transform-origin: center; }
+    .bubble:hover { transform: translateY(-3px) scale(1.05); }
+    .bubble:active { transform: scale(0.95); }
+    .bubble svg { width: 100%; height: 100%; overflow: visible; }
+    /* logo override keeps a soft rounded badge instead of the robot */
+    .bubble-logo { width: 58px; height: 58px; border-radius: 16px; object-fit: cover;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.18); }
+    .lr { animation: lr-bob 3.4s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 85%; }
+    .bubble:hover .lr { animation-duration: 1.6s; }
+    .lr-ant { animation: bubble-ant-pulse 1.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+    .lr-eye { animation: bubble-blink 4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+    .lr-arm { animation: lr-wave 3.4s ease-in-out infinite; transform-box: fill-box; transform-origin: top center; }
+    .bubble:hover .lr-arm { animation-duration: 0.9s; }
+    @keyframes lr-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+    @keyframes lr-wave {
+      0%,70%,100% { transform: rotate(0deg); }
+      78% { transform: rotate(-20deg); } 86% { transform: rotate(8deg); } 93% { transform: rotate(-14deg); }
+    }
     @keyframes bubble-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
     @keyframes bubble-ant-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.8); } }
     @keyframes bubble-blink { 0%,92%,100% { transform: scaleY(1); } 96% { transform: scaleY(0.1); } }
+    @media (prefers-reduced-motion: reduce) {
+      .lr, .lr-ant, .lr-eye, .lr-arm { animation: none !important; }
+    }
 
     .panel {
       width: 380px; height: 580px; max-height: calc(100vh - 60px);
@@ -505,13 +519,29 @@
   // bubble, scaled up with idle personality (bob + blink + antenna pulse).
   function bubbleBotSvg() {
     if (logoUrl) { return '<img class="bubble-logo" src="' + escapeHtml(logoUrl) + '" alt="">'; }
-    return '<svg class="bubble-bot" viewBox="0 0 32 32" aria-hidden="true">'
-      + '<line x1="16" y1="9" x2="16" y2="4.5" stroke="#fff" stroke-width="2" stroke-linecap="round"/>'
-      + '<circle class="bubble-ant" cx="16" cy="3.6" r="2" fill="#fff"/>'
-      + '<rect x="5" y="9" width="22" height="15" rx="4.5" fill="#fff"/>'
-      + '<rect class="bubble-eye" x="10.5" y="13.5" width="3.5" height="3.5" rx="1" fill="' + t.accent + '"/>'
-      + '<rect class="bubble-eye" x="18" y="13.5" width="3.5" height="3.5" rx="1" fill="' + t.accent + '"/>'
-      + '<rect x="12" y="20" width="8" height="1.6" rx="0.8" fill="' + t.accent + '"/>'
+    // Full-body robot character (accent body, white face) that floats, blinks
+    // and waves. Replaces the round bubble — the robot itself IS the launcher.
+    var a = t.accent;
+    return '<svg viewBox="0 0 48 56" aria-hidden="true">'
+      + '<g class="lr">'
+        // antenna
+        + '<line x1="24" y1="11" x2="24" y2="5" stroke="' + a + '" stroke-width="2.4" stroke-linecap="round"/>'
+        + '<circle class="lr-ant" cx="24" cy="3.6" r="2.6" fill="' + a + '"/>'
+        // left arm (static), right arm waves
+        + '<rect x="5" y="31" width="5.5" height="13" rx="2.75" fill="' + a + '"/>'
+        + '<rect class="lr-arm" x="37.5" y="25" width="5.5" height="13" rx="2.75" fill="' + a + '"/>'
+        // body
+        + '<rect x="12" y="31" width="24" height="15" rx="6" fill="' + a + '"/>'
+        // head
+        + '<rect x="8" y="11" width="32" height="21" rx="7.5" fill="' + a + '"/>'
+        // eyes + mouth (white on accent head)
+        + '<rect class="lr-eye" x="16" y="18" width="5" height="5" rx="1.5" fill="#fff"/>'
+        + '<rect class="lr-eye" x="27" y="18" width="5" height="5" rx="1.5" fill="#fff"/>'
+        + '<rect x="19" y="26" width="10" height="2.2" rx="1.1" fill="#fff"/>'
+        // feet
+        + '<rect x="15" y="46" width="7" height="8" rx="2.5" fill="' + a + '"/>'
+        + '<rect x="26" y="46" width="7" height="8" rx="2.5" fill="' + a + '"/>'
+      + '</g>'
       + '</svg>';
   }
 
