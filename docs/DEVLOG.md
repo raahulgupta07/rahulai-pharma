@@ -2,6 +2,14 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-16 — v1.47.3: Deployment map + screenshot-driven embedding guide
+
+- **Deployment map** (`frontend/src/lib/admin/EmbedPanel.svelte`, frontend-only). The **Deployments** page got a `Manage widgets | Deployment map` toggle. The map answers *"one server, many destination URLs"*: a table of every widget and the website URL(s) it's live on, with a header (`1 server · N widgets · {dmLiveSites} live` + `Serving from {baseUrl}`). Each row lists the widget's `allowed_origins` as removable chips, an inline *"+ deploy to site"* input, a live/ready/off status and a per-row snippet-copy button. Add/remove a site → PATCH `/api/projects/{slug}/embeds/{eid}` `{allowed_origins}` (the same endpoint the Access tab uses). No backend change; the existing manage view is gated behind `{:else}`.
+- **`docs/EMBED_GUIDE.md`** — a clean, screenshot-driven developer onboarding guide mapped 1:1 to the widget cockpit (KEYS / CONFIG / DROP-IN SNIPPET / FULL PHP CODE / Access). Uses inline ASCII panel diagrams so it reads fully with no images; real screenshots are an optional upgrade (`docs/images/embed/README.md` lists the 8 filenames). Pushed earlier this session (`fc9818c`/`3c7caf9`).
+- **Reminder captured:** the per-widget origin **approve** UI lives in the **gear ⚙ → Access tab** (sub-tabs Appearance | Access | Snippet & Deploy | Share | Activity), not the row expand. Only owner/super-admin can allow an origin (`_check_access`).
+
+VERSION 1.47.2 → 1.47.3.
+
 ### Session 2026-06-16 — v1.46.1→1.47.2: Embed widget — real app robot, coral theme, bilingual replies, learned starters
 
 Follow-up to v1.46.0. Files: `dash/embed/widget.js` + `app/embed_public.py`.

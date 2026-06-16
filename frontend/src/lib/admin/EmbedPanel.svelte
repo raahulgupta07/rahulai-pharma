@@ -132,6 +132,59 @@
  const tabEmbeds = $derived(embedTab === 'outlet' ? outletEmbeds : customEmbeds);
  const wgLiveCount = (list: any[]) => list.filter((e) => e.enabled !== false && e.status !== 'revoked' && e.status !== 'disabled').length;
 
+ // ---- Deployment map: widget -> the website URL(s) it's live on ----
+ // One server (this app) serves every widget; each widget can be embedded on
+ // one OR many customer site URLs (its allowed_origins). This view makes that
+ // visible + lets you add/remove a destination URL inline.
+ let deployView = $state<'manage' | 'map'>('manage');
+ let dmNewUrl = $state<Record<string, string>>({});
+ let dmBusy = $state('');
+ const _isEnabled = (e: any) => e.enabled !== false && e.status !== 'revoked' && e.status !== 'disabled';
+ const dmRows = $derived(embeds.map((e) => {
+   const eid = e.embed_id || e.id || '';
+   return {
+     eid,
+     embed: e,
+     name: e.name || eid,
+     origins: (Array.isArray(e.allowed_origins) ? e.allowed_origins : []) as string[],
+     live: _isEnabled(e),
+     isStore: isStoreEmbed(e),
+   };
+ }));
+ // distinct site URLs that are actually live (enabled widget + has an origin)
+ const dmLiveSites = $derived(new Set(
+   embeds.filter(_isEnabled).flatMap((e) => (Array.isArray(e.allowed_origins) ? e.allowed_origins : []))
+ ).size);
+
+ async function _dmPatchOrigins(eid: string, origins: string[]) {
+   const clean = origins.map((o) => (o || '').trim().replace(/\/+$/, '')).filter(Boolean);
+   const r = await apiFetch(`/api/projects/${slug}/embeds/${eid}`, {
+     method: 'PATCH',
+     body: JSON.stringify({ allowed_origins: clean }),
+   });
+   if (r.ok) await loadEmbeds();
+   return r.ok;
+ }
+ async function dmAddSite(e: any) {
+   const eid = e.embed_id || e.id || '';
+   const url = (dmNewUrl[eid] || '').trim().replace(/\/+$/, '');
+   if (!url) return;
+   if (!/^https?:\/\//i.test(url)) { dmNewUrl = { ...dmNewUrl, [eid]: '' }; return; }
+   const cur = Array.isArray(e.allowed_origins) ? [...e.allowed_origins] : [];
+   if (cur.includes(url)) { dmNewUrl = { ...dmNewUrl, [eid]: '' }; return; }
+   dmBusy = eid + url;
+   await _dmPatchOrigins(eid, [...cur, url]);
+   dmNewUrl = { ...dmNewUrl, [eid]: '' };
+   dmBusy = '';
+ }
+ async function dmRemoveSite(e: any, origin: string) {
+   const eid = e.embed_id || e.id || '';
+   const cur = (Array.isArray(e.allowed_origins) ? e.allowed_origins : []).filter((o: string) => o !== origin);
+   dmBusy = eid + origin;
+   await _dmPatchOrigins(eid, cur);
+   dmBusy = '';
+ }
+
  // ---- global default auth mode (for new outlet widgets) + bulk apply ----
  let defaultAuth = $state<'public' | 'hmac' | 'jwt'>('public');
  let defaultAuthSaving = $state(false);
@@ -1267,6 +1320,63 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
       <!-- ==================== WIDGETS ==================== -->
       {#if view === 'widgets'}
         <section class="emp-panel">
+          <!-- view toggle: manage widgets vs deployment map -->
+          <div class="dm-switch">
+            <button class="dm-sw" class:dm-sw-on={deployView === 'manage'} onclick={() => deployView = 'manage'}>Manage widgets</button>
+            <button class="dm-sw" class:dm-sw-on={deployView === 'map'} onclick={() => deployView = 'map'}>Deployment map</button>
+          </div>
+
+          {#if deployView === 'map'}
+            <!-- ===== Deployment map: widget -> the website URL(s) it runs on ===== -->
+            <div class="dm-head">
+              <div class="dm-stat"><strong>1 server</strong> · {embeds.length} widgets · {dmLiveSites} site{dmLiveSites === 1 ? '' : 's'} live</div>
+              <div class="dm-serving">Serving from <code class="emp-code">{baseUrl || '—'}</code> — one URL serves every widget; each widget can be embedded on one or many site URLs.</div>
+            </div>
+            <table class="emp-table dm-table">
+              <thead><tr><th>WIDGET</th><th>DEPLOYED ON</th><th>STATUS</th><th></th></tr></thead>
+              <tbody>
+                {#each dmRows as r (r.eid)}
+                  <tr>
+                    <td><code class="emp-code">{r.name}</code></td>
+                    <td>
+                      {#if r.origins.length}
+                        {#each r.origins as o (o)}
+                          <div class="dm-site">
+                            <a class="dm-link" href={o} target="_blank" rel="noopener">{o}</a>
+                            <button class="dm-x" title="Remove this site" disabled={dmBusy === r.eid + o} onclick={() => dmRemoveSite(r.embed, o)}>×</button>
+                          </div>
+                        {/each}
+                      {:else}
+                        <span class="dm-none">not embedded on any site yet</span>
+                      {/if}
+                      <div class="dm-add">
+                        <input class="emp-input dm-input" placeholder="https://customer-site.com" value={dmNewUrl[r.eid] || ''}
+                          oninput={(ev) => dmNewUrl = { ...dmNewUrl, [r.eid]: (ev.target as HTMLInputElement).value }}
+                          onkeydown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); dmAddSite(r.embed); } }} />
+                        <button class="emp-btn emp-btn-sm" disabled={dmBusy.startsWith(r.eid) || !(dmNewUrl[r.eid] || '').trim()} onclick={() => dmAddSite(r.embed)}>+ deploy to site</button>
+                      </div>
+                    </td>
+                    <td>
+                      {#if !r.live}
+                        <span class="dm-off">○ off</span>
+                      {:else if r.origins.length}
+                        <span class="dm-live">● live</span>
+                      {:else}
+                        <span class="dm-ready">○ ready</span>
+                      {/if}
+                    </td>
+                    <td>
+                      <button class="emp-btn emp-btn-sm" title="Copy this widget's install snippet"
+                        onclick={() => copyText(buildSnippet(r.eid, r.embed.public_key || '', isStoreEmbed(r.embed) ? 'store' : 'global'), 'dm-' + r.eid)}>
+                        {copied === 'dm-' + r.eid ? '✓ copied' : 'snippet'}
+                      </button>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+            <p class="dm-foot">Tip: add a site here, or it appears automatically the first time that site loads the widget (then approve it under each widget's <strong>Access</strong> tab).</p>
+          {:else}
           <!-- global default authentication (collapsible) -->
           <div class="wg-auth-card" class:wg-auth-open={authCardOpen}>
             <button class="wg-auth-head" onclick={() => authCardOpen = !authCardOpen}>
@@ -1587,6 +1697,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
                 {/each}
               </tbody>
             </table>
+          {/if}
           {/if}
         </section>
       {/if}
@@ -2886,4 +2997,26 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
  .emp-wd-qtext { font-size: 13px; line-height: 1.5; color: var(--pw-ink, #2c2a26); white-space: pre-wrap; word-break: break-word; }
  .emp-wd-qmeta { display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap; font-size: 12px; color: var(--pw-ink-soft, #4a4438); }
  .emp-wd-qmeta .emp-k { min-width: 0; margin-right: 2px; }
+
+ /* ---- Deployment map ---- */
+ .dm-switch { display: inline-flex; gap: 4px; padding: 3px; margin-bottom: 14px; background: var(--pw-bg-alt, #f3ece1); border-radius: 10px; }
+ .dm-sw { border: none; background: transparent; padding: 6px 14px; font-size: 13px; font-weight: 600; color: var(--pw-ink-soft, #6b6055); border-radius: 8px; cursor: pointer; font-family: inherit; }
+ .dm-sw-on { background: #fff; color: var(--pw-accent, #c2683f); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+ .dm-head { margin-bottom: 12px; }
+ .dm-stat { font-size: 14px; color: var(--pw-ink, #2c2a26); }
+ .dm-serving { font-size: 12px; color: var(--pw-ink-soft, #6b6055); margin-top: 3px; }
+ .dm-table td { vertical-align: top; }
+ .dm-site { display: inline-flex; align-items: center; gap: 6px; margin: 0 6px 4px 0; padding: 3px 6px 3px 9px; background: var(--pw-bg-alt, #f3ece1); border-radius: 8px; }
+ .dm-link { font-size: 12.5px; color: var(--pw-accent, #c2683f); text-decoration: none; word-break: break-all; }
+ .dm-link:hover { text-decoration: underline; }
+ .dm-x { border: none; background: transparent; color: #9a8f7e; cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; border-radius: 4px; }
+ .dm-x:hover { background: rgba(201,99,66,0.15); color: #c2683f; }
+ .dm-x:disabled { opacity: 0.4; cursor: default; }
+ .dm-none { font-size: 12.5px; font-style: italic; color: #9a8f7e; }
+ .dm-add { display: flex; gap: 6px; margin-top: 6px; max-width: 420px; }
+ .dm-input { flex: 1; min-width: 0; }
+ .dm-live { color: #2f8f53; font-weight: 600; font-size: 13px; white-space: nowrap; }
+ .dm-ready { color: #b07d2e; font-size: 13px; white-space: nowrap; }
+ .dm-off { color: #9a8f7e; font-size: 13px; white-space: nowrap; }
+ .dm-foot { font-size: 12px; color: var(--pw-ink-soft, #6b6055); margin-top: 12px; }
 </style>
