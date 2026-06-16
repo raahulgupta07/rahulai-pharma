@@ -6,6 +6,7 @@ Versions are tagged `vX.Y.Z` from v1.0.0 onward; older entries remain month-tagg
 ## [Unreleased]
 
 ### Added
+- **Chat latency + Dash 2.0/1.0 engine selector (2026-06-16, v1.48.0)** — single-agent fast-path (`SINGLE_AGENT_FASTPATH`, `dash/team.py:create_single_analyst`) runs a lone Analyst on simple TRIVIAL/LOOKUP questions instead of the full team → cold LOOKUP 32-63s → 8-18s; anything heavier still uses the team. Composer **engine dropdown** (⚡ Dash 2.0 Fast / ◆ Dash 1.0 Pro) wired via an `engine` param into `app/projects.py`; per-answer meta shows which ran. **Per-embed engine** — global default `embed_default_engine` (`GET/PUT /{slug}/embed-default-engine`) + per-widget `feature_config.engine` override in EmbedPanel. **Fixed alongside:** RLS search_path bug (`dash/rls/*` engines missing `dash,public` → 102 caught exceptions/request → 0), rerank fail-fast (21s → ~1s), `num_history_runs` 5→3.
 - **Cockpit ⇄ Datasets merge (2026-05-18)** — folded Cockpit into Datasets as single landing page. Rail label "Cockpit", internal id `datasets`. URL `#cockpit` redirects to `#datasets`. New Cockpit block: trained banner → Pipeline status (last training, schedule, drift) → At a glance (today/perf/health) → Intelligence (knowledge/agents/cost) → existing Datasets content unchanged.
 - **`GET /api/projects/{slug}/activity`** — returns recent training runs + drift alerts (used by Cockpit refresh)
 
