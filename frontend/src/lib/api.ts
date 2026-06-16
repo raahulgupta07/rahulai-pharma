@@ -112,7 +112,8 @@ export async function sendMessage(
  mode?: string,
  onRouting?: (r: unknown) => void,
  modelPref?: string,
- effort?: string
+ effort?: string,
+ engine?: string
 ): Promise<void> {
  try {
  const formData = new FormData();
@@ -123,6 +124,8 @@ export async function sendMessage(
  if (analysisType) formData.append('analysis_type', analysisType);
  if (modelPref) formData.append('model_pref', modelPref);
  if (effort) formData.append('effort', effort);
+ // Engine preference: '2.0' = fast single-agent path, '1.0' = full team.
+ if (engine) formData.append('engine', engine);
  // OKF opt-in lane (test toggle). Read from a UI pref so the long positional
  // signature doesn't change. Default off > backend behaves identically.
  try { if (localStorage.getItem('cp_use_okf') === '1') formData.append('use_okf', '1'); } catch {}

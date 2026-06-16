@@ -1010,6 +1010,11 @@ async def project_chat(slug: str, request: Request):
     # auto choice; effort maps to the reasoning/thinking mode.
     model_pref = (form.get("model_pref") or "auto").strip().lower() # auto|lite|mid|deep
     effort = (form.get("effort") or "").strip().lower() # low|medium|high|max
+    # Engine preference (composer dropdown): "2.0" = single-agent fast-path,
+    # "1.0" = full multi-agent team. Empty = fall back to the env default
+    # (SINGLE_AGENT_FASTPATH). Only the simplest TRIVIAL/LOOKUP questions actually
+    # use the lone agent even on 2.0; anything heavier auto-uses the team.
+    engine_pref = (form.get("engine") or "").strip().lower() # ""|1.0|2.0
     if effort:
         reasoning = {"low": "fast", "medium": "auto", "high": "deep", "max": "deep"}.get(effort, reasoning)
 
@@ -1795,15 +1800,49 @@ async def project_chat(slug: str, request: Request):
     except Exception:
         pass
 
-    # Create project-scoped team
+    # Engine selection: single-agent fast-path (Dash 2.0) vs full team (Dash 1.0).
+    # The composer dropdown sets engine_pref; empty falls back to the env flag.
+    # Only the simplest TRIVIAL/LOOKUP questions use the lone agent even on 2.0 —
+    # anything heavier keeps the full team, so quality is never sacrificed.
+    _use_fast = False
+    try:
+        import os as _eng_os
+        if engine_pref == "2.0":
+            _eng_on = True
+        elif engine_pref == "1.0":
+            _eng_on = False
+        else:
+            _eng_on = str(_eng_os.getenv("SINGLE_AGENT_FASTPATH", "0")).strip().lower() in ("1", "true", "yes", "on")
+        _eng_tier = (_router_decision or {}).get("tier") or ""
+        if _eng_on and _eng_tier in ("TRIVIAL", "LOOKUP"):
+            _use_fast = True
+    except Exception:
+        _use_fast = False
+
+    # Create project-scoped team (or the lone fast-path analyst)
     from dash.team import create_project_team
-    team = create_project_team(
-        project_slug=slug,
-        agent_name=proj.get("agent_name", "Agent"),
-        agent_role=proj.get("agent_role", ""),
-        agent_personality=proj.get("agent_personality", "friendly"),
-        user_id=user.get("user_id"),
-    )
+    team = None
+    if _use_fast:
+        try:
+            from dash.team import create_single_analyst
+            team = create_single_analyst(project_slug=slug, user_id=user.get("user_id"))
+        except Exception:
+            team = None
+    if team is None:
+        _use_fast = False
+        team = create_project_team(
+            project_slug=slug,
+            agent_name=proj.get("agent_name", "Agent"),
+            agent_role=proj.get("agent_role", ""),
+            agent_personality=proj.get("agent_personality", "friendly"),
+            user_id=user.get("user_id"),
+        )
+    # Stamp the engine actually used so the UI meta line can show Dash 2.0 / 1.0.
+    try:
+        if _router_decision is not None:
+            _router_decision["engine"] = "2.0" if _use_fast else "1.0"
+    except Exception:
+        pass
 
     # ── Enforce the router's model choice (Feature A) ────────────────────
     # The complexity tier picks a model string; apply it to the team + members

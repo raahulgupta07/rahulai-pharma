@@ -1185,7 +1185,8 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  messages = [...messages.slice(0, -1), { ...last, routing: r }];
  },
  modelPref,
- effort
+ effort,
+ dashEngine
  );
  }
 
@@ -2324,6 +2325,22 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  const modelPref = '';
  let modelMenuOpen = $state(false);
 
+ // Engine picker — Dash 2.0 (Fast, single-agent fast-path) vs Dash 1.0 (Pro,
+ // full multi-agent team). The dropdown sets a per-message preference sent to
+ // the backend as `engine`; complex/analytical questions still fall back to the
+ // team even on Dash 2.0, so this never sacrifices answer quality.
+ let dashEngine = $state<string>((() => {
+ if (typeof window === 'undefined') return '2.0';
+ const v = localStorage.getItem('dash_engine');
+ return (v === '1.0' || v === '2.0') ? v : '2.0';
+ })());
+ $effect(() => { try { localStorage.setItem('dash_engine', dashEngine); } catch {} });
+ let engineMenuOpen = $state(false);
+ const ENGINE_OPTIONS = [
+ { id: '2.0', label: 'Dash 2.0', tag: 'Fast', desc: 'Lookups in ~10s — single fast agent', icon: 'zap' },
+ { id: '1.0', label: 'Dash 1.0', tag: 'Pro', desc: 'Full team — deepest, multi-step analysis', icon: 'layers' },
+ ];
+
  async function loadWorkflows() {
  try {
  const res = await fetch(`/api/workflows?project=${projectSlug}`, { headers: _headers() });
@@ -2705,7 +2722,36 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
           </div>
 
           <div class="composer-right">
-            <span class="composer-model" title="Model">Dash 1.0</span>
+            <!-- Engine picker: Dash 2.0 (Fast) / Dash 1.0 (Pro) -->
+            <div class="engine-picker">
+              <button type="button" class="engine-trigger" class:open={engineMenuOpen}
+                      onclick={() => engineMenuOpen = !engineMenuOpen}
+                      disabled={isStreaming} title="Engine"
+                      aria-haspopup="listbox" aria-expanded={engineMenuOpen}>
+                <Icon name={dashEngine === '2.0' ? 'zap' : 'layers'} size={13} />
+                <span class="engine-name">{dashEngine === '2.0' ? 'Dash 2.0' : 'Dash 1.0'}</span>
+                <Icon name="chevron-down" size={12} />
+              </button>
+              {#if engineMenuOpen}
+                <div class="engine-menu" role="listbox">
+                  {#each ENGINE_OPTIONS as e}
+                    <button type="button" class="engine-opt" class:active={dashEngine === e.id}
+                            role="option" aria-selected={dashEngine === e.id}
+                            onclick={() => { dashEngine = e.id; engineMenuOpen = false; }}>
+                      <span class="engine-opt-icon"><Icon name={e.icon} size={15} /></span>
+                      <span class="engine-opt-text">
+                        <span class="engine-opt-top">
+                          <span class="engine-opt-label">{e.label}</span>
+                          <span class="engine-opt-tag">{e.tag}</span>
+                        </span>
+                        <span class="engine-opt-desc">{e.desc}</span>
+                      </span>
+                      {#if dashEngine === e.id}<span class="engine-opt-check"><Icon name="check" size={14} /></span>{/if}
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
             {#if isStreaming}
               <button class="composer-send" onclick={stopStreaming} aria-label="Stop" title="Stop" style="background: var(--pw-error, #dc2626);">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
@@ -3587,6 +3633,24 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 .seg-btn:disabled { opacity:.55; cursor:not-allowed; }
 /* plain model label next to send (brand face, not a control) */
 .composer-model { font-size:12.5px; font-weight:600; color:var(--pw-muted, #8a8175); white-space:nowrap; }
+/* engine picker (Dash 2.0 Fast / Dash 1.0 Pro) */
+.engine-picker { position:relative; }
+.engine-trigger { display:inline-flex; align-items:center; gap:5px; appearance:none; border:1px solid var(--pw-border, #e0dfda); background:var(--pw-bg-alt, #f1efe9); cursor:pointer; font:inherit; font-size:12.5px; font-weight:600; color:var(--pw-ink, #2c2a26); padding:5px 9px; border-radius:999px; line-height:1; white-space:nowrap; transition:background .15s, border-color .15s; }
+.engine-trigger:hover:not(:disabled) { background:#fff; border-color:var(--pw-border-strong, #d8d5cb); }
+.engine-trigger.open { background:#fff; border-color:var(--pw-border-strong, #d8d5cb); }
+.engine-trigger:disabled { opacity:.55; cursor:not-allowed; }
+.engine-name { line-height:1; }
+.engine-menu { position:absolute; bottom:calc(100% + 8px); right:0; z-index:60; min-width:248px; background:#fff; border:1px solid var(--pw-border, #e0dfda); border-radius:12px; box-shadow:0 8px 28px rgba(0,0,0,0.12); padding:5px; display:flex; flex-direction:column; gap:2px; }
+.engine-opt { display:flex; align-items:flex-start; gap:9px; text-align:left; appearance:none; border:0; background:transparent; cursor:pointer; font:inherit; padding:9px 10px; border-radius:9px; transition:background .12s; }
+.engine-opt:hover { background:var(--pw-bg-alt, #f4f3f0); }
+.engine-opt.active { background:var(--pw-bg-alt, #f4f3f0); }
+.engine-opt-icon { color:var(--pw-accent, #c2683f); flex-shrink:0; margin-top:1px; }
+.engine-opt-text { display:flex; flex-direction:column; gap:2px; min-width:0; flex:1; }
+.engine-opt-top { display:flex; align-items:center; gap:7px; }
+.engine-opt-label { font-size:13px; font-weight:700; color:var(--pw-ink, #2c2a26); }
+.engine-opt-tag { font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--pw-accent, #c2683f); background:color-mix(in srgb, var(--pw-accent, #c2683f) 12%, transparent); padding:1px 6px; border-radius:999px; }
+.engine-opt-desc { font-size:11px; color:var(--pw-muted, #8a8175); line-height:1.35; }
+.engine-opt-check { color:var(--pw-accent, #c2683f); flex-shrink:0; margin-top:2px; }
 /* one quiet hint line under the composer card */
 .composer-hint-line { text-align:center; margin:8px auto 0; max-width:760px; font-size:11.5px; color:var(--pw-muted, #9b948a); line-height:1.5; }
 /* Aria-style send: flat gray circle, no coral, no shadow */

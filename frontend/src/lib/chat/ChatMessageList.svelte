@@ -1276,6 +1276,7 @@ function sourcesFromSql(queries: string[] | undefined): string[] {
             {@const _cost = costOf(_tin, _tout, _u?.model)}
             {@const _el = ((msg as any).traceDoneAt && (msg as any).traceStart) ? ((msg as any).traceDoneAt - (msg as any).traceStart) : 0}
             {@const _mode = ((msg as any).reasoningUsed || 'auto')}
+            {@const _engine = ((msg as any)?.routing?.engine === '2.0' ? 'Dash 2.0' : 'Dash 1.0')}
             {#if _srcs.length}
               <div class="msg-sources">
                 <span class="msg-sources-label">SOURCES</span>
@@ -1295,7 +1296,7 @@ function sourcesFromSql(queries: string[] | undefined): string[] {
                 <button class="msg-action-icon" title="Export PDF" aria-label="Export PDF" onclick={() => onExportPdf?.(i)}><Icon name="file-text" size={15} /></button>
               </div>
               <div class="msg-meta">
-                <span class="msg-meta-model">Dash 1.0</span>
+                <span class="msg-meta-model">{_engine}</span>
                 <span class="msg-meta-sep">·</span><span>{_mode === 'fast' ? 'Quick' : _mode === 'reason' ? 'Deep' : 'Auto'}</span>
                 {#if _tok > 0}<span class="msg-meta-sep">·</span><span>{fmtTokens(_tok)} tok</span>{/if}
                 {#if _cost > 0}<span class="msg-meta-sep">·</span><span>{fmtCost(_cost)}</span>{/if}
