@@ -6,17 +6,52 @@ Mode 'pg_rls'   = no rewrite here (Postgres policies enforce); rewriter still ru
 """
 import json
 import logging
+import time
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event as _sa_event, text
 from sqlalchemy.pool import NullPool
 
 from db import db_url
 
 _eng = create_engine(db_url, poolclass=NullPool)
+
+
+# dash_* tables live in the `dash` schema; the raw db_url engine inherits the
+# role's default search_path (public only), so unqualified config lookups raised
+# "relation dash_project_rls_config does not exist" — poisoning the txn and
+# logging on every agent SQL statement. Pin search_path like the real engines.
+@_sa_event.listens_for(_eng, "begin")
+def _set_rewriter_search_path(conn):
+    conn.execute(text("SET LOCAL search_path TO dash,public"))
+
+
 _log = logging.getLogger(__name__)
+
+# Short TTL cache — _load_config was hit on every before_cursor_execute (i.e.
+# every agent SQL statement) with a fresh NullPool connection. Mirror the 60s
+# cache pg_session already uses so cold chat doesn't pay a config round-trip
+# per query.
+_CONFIG_CACHE: dict[str, dict] = {}  # slug -> {"ts": float, "cfg": dict}
+_CONFIG_TTL_S = 60.0
 
 
 def _load_config(project_slug: str) -> dict:
+    cached = _CONFIG_CACHE.get(project_slug)
+    if cached and time.time() - cached["ts"] < _CONFIG_TTL_S:
+        return cached["cfg"]
+    cfg = _load_config_uncached(project_slug)
+    _CONFIG_CACHE[project_slug] = {"ts": time.time(), "cfg": cfg}
+    return cfg
+
+
+def invalidate_config_cache(project_slug: str | None = None):
+    if project_slug:
+        _CONFIG_CACHE.pop(project_slug, None)
+    else:
+        _CONFIG_CACHE.clear()
+
+
+def _load_config_uncached(project_slug: str) -> dict:
     # Try to select bypass_roles; fall back if column missing (pre-migration 098).
     with _eng.connect() as conn:
         try:

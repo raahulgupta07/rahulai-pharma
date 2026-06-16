@@ -27,6 +27,11 @@ def _is_pg_rls(project_slug: str) -> tuple[bool, list[str]]:
     from sqlalchemy.pool import NullPool
     from db import db_url
     eng = create_engine(db_url, poolclass=NullPool)
+    # dash_* tables live in the `dash` schema; pin search_path so the config
+    # lookup doesn't raise "relation does not exist" on the default (public) path.
+    @_sa_event.listens_for(eng, "begin")
+    def _sp(conn):
+        conn.execute(text("SET LOCAL search_path TO dash,public"))
     try:
         with eng.connect() as conn:
             row = conn.execute(text("""

@@ -70,18 +70,51 @@ def _rerank(query: str, documents: list[dict], top_n: int = 5) -> list[dict]:
     if not documents:
         return []
 
+    # Latency: the Cohere rerank is a separate network round-trip (~1-3s) on the
+    # critical chat path. When retrieval already returned a small candidate set,
+    # reranking only reorders a handful of docs — the free keyword reranker is
+    # good enough there and saves the hop. Reversible via env, no rebuild:
+    #   RERANK_SKIP_BELOW (default 6) — skip the API call at/under this many docs.
+    try:
+        _skip_below = int(os.getenv("RERANK_SKIP_BELOW", "6"))
+    except Exception:
+        _skip_below = 6
+    if len(documents) <= _skip_below:
+        return _keyword_rerank(query, documents, top_n)
+
     doc_texts = [d.get("text", "")[:500] for d in documents] # cap length for reranker
     api_key = os.getenv("OPENROUTER_API_KEY", "")
 
-    if api_key:
+    # Kill switch: RERANK_API_ENABLED=0 skips the Cohere API entirely and uses the
+    # free local keyword reranker. The Cohere endpoint (via OpenRouter) has been
+    # observed to hang 20s+ on the chat critical path; keyword rerank is instant and
+    # good enough for the ~10-doc context set. Default ON.
+    _api_on = os.getenv("RERANK_API_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
+
+    if api_key and _api_on:
         import httpx
-        for model in RERANK_MODELS:
+        # Hard wall on the rerank wait so a slow/hung Cohere endpoint can't add 20s+
+        # to a chat reply — fall through to keyword rerank instead. A bare
+        # timeout=N only sets per-operation timeouts; an explicit httpx.Timeout caps
+        # connect AND read so a streaming/keepalive response can't stall past it.
+        try:
+            _rerank_timeout = float(os.getenv("RERANK_TIMEOUT_S", "5"))
+        except Exception:
+            _rerank_timeout = 5.0
+        _to = httpx.Timeout(_rerank_timeout, connect=3.0, read=_rerank_timeout)
+        # Only try this many models before giving up to keyword fallback. Each failed
+        # model costs a full timeout, so the old 3-model loop could burn 3x the wait.
+        try:
+            _max_models = max(1, int(os.getenv("RERANK_MAX_MODELS", "1")))
+        except Exception:
+            _max_models = 1
+        for model in RERANK_MODELS[:_max_models]:
             try:
                 resp = httpx.post(
                     "https://openrouter.ai/api/v1/rerank",
                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                     json={"model": model, "query": query, "documents": doc_texts, "top_n": top_n},
-                    timeout=10,
+                    timeout=_to,
                 )
                 if resp.status_code == 200:
                     data = resp.json()

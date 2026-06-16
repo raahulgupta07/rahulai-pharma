@@ -9,11 +9,20 @@ Factory function creates per-user team instances.
 import asyncio
 import functools
 import logging
+import os
 import re
 import threading
 import time
 
 log = logging.getLogger(__name__)
+
+# History runs carried into each leader/member LLM call. Lower = less context
+# per turn = faster cold chat (each of ~10-15 serial turns ships less prompt).
+# Env-tunable so it's reversible without a rebuild. Was hardcoded 5.
+try:
+    _NUM_HISTORY_RUNS = max(0, int(os.getenv("NUM_HISTORY_RUNS", "3")))
+except Exception:
+    _NUM_HISTORY_RUNS = 3
 
 from agno.knowledge import Knowledge
 from agno.learn import LearningMachine
@@ -79,7 +88,7 @@ def create_team(
         num_past_sessions_to_search=5,
         read_chat_history=True,
         add_history_to_context=True,
-        num_history_runs=5,
+        num_history_runs=_NUM_HISTORY_RUNS,
         add_datetime_to_context=True,
         markdown=True,
     )
