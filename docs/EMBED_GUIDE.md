@@ -10,6 +10,10 @@ Burmese** (it replies in whichever language they use).
 > CityAgent server. You update nothing when it improves — every site gets the
 > new version automatically.
 
+> The panels below are drawn as diagrams so this guide reads on its own. To swap
+> in real screenshots, drop PNGs into `docs/images/embed/` (see that folder's
+> `README.md` for the 8 filenames) — the diagrams already match those shots.
+
 ---
 
 ## What you'll need (2 minutes)
@@ -17,7 +21,12 @@ Burmese** (it replies in whichever language they use).
 Ask your CityAgent administrator (or open the admin console yourself) for your
 **widget cockpit**. It looks like this:
 
-![Widget cockpit overview](images/embed/01-cockpit-overview.png)
+```text
+┌─ store-20064-CCGMLM ──── public ─ 2 origins ─ ● Live ─ [ ON ] ─ ⧉ ⬇ ▷ ⚙ ─┐
+│                                                                          │
+│   KEYS · CONFIG · DROP-IN SNIPPET · FULL PHP CODE · Access  (tabs)        │
+└──────────────────────────────────────────────────────────────────────────┘
+```
 
 From it you'll copy two public values and (optionally) one server-only secret.
 
@@ -27,7 +36,14 @@ From it you'll copy two public values and (optionally) one server-only secret.
 
 Open **Admin console → Integrations → your widget**. The **KEYS** panel:
 
-![KEYS panel — embed id, public key, secret, endpoint](images/embed/02-keys.png)
+```text
+KEYS
+  EMBED ID     emb_xxxxxxxxxxxxxxxxxxxxx                 [ copy ]
+  PUBLIC KEY   pub_xxxxxxxxxxxxxxxxxxxxxxxxxxxx          [ copy ] [ › rotate ]
+  SECRET       ••••••••••••••••   [ reveal ]    server-side only
+                                  → set CITYAGENT_EMBED_SECRET   (HMAC mode)
+  ENDPOINT     https://YOUR-AGENT-DOMAIN/api/embed/chat
+```
 
 | Field | Looks like | Where it goes | Safe in the browser? |
 |-------|-----------|---------------|----------------------|
@@ -47,11 +63,15 @@ the basic (anonymous) install.
 
 ## Step 2 — Check your widget is ON and Live
 
-Top row of the cockpit: the **ON** toggle must be green, status **Live**.
+Top row of the cockpit: the **ON** toggle must be green, status **Live**. The
+**CONFIG** panel tells you how this key behaves:
 
-![CONFIG panel — scope, role, rate, auth, status, style](images/embed/03-config.png)
-
-The **CONFIG** panel tells you how this key behaves:
+```text
+CONFIG
+  SCOPE   store 20064 · availability only        ROLE   staff
+  RATE    120 / min                              AUTH   public
+  STATUS  live                                   STYLE  consumer
+```
 
 - **SCOPE** — which store's data it can see (e.g. *store 20064 · availability only*).
 - **ROLE** — `staff` (full) or `customer` (prices/quantities hidden).
@@ -65,7 +85,15 @@ The **CONFIG** panel tells you how this key behaves:
 
 The **DROP-IN SNIPPET** box has a one-click **copy**:
 
-![DROP-IN SNIPPET box](images/embed/04-snippet.png)
+```text
+DROP-IN SNIPPET                                                  [ copy ]
+  ┌────────────────────────────────────────────────────────────────────┐
+  │ <script src="https://YOUR-AGENT-DOMAIN/api/embed/widget.js?v=1.47.2" │
+  │   data-embed-id="emb_xxxxxxxx"                                       │
+  │   data-key="pub_xxxxxxxx"                                            │
+  │   async></script>                                                   │
+  └────────────────────────────────────────────────────────────────────┘
+```
 
 Paste it just before the closing `</body>` tag of your page:
 
@@ -82,13 +110,38 @@ Paste it just before the closing `</body>` tag of your page:
 Replace `YOUR-AGENT-DOMAIN`, `data-embed-id` and `data-key` with your values
 (the cockpit fills these in automatically when you copy from there).
 
-**That's it.** Reload the page → the robot launcher appears bottom-right.
+**That's it.** Reload the page → the robot launcher appears bottom-right:
 
-![Widget launcher live on a page](images/embed/07-widget-live.png)
+```text
+  ┌─────────────────────────────────┐
+  │  your website…                  │
+  │                                 │
+  │                        .----.   │
+  │                        | o o |  │   ← coral robot launcher
+  │                        |  -  |   │     (bottom-right, it bobs + waves)
+  │                        '----'   │
+  └─────────────────────────────────┘
+```
 
 Click it → the chat opens with the robot, a greeting and suggested questions:
 
-![Widget open — robot, greeting, suggested cards](images/embed/08-widget-open.png)
+```text
+  ┌─────────────────────────────────┐
+  │ (robot)  City Pharmacy  ● Online │
+  ├─────────────────────────────────┤
+  │            ( robot )             │
+  │     မင်္ဂလာပါ — ကူညီပေးရမလဲ?          │
+  │                                 │
+  │  SUGGESTED                      │
+  │  ┌───────────────────────────┐  │
+  │  │ Rx  Is this in stock?   › │  │
+  │  ├───────────────────────────┤  │
+  │  │ <>  Show substitutes    › │  │
+  │  └───────────────────────────┘  │
+  ├─────────────────────────────────┤
+  │ [ Type message…            → ]  │
+  └─────────────────────────────────┘
+```
 
 ### Customise the look (optional)
 
@@ -116,7 +169,12 @@ user with the **SECRET** — the secret never touches the browser.
 The cockpit gives you ready-to-run PHP under **FULL PHP CODE**
 (`widget-embed.php` + `CityAgentClient.php`). Click **show** / **download**:
 
-![FULL PHP CODE tabs](images/embed/05-php-code.png)
+```text
+FULL PHP CODE     [ widget-embed.php ]   [ CityAgentClient.php ]
+
+  [ show widget-embed.php ]   templated with this widget's keys ·
+                              secret read from your env
+```
 
 `widget-embed.php` (abridged — your real keys are templated in on download):
 
@@ -166,7 +224,14 @@ The admin opens the widget's **Access** tab and clicks **Allow** next to your
 site under *Sites trying to embed* (it appears the first time you load the
 widget). No redeploy — it works instantly.
 
-![Access tab — allow your site](images/embed/06-access-allow.png)
+```text
+Access — allowed origins for this widget
+  ✓ https://shop.example.com
+  ✓ https://staging.example.com
+
+  Sites trying to embed
+    https://new-site.com                       [ Allow ]  [ Block ]
+```
 
 > Add every domain you embed on, including `https://staging.example.com` and any
 > subdomains. Wildcards like `https://*.example.com` are supported.

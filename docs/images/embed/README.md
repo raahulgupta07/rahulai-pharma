@@ -1,9 +1,13 @@
-# Screenshots for the Embedding Guide
+# Screenshots for the Embedding Guide (optional upgrade)
 
-Drop the PNGs here with these exact filenames so `docs/EMBED_GUIDE.md` renders
-them. Capture each from the **admin console → Integrations → your widget**
-cockpit (the panel that shows EMBED ID / PUBLIC KEY / SECRET / ENDPOINT /
-DROP-IN SNIPPET / FULL PHP CODE).
+`docs/EMBED_GUIDE.md` is **already complete** — it uses inline ASCII diagrams of
+every panel, so it reads fine with no images. These PNGs are an *optional*
+upgrade: capture them and the guide looks even nicer (replace the matching
+diagram with `![caption](images/embed/NN-name.png)` when you add one).
+
+Capture each from the **admin console → Integrations → your widget** cockpit
+(the panel that shows EMBED ID / PUBLIC KEY / SECRET / ENDPOINT / DROP-IN
+SNIPPET / FULL PHP CODE).
 
 | File | What to capture |
 |------|-----------------|
