@@ -1143,6 +1143,48 @@ def _resolve_starter_questions(row_value) -> list:
     return []
 
 
+# Generic / analyst-only questions that are useless as customer starters.
+_LEARNED_STOP = {
+    "what information do we have", "what are the key findings",
+    "what information do we hav", "what can you do", "what data do you have",
+    "show me the data", "summarize the data", "give me a summary",
+}
+# Words that flag a dev/analyst query the public shouldn't see as a starter.
+_LEARNED_BAD_SUBSTR = (
+    "select ", "group by", "::", "schema", "column", "table ", "join ",
+    "sql", "database", "row_number", "count(*)",
+)
+
+
+def _rank_learned_starters(rows, limit: int = 12) -> list:
+    """Turn raw dash_query_patterns rows [(question, uses, source), ...] into a
+    clean, ranked list of customer-facing starter questions. Served as-is in the
+    language they were asked. Filters generic / analyst-shaped queries; ranks
+    live chat questions above training ones, then by how often they were used."""
+    seen = set()
+    cand = []
+    for r in rows or []:
+        q = (r[0] or "").strip()
+        ql = q.lower()
+        # punctuation-insensitive key for stoplist + dedup ("X?" == "X")
+        qkey = ql.rstrip(" ?.!၊။")
+        if not q or qkey in seen:
+            continue
+        if qkey in _LEARNED_STOP:
+            continue
+        if any(b in ql for b in _LEARNED_BAD_SUBSTR):
+            continue
+        if len(q) < 15 or len(q) > 120:
+            continue
+        seen.add(qkey)
+        uses = int(r[1] or 0)
+        is_chat = 1 if (len(r) > 2 and r[2] == "chat") else 0
+        cand.append((is_chat, uses, q))
+    # live chat first, then most-used
+    cand.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    return [c[2] for c in cand[:limit]]
+
+
 @router.get("/config/{embed_id}")
 def get_embed_public_config(embed_id: str, request: Request):
     """Return public theme config for the widget. No auth (origin-checked at session)."""
@@ -1217,24 +1259,58 @@ def get_embed_starter_suggestions(embed_id: str, request: Request):
     from dash.embed import _get_engine
     from fastapi.responses import JSONResponse
     starters: list = []
+    learned: list = []
     try:
         eng = _get_engine()
         with eng.connect() as conn:
             row = conn.execute(text(
-                "SELECT starter_questions, enabled, status "
+                "SELECT project_slug, starter_questions, enabled, status "
                 "FROM public.dash_agent_embeds WHERE embed_id = :e"
             ), {"e": embed_id}).first()
-        if row and not (row[1] is False or row[2] == "disabled"):
-            starters = _resolve_starter_questions(row[0])
-        else:
-            # Unknown/disabled embed > still return the global Burmese defaults
-            # so the widget never shows an empty chip row.
-            starters = _resolve_starter_questions(None)
+            if row and not (row[2] is False or row[3] == "disabled"):
+                project_slug = row[0]
+                starters = _resolve_starter_questions(row[1])
+                # ── Learned starters: real questions the agent has proven from
+                # live chat/training (ranked by how often asked). Served as-is in
+                # their original language. Falls back to config/defaults below
+                # when the agent hasn't learned enough yet (cold start).
+                if project_slug:
+                    try:
+                        # Include both proven AND pending — real customer chat
+                        # questions sit in 'pending' until the curator promotes
+                        # them, but their use-count is the strongest signal of
+                        # what people actually ask. Only hard-bad statuses drop.
+                        rows = conn.execute(text(
+                            "SELECT DISTINCT ON (question_norm) question, uses, source "
+                            "FROM public.dash_query_patterns "
+                            "WHERE project_slug = :s AND success "
+                            "AND status NOT IN ('rejected', 'failed', 'archived') "
+                            "AND question_norm IS NOT NULL "
+                            "AND char_length(question) BETWEEN 15 AND 120 "
+                            "ORDER BY question_norm, uses DESC NULLS LAST"
+                        ), {"s": project_slug}).fetchall()
+                        learned = _rank_learned_starters(rows)
+                    except Exception:
+                        learned = []
+            else:
+                # Unknown/disabled embed > still return the global Burmese
+                # defaults so the widget never shows an empty chip row.
+                starters = _resolve_starter_questions(None)
     except Exception:
         starters = _resolve_starter_questions(None)
+    # Prefer learned questions; top up with config/default starters so the pool
+    # always has at least a few options to rotate through.
+    pool: list = list(learned)
+    for q in starters:
+        if q and q not in pool:
+            pool.append(q)
+    if len(pool) < 3:
+        for q in _resolve_starter_questions(None):
+            if q and q not in pool:
+                pool.append(q)
     origin = request.headers.get("origin", "")
     cors = {"Access-Control-Allow-Origin": origin or "*", "Vary": "Origin"}
-    return JSONResponse({"questions": starters}, headers=cors)
+    return JSONResponse({"questions": pool[:12], "learned_count": len(learned)}, headers=cors)
 
 
 @router.post("/session/create")
@@ -1706,6 +1782,14 @@ async def embed_chat(req: Request):
             if sess.get("user_attrs"):
                 import json as _json
                 ctx_note += f"\n[EMBED CONTEXT] user_attrs={_json.dumps(sess['user_attrs'])}"
+            # Mirror the customer's language: Burmese question > Burmese answer,
+            # otherwise English. Keep numbers/units/product codes as-is.
+            if _is_burmese(message):
+                ctx_note += ("\n[LANGUAGE] The customer wrote in Burmese. Reply ONLY in "
+                             "Burmese (မြန်မာ). Keep product names, codes, numbers and units unchanged.")
+            else:
+                ctx_note += ("\n[LANGUAGE] The customer wrote in English. Reply ONLY in English. "
+                             "Keep product names, codes, numbers and units unchanged.")
 
             # Rate-limit concurrent agent runs to prevent OpenRouter 429s under
             # load (e.g. 100-shop embed load test). Reuses the chat-tier semaphore
@@ -2204,6 +2288,14 @@ async def embed_chat_stream(req: Request):
             if sess.get("user_attrs"):
                 import json as _json
                 ctx_note += f"\n[EMBED CONTEXT] user_attrs={_json.dumps(sess['user_attrs'])}"
+            # Mirror the customer's language: Burmese question > Burmese answer,
+            # otherwise English. Keep numbers/units/product codes as-is.
+            if _is_burmese(message):
+                ctx_note += ("\n[LANGUAGE] The customer wrote in Burmese. Reply ONLY in "
+                             "Burmese (မြန်မာ). Keep product names, codes, numbers and units unchanged.")
+            else:
+                ctx_note += ("\n[LANGUAGE] The customer wrote in English. Reply ONLY in English. "
+                             "Keep product names, codes, numbers and units unchanged.")
 
             # Stream from Agno team. Pump a sync iterator into an asyncio
             # queue so the producer coroutine can interleave heartbeats

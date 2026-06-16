@@ -2,6 +2,20 @@
 
 > Moved out of `CLAUDE.md` 2026-06-07 to keep the auto-loaded instruction file lean. This is build history, newest first. NOT auto-loaded into context — read on demand. Append new session recaps here.
 
+### Session 2026-06-16 — v1.46.1→1.47.2: Embed widget — real app robot, coral theme, bilingual replies, learned starters
+
+Follow-up to v1.46.0. Files: `dash/embed/widget.js` + `app/embed_public.py`.
+
+- **Robot now = the real app robot** (`FloatingRobot.svelte` idle pose). First attempt copied the mini `RobotAvatar` (solid dark eyes, flat mouth) — user rejected ("eyes not same"). Correct: coral `#c96342` body, **white eyes + dark pupils**, **smile-curve mouth**, teal `#0ecad4` antenna tip, 3 feet, no arms. Same SVG coords (viewBox `0 0 64 60`) reused in `bubbleBotSvg()` (launcher), `headerRobotSvg()` (classed `rb-*` so moods still animate) and the empty-state hero. `.header-logo` bg made transparent so the coral body reads.
+- **Theme flipped to coral** to match the agent brand. Embed accent was navy (`dash_agent_embeds.primary_color='#1a2b4a'`); widget default theme accent `#0066ff`→`#c96342` (dark/light/consumer + userBg) and the demo key's `primary_color` updated in DB. Header circle, suggestion cards, send button, robot all coral now.
+- **Claude-cards empty state**: bobbing robot hero + greeting + `SUGGESTED` label + full-width tappable `.sg-card`s (leading icon from `SG_ICONS`, trailing chevron, hover lift+slide). `renderChips()` accepts a plain string OR a `{my,en}` bilingual object (2-line). Cleared on first `submit()`.
+- **Bilingual language mirror**: `embed_chat` + `embed_chat_stream` append a `[LANGUAGE]` directive to `ctx_note` via `_is_burmese(message)` — Burmese question → Burmese answer, English → English (numbers/codes kept). Stock fast-path was already `_looks_burmese`-aware. Verified live both ways.
+- **Learned starter questions** (`GET /api/embed/config/{embed_id}/suggestions`): serves the real questions customers ask from `dash_query_patterns` (DISTINCT ON `question_norm`, ranked live-chat-first then by `uses`). `_rank_learned_starters()` filters generic/analyst junk (`_LEARNED_STOP` punctuation-insensitive, `_LEARNED_BAD_SUBSTR` for SQL-ish text), tops up with config/default starters, returns a pool ≤12 + `learned_count`. Widget renders an instant bilingual fallback, then fetches and `shuffleTake(qs, 3)` for per-load rotation when `learned_count >= 3`. **$0 — pure DB, no LLM.** Self-improving: cold start = built-in bilingual pool; real usage climbs the ranking and takes over.
+- **LANDMINE (no-chatbox bug):** `var BILINGUAL_STARTERS` / `pickStarters` were defined *below* the `loadSuggestions()` call. `var` value doesn't hoist → `undefined.slice()` threw → `buildWidget()` aborted **before the launcher click handler attached** → robot rendered but clicking did nothing. Fix: move defs above the call + wrap the empty-state init in try/catch so a render error can never block the open/close handlers.
+- **LANDMINE (learned query returned 0):** real customer chat questions are `status='pending'` (the curator promotes them to `proven` later), so requiring `status='proven'` excluded all the high-use chat ones. Relaxed to `status NOT IN ('rejected','failed','archived')`.
+
+VERSION 1.45.0 → 1.47.2. Deployed local :8011 (rebuild image + `--force-recreate` each step). Not committed.
+
 ### Session 2026-06-16 — v1.46.0: Embed widget Claude-style — moody robot, shimmer thinking, animated launcher
 
 Embed chat widget (`dash/embed/widget.js`, static file baked into image — edit → rebuild → `--force-recreate`, NOT hot-copy) overhauled to feel like Claude.

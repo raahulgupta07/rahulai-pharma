@@ -116,20 +116,20 @@
   var themes = {
     dark: {
       bg: '#0f0f12', surface: '#1a1a1f', fg: '#e5e5e8', dim: '#8a8a92',
-      accent: '#5b8def', border: '#2a2a30',
-      userBg: '#5b8def', userFg: '#ffffff',
+      accent: '#c96342', border: '#2a2a30',
+      userBg: '#c96342', userFg: '#ffffff',
       botBg: '#23232a', botFg: '#e5e5e8',
     },
     light: {
       bg: '#ffffff', surface: '#f7f7f9', fg: '#1c1c20', dim: '#7a7a82',
-      accent: '#0066ff', border: '#e4e4e8',
-      userBg: '#0066ff', userFg: '#ffffff',
+      accent: '#c96342', border: '#e4e4e8',
+      userBg: '#c96342', userFg: '#ffffff',
       botBg: '#f0f0f3', botFg: '#1c1c20',
     },
     consumer: {
       bg: '#ffffff', surface: '#f7f7f9', fg: '#1c1c20', dim: '#7a7a82',
-      accent: '#0066ff', border: '#e4e4e8',
-      userBg: '#0066ff', userFg: '#ffffff',
+      accent: '#c96342', border: '#e4e4e8',
+      userBg: '#c96342', userFg: '#ffffff',
       botBg: '#f0f0f3', botFg: '#1c1c20',
     }
   };
@@ -193,13 +193,12 @@
       display: flex; align-items: center; gap: 10px;
     }
     .header-logo {
-      width: 28px; height: 28px; border-radius: 50%;
-      background: ${t.accent}; color: #fff;
+      width: 34px; height: 32px; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
-      font-weight: 600; font-size: 13px; flex-shrink: 0;
-      object-fit: cover; overflow: hidden;
     }
-    .header-logo img { width: 100%; height: 100%; object-fit: cover; }
+    /* logo override keeps the rounded coral badge; the robot shows bare */
+    .header-logo img { width: 30px; height: 30px; border-radius: 8px;
+      object-fit: cover; background: ${t.accent}; }
     /* Live moody robot in the header — same character as the dashboard robot,
        mood class reacts to the chat lifecycle (idle/thinking/typing/done/error). */
     .header-logo .rb-svg { display: block; overflow: visible; }
@@ -302,6 +301,55 @@
       padding: 24px 16px; text-align: center;
       line-height: 1.5;
     }
+
+    /* ── Claude-style empty state: robot hero + suggested cards ── */
+    .es-hero {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 10px; padding: 22px 16px 10px;
+    }
+    .es-hero svg, .es-hero img {
+      width: 58px; height: 54px; display: block;
+      filter: drop-shadow(0 4px 8px rgba(0,0,0,0.14));
+    }
+    .es-hero img { border-radius: 14px; object-fit: cover; }
+    .es-hero .es-bob { animation: es-bob 3.4s ease-in-out infinite;
+      transform-box: fill-box; transform-origin: 50% 85%; }
+    .es-greet {
+      color: ${t.fg}; font-size: 14.5px; line-height: 1.5;
+      text-align: center; max-width: 92%; font-weight: 500;
+    }
+    .es-label {
+      font-size: 10.5px; font-weight: 700; letter-spacing: 0.09em;
+      text-transform: uppercase; color: ${t.dim};
+      padding: 6px 4px 8px;
+    }
+    .es-cards { display: flex; flex-direction: column; gap: 8px; padding: 0 1px 4px; }
+    .sg-card {
+      display: flex; align-items: center; gap: 11px; width: 100%;
+      text-align: left; background: ${t.surface};
+      border: 1px solid ${t.border}; border-radius: 13px;
+      padding: 12px 13px; cursor: pointer; font-family: inherit;
+      font-size: 13px; line-height: 1.4; color: ${t.fg};
+      transition: border-color 0.15s ease, background 0.15s ease,
+                  transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .sg-card:hover {
+      border-color: ${t.accent}; background: ${t.bg};
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(201,99,66,0.13);
+    }
+    .sg-ic { flex: none; width: 22px; height: 22px; color: ${t.accent};
+      display: flex; align-items: center; justify-content: center; }
+    .sg-ic svg { width: 19px; height: 19px; }
+    .sg-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+    .sg-q { color: ${t.fg}; font-size: 13px; line-height: 1.35; }
+    .sg-sub { color: ${t.dim}; font-size: 11px; line-height: 1.3; }
+    .sg-ch { flex: none; color: ${t.dim}; display: flex;
+      transition: transform 0.15s ease, color 0.15s ease; }
+    .sg-ch svg { width: 16px; height: 16px; }
+    .sg-card:hover .sg-ch { color: ${t.accent}; transform: translateX(3px); }
+    @keyframes es-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+    @media (prefers-reduced-motion: reduce) { .es-hero .es-bob { animation: none !important; } }
 
     .typing-row { display: flex; gap: 8px; align-items: flex-end; }
     .typing {
@@ -519,28 +567,30 @@
   // bubble, scaled up with idle personality (bob + blink + antenna pulse).
   function bubbleBotSvg() {
     if (logoUrl) { return '<img class="bubble-logo" src="' + escapeHtml(logoUrl) + '" alt="">'; }
-    // Full-body robot character (accent body, white face) that floats, blinks
-    // and waves. Replaces the round bubble — the robot itself IS the launcher.
-    var a = t.accent;
-    return '<svg viewBox="0 0 48 56" aria-hidden="true">'
+    // 100% the SAME character as the dashboard FloatingRobot (idle pose):
+    // coral body, WHITE eyes + dark pupils, smile mouth, teal antenna tip,
+    // 3 feet. Same viewBox + coords as FloatingRobot.svelte so it's identical.
+    var coral = '#c96342', tip = '#0ecad4', dark = '#1a1414', smile = '#7a1f12';
+    return '<svg viewBox="0 0 64 60" aria-hidden="true">'
       + '<g class="lr">'
-        // antenna
-        + '<line x1="24" y1="11" x2="24" y2="5" stroke="' + a + '" stroke-width="2.4" stroke-linecap="round"/>'
-        + '<circle class="lr-ant" cx="24" cy="3.6" r="2.6" fill="' + a + '"/>'
-        // left arm (static), right arm waves
-        + '<rect x="5" y="31" width="5.5" height="13" rx="2.75" fill="' + a + '"/>'
-        + '<rect class="lr-arm" x="37.5" y="25" width="5.5" height="13" rx="2.75" fill="' + a + '"/>'
+        // antenna + pulsing teal tip
+        + '<line x1="32" y1="20" x2="32" y2="14" stroke="' + coral + '" stroke-width="2.5" stroke-linecap="round"/>'
+        + '<circle class="lr-ant" cx="32" cy="12" r="2.6" fill="' + tip + '"/>'
         // body
-        + '<rect x="12" y="31" width="24" height="15" rx="6" fill="' + a + '"/>'
-        // head
-        + '<rect x="8" y="11" width="32" height="21" rx="7.5" fill="' + a + '"/>'
-        // eyes + mouth (white on accent head)
-        + '<rect class="lr-eye" x="16" y="18" width="5" height="5" rx="1.5" fill="#fff"/>'
-        + '<rect class="lr-eye" x="27" y="18" width="5" height="5" rx="1.5" fill="#fff"/>'
-        + '<rect x="19" y="26" width="10" height="2.2" rx="1.1" fill="#fff"/>'
-        // feet
-        + '<rect x="15" y="46" width="7" height="8" rx="2.5" fill="' + a + '"/>'
-        + '<rect x="26" y="46" width="7" height="8" rx="2.5" fill="' + a + '"/>'
+        + '<rect x="14" y="20" width="36" height="26" rx="6" fill="' + coral + '"/>'
+        // eyes = white rects + dark pupils (blink together)
+        + '<g class="lr-eye">'
+          + '<rect x="21" y="28" width="8" height="7" rx="2" fill="#fff"/>'
+          + '<rect x="35" y="28" width="8" height="7" rx="2" fill="#fff"/>'
+          + '<circle cx="25" cy="31.5" r="2" fill="' + dark + '"/>'
+          + '<circle cx="39" cy="31.5" r="2" fill="' + dark + '"/>'
+        + '</g>'
+        // smile mouth
+        + '<path d="M28,41 Q32,43.5 36,41" fill="none" stroke="' + smile + '" stroke-width="1.4" stroke-linecap="round"/>'
+        // 3 feet
+        + '<rect x="22" y="46" width="5" height="8" rx="1.5" fill="' + coral + '"/>'
+        + '<rect x="30" y="46" width="5" height="8" rx="1.5" fill="' + coral + '"/>'
+        + '<rect x="38" y="46" width="5" height="8" rx="1.5" fill="' + coral + '"/>'
       + '</g>'
       + '</svg>';
   }
@@ -579,13 +629,24 @@
     if (logoUrl) {
       return '<img src="' + escapeHtml(logoUrl) + '" alt="">';
     }
-    return '<svg class="rb-svg" viewBox="0 0 32 32" width="18" height="18" aria-hidden="true">'
-      + '<line x1="16" y1="9" x2="16" y2="5" stroke="#fff" stroke-width="2" stroke-linecap="round"/>'
-      + '<circle class="rb-ant" cx="16" cy="4.3" r="1.8" fill="#fff"/>'
-      + '<rect class="rb-body" x="6" y="9" width="20" height="14" rx="4" fill="#fff"/>'
-      + '<rect class="rb-eye rb-eye-l" x="11" y="13" width="3.5" height="3.5" rx="1" fill="' + t.accent + '"/>'
-      + '<rect class="rb-eye rb-eye-r" x="17.5" y="13" width="3.5" height="3.5" rx="1" fill="' + t.accent + '"/>'
-      + '<rect class="rb-mouth" x="12" y="19" width="8" height="1.4" rx="0.7" fill="' + t.accent + '"/>'
+    // SAME FloatingRobot character as the launcher — coral body, white eyes +
+    // dark pupils, smile, teal antenna tip. Classed parts (rb-ant/rb-eye/
+    // rb-mouth/rb-body) so the mood-* class drives the lifecycle animations.
+    var coral = '#c96342', tip = '#0ecad4', dark = '#1a1414', smile = '#7a1f12';
+    return '<svg class="rb-svg" viewBox="0 0 64 60" width="30" height="28" aria-hidden="true">'
+      + '<line x1="32" y1="20" x2="32" y2="14" stroke="' + coral + '" stroke-width="2.5" stroke-linecap="round"/>'
+      + '<circle class="rb-ant" cx="32" cy="12" r="2.6" fill="' + tip + '"/>'
+      + '<rect class="rb-body" x="14" y="20" width="36" height="26" rx="6" fill="' + coral + '"/>'
+      + '<g class="rb-eye">'
+        + '<rect x="21" y="28" width="8" height="7" rx="2" fill="#fff"/>'
+        + '<rect x="35" y="28" width="8" height="7" rx="2" fill="#fff"/>'
+        + '<circle cx="25" cy="31.5" r="2" fill="' + dark + '"/>'
+        + '<circle cx="39" cy="31.5" r="2" fill="' + dark + '"/>'
+      + '</g>'
+      + '<path class="rb-mouth" d="M28,41 Q32,43.5 36,41" fill="none" stroke="' + smile + '" stroke-width="1.4" stroke-linecap="round"/>'
+      + '<rect x="22" y="46" width="5" height="8" rx="1.5" fill="' + coral + '"/>'
+      + '<rect x="30" y="46" width="5" height="8" rx="1.5" fill="' + coral + '"/>'
+      + '<rect x="38" y="46" width="5" height="8" rx="1.5" fill="' + coral + '"/>'
       + '</svg>';
   }
 
@@ -943,17 +1004,61 @@
     messages.push({ role: role, content: content });
   }
 
-  function showGreeting() {
-    var g = document.createElement('div');
-    g.className = 'greeting';
-    g.textContent = greeting;
-    msgList.appendChild(g);
+  // Leading icons for the suggested cards (rotate by index) + chevron.
+  var SG_ICONS = [
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 20.5 3.5 13.5a5 5 0 0 1 7-7l7 7a5 5 0 0 1-7 7Z"/><path d="m8.5 8.5 7 7"/></svg>',
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z"/><circle cx="12" cy="10" r="3"/></svg>',
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'
+  ];
+  var SG_CHEVRON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+
+  // Bilingual starter pool (Burmese + English twins). 3 are picked at random on
+  // every load so the opener feels fresh. Each card shows both languages; the
+  // click sends the Burmese line (store is Burmese-facing) — typing English
+  // still gets an English reply (the agent mirrors the question language).
+  // MUST be defined ABOVE the showGreeting()/loadSuggestions() calls below —
+  // var-assignment doesn't hoist, so referencing it later would throw and abort
+  // the whole widget build (incl. the launcher click handler).
+  var BILINGUAL_STARTERS = [
+    { my: 'ဒီဆေး လက်ကျန်ရှိလား?',                  en: 'Is this medicine in stock?' },
+    { my: 'အစားထိုး ဆေးတွေ ပြပါ',                  en: 'Show me substitute medicines' },
+    { my: 'အနီးဆုံးဆိုင်မှာ ရှိလား?',                 en: 'Is it at the nearest branch?' },
+    { my: 'ဈေးအသက်သာဆုံး ဆေးက ဘယ်ဟာလဲ?',        en: 'Which option is cheapest?' },
+    { my: 'ဒီရောဂါအတွက် ဘာဆေးကောင်းလဲ?',          en: 'What medicine helps this illness?' },
+    { my: 'ထိပ်တန်းရောင်းအားကောင်းဆေးတွေ ပြပါ',     en: 'Show top-selling products' },
+    { my: 'ဒီဆေးက ဘာအတွက် သုံးတာလဲ?',             en: 'What is this medicine used for?' },
+    { my: 'လက်ကျန်နည်းနေတဲ့ ဆေးတွေ ပြပါ',          en: 'Show items running low' },
+    { my: 'ဆေးတွဲဖက် သုံးလို့ ရလား?',               en: 'Can these be taken together?' },
+    { my: 'ပါရာစီတမော ရှိလား?',                    en: 'Do you have paracetamol?' }
+  ];
+
+  function pickStarters(n) {
+    var pool = BILINGUAL_STARTERS.slice();
+    // Fisher–Yates shuffle, then take n.
+    for (var i = pool.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp;
+    }
+    return pool.slice(0, n);
   }
-  showGreeting();
-  // Seed the opening starter-question chips immediately (before any reply) so
-  // the customer sees what they can ask. Falls back to the /suggestions
-  // endpoint if the server config didn't carry starters.
-  loadSuggestions();
+
+  function showGreeting() {
+    var hero = document.createElement('div');
+    hero.className = 'es-hero';
+    var bot = document.createElement('div');
+    bot.innerHTML = bubbleBotSvg();
+    hero.appendChild(bot.firstChild);
+    var g = document.createElement('div');
+    g.className = 'es-greet';
+    g.textContent = greeting;
+    hero.appendChild(g);
+    msgList.appendChild(hero);
+  }
+  // Seed the opening hero + starter cards. Wrapped so any render error can
+  // NEVER abort the rest of the build (the launcher open/close handlers below).
+  try { showGreeting(); loadSuggestions(); }
+  catch (e) { try { console.error('[embed] empty-state render failed', e); } catch (_) {} }
 
   // ── Typing indicator ────────────────────────────────────────────────
   var typingRow = null;
@@ -978,40 +1083,85 @@
   }
 
   // ── Suggested questions chips ───────────────────────────────────────
-  function loadSuggestions() {
-    // Prefer starter chips already carried in the server config (no extra
-    // round-trip); fall back to the /suggestions endpoint otherwise.
-    if (starterQuestions && starterQuestions.length) {
-      renderChips(starterQuestions.slice(0, 3));
-      return;
+  function shuffleTake(arr, n) {
+    var a = arr.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
     }
-    fetch(apiOrigin + '/api/embed/config/' + encodeURIComponent(embedId) + '/suggestions')
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(d) {
-        if (!d || !d.questions || !d.questions.length) return;
-        renderChips(d.questions.slice(0, 3));
-      })
-      .catch(function() { /* silent */ });
+    return a.slice(0, n);
+  }
+
+  function loadSuggestions() {
+    // 1) Instant: bilingual built-in trio so the panel is never empty.
+    renderChips(pickStarters(3));
+    // 2) Upgrade to LEARNED questions (real ones the agent has proven from live
+    //    chat/training) when the server has enough. Served as-is in their
+    //    original language; we shuffle the returned pool for per-load rotation.
+    try {
+      fetch(apiOrigin + '/api/embed/config/' + encodeURIComponent(embedId) + '/suggestions')
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          var qs = (d && d.questions) ? d.questions.filter(function (x) {
+            return typeof x === 'string' ? x.trim() : (x && (x.my || x.en));
+          }) : [];
+          // Only override the built-in trio when the agent has actually learned
+          // questions (cold-start keeps the bilingual defaults).
+          if (d && d.learned_count >= 3 && qs.length >= 3) {
+            renderChips(shuffleTake(qs, 3));
+          }
+        })
+        .catch(function () { /* keep the built-in trio */ });
+    } catch (e) { /* keep the built-in trio */ }
+    return;
   }
 
   function renderChips(questions) {
-    var existing = msgList.querySelector('.chips');
+    var existing = msgList.querySelector('.es-block');
     if (existing) existing.parentNode.removeChild(existing);
-    var wrap = document.createElement('div');
-    wrap.className = 'chips';
-    questions.forEach(function(q) {
+    var block = document.createElement('div');
+    block.className = 'es-block';
+    var label = document.createElement('div');
+    label.className = 'es-label';
+    label.textContent = 'Suggested';
+    block.appendChild(label);
+    var cards = document.createElement('div');
+    cards.className = 'es-cards';
+    questions.forEach(function(q, i) {
+      // q may be a bilingual object {my, en} or a plain string (server fallback).
+      var primary = (q && q.my) ? q.my : (typeof q === 'string' ? q : '');
+      var secondary = (q && q.en) ? q.en : '';
       var btn = document.createElement('button');
-      btn.className = 'chip';
+      btn.className = 'sg-card';
       btn.type = 'button';
-      btn.textContent = q;
+      var ic = document.createElement('span');
+      ic.className = 'sg-ic';
+      ic.innerHTML = SG_ICONS[i % SG_ICONS.length];
+      var tx = document.createElement('span');
+      tx.className = 'sg-tx';
+      var qy = document.createElement('span');
+      qy.className = 'sg-q';
+      qy.textContent = primary;
+      tx.appendChild(qy);
+      if (secondary) {
+        var sub = document.createElement('span');
+        sub.className = 'sg-sub';
+        sub.textContent = secondary;
+        tx.appendChild(sub);
+      }
+      var ch = document.createElement('span');
+      ch.className = 'sg-ch';
+      ch.innerHTML = SG_CHEVRON;
+      btn.appendChild(ic); btn.appendChild(tx); btn.appendChild(ch);
       btn.addEventListener('click', function() {
-        inputEl.value = q;
-        wrap.parentNode && wrap.parentNode.removeChild(wrap);
+        inputEl.value = primary;
+        block.parentNode && block.parentNode.removeChild(block);
         submit();
       });
-      wrap.appendChild(btn);
+      cards.appendChild(btn);
     });
-    msgList.appendChild(wrap);
+    block.appendChild(cards);
+    msgList.appendChild(block);
     msgList.scrollTop = msgList.scrollHeight;
   }
 
@@ -1229,6 +1379,9 @@
     if (!msg) return;
     inputEl.value = '';
     autoGrow();
+    // clear the empty-state hero + suggested cards on first send
+    var _es = msgList.querySelector('.es-hero'); if (_es) _es.parentNode.removeChild(_es);
+    var _esb = msgList.querySelector('.es-block'); if (_esb) _esb.parentNode.removeChild(_esb);
     pushMsg('user', msg);
     sendBtn.disabled = true;
     sending = true;
