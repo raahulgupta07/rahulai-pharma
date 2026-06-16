@@ -402,6 +402,11 @@
  let configBusy = $state(false);
  let configErr = $state('');
 
+ // ---- per-widget engine override ('' = inherit global, '2.0' = fast, '1.0' = pro) ----
+ let configEngine = $state<'' | '2.0' | '1.0'>('');
+ let configEngineBusy = $state(false);
+ let configEngineSaved = $state(false);
+
  // ---- Access tab: origin allowlist + mode + auto-detected pending origins ----
  let configOriginMode = $state<'strict' | 'subdomains' | 'open'>('strict');
  let configOrigins = $state<string[]>([]);
@@ -422,6 +427,8 @@
  configLogo = e.logo_url || '';
  configOriginMode = (e.origin_mode as any) || 'strict';
  configOrigins = Array.isArray(e.allowed_origins) ? [...e.allowed_origins] : [];
+ const eng = e.feature_config?.engine;
+ configEngine = (eng === '2.0' || eng === '1.0') ? eng : '';
  }
  function loadConfig() {
  configEmbed = embeds[0] || null;
@@ -459,6 +466,29 @@
  else { let d = ''; try { const e = await r.json(); d = e.detail || ''; } catch {} configErr = d || `revert ${r.status}`; }
  } catch { configErr = 'unreachable'; }
  configBusy = false;
+ }
+
+ // PATCH this widget's engine override. '' (inherit) sends engine:null so the
+ // backend falls back to the global default; '2.0'/'1.0' pin it.
+ async function saveConfigEngine(value: '' | '2.0' | '1.0') {
+ configEngine = value;
+ if (!configEmbed) return;
+ configEngineBusy = true;
+ try {
+ const fc = { ...(configEmbed.feature_config || {}), engine: value === '' ? null : value };
+ const r = await apiFetch(`/api/projects/${slug}/embeds/${configEmbed.embed_id || configEmbed.id}`, {
+ method: 'PATCH',
+ body: JSON.stringify({ feature_config: fc }),
+ });
+ if (r.ok) {
+ // patch the in-memory row so the UI reflects it without a full reload
+ configEmbed.feature_config = fc;
+ const eid = configEmbed.embed_id || configEmbed.id;
+ embeds = embeds.map((x) => ((x.embed_id || x.id) === eid ? { ...x, feature_config: fc } : x));
+ configEngineSaved = true; setTimeout(() => configEngineSaved = false, 1800);
+ }
+ } catch { /* fail-soft */ }
+ configEngineBusy = false;
  }
 
  // ---- single-point BRAND theme ----
@@ -510,6 +540,29 @@
  else { let d = ''; try { const e = await r.json(); d = e.detail || ''; } catch {} brandErr = d || `reset ${r.status}`; }
  } catch { brandErr = 'unreachable'; }
  brandResetting = false;
+ }
+
+ // ---- GLOBAL default engine (Dash 2.0 fast vs Dash 1.0 pro) ----
+ // engine ∈ 'auto' | '2.0' | '1.0'. 'auto' = let the server decide.
+ let defaultEngine = $state<'auto' | '2.0' | '1.0'>('auto');
+ let engineSaving = $state(false);
+ let engineSaved = $state(false);
+ async function loadDefaultEngine() {
+ try {
+ const r = await apiFetch(`/api/projects/${slug}/embed-default-engine`);
+ if (r.ok) { const d = await r.json(); defaultEngine = (d.engine as any) || 'auto'; }
+ } catch { /* fail-soft */ }
+ }
+ async function saveDefaultEngine() {
+ engineSaving = true;
+ try {
+ const r = await apiFetch(`/api/projects/${slug}/embed-default-engine`, {
+ method: 'PUT',
+ body: JSON.stringify({ engine: defaultEngine }),
+ });
+ if (r.ok) { engineSaved = true; setTimeout(() => engineSaved = false, 1800); }
+ } catch { /* fail-soft */ }
+ engineSaving = false;
  }
 
  // ---- inline expand: full PHP code + secret reveal (per widget) ----
@@ -1100,7 +1153,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
  if (view === 'monitoring' && monData === null && !monBusy) loadMonitoring();
  });
  $effect(() => {
- if ((view === 'brand' || view === 'overview') && !brandLoaded) loadBrand();
+ if ((view === 'brand' || view === 'overview') && !brandLoaded) { loadBrand(); loadDefaultEngine(); }
  });
 </script>
 
@@ -1268,6 +1321,19 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
                   {#if brandLogo}<button type="button" class="emp-btn emp-btn-sm" onclick={() => brandLogo = ''}>clear</button>{/if}
                 </div>
                 <span class="emp-muted emp-fineprint">Per-store logos can be uploaded from each widget's Appearance tab.</span>
+              </label>
+              <label class="emp-field emp-field-full">
+                <span class="emp-flabel"><Icon name="zap" size={14} /> Engine</span>
+                <div class="emp-color-row">
+                  <select class="emp-input emp-select" bind:value={defaultEngine}>
+                    <option value="auto">Auto — let the server decide</option>
+                    <option value="2.0">Dash 2.0 — Fast · simple lookups ~10s</option>
+                    <option value="1.0">Dash 1.0 — Pro · full team, deepest</option>
+                  </select>
+                  <button class="emp-btn emp-btn-sm" disabled={engineSaving} onclick={saveDefaultEngine}>{engineSaving ? '◐…' : 'Save'}</button>
+                  {#if engineSaved}<span class="emp-saved"><Icon name="check" size={14} /></span>{/if}
+                </div>
+                <span class="emp-muted emp-fineprint">Complex questions always use the full team — this only speeds up simple lookups.</span>
               </label>
             </div>
             <div class="emp-btnrow emp-mt">
@@ -1826,6 +1892,21 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
               {#if configErr}<span class="emp-err">x {configErr}</span>{/if}
             </div>
             {/if}
+
+            <div class="emp-h emp-mt"><Icon name="zap" size={14} /> ENGINE</div>
+            <label class="emp-field emp-field-full">
+              <span class="emp-flabel">model for this widget</span>
+              <div class="emp-color-row">
+                <select class="emp-input emp-select" disabled={configEngineBusy} value={configEngine} onchange={(e) => saveConfigEngine((e.currentTarget as HTMLSelectElement).value as ('' | '2.0' | '1.0'))}>
+                  <option value="">Inherit global ({defaultEngine === 'auto' ? 'Auto' : defaultEngine === '2.0' ? 'Dash 2.0' : 'Dash 1.0'})</option>
+                  <option value="2.0">Dash 2.0 — Fast</option>
+                  <option value="1.0">Dash 1.0 — Pro</option>
+                </select>
+                {#if configEngineBusy}<span class="emp-muted">◐…</span>{/if}
+                {#if configEngineSaved}<span class="emp-saved"><Icon name="check" size={14} /></span>{/if}
+              </div>
+              <span class="emp-muted emp-fineprint">Inherit follows the global Engine default. Override only this store here.</span>
+            </label>
           {/if}
 
           {#if wTab === 'access'}

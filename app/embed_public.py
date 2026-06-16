@@ -168,17 +168,47 @@ def _is_burmese(s: str) -> bool:
     return any("က" <= c <= "႟" for c in (s or ""))
 
 
-def _embed_fast_analyst(project_slug: str, message: str, viewer_id):
-    """Single-agent fast-path for embed (flag-gated SINGLE_AGENT_FASTPATH, default
-    OFF). Simplest TRIVIAL/LOOKUP questions run a lone Analyst instead of the full
-    team — ~10-15 coordination turns drop to ~2-3. Returns an Agno Agent that
-    duck-types into team.run() (both embed consumers handle RunContent), or None to
-    fall back to the team. The Analyst has NO write tools, so this stays embed-safe
-    (allow_write_agents=False is moot — no Engineer in this path)."""
+def _resolve_embed_engine(feature_config) -> str:
+    """Returns '2.0' / '1.0' (explicit choice) or '' (fall through to env).
+    Precedence: per-widget feature_config.engine > global embed_default_engine."""
     try:
-        import os as _efp_os
-        if str(_efp_os.getenv("SINGLE_AGENT_FASTPATH", "0")).strip().lower() not in ("1", "true", "yes", "on"):
+        fc = feature_config if isinstance(feature_config, dict) else {}
+        e = str(fc.get("engine") or "").strip()
+        if e in ("2.0", "1.0"):
+            return e
+        from dash.admin.settings import get_setting
+        g = str(get_setting("embed_default_engine") or "").strip()
+        if g in ("2.0", "1.0"):
+            return g
+    except Exception:
+        pass
+    return ""
+
+
+def _embed_fast_analyst(project_slug: str, message: str, viewer_id, engine: str = ""):
+    """Single-agent fast-path for embed. Returns an Agno Agent that duck-types into
+    team.run() (both embed consumers handle RunContent), or None to fall back to the
+    full team. The Analyst has NO write tools, so this stays embed-safe
+    (allow_write_agents=False is moot — no Engineer in this path).
+
+    Engine resolution (see _resolve_embed_engine):
+      - '1.0'  > force the FULL TEAM (return None, skip the fast-path entirely).
+      - '2.0'  > fast-path ENABLED regardless of the SINGLE_AGENT_FASTPATH env flag
+                 (still tier-gated: only TRIVIAL/LOOKUP go single-agent).
+      - ''     > fall through to the legacy behavior: env SINGLE_AGENT_FASTPATH
+                 (default OFF), then the same tier gate.
+    """
+    try:
+        # Dash 1.0 = full team. Never take the single-agent fast-path.
+        if engine == "1.0":
             return None
+        if engine == "2.0":
+            # Dash 2.0 = fast-path on, ignore the env flag (tier gate still applies).
+            pass
+        else:
+            import os as _efp_os
+            if str(_efp_os.getenv("SINGLE_AGENT_FASTPATH", "0")).strip().lower() not in ("1", "true", "yes", "on"):
+                return None
         from dash.routing import classify_complexity as _efp_cc
         dec = _efp_cc(project_slug, message)
         if (dec or {}).get("tier") not in ("TRIVIAL", "LOOKUP"):
@@ -1794,8 +1824,11 @@ async def embed_chat(req: Request):
         team = None
         if not _shortcut_hit:
             from dash.team import create_project_team
-            # Single-agent fast-path (flag-gated) for simple LOOKUP questions.
-            team = _embed_fast_analyst(project_slug, message, synthetic_viewer)
+            # Single-agent fast-path. Engine resolved per-widget (feature_config.engine)
+            # > global embed_default_engine > env SINGLE_AGENT_FASTPATH. '1.0' forces the
+            # full team; '2.0' forces the fast-path on (tier-gated); '' = env behavior.
+            _engine = _resolve_embed_engine(feature_cfg_override)
+            team = _embed_fast_analyst(project_slug, message, synthetic_viewer, engine=_engine)
             if team is None:
                 team = create_project_team(
                     project_slug=project_slug,
@@ -2318,8 +2351,12 @@ async def embed_chat_stream(req: Request):
             except Exception:
                 pass
             from dash.team import create_project_team
-            # Single-agent fast-path (flag-gated) for simple LOOKUP questions.
-            team = _embed_fast_analyst(project_slug, message, synthetic_viewer)
+            # Single-agent fast-path. Engine resolved per-widget (feature_config.engine)
+            # > global embed_default_engine > env SINGLE_AGENT_FASTPATH. '1.0' forces the
+            # full team; '2.0' forces the fast-path on (tier-gated); '' = env behavior.
+            # _fc = this embed's feature_config (loaded with the embed row above).
+            _engine = _resolve_embed_engine(_fc)
+            team = _embed_fast_analyst(project_slug, message, synthetic_viewer, engine=_engine)
             if team is None:
                 team = create_project_team(
                     project_slug=project_slug,

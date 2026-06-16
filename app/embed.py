@@ -661,6 +661,33 @@ async def put_embed_default_auth(slug: str, request: Request):
     return {"status": "ok", "auth_mode": mode}
 
 
+@router.get("/{slug}/embed-default-engine")
+def get_embed_default_engine(slug: str, request: Request):
+    """Resolved global default engine for embed widgets (Dash 2.0 fast-path vs
+    Dash 1.0 full team). 'auto' = no global default (fall through to env)."""
+    user = _get_user(request)
+    _check_access(user, slug)
+    from dash.admin.settings import get_setting
+    return {"status": "ok", "engine": get_setting("embed_default_engine") or "auto"}
+
+
+@router.put("/{slug}/embed-default-engine")
+async def put_embed_default_engine(slug: str, request: Request):
+    """Set the global default engine for embed widgets. A per-widget
+    feature_config.engine ('2.0'/'1.0') overrides this. 'auto' = no global default."""
+    user = _get_user(request)
+    _check_access(user, slug)
+    body = await request.json()
+    engine = (body or {}).get("engine")
+    if engine not in ("auto", "2.0", "1.0"):
+        raise HTTPException(400, "engine must be one of: auto, 2.0, 1.0")
+    from dash.admin.settings import set_setting
+    ok, err = set_setting("embed_default_engine", engine, scope="global", user_id=user.get("user_id"))
+    if not ok:
+        raise HTTPException(400, err or "failed to save")
+    return {"status": "ok", "engine": engine}
+
+
 @router.post("/{slug}/embeds/bulk-auth")
 async def bulk_set_embed_auth(slug: str, request: Request):
     """Apply one auth mode to EVERY widget in this project (outlet + custom).

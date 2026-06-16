@@ -108,6 +108,7 @@ REGISTRY: dict[str, dict] = {
     "embed_brand": {"type": "string", "default": "", "env": None, "scope": "global", "desc": "Default embed widget appearance JSON (single-point brand theme)"},
     # Default auth mode for newly auto-provisioned outlet widgets.
     "embed_default_auth_mode": {"type": "enum", "default": "public", "env": None, "scope": "global", "choices": ["public", "hmac", "jwt"], "desc": "Default auth_mode for auto-provisioned outlet widgets (public = drop-in key only · hmac = server-signed · jwt = app identity)"},
+    "embed_default_engine": {"type": "enum", "default": "auto", "env": None, "scope": "global", "choices": ["auto", "2.0", "1.0"], "desc": "Default engine for embed widgets (auto = server decides · 2.0 = fast single-agent on simple lookups · 1.0 = full multi-agent team). Per-widget feature_config.engine overrides this."},
     # Default Burmese opening greeting shown when a widget opens (per-widget
     # welcome_msg / brand override take precedence; this is the global fallback).
     "embed_default_welcome": {"type": "string", "default": "မင်္ဂလာပါ — ဘာများ ကူညီပေးရမလဲ?", "env": None, "scope": "global", "desc": "Default embed widget opening greeting (Burmese). Resolution: per-widget welcome_msg ?? brand ?? this ?? hard fallback"},
