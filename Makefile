@@ -1,4 +1,13 @@
-.PHONY: rebuild rebuild-fast rebuild-frontend rebuild-raw up down logs ps health migrate-status test-edge-cases test-rls test-rate-limit check-drift
+.PHONY: install bootstrap rebuild rebuild-fast rebuild-frontend rebuild-raw up down logs ps health migrate-status test-edge-cases test-rls test-rate-limit check-drift
+
+# Turnkey one-command install: preflight + generate .env + start + wait health.
+install: ## first install (safe to re-run; never clobbers .env)
+	./install.sh
+
+# Generate .env with random secrets if it doesn't exist yet.
+bootstrap: ## create .env from .env.example with fresh random secrets
+	./scripts/bootstrap_env.sh
+
 
 # Issue #11: deterministic rebuild that always busts cache and recreates the
 # container. Use this when frontend/src/*.svelte changes don't appear after

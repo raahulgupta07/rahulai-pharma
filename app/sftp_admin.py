@@ -402,6 +402,81 @@ def sftp_browse(request: Request, username: str = ""):
     return {"users": users}
 
 
+@router.get("/files-all")
+def sftp_browse_all(request: Request, limit: int = 1000):
+    """Global file explorer: every dropped file across every user, joined with its
+    latest ingest result so the admin can see at a glance which files landed,
+    which are still uploading, and which failed to ingest."""
+    _require_super(_get_user(request))
+    import os
+    root = SFTP_DATA_DIR
+
+    # latest ingest status per (username, rel_path) from the watcher log
+    ingest: dict[tuple, dict] = {}
+    try:
+        from db import get_sql_engine
+        from sqlalchemy import text as _t
+        eng = get_sql_engine()
+        with eng.connect() as conn:
+            rows = conn.execute(_t(
+                "SELECT DISTINCT ON (username, rel_path) username, rel_path, table_name, "
+                "action, status, rows_loaded, message, "
+                "to_char(created_at,'YYYY-MM-DD HH24:MI') AS ts "
+                "FROM public.dash_sftp_ingest_log "
+                "ORDER BY username, rel_path, created_at DESC"
+            )).fetchall()
+        for r in rows:
+            ingest[(r[0], r[1])] = {
+                "table_name": r[2], "action": r[3], "ingest_status": r[4],
+                "rows_loaded": r[5], "message": r[6], "ingested_at": r[7],
+            }
+    except Exception:  # log table not created yet → no ingest info
+        pass
+
+    files = []
+    total_bytes = 0
+    if os.path.isdir(root):
+        for name in sorted(os.listdir(root)):
+            base = os.path.join(root, name)
+            if not os.path.isdir(base):
+                continue
+            for dirpath, _dirs, names in os.walk(base):
+                for n in names:
+                    fp = os.path.join(dirpath, n)
+                    try:
+                        st = os.stat(fp)
+                    except OSError:
+                        continue
+                    rel = os.path.relpath(fp, base)
+                    total_bytes += st.st_size
+                    # partial upload markers SFTPGo/clients leave mid-transfer
+                    partial = n.endswith((".part", ".filepart", ".tmp", ".uploading"))
+                    ing = ingest.get((name, rel))
+                    if partial:
+                        status = "uploading"
+                    elif ing:
+                        raw = ing.get("ingest_status")
+                        status = {"ok": "ingested", "error": "failed"}.get(raw, raw or "pending")
+                    else:
+                        status = "pending"
+                    files.append({
+                        "username": name, "name": n, "rel": rel,
+                        "size": st.st_size, "mtime": int(st.st_mtime),
+                        "status": status,
+                        "table_name": (ing or {}).get("table_name"),
+                        "action": (ing or {}).get("action"),
+                        "rows_loaded": (ing or {}).get("rows_loaded"),
+                        "message": (ing or {}).get("message"),
+                        "ingested_at": (ing or {}).get("ingested_at"),
+                    })
+    files.sort(key=lambda f: f["mtime"], reverse=True)
+    return {
+        "files": files[: max(1, min(int(limit), 5000))],
+        "file_count": len(files),
+        "total_bytes": total_bytes,
+    }
+
+
 def _retention_check(username: str, hours: int) -> int:
     """Ask SFTPGo to delete files older than `hours` in this user's folder.
     SFTPGo does the deletion server-side (correct ownership) — the app mount is

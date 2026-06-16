@@ -333,6 +333,112 @@ def provision_store_embeds_endpoint(slug: str, request: Request):
     return {"status": "ok", "created": created}
 
 
+# ── Pending origins: auto-detected sites trying to embed ──────────────────────
+# Every Origin denied by the allowlist is logged (dash/embed/auth.py). These
+# endpoints let an admin see who's knocking and one-click Allow (append to the
+# embed's allowed_origins) or Block — no code redeploy. Fixes the AWS
+# "Origin ... not in allowlist (403)" loop for any team, anywhere.
+
+@router.get("/{slug}/pending-origins")
+def list_pending_origins(slug: str, request: Request, status: str = "pending", limit: int = 200):
+    """Sites that tried to embed any of this project's widgets but were denied.
+    Filter by status: pending | allowed | blocked | all."""
+    from sqlalchemy import text
+    from dash.embed import _get_engine
+    user = _get_user(request)
+    _check_access(user, slug)
+    lim = max(1, min(int(limit or 200), 1000))
+    where_status = "" if status == "all" else "AND p.status = :st"
+    eng = _get_engine()
+    with eng.connect() as conn:
+        rows = conn.execute(
+            text(
+                f"""
+                SELECT p.id, p.embed_id, e.name AS embed_name, p.origin, p.ip,
+                       p.country, p.attempts, p.status, p.first_seen, p.last_seen
+                FROM public.dash_embed_pending_origins p
+                JOIN public.dash_agent_embeds e ON e.embed_id = p.embed_id
+                WHERE e.project_slug = :s {where_status}
+                ORDER BY p.last_seen DESC
+                LIMIT :lim
+                """
+            ),
+            {"s": slug, "st": status, "lim": lim},
+        ).fetchall()
+    items = [
+        {
+            "id": r.id, "embed_id": r.embed_id, "embed_name": r.embed_name,
+            "origin": r.origin, "ip": r.ip, "country": r.country,
+            "attempts": r.attempts, "status": r.status,
+            "first_seen": str(r.first_seen), "last_seen": str(r.last_seen),
+        }
+        for r in rows
+    ]
+    return {"status": "ok", "pending": items, "count": len(items)}
+
+
+@router.post("/{slug}/embeds/{embed_id}/pending-origins/allow")
+async def allow_pending_origin(slug: str, embed_id: str, request: Request):
+    """Append an origin to the embed's allowed_origins + mark the pending row
+    allowed. Body: {"origin": "https://site.example"}."""
+    from sqlalchemy import text
+    from dash.embed import _get_engine
+    user = _get_user(request)
+    _check_access(user, slug)
+    emb = _load_embed_or_404(embed_id, slug)
+    body = await request.json()
+    origin = (body.get("origin") or "").strip().rstrip("/")
+    if not origin:
+        raise HTTPException(400, "origin required")
+
+    current = list(emb.get("allowed_origins") or [])
+    if origin not in current:
+        current.append(origin)
+        try:
+            embed_mgr.update_embed(embed_id, allowed_origins=current)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception:
+            logger.exception("allow_pending_origin update failed %s", embed_id)
+            raise HTTPException(500, "Failed to update allowlist")
+
+    eng = _get_engine()
+    with eng.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE public.dash_embed_pending_origins SET status = 'allowed', "
+                "last_seen = NOW() WHERE embed_id = :e AND origin = :o"
+            ),
+            {"e": embed_id, "o": origin},
+        )
+    return {"status": "ok", "allowed_origins": current}
+
+
+@router.post("/{slug}/embeds/{embed_id}/pending-origins/block")
+async def block_pending_origin(slug: str, embed_id: str, request: Request):
+    """Mark a pending origin blocked (keeps it out of the pending queue).
+    Body: {"origin": "https://site.example"}."""
+    from sqlalchemy import text
+    from dash.embed import _get_engine
+    user = _get_user(request)
+    _check_access(user, slug)
+    _load_embed_or_404(embed_id, slug)
+    body = await request.json()
+    origin = (body.get("origin") or "").strip().rstrip("/")
+    if not origin:
+        raise HTTPException(400, "origin required")
+    eng = _get_engine()
+    with eng.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE public.dash_embed_pending_origins SET status = 'blocked', "
+                "last_seen = NOW() WHERE embed_id = :e AND origin = :o"
+            ),
+            {"e": embed_id, "o": origin},
+        )
+    return {"status": "ok"}
+
+
 @router.get("/{slug}/embeds/{embed_id}")
 def get_embed_endpoint(slug: str, embed_id: str, request: Request):
     user = _get_user(request)
@@ -383,6 +489,7 @@ async def update_embed_endpoint(slug: str, embed_id: str, request: Request):
     allowed_keys = {
         "name",
         "allowed_origins",
+        "origin_mode",
         "user_id_required",
         "user_id_signed",
         "auth_mode",

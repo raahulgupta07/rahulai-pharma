@@ -17,23 +17,119 @@ logger = logging.getLogger(__name__)
 
 
 # ── Origin verification ────────────────────────────────────────────────
+def _norm_origin(o: str | None) -> str:
+    """Lower-case scheme+host, strip trailing slash. Origin has no path, but be
+    defensive against a stray trailing '/' from hand-typed allowlist entries."""
+    return (o or "").strip().rstrip("/").lower()
+
+
+def _origin_pattern_match(pattern: str, origin: str) -> bool:
+    """True if `origin` matches an allowlist `pattern`.
+
+    Supports:
+      - exact            https://app.acme.com
+      - full wildcard    *                       (any origin)
+      - glob wildcard    https://*.acme.com  ·  http://192.168.*
+                          ('*' via fnmatch — whole-string match, so
+                           https://*.acme.com will NOT match
+                           https://evil.acme.com.attacker.com)
+    """
+    import fnmatch
+
+    p = _norm_origin(pattern)
+    o = _norm_origin(origin)
+    if not p or not o:
+        return False
+    if p == "*":
+        return True
+    if p == o:
+        return True
+    if "*" in p:
+        return fnmatch.fnmatch(o, p)
+    return False
+
+
+def _is_subdomain_of(base: str, origin: str) -> bool:
+    """True if `origin` is `base` itself or a subdomain of base's host, same
+    scheme+port. Used only when origin_mode='subdomains'."""
+    from urllib.parse import urlparse
+
+    try:
+        bu, ou = urlparse(_norm_origin(base)), urlparse(_norm_origin(origin))
+    except Exception:
+        return False
+    if not bu.hostname or not ou.hostname:
+        return False
+    if bu.scheme != ou.scheme or bu.port != ou.port:
+        return False
+    return ou.hostname == bu.hostname or ou.hostname.endswith("." + bu.hostname)
+
+
 def verify_origin(allowed_origins: list[str], request_origin: str | None,
-                   server_origin: str | None = None) -> bool:
-    """Exact-match the request Origin against the allowed list.
+                   server_origin: str | None = None,
+                   origin_mode: str = "strict") -> bool:
+    """Check the request Origin against the embed key's allowlist + mode.
 
     Same-origin requests (request_origin == server_origin) auto-allow — this
     enables the dashboard's live-preview iframe to chat with the widget without
     requiring the dashboard's own URL in every embed's allowlist.
 
-    Empty allowed_origins still denies cross-site requests.
+    origin_mode:
+      - 'strict'      — exact entries + any '*' glob patterns in allowed_origins
+      - 'subdomains'  — strict, plus subdomains of any bare (non-glob) entry
+      - 'open'        — any origin allowed (insecure; trusted/internal only)
+
+    Empty allowed_origins still denies cross-site requests (except mode='open').
     """
     if not request_origin:
         return False
-    if server_origin and request_origin == server_origin:
+    if server_origin and _norm_origin(request_origin) == _norm_origin(server_origin):
         return True
+
+    mode = (origin_mode or "strict").lower()
+    if mode == "open":
+        return True
+
     if not allowed_origins:
         return False
-    return request_origin in set(allowed_origins)
+
+    for patt in allowed_origins:
+        if _origin_pattern_match(patt, request_origin):
+            return True
+        if mode == "subdomains" and "*" not in (patt or "") and _is_subdomain_of(patt, request_origin):
+            return True
+    return False
+
+
+def record_pending_origin(embed_id: str, origin: str | None,
+                          ip: str | None = None, country: str | None = None) -> None:
+    """Log a denied Origin so an admin can one-click Allow/Block it later.
+
+    Upsert on (embed_id, origin): bumps attempts + last_seen. Never flips an
+    already-'blocked' or 'allowed' row back to pending. Fail-soft.
+    """
+    if not embed_id or not origin:
+        return
+    try:
+        eng = _get_engine()
+        with eng.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO public.dash_embed_pending_origins
+                        (embed_id, origin, ip, country)
+                    VALUES (:e, :o, :ip, :c)
+                    ON CONFLICT (embed_id, origin) DO UPDATE
+                        SET attempts  = public.dash_embed_pending_origins.attempts + 1,
+                            last_seen = NOW(),
+                            ip        = COALESCE(EXCLUDED.ip,
+                                                 public.dash_embed_pending_origins.ip)
+                    """
+                ),
+                {"e": embed_id, "o": _norm_origin(origin), "ip": ip, "c": country},
+            )
+    except Exception as e:
+        logger.warning(f"record_pending_origin failed: {e}")
 
 
 # ── HMAC user payload verification ─────────────────────────────────────

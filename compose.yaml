@@ -374,28 +374,11 @@ services:
         limits:
           memory: 512M
 
-  caddy:
-    image: caddy:2-alpine
-    container_name: cp-caddy
-    restart: always
-    ports:
-      - "8090:80"
-      - "8453:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      # Wait for the API's healthcheck (first-boot migrations + lifespan, ~30-40s)
-      # so Caddy doesn't proxy to a not-yet-ready upstream and serve cold-boot 502s.
-      dash-api:
-        condition: service_healthy
-    networks:
-      - dash
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+  # NOTE: the bundled Caddy reverse proxy moved to the optional `compose.caddy.yaml`
+  # overlay. Production fronts the stack with nginx (see deploy/nginx/cityagent.conf);
+  # the app is published on 127.0.0.1:8011 for that external proxy. To run the old
+  # bundled Caddy instead:
+  #   docker compose -f compose.yaml -f compose.caddy.yaml up -d
 
   dash-ml:
     # Opt-in (2026-05-20 trim). Only needed for AutoML (gated off) + the
@@ -576,7 +559,5 @@ volumes:
   pgdata:
   knowledge_data:
   backup_data:
-  caddy_data:
-  caddy_config:
   redis_data:
   sftp_data:

@@ -174,7 +174,7 @@
     .panel.open { display: flex; }
 
     .header {
-      padding: 14px 16px; background: ${t.surface};
+      padding: 12px 16px; background: ${t.bg};
       border-bottom: 1px solid ${t.border};
       display: flex; align-items: center; gap: 10px;
     }
@@ -186,6 +186,29 @@
       object-fit: cover; overflow: hidden;
     }
     .header-logo img { width: 100%; height: 100%; object-fit: cover; }
+    /* Live moody robot in the header — same character as the dashboard robot,
+       mood class reacts to the chat lifecycle (idle/thinking/typing/done/error). */
+    .header-logo .rb-svg { display: block; overflow: visible; }
+    .header-logo .rb-ant { transform-box: fill-box; transform-origin: center;
+      animation: bot-ant-pulse 1.8s ease-in-out infinite; }
+    .header-logo.mood-thinking .rb-ant,
+    .header-logo.mood-typing .rb-ant,
+    .header-logo.mood-tool .rb-ant { animation-duration: 0.8s; }
+    .header-logo .rb-eye { transform-box: fill-box; transform-origin: center; }
+    .header-logo.mood-idle .rb-eye { animation: rb-blink 5s ease-in-out infinite; }
+    .header-logo.mood-thinking .rb-eye { transform: translateY(-0.6px) scaleY(0.7); }
+    .header-logo.mood-done .rb-eye { animation: rb-blink 3.2s ease-in-out infinite; }
+    .header-logo .rb-mouth { transform-box: fill-box; transform-origin: center; }
+    .header-logo.mood-typing .rb-mouth { animation: rb-talk 0.42s ease-in-out infinite; }
+    .header-logo.mood-error .rb-body { fill: #ffd9d2; }
+    .header-logo.mood-error { animation: rb-shake 0.5s ease-in-out 2; }
+    @keyframes rb-blink { 0%,92%,100% { transform: scaleY(1); } 96% { transform: scaleY(0.12); } }
+    @keyframes rb-talk { 0%,100% { transform: scaleY(1); } 50% { transform: scaleY(2.2); } }
+    @keyframes rb-shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-1.2px); } 75% { transform: translateX(1.2px); } }
+    @media (prefers-reduced-motion: reduce) {
+      .header-logo .rb-ant, .header-logo .rb-eye, .header-logo .rb-mouth,
+      .header-logo.mood-error { animation: none !important; }
+    }
     .header-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
     .header-title-row { display: flex; align-items: center; gap: 6px; }
     .title { color: ${t.fg}; font-weight: 600; font-size: 14px; }
@@ -194,7 +217,7 @@
       background: #22c55e; display: inline-block;
       box-shadow: 0 0 0 2px rgba(34,197,94,0.2);
     }
-    .header-sub { color: ${t.dim}; font-size: 11px; }
+    .header-sub { color: ${t.dim}; font-size: 11px; opacity: 0.8; }
     .close {
       background: transparent; border: none; color: ${t.dim};
       cursor: pointer; padding: 4px; border-radius: 6px;
@@ -212,7 +235,9 @@
 
     .msg-row { display: flex; gap: 8px; align-items: flex-end; }
     .msg-row.user { justify-content: flex-end; }
-    .msg-row.bot { justify-content: flex-start; }
+    .msg-row.bot { justify-content: flex-start; gap: 0; }
+    /* Claude style: no per-message avatar on the assistant side. */
+    .msg-row.bot .msg-avatar { display: none; }
 
     .msg-avatar {
       width: 26px; height: 26px; border-radius: 50%;
@@ -228,14 +253,14 @@
 
     .msg {
       padding: 10px 14px; max-width: 80%;
-      font-size: 13.5px; line-height: 1.5;
+      font-size: 14.5px; line-height: 1.7;
       word-wrap: break-word; overflow-wrap: break-word;
     }
-    .msg p { margin: 0 0 8px 0; }
+    .msg p { margin: 0 0 10px 0; }
     .msg p:last-child { margin-bottom: 0; }
-    .msg ul, .msg ol { margin: 4px 0; padding-left: 20px; }
-    .msg li { margin: 2px 0; }
-    .msg .md-h { margin: 8px 0 4px; font-size: 13.5px; font-weight: 700; line-height: 1.35; }
+    .msg ul, .msg ol { margin: 6px 0; padding-left: 20px; }
+    .msg li { margin: 5px 0; line-height: 1.55; }
+    .msg .md-h { margin: 12px 0 6px; font-size: 14.5px; font-weight: 700; line-height: 1.4; }
     .msg b { font-weight: 700; }
     .msg i { font-style: italic; }
     .msg a { color: inherit; text-decoration: underline; }
@@ -246,9 +271,10 @@
       background: ${t.userBg}; color: ${t.userFg};
       border-radius: 18px 18px 4px 18px;
     }
+    /* Claude style: assistant text bare on panel — no bubble, full width. */
     .msg.bot {
-      background: ${t.botBg}; color: ${t.botFg};
-      border-radius: 18px 18px 18px 4px;
+      background: transparent; color: ${t.botFg};
+      border-radius: 0; padding: 2px 0; max-width: 100%;
     }
     .msg.system {
       align-self: center; color: ${t.dim};
@@ -296,28 +322,60 @@
       40% { transform: scale(1); opacity: 1; }
     }
 
-    /* live agent activity strip (what the agent is doing) */
+    /* Claude-style shimmering "Thinking" label while the trace is live. */
+    .agent-steps:not(.done) .think-label {
+      background: linear-gradient(90deg, ${t.dim} 25%, ${t.fg} 50%, ${t.dim} 75%);
+      background-size: 200% 100%;
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent; color: transparent;
+      animation: think-shimmer 1.7s linear infinite;
+    }
+    @keyframes think-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* Blinking caret trailing the streaming answer (Claude-style cursor). */
+    .stream-caret {
+      display: inline-block; width: 6px; height: 1.02em; margin-left: 1px;
+      vertical-align: text-bottom; background: ${t.accent}; border-radius: 1px;
+      animation: caret-blink 1s steps(1) infinite;
+    }
+    @keyframes caret-blink { 0%,50% { opacity: 1; } 50.01%,100% { opacity: 0; } }
+
+    @media (prefers-reduced-motion: reduce) {
+      .agent-steps:not(.done) .think-label { animation: none; -webkit-text-fill-color: ${t.dim}; color: ${t.dim}; }
+      .stream-caret { animation: none; }
+    }
+
+    /* live agent activity strip — Claude style: borderless, no box, quiet gray. */
     .agent-steps {
-      display: flex; flex-direction: column; gap: 3px;
-      margin: 0 0 6px 34px; padding: 8px 10px;
-      background: ${t.surface}; border: 1px solid ${t.border};
-      border-radius: 10px; max-width: 80%;
+      display: flex; flex-direction: column; gap: 4px;
+      margin: 2px 0 8px 0; padding: 0;
+      background: transparent; border: none;
+      border-radius: 0; max-width: 100%;
     }
     .agent-steps.done {
-      gap: 0; padding: 5px 10px; cursor: pointer;
+      gap: 0; padding: 0; cursor: pointer;
       color: ${t.dim};
     }
     .agent-steps-head {
-      font-size: 11px; font-weight: 600; color: ${t.dim};
+      font-size: 12px; font-weight: 500; color: ${t.dim};
       display: flex; align-items: center; gap: 6px;
     }
+    /* expand/collapse caret — points right when collapsed, down when open. */
+    .agent-steps-head .caret {
+      margin-left: auto; transition: transform 0.18s ease;
+      font-size: 12px; opacity: 0.7;
+    }
+    .agent-steps:not(.done) .agent-steps-head .caret { transform: rotate(90deg); }
     .agent-steps-head .spin {
       width: 9px; height: 9px; border-radius: 50%;
       border: 1.5px solid ${t.accent}; border-top-color: transparent;
-      animation: agent-spin 0.7s linear infinite;
+      animation: agent-spin 0.7s linear infinite; flex-shrink: 0;
+    }
+    .agent-steps-head .think-time {
+      opacity: 0.65; font-variant-numeric: tabular-nums; font-size: 11px;
     }
     @keyframes agent-spin { to { transform: rotate(360deg); } }
-    .agent-steps-head .think-bot { flex-shrink: 0; vertical-align: middle; overflow: visible; }
+    .agent-steps-head .think-bot { flex-shrink: 0; width: 22px; height: auto; margin: -2px 1px -2px -1px; vertical-align: middle; overflow: visible; }
     .think-bot .tb-gear { transform-box: fill-box; transform-origin: center; animation: tb-gear-spin 2.2s linear infinite; }
     @keyframes tb-gear-spin { to { transform: rotate(360deg); } }
     .think-bot .tb-eye { animation: tb-blink 2.6s ease-in-out infinite; }
@@ -327,16 +385,22 @@
       .think-bot .tb-gear, .think-bot .tb-eye, .think-bot .tb-ant { animation: none; }
     }
     .agent-step {
-      font-size: 12px; color: ${t.fg}; opacity: 0.85;
-      display: flex; align-items: center; gap: 7px;
+      font-size: 12.5px; color: ${t.dim}; opacity: 0.9;
+      display: flex; align-items: center; gap: 8px;
+      padding-left: 2px;
       animation: agent-step-in 0.25s ease;
     }
     @keyframes agent-step-in {
       from { opacity: 0; transform: translateY(2px); }
-      to { opacity: 0.85; }
+      to { opacity: 0.9; }
     }
-    .agent-step .ic { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; }
-    .agent-step .ic.ok { color: ${t.accent}; font-weight: 700; }
+    .agent-step .ic { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 10px; height: 10px; }
+    /* done step: a small quiet dot, not a green "OK". */
+    .agent-step .ic.ok { position: relative; }
+    .agent-step .ic.ok::before {
+      content: ''; width: 5px; height: 5px; border-radius: 50%;
+      background: ${t.dim}; opacity: 0.6;
+    }
     .agent-step .step-spin {
       width: 9px; height: 9px; border-radius: 50%;
       border: 1.5px solid ${t.accent}; border-top-color: transparent;
@@ -349,7 +413,7 @@
 
     .chips {
       display: flex; flex-wrap: wrap; gap: 6px;
-      padding: 4px 0 0 34px;
+      padding: 8px 0 0 0;
     }
     .chip {
       background: transparent; color: ${t.accent};
@@ -478,6 +542,23 @@
       + '</svg>';
   }
 
+  // Header robot — same character as avatarContent but with mood-driven parts
+  // (rb-ant / rb-eye / rb-mouth classed so a `mood-*` class on .header-logo can
+  // animate them). White body on the accent circle; eyes/mouth in accent.
+  function headerRobotSvg() {
+    if (logoUrl) {
+      return '<img src="' + escapeHtml(logoUrl) + '" alt="">';
+    }
+    return '<svg class="rb-svg" viewBox="0 0 32 32" width="18" height="18" aria-hidden="true">'
+      + '<line x1="16" y1="9" x2="16" y2="5" stroke="#fff" stroke-width="2" stroke-linecap="round"/>'
+      + '<circle class="rb-ant" cx="16" cy="4.3" r="1.8" fill="#fff"/>'
+      + '<rect class="rb-body" x="6" y="9" width="20" height="14" rx="4" fill="#fff"/>'
+      + '<rect class="rb-eye rb-eye-l" x="11" y="13" width="3.5" height="3.5" rx="1" fill="' + t.accent + '"/>'
+      + '<rect class="rb-eye rb-eye-r" x="17.5" y="13" width="3.5" height="3.5" rx="1" fill="' + t.accent + '"/>'
+      + '<rect class="rb-mouth" x="12" y="19" width="8" height="1.4" rx="0.7" fill="' + t.accent + '"/>'
+      + '</svg>';
+  }
+
   // Gear-pose "thinking" robot for the live activity strip head: accent head,
   // focused eyes (blink), pulsing antenna, a gear spinning beside the antenna.
   function thinkBotSvg() {
@@ -499,13 +580,13 @@
   panel.className = 'panel';
   panel.innerHTML =
     '<div class="header">' +
-      '<div class="header-logo">' + avatarContent() + '</div>' +
+      '<div class="header-logo mood-idle">' + headerRobotSvg() + '</div>' +
       '<div class="header-text">' +
         '<div class="header-title-row">' +
           '<span class="title">' + escapeHtml(title) + '</span>' +
           '<span class="online-dot" title="Online"></span>' +
+          '<span class="header-sub">Online</span>' +
         '</div>' +
-        '<span class="header-sub">We typically reply instantly</span>' +
       '</div>' +
       '<button class="close" title="Close" aria-label="Close">' + CLOSE_ICON + '</button>' +
     '</div>' +
@@ -523,6 +604,22 @@
   var inputEl = panel.querySelector('textarea');
   var sendBtn = panel.querySelector('.send');
   var closeBtn = panel.querySelector('.close');
+  var headerLogoEl = panel.querySelector('.header-logo');
+
+  // Drive the header robot's mood from the chat lifecycle.
+  // moods: idle | thinking | typing | tool | done | error
+  var moodTimer = null;
+  function setMood(m) {
+    if (!headerLogoEl) return;
+    if (moodTimer) { clearTimeout(moodTimer); moodTimer = null; }
+    headerLogoEl.className = 'header-logo mood-' + m;
+    // auto-settle transient moods back to idle so the robot rests
+    if (m === 'done' || m === 'error') {
+      moodTimer = setTimeout(function () {
+        if (headerLogoEl) headerLogoEl.className = 'header-logo mood-idle';
+      }, m === 'error' ? 2200 : 2600);
+    }
+  }
 
   // ── Markdown renderer ───────────────────────────────────────────────
   function renderMd(s) {
@@ -970,6 +1067,7 @@
   // ── Open / close ─────────────────────────────────────────────────────
   bubble.addEventListener('click', function () {
     panel.classList.add('open');
+    setMood('idle');
     bubble.style.display = 'none';
     setTimeout(function () { inputEl.focus(); }, 50);
   });
@@ -1011,8 +1109,16 @@
       credentials: 'omit',
     }).then(function (r) {
       if (!r.ok) return r.text().then(function (text) {
-        var msg = 'session error';
-        try { msg = JSON.parse(text).detail || msg; } catch (_) {}
+        var msg = 'session error', code = '';
+        try { var j = JSON.parse(text); msg = j.detail || msg; code = j.code || ''; } catch (_) {}
+        // Friendly, non-technical message for the most common deploy snag:
+        // this website's address isn't on the agent's allowed list yet.
+        if (code === 'origin_denied' || r.status === 403) {
+          var here = (typeof window !== 'undefined' && window.location) ? window.location.origin : 'this site';
+          var e = new Error('This chat isn’t enabled for ' + here + ' yet. Please ask the site administrator to allow it.');
+          e.code = 'origin_denied';
+          throw e;
+        }
         throw new Error(msg + ' (HTTP ' + r.status + ')');
       });
       return r.json();
@@ -1096,6 +1202,7 @@
     pushMsg('user', msg);
     sendBtn.disabled = true;
     sending = true;
+    setMood('thinking');
     showTyping();
 
     function finish() {
@@ -1133,6 +1240,7 @@
           return r.json();
         })
         .then(function (d) {
+          setMood('done');
           var botDiv = pushMsg('bot', d.content || '(empty response)');
           if (botDiv) attachFeedback(botDiv, msg, d.content || '');
           if (d && d.followups && d.followups.length) {
@@ -1152,17 +1260,51 @@
         hideTyping();
         var strip = document.createElement('div');
         strip.className = 'agent-steps';
-        strip.innerHTML = '<div class="agent-steps-head">' + thinkBotSvg() + '<span>thinking…</span></div>';
+        strip.innerHTML = '<div class="agent-steps-head">' +
+          thinkBotSvg() +
+          '<span class="think-label">Thinking</span>' +
+          '<span class="think-time"></span></div>';
         msgList.appendChild(strip);
 
         var stepStart = Date.now();
+        // Live elapsed timer so a slow query (~20s) feels alive, not frozen.
+        var timeEl = strip.querySelector('.think-time');
+        var elapsedTimer = setInterval(function () {
+          if (!timeEl) return;
+          timeEl.textContent = Math.round((Date.now() - stepStart) / 1000) + 's';
+        }, 1000);
+        function stopTimer() { if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; } }
         var stepCount = 0;
         var pendingLine = null; // the step currently "in progress" (spinner)
-        // Mark the in-progress step complete (OK) before the next one starts.
+        // Claude style: render the trace in calm past tense ("Searched your
+        // shelf") instead of live present tense ("searching…").
+        function pastTense(label) {
+          var s = String(label || '').trim();
+          var map = [
+            [/^understand(ing)?\b/i, 'Understood'],
+            [/^think(ing)?\b/i, 'Thought through'],
+            [/^summaris(ing|e)?\b/i, 'Summarised'],
+            [/^summariz(ing|e)?\b/i, 'Summarized'],
+            [/^search(ing)?\b/i, 'Searched'],
+            [/^read(ing)?\b/i, 'Read'],
+            [/^look(ing)?\s*up\b/i, 'Looked up'],
+            [/^analys(ing|e)?\b/i, 'Analysed'],
+            [/^analyz(ing|e)?\b/i, 'Analyzed'],
+            [/^retriev(ing|e)?\b/i, 'Retrieved'],
+            [/^check(ing)?\b/i, 'Checked'],
+            [/^calculat(ing|e)?\b/i, 'Calculated'],
+            [/^writ(ing|e)?\b/i, 'Wrote'],
+            [/^generat(ing|e)?\b/i, 'Generated']
+          ];
+          for (var i = 0; i < map.length; i++) {
+            if (map[i][0].test(s)) return s.replace(map[i][0], map[i][1]);
+          }
+          return s.charAt(0).toUpperCase() + s.slice(1); // at least capitalise
+        }
         function tickPending() {
           if (pendingLine) {
             var ic = pendingLine.querySelector('.ic');
-            if (ic) { ic.textContent = 'OK'; ic.classList.add('ok'); }
+            if (ic) { ic.innerHTML = ''; ic.classList.add('ok'); } // spinner -> quiet dot
             pendingLine.classList.add('agent-step-done');
             pendingLine = null;
           }
@@ -1173,7 +1315,7 @@
           var line = document.createElement('div');
           line.className = 'agent-step';
           line.innerHTML = '<span class="ic"><span class="step-spin"></span></span>' +
-                           '<span class="step-tx">' + escapeHtml(p.label || '') + '</span>';
+                           '<span class="step-tx">' + escapeHtml(pastTense(p.label || '')) + '</span>';
           strip.appendChild(line);
           pendingLine = line;
           msgList.scrollTop = msgList.scrollHeight;
@@ -1182,27 +1324,36 @@
         addStep({ label: 'understanding your question' });
         function collapseStrip() {
           if (strip.classList.contains('done')) return;
+          stopTimer();
           tickPending();
           var secs = ((Date.now() - stepStart) / 1000).toFixed(1);
           strip.classList.add('done');
           if (stepCount === 0) { strip.remove(); return; }
           strip.querySelector('.agent-steps-head').innerHTML =
-            'OK done · ' + secs + 's · ' + stepCount + ' step' + (stepCount === 1 ? '' : 's');
+            '<span>Thought for ' + secs + 's</span>' +
+            '<span class="caret">&#8250;</span>';
           strip.addEventListener('click', function () { strip.classList.toggle('done'); });
         }
 
-        var row = document.createElement('div');
-        row.className = 'msg-row bot';
-        var av = document.createElement('div');
-        av.className = 'msg-avatar';
-        av.innerHTML = avatarContent();
-        row.appendChild(av);
-        var div = document.createElement('div');
-        div.className = 'msg bot';
-        div.innerHTML = '<span class="load-dots"><i></i><i></i><i></i></span>';
-        row.appendChild(div);
-        msgList.appendChild(row);
-        msgList.scrollTop = msgList.scrollHeight;
+        // Claude-style: do NOT show a separate "loading dots" bubble while the
+        // agent is thinking. The strip above is the only live element. The
+        // answer row is created lazily the moment the first token arrives, so
+        // text streams in place right under "Thought for Ns".
+        var row = null, div = null;
+        function ensureAnswerRow() {
+          if (div) return;
+          row = document.createElement('div');
+          row.className = 'msg-row bot';
+          var av = document.createElement('div');
+          av.className = 'msg-avatar';
+          av.innerHTML = avatarContent();
+          row.appendChild(av);
+          div = document.createElement('div');
+          div.className = 'msg bot';
+          row.appendChild(div);
+          msgList.appendChild(row);
+          msgList.scrollTop = msgList.scrollHeight;
+        }
 
         var assembled = '';
         var streamErrored = false;
@@ -1210,13 +1361,17 @@
         return streamChat(
           tokenStr, msg,
           function onDelta(delta) {
-            if (!writingShown) { writingShown = true; addStep({ label: 'writing answer' }); }
+            // First delta = answer is streaming; collapse the trace to
+            // "Thought for Ns" (Claude just streams the text below it).
+            if (!writingShown) { writingShown = true; collapseStrip(); setMood('typing'); ensureAnswerRow(); }
             assembled += delta;
-            div.innerHTML = renderMd(assembled) + '<span class="load-dots"><i></i><i></i><i></i></span>';
+            div.innerHTML = renderMd(assembled) + '<span class="stream-caret"></span>';
             msgList.scrollTop = msgList.scrollHeight;
           },
           function onDone(payload) {
             collapseStrip();
+            setMood('done');
+            ensureAnswerRow();
             div.innerHTML = renderAnswer(assembled || '(empty response)');
             messages.push({ role: 'bot', content: assembled });
             attachFeedback(div, msg, assembled);
@@ -1230,6 +1385,8 @@
           function onError(err) {
             streamErrored = true;
             collapseStrip();
+            setMood('error');
+            ensureAnswerRow();
             div.innerHTML = renderMd('(stream error: ' + (err.detail || err.code || 'unknown') + ')');
           },
           addStep
@@ -1243,12 +1400,14 @@
             return nonStreamPath(tokenStr);
           }
           if (!streamErrored) {
+            ensureAnswerRow();
             div.innerHTML = renderMd('(error: ' + (e.message || 'stream failed') + ')');
           }
           throw e;
         });
       })
       .catch(function (e) {
+        setMood('error');
         pushMsg('system', e.message || 'Something went wrong.');
       })
       .then(finish, finish);

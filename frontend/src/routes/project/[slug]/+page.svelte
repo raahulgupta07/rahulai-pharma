@@ -435,69 +435,84 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  } catch {}
  }
 
+ // Guaranteed fallbacks — ALWAYS show something, even if every API call fails
+ // (e.g. a fresh AWS deploy with no evals yet, or stricter network/auth).
+ const DEFAULT_SUGGESTIONS = [
+ "Give me an overview of my data",
+ "What are the key metrics and trends?",
+ "What information do we have?",
+ "Summarize the latest figures",
+ ];
+
  async function loadDynamicSuggestions() {
+ // dedupe helper — case-insensitive, preserves first phrasing, drops blanks/too-short
+ const seen = new Set<string>();
+ const out: string[] = [];
+ const push = (raw: any) => {
+ const s = typeof raw === 'string' ? raw.trim() : '';
+ if (s.length <= 5) return;
+ const key = s.toLowerCase();
+ if (seen.has(key)) return;
+ seen.add(key); out.push(s);
+ };
+
+ // Show defaults INSTANTLY so the chips never wait on the network — the
+ // eval/stats/inspect calls below enrich + replace these when they finish.
+ if (!dynamicSuggestions.length) dynamicSuggestions = DEFAULT_SUGGESTIONS.slice(0, 4);
+
  try {
  // Always try eval Q&A first — these are LLM-generated smart questions from training
  try {
  const evRes = await fetch(`/api/projects/${projectSlug}/evals`, { headers: _headers() });
  if (evRes.ok) {
  const evData = await evRes.json();
- const evals = evData.evals || [];
- if (evals.length > 0) {
- dynamicSuggestions = evals.slice(0, 6).map((e: any) => e.question?.replace(/^\[.*?\]\s*/, '') || '');
- dynamicSuggestions = dynamicSuggestions.filter((s: string) => s.length > 5);
- }
+ for (const e of (evData.evals || [])) push(e?.question?.replace(/^\[.*?\]\s*/, '') || '');
  }
  } catch {}
- if (dynamicSuggestions.length >= 3) return; // Got good suggestions from evals
 
+ if (out.length < 3) {
  // Fallback: generate from table metadata
+ try {
  const res = await fetch(`/api/projects/${projectSlug}/stats`, { headers: _headers() });
- if (!res.ok) return;
+ if (res.ok) {
  const data = await res.json();
  const tables = data.tables || [];
- if (tables.length === 0) {
- if (dynamicSuggestions.length === 0) {
- dynamicSuggestions = ["What information do we have?", "What are the key findings?", "Summarize the documents"];
- }
- return;
- }
 
- // Fetch column details for each table
- const tableDetails: {name: string; columns: string[]; rows: number}[] = [];
- for (const t of tables.slice(0, 8)) {
+ // Fetch column details for all tables IN PARALLEL (was sequential —
+ // 8 round-trips back-to-back stalled the chips, badly over a tunnel).
+ const tableDetails: {name: string; columns: string[]; rows: number}[] = await Promise.all(
+ tables.slice(0, 8).map(async (t: any) => {
  try {
  const ir = await fetch(`/api/tables/${t.name}/inspect?project=${projectSlug}`, { headers: _headers() });
  if (ir.ok) {
  const id = await ir.json();
- tableDetails.push({ name: t.name, columns: (id.columns || []).map((c: any) => c.name), rows: t.rows || 0 });
- } else {
- tableDetails.push({ name: t.name, columns: [], rows: t.rows || 0 });
+ return { name: t.name, columns: (id.columns || []).map((c: any) => c.name), rows: t.rows || 0 };
  }
- } catch {
- tableDetails.push({ name: t.name, columns: [], rows: t.rows || 0 });
- }
- }
+ } catch {}
+ return { name: t.name, columns: [], rows: t.rows || 0 };
+ })
+ );
  projectTables = tableDetails;
 
- // Generate smart suggestions from column names (not table names)
- const suggestions: string[] = [];
+ // Generate smart suggestions from column names (push() dedupes across tables)
  for (const td of tableDetails) {
+ if (out.length >= 6) break;
  const numCol = td.columns.find(c => /amount|price|revenue|total|cost|value|salary|qty|quantity|count|sales|profit|budget/i.test(c));
  const dateCol = td.columns.find(c => /date|created|updated|time|month|year|period/i.test(c));
  const catCol = td.columns.find(c => /status|type|category|plan|region|country|department|segment|product|brand|channel/i.test(c));
- if (numCol && suggestions.length < 6) suggestions.push(`What is the total ${numCol.replace(/_/g, ' ')}?`);
- if (dateCol && numCol && suggestions.length < 6) suggestions.push(`Show ${numCol.replace(/_/g, ' ')} trends over time`);
- if (catCol && numCol && suggestions.length < 6) suggestions.push(`Break down ${numCol.replace(/_/g, ' ')} by ${catCol.replace(/_/g, ' ')}`);
+ if (numCol) push(`What is the total ${numCol.replace(/_/g, ' ')}?`);
+ if (dateCol && numCol) push(`Show ${numCol.replace(/_/g, ' ')} trends over time`);
+ if (catCol && numCol) push(`Break down ${numCol.replace(/_/g, ' ')} by ${catCol.replace(/_/g, ' ')}`);
  }
-
- // Add generic business questions
- if (suggestions.length < 6) suggestions.push("Give me an overview of my data");
- if (suggestions.length < 6) suggestions.push("What are the key metrics and trends?");
- if (tableDetails.length > 1 && suggestions.length < 6) suggestions.push("How do these datasets relate to each other?");
-
- dynamicSuggestions = suggestions.slice(0, 6);
+ if (tableDetails.length > 1) push("How do these datasets relate to each other?");
+ }
  } catch {}
+ }
+ } catch {}
+
+ // ALWAYS pad to a usable set so the chips never disappear
+ for (const d of DEFAULT_SUGGESTIONS) { if (out.length >= 4) break; push(d); }
+ dynamicSuggestions = out.slice(0, 6);
  }
 
  function getTimestamp(): string {
@@ -2405,50 +2420,7 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
 
   <!-- Dashboard panel toggle removed — chat-only product -->
 
-  <!-- Drift bell -->
-  {#if !dashPanelOpen}
-  <div class="drift-bell-wrap">
-    <button onclick={() => { driftDropdownOpen = !driftDropdownOpen; if (driftDropdownOpen) loadDriftEvents(); }}
-            class="bell-btn" title="Data drift alerts">
-      <Icon name="bell" size={14} />
-      {#if driftCount > 0}
-        <span class="bell-dot">{driftCount}</span>
-      {/if}
-    </button>
-
-    {#if driftDropdownOpen}
-      <div class="drift-dropdown">
-        <div class="drift-hdr">DRIFT ALERTS · {driftEvents.length} OPEN</div>
-        {#if driftEvents.length === 0}
-          <div class="drift-empty">No active drift events.</div>
-        {:else}
-          {#each driftEvents as ev}
-            <div class="drift-row sev-{ev.severity}">
-              <div>
-                <span class="sev-dot">●</span>
-                <strong>{ev.severity}</strong> · {ev.drift_type}
-              </div>
-              <div style="font-size:11px; opacity:0.7;">
-                {#if ev.table_name}{ev.table_name}{/if}{#if ev.column_name}.{ev.column_name}{/if}
-              </div>
-              <div style="font-size:10px; opacity:0.6;">
-                {ev.ts}
-                {#if ev.details?.pct_change}· {(ev.details.pct_change * 100).toFixed(0)}% change{/if}
-                {#if ev.details?.action}· {ev.details.action}{/if}
-                {#if ev.details?.days_stale}· {ev.details.days_stale} days stale{/if}
-              </div>
-              <div style="display:flex; gap:4px; margin-top:4px;">
-                <button onclick={() => ackDrift(ev.id)} class="mini-btn">ACK</button>
-                <button onclick={() => retrainFromDrift(ev.id)} class="mini-btn">RETRAIN</button>
-                <button onclick={() => dismissDrift(ev.id)} class="mini-btn">DISMISS</button>
-              </div>
-            </div>
-          {/each}
-        {/if}
-      </div>
-    {/if}
-  </div>
-  {/if}
+  <!-- Drift bell removed (user request) — alerts still reachable from admin/dashboard -->
 
   <div class="flex-1 overflow-y-auto" bind:this={messagesEl} style="padding: 20px clamp(12px, 4vw, 48px) 16px; background: #ffffff;">
     <!-- Hybrid Claude-style: 880px reading column on white bg -->

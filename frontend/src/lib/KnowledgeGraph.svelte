@@ -224,6 +224,11 @@
  if (!layout) return;
  try { animating ? layout.start() : layout.stop(); } catch {}
  }
+ // reset camera zoom/pan back to default fit (does NOT reload data)
+ function resetView() {
+ if (!renderer) return;
+ try { renderer.getCamera().animatedReset(); } catch {}
+ }
 
  onDestroy(() => {
  if (timer) clearInterval(timer);
@@ -256,7 +261,8 @@
     <span class="gv-count">{meta.nodes.toLocaleString()} nodes · {meta.edges.toLocaleString()} edges</span>
     <button class="gv-live" class:on={animating} onclick={toggleAnimate}>{animating ? '* animating' : '* frozen'}</button>
     <button class="gv-live" class:on={live} onclick={() => (live = !live)}>{live ? '> live 15s' : ' static'}</button>
-    <button class="gv-live" onclick={reload}><Icon name="refresh" size={16} /></button>
+    <button class="gv-live" onclick={resetView} title="Reset view (re-center & zoom to fit)"><Icon name="maximize" size={16} /></button>
+    <button class="gv-live" onclick={reload} title="Reload graph data"><Icon name="refresh" size={16} /></button>
   </div>
 
   <!-- canvas -->
@@ -431,7 +437,8 @@
 <style>
  .gv-root { position: fixed; inset: 76px 0 0 0; display: flex; flex-direction: column; background: #16131a; }
  .gv-root.embedded { position: relative; inset: auto; height: 460px; border: 1px solid #2a2533; border-radius: 12px; overflow: hidden; }
- .gv-bar { display: flex; align-items: center; gap: 14px; margin: 18px 12px 0; padding: 12px 16px; background: rgba(29,25,37,0.82); border: 1px solid #2a2533; border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,0.45); backdrop-filter: blur(6px); flex-wrap: wrap; position: relative; z-index: 5; }
+ .gv-bar { display: flex; align-items: center; gap: 10px; margin: 18px 12px 0; padding: 12px 16px; background: rgba(29,25,37,0.82); border: 1px solid #2a2533; border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,0.45); backdrop-filter: blur(6px); flex-wrap: nowrap; overflow-x: auto; position: relative; z-index: 5; }
+ .gv-bar > * { flex-shrink: 0; }
  .gv-root.embedded .gv-bar { margin: 10px 10px 0; padding: 8px 12px; box-shadow: none; }
  .gv-back { background: none; border: 1px solid #3a3346; color: #cfc9dd; font-size: 12px; padding: 5px 10px; cursor: pointer; border-radius: 4px; }
  .gv-back:hover { border-color: #c96342; color: #fff; }

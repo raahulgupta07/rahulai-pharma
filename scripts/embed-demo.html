@@ -1,0 +1,91 @@
+<!doctype html>
+<!--
+  Embed DEMO page — stand-in for a real pharmacy customer website.
+  Serves the CityAgent chat widget exactly like a customer site would.
+
+  Run:
+    cd scripts && python3 -m http.server 9999
+    open http://localhost:9999/embed-demo.html
+
+  The widget bubble appears bottom-right. Click it -> robot header reacts
+  (idle -> thinking -> typing -> done). Origin http://localhost:9999 is on
+  this embed key's allowlist; any other origin is blocked by design.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>City Pharmacy — Demo store</title>
+  <style>
+    :root { --ink:#1d2430; --muted:#6b7280; --line:#e8e3d8; --accent:#c96342; --bg:#faf8f3; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; color:var(--ink); background:var(--bg); }
+    header { display:flex; align-items:center; gap:12px; padding:18px 28px; border-bottom:1px solid var(--line); background:#fff; position:sticky; top:0; }
+    .logo { width:34px; height:34px; border-radius:9px; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; }
+    .brand { font-weight:700; font-size:17px; }
+    nav { margin-left:auto; display:flex; gap:22px; font-size:14px; color:var(--muted); }
+    nav a { color:inherit; text-decoration:none; }
+    .hero { max-width:980px; margin:0 auto; padding:54px 28px 30px; }
+    .hero h1 { font-size:34px; margin:0 0 10px; letter-spacing:-0.5px; }
+    .hero p { font-size:16px; color:var(--muted); margin:0 0 22px; max-width:560px; line-height:1.6; }
+    .pill { display:inline-block; background:#fff; border:1px solid var(--line); border-radius:999px; padding:7px 14px; font-size:13px; color:var(--muted); margin-right:8px; }
+    .grid { max-width:980px; margin:8px auto 60px; padding:0 28px; display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:16px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px; }
+    .card .name { font-weight:600; margin:0 0 4px; }
+    .card .meta { font-size:13px; color:var(--muted); }
+    .card .tag { display:inline-block; margin-top:10px; font-size:12px; color:var(--accent); border:1px solid var(--accent); border-radius:999px; padding:2px 9px; }
+    .note { max-width:980px; margin:0 auto 40px; padding:14px 28px; font-size:13px; color:var(--muted); }
+    .note code { background:#fff; border:1px solid var(--line); border-radius:6px; padding:1px 6px; }
+    footer { border-top:1px solid var(--line); padding:22px 28px; font-size:13px; color:var(--muted); text-align:center; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">C</div>
+    <div class="brand">City Pharmacy</div>
+    <nav><a>Shop</a><a>Prescriptions</a><a>Health</a><a>About</a></nav>
+  </header>
+
+  <section class="hero">
+    <h1>Your neighbourhood pharmacy</h1>
+    <p>Browse stock, check substitutes, ask about dosing — or just tap the chat
+       bubble bottom-right and ask our assistant anything.</p>
+    <span class="pill">Open 8am–10pm</span>
+    <span class="pill">Free delivery over 20,000 MMK</span>
+    <span class="pill">Ask the assistant ↘</span>
+  </section>
+
+  <section class="grid">
+    <div class="card"><p class="name">Paracetamol 500mg</p><p class="meta">Pain & fever</p><span class="tag">In stock</span></div>
+    <div class="card"><p class="name">Amoxicillin 250mg</p><p class="meta">Antibiotic</p><span class="tag">In stock</span></div>
+    <div class="card"><p class="name">Cetirizine 10mg</p><p class="meta">Allergy relief</p><span class="tag">In stock</span></div>
+    <div class="card"><p class="name">ORS sachets</p><p class="meta">Rehydration</p><span class="tag">In stock</span></div>
+    <div class="card"><p class="name">Vitamin C 1000mg</p><p class="meta">Supplement</p><span class="tag">In stock</span></div>
+    <div class="card"><p class="name">Ibuprofen 400mg</p><p class="meta">Pain & inflammation</p><span class="tag">In stock</span></div>
+  </section>
+
+  <p class="note">
+    Test page origin: <code id="org"></code> — this must be on the embed key's
+    allowlist. If the bubble doesn't appear, open DevTools Console for red CORS / 403 lines.
+  </p>
+
+  <footer>City Pharmacy — demo storefront. Chat powered by CityAgent.</footer>
+
+  <script>document.getElementById('org').textContent = location.origin;</script>
+
+  <!-- ===== EMBED SNIPPET (this is what a customer pastes on their site) ===== -->
+  <script>
+    window.__BASE  = "https://muze-dividend-corners-hitting.trycloudflare.com"; // agent deploy URL
+    window.__EMBED = "emb_2Gpd3eIqAsC1c-55jlPuTA";          // embed_id
+    window.__KEY   = "pub_WaYFYIGvYv5Hcrc2MTJgDGD6ifzVfKxV"; // public key
+  </script>
+  <script>
+    var s = document.createElement('script');
+    s.src = window.__BASE + "/api/embed/widget.js?v=" + Date.now(); // cache-bust each load
+    s.setAttribute('data-embed-id', window.__EMBED);
+    s.setAttribute('data-key', window.__KEY);
+    s.onerror = function(){ alert("widget.js failed to load — check BASE URL / network tab"); };
+    document.body.appendChild(s);
+  </script>
+</body>
+</html>

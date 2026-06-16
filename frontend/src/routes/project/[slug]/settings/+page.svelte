@@ -5086,12 +5086,23 @@ function signUserJWT($user) {
  // Re-sync training state when the tab regains focus — a backgrounded tab pauses
  // timers, which left the pipeline + "Training…" button frozen in a stale state.
  function _onFocusHeal() { if (typeof document !== 'undefined' && !document.hidden) { try { loadDataSource(); } catch {} try { loadTrainingSteps(); } catch {} } }
+ // Keep the Agent Process Flow counts live — refresh catalog/stock/KG/substitutes/memories
+ // every 30s (dsData/sites already polls at 5s). Skip when tab hidden to avoid background churn.
+ let _agentFlowTimer: ReturnType<typeof setInterval> | null = null;
+ async function refreshAgentFlowCounts() {
+ if (typeof document !== 'undefined' && document.hidden) return;
+ try { await loadDetail(); } catch {}   // detail (catalog/stock rows) + fires loadChemStats (substitutes)
+ try { await loadBrainData(); } catch {} // kgTriples + brainMemories
+ }
+
  onMount(() => {
  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', _onFocusHeal);
  if (typeof window !== 'undefined') window.addEventListener('focus', _onFocusHeal);
+ if (!_agentFlowTimer) _agentFlowTimer = setInterval(refreshAgentFlowCounts, 30_000);
  });
  onDestroy(() => {
  if (trainPollTimer) { clearInterval(trainPollTimer); trainPollTimer = null; }
+ if (_agentFlowTimer) { clearInterval(_agentFlowTimer); _agentFlowTimer = null; }
  stopTrainingStepsPoll();
  if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', _onFocusHeal);
  if (typeof window !== 'undefined') window.removeEventListener('focus', _onFocusHeal);

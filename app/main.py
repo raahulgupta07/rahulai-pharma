@@ -23,6 +23,29 @@ from os import getenv
 from pathlib import Path
 
 
+# ── Plug-and-play: one var to set the public URL ──────────────────────────────
+# Operators set DOMAIN=agent.example.com. If PUBLIC_URL isn't set explicitly,
+# derive it as https://<DOMAIN> so embed snippets, per-embed CORS, the
+# public_base_url flag, and OIDC callbacks all resolve to the right address
+# with zero extra config. Skipped for localhost / blank (dev stays on the
+# request host). Set once in os.environ so every getenv("PUBLIC_URL") reader
+# (flags, CORS, embed_public, auth_federation) sees the same value.
+def _derive_public_url() -> None:
+    import os as _os
+    if (_os.getenv("PUBLIC_URL") or "").strip():
+        return
+    domain = (_os.getenv("DOMAIN") or "").strip().rstrip("/")
+    if not domain or domain.lower() in ("localhost", "127.0.0.1"):
+        return
+    # DOMAIN may already include a scheme; normalize to a bare host first.
+    host = domain.split("://", 1)[-1]
+    scheme = "http" if host.startswith(("localhost", "127.0.0.1")) else "https"
+    _os.environ["PUBLIC_URL"] = f"{scheme}://{host}"
+
+
+_derive_public_url()
+
+
 def _tier_label(complexity: str | None = None, reasoning: str | None = None) -> str:
     """Map router complexity + explicit override > exec-view tier.
 
@@ -1469,7 +1492,29 @@ def _global_flags():
         # (or WEBUI_URL) to the AWS domain; blank > frontend falls back to
         # window.location.origin.
         "public_base_url": (_os_flags.getenv("PUBLIC_URL") or _os_flags.getenv("WEBUI_URL") or "").rstrip("/"),
+        # Cache-bust token for the embed widget snippet (widget.js?v=...). Bumps
+        # every deploy so customer browsers/CDNs pick up widget changes promptly.
+        "widget_version": _widget_version(),
     }
+
+
+def _widget_version() -> str:
+    """Short cache-bust token for the widget snippet. Uses APP_VERSION, else the
+    baked /app/VERSION file, else the widget.js mtime. Stable within a deploy."""
+    import os as _os
+    v = (_os.getenv("APP_VERSION", "") or "").strip()
+    if not v or v == "dev":
+        try:
+            with open("/app/VERSION", "r") as _f:
+                v = (_f.read().strip() or "")
+        except Exception:
+            v = ""
+    if not v:
+        try:
+            v = str(int(_os.stat("/app/dash/embed/widget.js").st_mtime))
+        except Exception:
+            v = "1"
+    return v
 
 
 # Correction-learning loop — capture edits, extract durable rules
@@ -2041,6 +2086,38 @@ except Exception as _rl_e: # noqa: BLE001
     _rl_log.getLogger(__name__).warning(f"rate-limit middleware not loaded: {_rl_e}")
 
 app.add_middleware(AuthMiddleware)
+
+# ---------------------------------------------------------------------------
+# CORS — single source of truth (must be the LAST middleware added so it is
+# outermost and answers OPTIONS preflight before AuthMiddleware).
+#
+# Agno's AgentOS (get_app) injects its own CORSMiddleware with
+# allow_credentials=True + expose_headers=["*"]. Combined with our earlier
+# wildcard fallback that yields the spec-INVALID pair
+# `Access-Control-Allow-Origin: *` + `Allow-Credentials: true`, which browsers
+# reject for any credentialed request (breaks the admin dashboard cross-origin).
+# Strip every CORSMiddleware that any layer added, then re-add exactly one with
+# our env-driven, spec-valid config (`_cors_origins` / `_cors_allow_credentials`
+# computed above — credentials are forced False whenever origins == ['*']).
+try:
+    from starlette.middleware.cors import CORSMiddleware as _CORSFinal
+    _before = len(app.user_middleware)
+    app.user_middleware = [m for m in app.user_middleware if m.cls is not _CORSFinal]
+    app.middleware_stack = None  # force Starlette to rebuild the stack
+    app.add_middleware(
+        _CORSFinal,
+        allow_origins=_cors_origins,
+        allow_credentials=_cors_allow_credentials,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    import logging as _cors_log
+    _cors_log.getLogger("dash.main").info(
+        "CORS consolidated: stripped %d CORS layer(s), single policy origins=%s credentials=%s",
+        max(0, _before - len(app.user_middleware) + 1), _cors_origins, _cors_allow_credentials)
+except Exception as _cors_e:  # noqa: BLE001
+    import logging as _cors_log
+    _cors_log.getLogger("dash.main").warning(f"CORS consolidation skipped: {_cors_e}")
 
 # ---------------------------------------------------------------------------
 # Frontend (Brutalist Chat UI)

@@ -348,10 +348,12 @@
     </div>
     <div class="ov-head-actions">
       <span class="ov-upd">{syncMsg ? syncMsg : (loading ? 'loading…' : (lastUpdate ? 'updated ' + lastUpdate : ''))}</span>
-      <button class="ov-btn ov-btn-up" onclick={gotoUpload}><Icon name="upload" size={16} /> Upload data</button>
-      <button class="ov-btn" onclick={syncNow} disabled={syncing}><Icon name="refresh" size={16} /> {syncing ? 'Syncing…' : 'Sync'}</button>
-      <button class="ov-btn" class:on={auto} onclick={() => (auto = !auto)}><Icon name={auto ? 'play' : 'pause'} size={16} /> {auto ? 'Auto 30s' : 'Paused'}</button>
-      <button class="ov-btn" onclick={() => load()}><Icon name="refresh" size={16} /> Refresh</button>
+      <div class="ov-group">
+        <button class="ov-gbtn ov-gbtn-up" onclick={gotoUpload}><Icon name="upload" size={15} /> Upload data</button>
+        <button class="ov-gbtn" onclick={syncNow} disabled={syncing}><Icon name="database-zap" size={15} /> {syncing ? 'Syncing…' : 'Sync'}</button>
+        <button class="ov-gbtn" class:on={auto} onclick={() => (auto = !auto)}><Icon name={auto ? 'play' : 'pause'} size={15} /> {auto ? 'Auto 30s' : 'Paused'}</button>
+        <button class="ov-gbtn" onclick={() => load()}><Icon name="refresh" size={15} /> Refresh</button>
+      </div>
       <button class="ov-btn ov-btn-primary" onclick={() => goto(`${base}/project/${slug}`)}>Open chat <Icon name="arrow-right" size={16} /></button>
     </div>
   </div>
@@ -702,12 +704,21 @@
  .ov-sub { font-size: 11px; color: var(--color-on-surface-dim); margin-top: 2px; }
  .ov-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
  .ov-upd { font-size: 10px; color: var(--color-on-surface-dim); margin-right: 4px; }
- .ov-btn { font-size: 11px; padding: 5px 11px; border: 1px solid var(--pw-border, #e5ddcf); background: var(--color-surface); color: var(--color-on-surface); cursor: pointer; font-weight: 700; }
+ .ov-btn { font-size: 11px; padding: 5px 11px; border: 1px solid var(--pw-border, #e5ddcf); background: var(--color-surface); color: var(--color-on-surface); cursor: pointer; font-weight: 700; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
  .ov-btn.on { border-color: var(--color-primary); color: var(--color-primary); }
  .ov-btn-primary { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
  .ov-btn-up { border-color: var(--color-primary); color: var(--color-primary); }
  .ov-btn-up:hover { background: var(--color-primary); color: #fff; }
  .ov-btn:disabled { opacity: 0.55; cursor: default; }
+ /* grouped data-actions: one bordered segment, dividers, single primary outside */
+ .ov-group { display: inline-flex; align-items: stretch; border: 1px solid var(--pw-border, #e5ddcf); border-radius: var(--pw-button, 8px); overflow: hidden; background: var(--color-surface); }
+ .ov-gbtn { display: inline-flex; align-items: center; gap: 6px; border: none; border-right: 1px solid var(--pw-border, #e5ddcf); background: transparent; color: var(--color-on-surface); font-size: 11px; font-weight: 700; padding: 6px 12px; cursor: pointer; white-space: nowrap; transition: background 0.12s, color 0.12s; }
+ .ov-gbtn:last-child { border-right: none; }
+ .ov-gbtn:hover { background: color-mix(in srgb, var(--color-primary) 9%, transparent); color: var(--color-primary); }
+ .ov-gbtn.on { color: var(--color-primary); }
+ .ov-gbtn-up { color: var(--color-primary); }
+ .ov-gbtn:disabled { opacity: 0.55; cursor: default; }
+ .ov-gbtn:disabled:hover { background: transparent; color: var(--color-on-surface); }
  .ov-loading { padding: 60px; text-align: center; color: var(--color-on-surface-dim); font-size: 13px; }
 
  .ov-kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 14px; }

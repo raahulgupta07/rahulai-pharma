@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 _UPDATABLE_FIELDS = {
     "name",
     "allowed_origins",
+    "origin_mode",  # strict | subdomains | open (migration 185)
     "user_id_required",
     "user_id_signed",
     "auth_mode",
@@ -62,6 +63,7 @@ _UPDATABLE_FIELDS = {
 
 _VALID_AUTH_MODES = {"public", "hmac", "jwt"}
 _VALID_INTENTS = {"private", "network", "public"}
+_VALID_ORIGIN_MODES = {"strict", "subdomains", "open"}
 
 
 def _row_to_dict(row, *, include_hash: bool = False) -> dict[str, Any]:
@@ -307,6 +309,8 @@ def update_embed(embed_id: str, **fields: Any) -> dict[str, Any]:
         raise ValueError(f"auth_mode must be one of {_VALID_AUTH_MODES}")
     if "bound_intent" in updates and updates["bound_intent"] not in _VALID_INTENTS:
         raise ValueError(f"bound_intent must be one of {_VALID_INTENTS}")
+    if "origin_mode" in updates and updates["origin_mode"] not in _VALID_ORIGIN_MODES:
+        raise ValueError(f"origin_mode must be one of {_VALID_ORIGIN_MODES}")
 
     if not updates:
         existing = get_embed(embed_id)

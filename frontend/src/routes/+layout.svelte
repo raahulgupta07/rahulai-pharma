@@ -1511,8 +1511,7 @@
 
         <!-- Feed bell — Activity (notifications) + What's new (releases) -->
         <button onclick={(e) => { e.stopPropagation(); if (showNotifications) { showNotifications = false; } else { openFeed('activity'); } }} class="pw-feed-btn" title="Notifications & what's new">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-          <span>Feed</span>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
           {#if unreadCount > 0}
             <span class="pw-feed-count">{unreadCount > 99 ? '99+' : unreadCount}</span>
           {:else if versionIsNew}
@@ -1535,9 +1534,9 @@
             <span class="pw-user-id" class:pw-user-id-bare={!isAdmin}>
               <span class="pw-user-name">{username}</span>
               {#if isSuper}
-                <span class="pw-user-tier pw-user-tier-super"><Icon name="lock" size={16} /> SUPER ADMIN</span>
+                <span class="pw-user-sep">·</span><span class="pw-user-tier pw-user-tier-super"><Icon name="lock" size={12} /> SUPER ADMIN</span>
               {:else if isAdmin}
-                <span class="pw-user-tier pw-user-tier-admin"><Icon name="settings" size={16} /> ADMIN</span>
+                <span class="pw-user-sep">·</span><span class="pw-user-tier pw-user-tier-admin"><Icon name="settings" size={12} /> ADMIN</span>
               {/if}
             </span>
             <svg class="pw-chev" class:pw-chev-open={openMenu === 'user'} width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
@@ -2418,12 +2417,12 @@
  font-weight: 500;
  }
  .pw-user-id {
- display: flex;
- flex-direction: column;
- align-items: flex-start;
+ display: inline-flex;
+ flex-direction: row;
+ align-items: center;
  justify-content: center;
- line-height: 1.1;
- gap: 1px;
+ line-height: 1;
+ gap: 6px;
  }
  .pw-user-id-bare {
  justify-content: center;
@@ -2433,12 +2432,21 @@
  font-weight: 500;
  color: var(--pw-ink);
  }
+ .pw-user-sep {
+ font-size: 11px;
+ color: var(--pw-ink-soft);
+ opacity: 0.6;
+ }
  .pw-user-tier {
- font-size: 9px;
+ display: inline-flex;
+ align-items: center;
+ gap: 3px;
+ font-size: 10px;
  font-weight: 700;
  letter-spacing: 0.05em;
  text-transform: uppercase;
  line-height: 1;
+ white-space: nowrap;
  }
  .pw-user-tier-super { color: var(--pw-accent); }
  .pw-user-tier-admin { color: var(--pw-ink-soft); }
@@ -2693,15 +2701,14 @@
  .pw-feed-btn {
  display: inline-flex;
  align-items: center;
- gap: 6px;
+ justify-content: center;
  background: transparent;
  border: none;
  color: var(--pw-ink-soft);
- padding: 6px 12px;
- font-family: var(--pw-font-body);
- font-size: 12.5px;
- font-weight: 500;
- border-radius: var(--pw-radius-pill);
+ width: 34px;
+ height: 34px;
+ padding: 0;
+ border-radius: 50%;
  cursor: pointer;
  position: relative;
  transition: background 0.15s, color 0.15s;
@@ -2711,22 +2718,30 @@
  color: var(--pw-ink);
  }
  .pw-feed-count {
+ position: absolute;
+ top: 1px;
+ right: 0px;
  background: var(--pw-accent);
  color: #fff;
- font-size: 10px;
- font-weight: 600;
- min-width: 16px;
- height: 16px;
- padding: 0 5px;
+ font-size: 9px;
+ font-weight: 700;
+ line-height: 1;
+ min-width: 15px;
+ height: 15px;
+ padding: 0 4px;
  border-radius: var(--pw-radius-pill);
  display: inline-flex;
  align-items: center;
  justify-content: center;
+ box-shadow: 0 0 0 1.5px var(--pw-bg, #fff);
  }
  /* bell unread DOT (no count) — used when only a new version is unseen */
  .pw-feed-dot {
- width: 8px; height: 8px; border-radius: 50%;
- background: var(--pw-accent); margin-left: 1px;
+ position: absolute;
+ top: 6px; right: 7px;
+ width: 7px; height: 7px; border-radius: 50%;
+ background: var(--pw-accent);
+ box-shadow: 0 0 0 1.5px var(--pw-bg, #fff);
  }
  /* drawer header: tabs + close, one aligned row */
  .pw-feed-head {

@@ -1,0 +1,42 @@
+# Optional bundled Caddy reverse proxy (auto-HTTPS) overlay.
+#
+# Production normally fronts the stack with nginx — see
+# deploy/nginx/cityagent.conf. Use THIS overlay only if you'd rather let a
+# bundled Caddy terminate TLS for you (e.g. a quick demo box with a domain and
+# no existing nginx):
+#
+#   DOMAIN=agent.example.com docker compose -f compose.yaml -f compose.caddy.yaml up -d
+#
+# Caddy reads ./Caddyfile and gets a free Let's Encrypt cert for $DOMAIN
+# automatically. Leave DOMAIN=localhost for a local self-signed cert.
+#
+# Do NOT run this at the same time as an external nginx that already owns
+# :80/:443 — the ports will clash.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: cp-caddy
+    restart: always
+    ports:
+      - "8090:80"
+      - "8453:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      # Wait for the API's healthcheck (first-boot migrations + lifespan, ~30-40s)
+      # so Caddy doesn't proxy to a not-yet-ready upstream and serve cold-boot 502s.
+      dash-api:
+        condition: service_healthy
+    networks:
+      - dash
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+volumes:
+  caddy_data:
+  caddy_config:

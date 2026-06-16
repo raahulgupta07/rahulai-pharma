@@ -1,0 +1,44 @@
+<!doctype html>
+<!--
+  Cross-origin embed test page.
+  curl can only read headers; THIS proves the widget loads in a real browser
+  from a DIFFERENT origin (exactly like a customer site).
+
+  How to use:
+   1. Edit BASE + KEY below (BASE = your deploy URL, KEY = pk_live_... from Settings->Embed).
+   2. Serve this file from a DIFFERENT origin than BASE so it's truly cross-origin:
+        python3 -m http.server 9999     # then open http://localhost:9999/embed-test.html
+      (opening file:// also works; Origin will be "null" — still a valid cross-origin check)
+   3. Open browser DevTools -> Console + Network. Watch for the chat bubble bottom-right.
+      Red "blocked by CORS policy" = blocked. Bubble appears + chat replies = WORKS.
+   4. On AWS: set BASE to the https domain and host this page anywhere external.
+-->
+<html>
+<head><meta charset="utf-8"><title>Embed cross-origin test</title></head>
+<body style="font-family:system-ui;padding:40px;max-width:640px">
+  <h1>Embed test page</h1>
+  <p>This page is a stand-in for a customer site. If the chat bubble appears
+     bottom-right and answers, the embed works cross-origin.</p>
+  <p>Origin of this page: <code id="org"></code></p>
+  <p>Open DevTools Console — CORS/host blocks show in red there.</p>
+  <script>document.getElementById('org').textContent = location.origin;</script>
+
+  <!-- ===== EDIT THESE ===== -->
+  <script>
+    window.__BASE  = "https://muze-dividend-corners-hitting.trycloudflare.com"; // agent deploy URL
+    window.__EMBED = "emb_2Gpd3eIqAsC1c-55jlPuTA";          // embed_id
+    window.__KEY   = "pub_WaYFYIGvYv5Hcrc2MTJgDGD6ifzVfKxV"; // public key
+  </script>
+  <!-- ======================= -->
+
+  <script>
+    var s = document.createElement('script');
+    // cache-bust so each reload pulls the latest widget.js (5min browser cache)
+    s.src = window.__BASE + "/api/embed/widget.js?v=" + Date.now();
+    s.setAttribute('data-embed-id', window.__EMBED);
+    s.setAttribute('data-key', window.__KEY);
+    s.onerror = function(){ alert("widget.js failed to load — check BASE URL / network tab"); };
+    document.body.appendChild(s);
+  </script>
+</body>
+</html>

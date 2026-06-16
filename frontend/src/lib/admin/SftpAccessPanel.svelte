@@ -26,6 +26,29 @@
   let browse = $state<{ username: string; files: any[] } | null>(null);
   let ingestLog = $state<any[]>([]);
 
+  // global file explorer (all users, one window)
+  let explorer = $state<{ files: any[]; file_count: number; total_bytes: number } | null>(null);
+  let expLoading = $state(false);
+  let expUser = $state('all');
+  let expStatus = $state('all');
+  let expSearch = $state('');
+  let expRow = $state<string | null>(null); // rel key of expanded row
+  const expUserList = $derived(
+    explorer ? Array.from(new Set(explorer.files.map((f: any) => f.username))).sort() : []
+  );
+  const expFiltered = $derived(
+    (explorer?.files || []).filter((f: any) => {
+      if (expUser !== 'all' && f.username !== expUser) return false;
+      if (expStatus !== 'all' && f.status !== expStatus) return false;
+      if (expSearch.trim()) {
+        const q = expSearch.trim().toLowerCase();
+        if (!(`${f.username} ${f.rel}`.toLowerCase().includes(q))) return false;
+      }
+      return true;
+    })
+  );
+  const expShownBytes = $derived(expFiltered.reduce((a: number, f: any) => a + (f.size || 0), 0));
+
   function blankForm() {
     return {
       isNew: true, username: '', auth: 'key', public_key: '', password: '',
@@ -165,6 +188,31 @@
     } finally { busy = false; }
   }
 
+  async function openExplorer() {
+    expRow = null;
+    explorer = { files: [], file_count: 0, total_bytes: 0 };
+    await reloadExplorer();
+  }
+  async function reloadExplorer() {
+    expLoading = true;
+    try {
+      const r = await fetch('/api/admin/sftp/files-all', { headers: authHeaders() });
+      if (r.ok) explorer = await r.json();
+    } catch {} finally { expLoading = false; }
+  }
+  function statusIcon(s: string): string {
+    if (s === 'ingested') return 'check';
+    if (s === 'failed') return 'x';
+    if (s === 'uploading' || s === 'held') return 'clock';
+    return 'circle'; // pending / skipped
+  }
+  function statusTip(s: string): string {
+    return s === 'held' ? 'waiting — another file is already loading into this table (replace mode)'
+      : s === 'skipped' ? 'skipped by the watcher'
+      : s === 'pending' ? 'on disk, watcher has not picked it up yet'
+      : s === 'uploading' ? 'partial upload in progress' : '';
+  }
+
   async function openBrowse(u: SUser) {
     const r = await fetch(`/api/admin/sftp/files?username=${encodeURIComponent(u.username)}`, { headers: authHeaders() });
     if (r.ok) { const d = await r.json(); browse = { username: u.username, files: d.files || [] }; }
@@ -185,7 +233,10 @@
         Each user is jailed to their own folder — no access to the app.
       </div>
     </div>
-    <button class="sq" onclick={newUser} disabled={!status.configured}>+ ADD SFTP USER</button>
+    <div class="sf-headbtns">
+      <button class="sq ghost" onclick={openExplorer} disabled={!status.configured} title="See every dropped file across all users"><Icon name="folder" size={14} /> Browse files</button>
+      <button class="sq" onclick={newUser} disabled={!status.configured}>+ ADD SFTP USER</button>
+    </div>
   </div>
 
   <div class="sf-status">
@@ -378,6 +429,80 @@
   </div>
 {/if}
 
+<!-- global file explorer — all users, one window (B) -->
+{#if explorer}
+  <div class="modal-bg" role="presentation" onclick={() => (explorer = null)}>
+    <div class="modal lg" role="dialog" aria-modal="true" onclick={(e) => e.stopPropagation()}>
+      <div class="modal-h">
+        <Icon name="folder" size={16} /> SFTP FILES
+        <button class="ico" style="margin-left:auto" title="Refresh" onclick={reloadExplorer}><Icon name="refresh" size={15} /></button>
+        <button class="ico" title="Close" onclick={() => (explorer = null)}><Icon name="x" size={15} /></button>
+      </div>
+      <div class="exp-filters">
+        <label class="exp-fl">user
+          <select bind:value={expUser}>
+            <option value="all">all</option>
+            {#each expUserList as u}<option value={u}>{u}</option>{/each}
+          </select>
+        </label>
+        <label class="exp-fl">status
+          <select bind:value={expStatus}>
+            <option value="all">all</option>
+            <option value="ingested">ingested</option>
+            <option value="pending">pending</option>
+            <option value="uploading">uploading</option>
+            <option value="held">held</option>
+            <option value="skipped">skipped</option>
+            <option value="failed">failed</option>
+          </select>
+        </label>
+        <input class="exp-search" placeholder="search file or user…" bind:value={expSearch} />
+      </div>
+      <div class="modal-body">
+        {#if expLoading}
+          <div class="muted">LOADING…</div>
+        {:else if !expFiltered.length}
+          <div class="muted">{explorer.file_count ? 'No files match the filters.' : 'No files dropped yet across any user.'}</div>
+        {:else}
+          <table class="sf-tbl exp-tbl">
+            <thead><tr><th>USER</th><th>FILE</th><th>SIZE</th><th>DROPPED</th><th>STATUS</th></tr></thead>
+            <tbody>
+              {#each expFiltered as f (f.username + '/' + f.rel)}
+                <tr class="exp-row" onclick={() => (expRow = expRow === f.username + '/' + f.rel ? null : f.username + '/' + f.rel)}>
+                  <td>{f.username}</td>
+                  <td class="mono">{f.rel}</td>
+                  <td>{fmtBytes(f.size)}</td>
+                  <td class="muted2">{fmtTime(f.mtime)}</td>
+                  <td><span class="st {f.status}" title={statusTip(f.status)}><Icon name={statusIcon(f.status)} size={12} /> {f.status}</span></td>
+                </tr>
+                {#if expRow === f.username + '/' + f.rel}
+                  <tr class="exp-detail"><td colspan="5">
+                    <div class="exp-dgrid">
+                      <span>table</span><b class="mono">{f.table_name || '—'}{f.action ? ' · ' + f.action : ''}</b>
+                      <span>rows loaded</span><b>{f.rows_loaded ?? '—'}</b>
+                      <span>ingested</span><b>{f.ingested_at || '—'}</b>
+                      {#if f.status === 'pending'}<span>note</span><b class="muted2">waiting for the watcher to pick it up</b>{/if}
+                      {#if f.status === 'uploading'}<span>note</span><b class="muted2">partial upload in progress (.part/.tmp)</b>{/if}
+                      {#if f.message}<span>log</span><b class="mono">{f.message}</b>{/if}
+                    </div>
+                  </td></tr>
+                {/if}
+              {/each}
+            </tbody>
+          </table>
+        {/if}
+      </div>
+      <div class="modal-f exp-foot">
+        <span class="dot {status.reachable ? 'ok' : 'idle'}"></span>
+        <span class="muted2">{status.reachable ? 'online · port ' + status.sftp_port : 'offline'} · {expUserList.length} user{expUserList.length === 1 ? '' : 's'}</span>
+        <span class="exp-spacer"></span>
+        <span class="muted2">{expFiltered.length} of {explorer.file_count} files · {fmtBytes(expShownBytes)}</span>
+        <button class="sq" onclick={() => (explorer = null)}>Close</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <style>
   .sf { font-size: 13px; }
   .sf-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
@@ -431,4 +556,25 @@
   .st.error { background: #fbe9e6; color: #c0492f; }
   .st.held { background: #f7ecd6; color: #9a6a18; }
   .st.skipped { background: #eee; color: #777; }
+  .st.ingested { background: #e6f0e9; color: #2f6f4a; }
+  .st.failed { background: #fbe9e6; color: #c0492f; }
+  .st.uploading { background: #f7ecd6; color: #9a6a18; }
+  .st.pending { background: #eee; color: #777; }
+
+  /* global file explorer */
+  .sf-headbtns { display: flex; gap: 8px; flex-shrink: 0; }
+  .modal.lg { width: 880px; }
+  .exp-filters { display: flex; align-items: center; gap: 14px; padding: 12px 18px; border-bottom: 1px solid var(--pw-border, #e7e3da); flex-wrap: wrap; }
+  .exp-fl { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--pw-muted, #888); }
+  .exp-fl select { font-size: 12px; padding: 4px 8px; border: 1px solid var(--pw-border, #ddd); border-radius: var(--pw-radius-sm, 8px); background: var(--pw-bg, #fff); }
+  .exp-search { flex: 1; min-width: 160px; font-size: 12px; padding: 6px 10px; border: 1px solid var(--pw-border, #ddd); border-radius: var(--pw-radius-sm, 8px); background: var(--pw-bg, #fff); }
+  .exp-tbl { width: 100%; }
+  .exp-row { cursor: pointer; }
+  .exp-row:hover { background: color-mix(in srgb, var(--color-primary, #c2683f) 7%, transparent); }
+  .st { display: inline-flex; align-items: center; gap: 4px; }
+  .exp-detail td { background: var(--pw-bg-alt, #f6f3ec); padding: 10px 14px; }
+  .exp-dgrid { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 11.5px; align-items: baseline; }
+  .exp-dgrid > span { color: var(--pw-muted, #888); text-transform: uppercase; font-size: 10px; font-weight: 700; }
+  .exp-foot { display: flex; align-items: center; gap: 8px; }
+  .exp-spacer { flex: 1; }
 </style>

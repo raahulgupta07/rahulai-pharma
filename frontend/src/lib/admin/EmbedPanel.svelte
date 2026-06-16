@@ -349,6 +349,17 @@
  let configBusy = $state(false);
  let configErr = $state('');
 
+ // ---- Access tab: origin allowlist + mode + auto-detected pending origins ----
+ let configOriginMode = $state<'strict' | 'subdomains' | 'open'>('strict');
+ let configOrigins = $state<string[]>([]);
+ let newOrigin = $state('');
+ let accessSaved = $state(false);
+ let accessBusy = $state(false);
+ let accessErr = $state('');
+ let pendingOrigins = $state<any[]>([]);
+ let pendingBusy = $state(false);
+ let pendingActing = $state(''); // origin currently being allowed/blocked
+
  function _applyConfig(e: any) {
  if (!e) return;
  configColor = e.primary_color || '#c96342';
@@ -356,6 +367,8 @@
  configTheme = e.theme || 'default';
  configWelcome = e.welcome_msg || '';
  configLogo = e.logo_url || '';
+ configOriginMode = (e.origin_mode as any) || 'strict';
+ configOrigins = Array.isArray(e.allowed_origins) ? [...e.allowed_origins] : [];
  }
  function loadConfig() {
  configEmbed = embeds[0] || null;
@@ -363,7 +376,7 @@
  }
 
  // ---- per-widget cockpit (merged Playground: appearance + test + deploy + share) ----
- let wTab = $state<'appearance' | 'deploy' | 'share' | 'activity'>('appearance');
+ let wTab = $state<'appearance' | 'access' | 'deploy' | 'share' | 'activity'>('appearance');
  let apprMode = $state<'inherit' | 'override'>('inherit'); // widget appearance: inherit brand vs override
  function openWidgetCockpit(e: any) {
  configEmbed = e;
@@ -523,6 +536,65 @@
  else { let d = ''; try { const e = await r.json(); d = e.detail || ''; } catch {} configErr = d || `save ${r.status}`; }
  } catch (e) { configErr = 'unreachable'; }
  configBusy = false;
+ }
+
+ // ---- Access: save origin allowlist + mode, list/allow/block pending origins ----
+ function _eid() { return configEmbed?.embed_id || configEmbed?.id || ''; }
+
+ async function saveAccess() {
+ if (!configEmbed) return;
+ accessBusy = true; accessErr = '';
+ try {
+ const clean = configOrigins.map((o) => (o || '').trim().replace(/\/+$/, '')).filter(Boolean);
+ const r = await apiFetch(`/api/projects/${slug}/embeds/${_eid()}`, {
+ method: 'PATCH',
+ body: JSON.stringify({ allowed_origins: clean, origin_mode: configOriginMode }),
+ });
+ if (r.ok) { accessSaved = true; setTimeout(() => accessSaved = false, 1800); await loadEmbeds(); _applyConfig(configEmbed); }
+ else { let d = ''; try { const e = await r.json(); d = e.detail || ''; } catch {} accessErr = d || `save ${r.status}`; }
+ } catch (e) { accessErr = 'unreachable'; }
+ accessBusy = false;
+ }
+
+ function addOriginRow() {
+ const o = (newOrigin || '').trim().replace(/\/+$/, '');
+ if (!o) return;
+ if (!configOrigins.includes(o)) configOrigins = [...configOrigins, o];
+ newOrigin = '';
+ }
+ function removeOriginRow(o: string) {
+ configOrigins = configOrigins.filter((x) => x !== o);
+ }
+
+ async function loadPending() {
+ pendingBusy = true;
+ try {
+ const r = await apiFetch(`/api/projects/${slug}/pending-origins?status=pending`);
+ if (r.ok) { const d = await r.json(); pendingOrigins = d.pending || []; }
+ } catch {}
+ pendingBusy = false;
+ }
+
+ async function allowPending(eid: string, origin: string) {
+ pendingActing = origin;
+ try {
+ const r = await apiFetch(`/api/projects/${slug}/embeds/${eid}/pending-origins/allow`, {
+ method: 'POST', body: JSON.stringify({ origin }),
+ });
+ if (r.ok) { await loadEmbeds(); if (configEmbed) _applyConfig(configEmbed); await loadPending(); }
+ } catch {}
+ pendingActing = '';
+ }
+
+ async function blockPending(eid: string, origin: string) {
+ pendingActing = origin;
+ try {
+ const r = await apiFetch(`/api/projects/${slug}/embeds/${eid}/pending-origins/block`, {
+ method: 'POST', body: JSON.stringify({ origin }),
+ });
+ if (r.ok) await loadPending();
+ } catch {}
+ pendingActing = '';
  }
 
  // ---- monitoring (rich embed usage dashboard) ----
@@ -732,10 +804,14 @@
 
  // ---- snippet helpers ----
  let baseUrl = $state('');
+ // Cache-bust token (from /api/flags widget_version) appended to widget.js so
+ // customer browsers/CDNs pick up widget updates after each deploy.
+ let widgetVer = $state('');
+ const wjs = $derived(`${baseUrl}/api/embed/widget.js${widgetVer ? `?v=${widgetVer}` : ''}`);
  function buildSnippet(embedId: string, apiKey: string, storeId?: string): string {
  const attrs = storeId ? ` data-user='${JSON.stringify({ store_id: storeId })}'` : '';
  return `<script
- src="${baseUrl}/embed/widget.js"
+ src="${wjs}"
  data-embed-id="${embedId}"
  data-key="${apiKey}"${attrs}
 ><\/script>`;
@@ -744,7 +820,7 @@
  const publicSnippet = $derived(
  `<!-- Public embed (no auth, catalog-only) -->
 <script
- src="${baseUrl}/api/embed/widget.js"
+ src="${wjs}"
  data-embed-id="EMBED_ID"
  data-key="PUBLIC_KEY"
 ><\/script>`
@@ -753,7 +829,7 @@
  const storeScopedSnippet = $derived(
  `<!-- Store-scoped embed (Tier-1 qty+cost for owned stores) -->
 <script
- src="${baseUrl}/api/embed/widget.js"
+ src="${wjs}"
  data-embed-id="EMBED_ID"
  data-key="STORE_KEY"
  data-user='{"store_id":"20063-CCBRBKMY"}'
@@ -767,7 +843,7 @@ $payload = json_encode(["store_id" => "20063-CCBRBKMY", "role" => "staff", "ts" 
 $sig = hash_hmac("sha256", $payload, "YOUR_SECRET_KEY");
 ?>
 <script
- src="${baseUrl}/api/embed/widget.js"
+ src="${wjs}"
  data-embed-id="EMBED_ID"
  data-key="STORE_KEY"
  data-user='<?= $payload ?>'
@@ -776,6 +852,23 @@ $sig = hash_hmac("sha256", $payload, "YOUR_SECRET_KEY");
  );
 
  const widgetJsTest = $derived(`curl -I "${baseUrl}/api/embed/widget.js"`);
+
+ // React / Next.js drop-in (loads the script once on mount).
+ function reactSnippet(embedId: string, apiKey: string): string {
+ return `import { useEffect } from "react";
+export default function ChatWidget() {
+  useEffect(() => {
+    const s = document.createElement("script");
+    s.src = "${wjs}";
+    s.async = true;
+    s.dataset.embedId = "${embedId}";
+    s.dataset.key = "${apiKey}";
+    document.body.appendChild(s);
+    return () => s.remove();
+  }, []);
+  return null;
+}`;
+ }
 
  // ---- active embed count ----
  const liveCount = $derived(embeds.filter((e) => e.enabled !== false && e.status !== 'revoked' && e.status !== 'disabled').length);
@@ -791,7 +884,7 @@ $sig = hash_hmac("sha256", $payload, "YOUR_SECRET_KEY");
  const dropInSnippet = $derived(
 `<!-- Drop-in chat bubble · anonymous -->
 <script
- src="${baseUrl}/api/embed/widget.js"
+ src="${wjs}"
  data-embed-id="${eid}"
  data-public-key="${pkey}"
  data-title="CityAgent Pharma"
@@ -820,7 +913,7 @@ ksort($user);
 $canonical = json_encode($user, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
 <script
- src="${baseUrl}/api/embed/widget.js"
+ src="${wjs}"
  data-embed-id="${eid}"
  data-public-key="${pkey}"
  data-user='<?= htmlspecialchars($canonical, ENT_QUOTES) ?>'
@@ -925,6 +1018,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
  if (fr.ok) {
  const flags = await fr.json();
  if (flags.public_base_url) baseUrl = String(flags.public_base_url).replace(/\/+$/, '');
+ if (flags.widget_version) widgetVer = String(flags.widget_version);
  }
  } catch { /* fall back to window.location.origin */ }
  view = _viewFromHash();
@@ -1369,19 +1463,19 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
                     </td>
                     <td>
                       <div class="wg-quick">
-                        <button class="emp-btn emp-btn-sm" title="Copy embed snippet" onclick={(ev) => {
+                        <button class="emp-btn emp-btn-sm emp-btn-icon" aria-label="Copy embed snippet" title="Copy embed snippet" onclick={(ev) => {
                           ev.stopPropagation();
                           const snip = buildSnippet(eid, e.public_key || '', scope);
                           copyText(snip, `snip-${eid}`);
-                        }}>{copied === `snip-${eid}` ? 'OK copied' : '⧉ snippet'}</button>
-                        <button class="emp-btn emp-btn-sm emp-btn-accent" title="Ready-to-host folder (index.html + snippet + README), keys baked in"
-                          onclick={(ev) => { ev.stopPropagation(); downloadDeployZip(eid, scope); }}><Icon name="arrow-down" size={16} /> .zip</button>
+                        }}><Icon name={copied === `snip-${eid}` ? 'check' : 'copy'} size={16} /></button>
+                        <button class="emp-btn emp-btn-sm emp-btn-icon emp-btn-accent" aria-label="Download deploy .zip" title="Ready-to-host folder (index.html + snippet + README), keys baked in"
+                          onclick={(ev) => { ev.stopPropagation(); downloadDeployZip(eid, scope); }}><Icon name="download" size={16} /></button>
                         {#if isLive}
-                          <button class="emp-btn emp-btn-sm" title="Open a live chat sandbox for this widget"
-                            onclick={(ev) => { ev.stopPropagation(); window.open(`${baseUrl}/api/embed/try/${eid}`, '_blank'); }}><Icon name="play" size={16} /> test</button>
+                          <button class="emp-btn emp-btn-sm emp-btn-icon" aria-label="Test chat" title="Open a live chat sandbox for this widget"
+                            onclick={(ev) => { ev.stopPropagation(); window.open(`${baseUrl}/api/embed/try/${eid}`, '_blank'); }}><Icon name="play" size={16} /></button>
                         {/if}
-                        <button class="emp-btn emp-btn-sm" title="Configure appearance — colors, logo, welcome message"
-                          onclick={(ev) => { ev.stopPropagation(); openWidgetCockpit(e); }}><Icon name="settings" size={16} /> config</button>
+                        <button class="emp-btn emp-btn-sm emp-btn-icon" aria-label="Configure appearance" title="Configure appearance — colors, logo, welcome message"
+                          onclick={(ev) => { ev.stopPropagation(); openWidgetCockpit(e); }}><Icon name="settings" size={16} /></button>
                       </div>
                     </td>
                     <td>
@@ -1534,6 +1628,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
           <!-- sub-tabs -->
           <div class="emp-wc-tabs">
             <button class="emp-wc-tab" class:emp-wc-on={wTab === 'appearance'} onclick={() => wTab = 'appearance'}>Appearance</button>
+            <button class="emp-wc-tab" class:emp-wc-on={wTab === 'access'} onclick={() => { wTab = 'access'; loadPending(); }}>Access {#if pendingOrigins.length}<span class="emp-tab-dot">{pendingOrigins.length}</span>{/if}</button>
             <button class="emp-wc-tab" class:emp-wc-on={wTab === 'deploy'} onclick={() => wTab = 'deploy'}>Snippet &amp; Deploy</button>
             <button class="emp-wc-tab" class:emp-wc-on={wTab === 'share'} onclick={() => wTab = 'share'}>Share link</button>
             <button class="emp-wc-tab" class:emp-wc-on={wTab === 'activity'} onclick={() => wTab = 'activity'}>Activity</button>
@@ -1622,6 +1717,73 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
             {/if}
           {/if}
 
+          {#if wTab === 'access'}
+            <div class="emp-h">WHO CAN EMBED THIS WIDGET</div>
+            <p class="emp-doc-p">Only websites on this list can load the chat. A site not listed gets a 403 — and shows up below under <strong>Sites trying to embed</strong> so you can allow it in one click.</p>
+
+            <div class="emp-h emp-mt">MATCH MODE</div>
+            <label class="emp-acc-mode">
+              <input type="radio" name="omode" value="strict" bind:group={configOriginMode} />
+              <span><strong>Strict</strong> — only the exact addresses listed (most secure)</span>
+            </label>
+            <label class="emp-acc-mode">
+              <input type="radio" name="omode" value="subdomains" bind:group={configOriginMode} />
+              <span><strong>Subdomains</strong> — a listed site like <code class="emp-code">https://acme.com</code> also allows <code class="emp-code">https://shop.acme.com</code></span>
+            </label>
+            <label class="emp-acc-mode">
+              <input type="radio" name="omode" value="open" bind:group={configOriginMode} />
+              <span><strong>Open</strong> — any website (insecure — internal/testing only)</span>
+            </label>
+
+            <div class="emp-h emp-mt">ALLOWED SITES</div>
+            <p class="emp-doc-p emp-fineprint">One per row. Use the address bar value: scheme + host (+ port), no path. Wildcards OK in any mode: <code class="emp-code">https://*.acme.com</code>, <code class="emp-code">http://192.168.*</code>.</p>
+            {#if configOrigins.length === 0}
+              <div class="emp-row emp-muted">no sites yet — add one below or allow a pending site.</div>
+            {:else}
+              <div class="emp-acc-list">
+                {#each configOrigins as o (o)}
+                  <div class="emp-acc-row">
+                    <code class="emp-code emp-acc-origin">{o}</code>
+                    <button class="emp-btn emp-btn-sm emp-btn-danger" onclick={() => removeOriginRow(o)}><Icon name="x" size={14} /></button>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+            <div class="emp-acc-add">
+              <input class="emp-input" placeholder="https://customer-site.com" bind:value={newOrigin} onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addOriginRow(); } }} />
+              <button class="emp-btn emp-btn-sm" onclick={addOriginRow}><Icon name="plus" size={14} /> Add</button>
+            </div>
+            <div class="emp-btnrow emp-mt">
+              <button class="emp-btn emp-btn-accent" disabled={accessBusy} onclick={saveAccess}>{accessBusy ? '◐…' : 'SAVE ACCESS'}</button>
+              {#if accessSaved}<span class="emp-saved">OK saved</span>{/if}
+              {#if accessErr}<span class="emp-err">x {accessErr}</span>{/if}
+            </div>
+
+            <div class="emp-h emp-mt">SITES TRYING TO EMBED <button class="emp-btn emp-btn-sm" disabled={pendingBusy} onclick={loadPending}>{pendingBusy ? '◐…' : '↻ refresh'}</button></div>
+            <p class="emp-doc-p emp-fineprint">Auto-detected from blocked requests. <strong>Allow</strong> adds the site to the list above instantly — no redeploy.</p>
+            {#if pendingOrigins.length === 0}
+              <div class="emp-row emp-muted">{pendingBusy ? 'loading…' : 'nothing pending — no blocked sites right now.'}</div>
+            {:else}
+              <table class="emp-acc-tbl">
+                <thead><tr><th>SITE</th><th>TRIES</th><th>LAST SEEN</th><th>IP</th><th></th></tr></thead>
+                <tbody>
+                  {#each pendingOrigins as p (p.id)}
+                    <tr>
+                      <td><code class="emp-code">{p.origin}</code>{#if p.embed_name && p.embed_id !== _eid()}<span class="emp-muted emp-fineprint"> · {p.embed_name}</span>{/if}</td>
+                      <td>{p.attempts}</td>
+                      <td class="emp-muted emp-fineprint">{(p.last_seen || '').slice(0, 16).replace('T', ' ')}</td>
+                      <td class="emp-muted emp-fineprint">{p.ip || '—'}</td>
+                      <td class="emp-acc-acts">
+                        <button class="emp-btn emp-btn-sm emp-btn-accent" disabled={pendingActing === p.origin} onclick={() => allowPending(p.embed_id, p.origin)}>{pendingActing === p.origin ? '◐…' : 'Allow'}</button>
+                        <button class="emp-btn emp-btn-sm" disabled={pendingActing === p.origin} onclick={() => blockPending(p.embed_id, p.origin)}>Block</button>
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            {/if}
+          {/if}
+
           {#if wTab === 'deploy'}
             <div class="emp-h">KEYS</div>
             <div class="emp-detail">
@@ -1653,12 +1815,23 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
             </div>
             <pre class="emp-codeblock emp-pre">{buildSnippet(ceId, cePk, ceScope)}</pre>
 
+            <div class="emp-h emp-mt">REACT / NEXT.JS</div>
+            <div class="emp-dl-snip-head">
+              <span class="emp-muted emp-fineprint">drop <code class="emp-code">&lt;ChatWidget /&gt;</code> in your root layout</span>
+              <button class="emp-btn emp-btn-sm" onclick={() => copyText(reactSnippet(ceId, cePk), `react-${ceId}`)}>{copied === `react-${ceId}` ? 'OK copied' : 'copy'}</button>
+            </div>
+            <pre class="emp-codeblock emp-pre">{reactSnippet(ceId, cePk)}</pre>
+
+            <div class="emp-h emp-mt">WORDPRESS</div>
+            <p class="emp-doc-p emp-fineprint">Install a header/footer-scripts plugin (e.g. WPCode), paste the <strong>Paste snippet</strong> above into the <strong>Footer</strong> box, save. Or add it before <code class="emp-code">&lt;/body&gt;</code> in your theme's <code class="emp-code">footer.php</code>.</p>
+
             <div class="emp-h emp-mt">ONE-CLICK DEPLOY</div>
             <p class="emp-doc-p">Ready-to-host folder — <code class="emp-code">index.html</code> + <code class="emp-code">snippet.html</code> + <code class="emp-code">README</code>, keys pre-baked. No editing.</p>
             <div class="emp-detail-actions">
               <button class="emp-btn emp-btn-accent" onclick={() => downloadDeployZip(ceId, ceScope)}>⤓ Deploy .zip</button>
               {#if ceLive}<button class="emp-btn emp-btn-sm" onclick={() => window.open(`${baseUrl}/api/embed/try/${ceId}`, '_blank')}> Open chat test ^</button>{/if}
             </div>
+            <p class="emp-doc-p emp-fineprint emp-mt">Full step-by-step for the embedding team: <code class="emp-code">docs/EMBED.md</code></p>
           {/if}
 
           {#if wTab === 'share'}
@@ -2447,6 +2620,30 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
  .emp-badge-on { color: #2d8a4e; }
  .emp-badge-off { color: #c0392b; }
 
+ /* icon-only action button: square, centered glyph, tooltip on hover */
+ .emp-btn-icon { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; }
+
+ /* ── Deployments list: responsive table → cards ──
+    WIDE (default): full 7-col table.
+    TABLET (<900px): fold auth col, let action buttons wrap compactly.
+    MOBILE (<640px): each row becomes a stacked card, actions a 2×2 grid. */
+ @media (max-width: 900px) and (min-width: 641px) {
+   .wg-table th:nth-child(2), .wg-row td:nth-child(2) { display: none; }  /* fold auth col (still editable in expand) */
+ }
+ @media (max-width: 640px) {
+   .wg-table thead { display: none; }
+   .wg-table, .wg-table tbody { display: block; width: 100%; }
+   .wg-row { display: block; position: relative; border: 1px solid var(--pw-border, #e5ddcf); border-radius: var(--pw-radius, 12px); padding: 12px 14px; margin-bottom: 10px; }
+   .wg-row td { display: inline-block; border: none !important; padding: 2px 0; vertical-align: middle; }
+   .wg-row td:nth-child(1) { display: block; font-weight: 600; padding-right: 64px; }   /* name, full width, clear of lock badge */
+   .wg-row td:nth-child(3)::before, .wg-row td:nth-child(4)::before { content: "·"; color: var(--pw-muted, #877f74); margin: 0 6px; }  /* meta: auth · origins · status */
+   .wg-row td:nth-child(5) { display: block; margin-top: 6px; }   /* toggle on its own line */
+   .wg-row td:nth-child(6) { display: block; margin-top: 8px; }   /* actions row */
+   .wg-row td:nth-child(7) { position: absolute; top: 12px; right: 12px; padding: 0; }   /* lock / delete, top-right */
+   .wg-quick { display: flex; gap: 8px; }   /* icon row */
+   .wg-auth-sel { max-width: 110px; }
+ }
+
  /* config */
  .emp-config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
  .emp-color-row { display: flex; align-items: center; gap: 8px; }
@@ -2582,6 +2779,21 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
  .emp-wc-tab:hover { color: var(--pw-accent, #9a4a2f); }
  .emp-wc-on { background: var(--pw-accent, #c96342); color: #fff; }
  .emp-wc-on:hover { color: #fff; }
+ .emp-tab-dot { display: inline-block; min-width: 16px; padding: 0 5px; margin-left: 5px; border-radius: 999px; background: #c0392b; color: #fff; font-size: 10px; line-height: 16px; text-align: center; vertical-align: middle; }
+ .emp-wc-on .emp-tab-dot { background: #fff; color: var(--pw-accent, #c96342); }
+
+ /* ── access tab: origin allowlist + pending ── */
+ .emp-acc-mode { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; padding: 6px 0; cursor: pointer; line-height: 1.4; }
+ .emp-acc-mode input { margin-top: 2px; flex-shrink: 0; }
+ .emp-acc-list { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+ .emp-acc-row { display: flex; align-items: center; gap: 8px; }
+ .emp-acc-origin { flex: 1; overflow-wrap: anywhere; }
+ .emp-acc-add { display: flex; gap: 8px; margin-top: 8px; }
+ .emp-acc-add .emp-input { flex: 1; }
+ .emp-acc-tbl { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+ .emp-acc-tbl th { text-align: left; font-size: 10px; letter-spacing: 0.06em; color: #8a7a66; padding: 4px 8px; border-bottom: 1px solid var(--pw-border, #e5ddcf); }
+ .emp-acc-tbl td { padding: 7px 8px; border-bottom: 1px solid #f1e6d2; vertical-align: middle; }
+ .emp-acc-acts { display: flex; gap: 6px; justify-content: flex-end; }
 
  /* ── brand / inherit ── */
  .emp-swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.15); display: inline-block; flex-shrink: 0; }

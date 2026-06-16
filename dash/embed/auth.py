@@ -70,9 +70,51 @@ def ensure_session_claims_column() -> None:
         logger.warning(f"ensure_session_claims_column failed: {e}")
 
 
+def ensure_origin_flex_objects() -> None:
+    """Idempotent: origin_mode column + pending-origins ledger (migration 185).
+    Lets existing deploys gain flexible-origin support before the SQL migration
+    runs. Safe to call repeatedly."""
+    try:
+        eng = _get_engine()
+        with eng.begin() as conn:
+            conn.execute(
+                text(
+                    "ALTER TABLE public.dash_agent_embeds "
+                    "ADD COLUMN IF NOT EXISTS origin_mode TEXT NOT NULL DEFAULT 'strict'"
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS public.dash_embed_pending_origins (
+                        id          BIGSERIAL PRIMARY KEY,
+                        embed_id    TEXT NOT NULL,
+                        origin      TEXT NOT NULL,
+                        ip          TEXT,
+                        country     TEXT,
+                        attempts    INTEGER NOT NULL DEFAULT 1,
+                        status      TEXT NOT NULL DEFAULT 'pending',
+                        first_seen  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        last_seen   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        UNIQUE (embed_id, origin)
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_embed_pending_status "
+                    "ON public.dash_embed_pending_origins (status, last_seen DESC)"
+                )
+            )
+    except Exception as e:
+        logger.warning(f"ensure_origin_flex_objects failed: {e}")
+
+
 # Run on import so that any caller of this module can rely on the column.
 ensure_secret_key_column()
 ensure_session_claims_column()
+ensure_origin_flex_objects()
 
 
 def authenticate_session_request(
@@ -104,8 +146,8 @@ def authenticate_session_request(
                 """
                 SELECT embed_id, project_slug, public_key, secret_key,
                        secret_key_encrypted, secret_key_hash,
-                       allowed_origins, user_id_required, auth_mode, jwt_jwks_url,
-                       rate_limit_per_min, feature_config, enabled
+                       allowed_origins, origin_mode, user_id_required, auth_mode,
+                       jwt_jwks_url, rate_limit_per_min, feature_config, enabled
                 FROM public.dash_agent_embeds
                 WHERE embed_id = :embed_id AND public_key = :public_key
                 """
@@ -121,7 +163,16 @@ def authenticate_session_request(
         )
 
     allowed_origins = list(row.allowed_origins or [])
-    if not verify_origin(allowed_origins, origin, server_origin=server_origin):
+    origin_mode = getattr(row, "origin_mode", None) or "strict"
+    if not verify_origin(allowed_origins, origin, server_origin=server_origin,
+                         origin_mode=origin_mode):
+        # Record the denied origin so an admin can one-click Allow it — no
+        # code redeploy needed. Fail-soft (never block the 403 on a log error).
+        try:
+            from dash.embed.session import record_pending_origin
+            record_pending_origin(row.embed_id, origin, ip=ip)
+        except Exception:
+            logger.warning("record_pending_origin call failed", exc_info=True)
         raise EmbedAuthError(
             "origin_denied",
             f"Origin {origin or '(none)'} not in allowlist",

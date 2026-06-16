@@ -941,13 +941,26 @@ def _check_sec_fetch(req: Request) -> bool:
     return sfs in ("cross-site", "same-origin", "same-site")
 
 
-def _per_embed_cors_headers(allowed_origins: list[str], request_origin: str | None) -> dict:
-    """Echo back the request's origin only if it matches allowlist; else omit.
+def _per_embed_cors_headers(allowed_origins: list[str], request_origin: str | None,
+                            origin_mode: str = "strict") -> dict:
+    """Echo back the request's origin only if it passes the embed's origin check;
+    else omit.
 
     Server-level CORS allows '*' for permissiveness, but per-embed we tighten:
-    only echo origins explicitly listed in the embed's allowed_origins.
+    only echo an origin the embed key actually trusts. Uses the SAME matcher as
+    session/create (verify_origin) so wildcard/subdomain/open modes that let a
+    site authenticate also let the browser accept the response.
     """
-    if request_origin and allowed_origins and request_origin in allowed_origins:
+    if not request_origin:
+        return {}
+    try:
+        from dash.embed.session import verify_origin
+        ok = verify_origin(list(allowed_origins or []), request_origin,
+                           origin_mode=origin_mode)
+    except Exception:
+        # Fail-safe to legacy exact match if the embed module is mid-deploy.
+        ok = bool(allowed_origins) and request_origin in allowed_origins
+    if ok:
         return {
             "Access-Control-Allow-Origin": request_origin,
             "Access-Control-Allow-Credentials": "false",
@@ -1040,7 +1053,19 @@ def try_embed_sandbox(embed_id: str, request: Request, token: str | None = None)
 
     project_slug = row["project_slug"]
     proj_name = row["name"] or project_slug
+    # Widget src MUST match the page scheme. request.base_url is the INTERNAL
+    # hop (http) behind a tunnel/ALB/nginx, but the public page is https → an
+    # http widget src is blocked as MIXED CONTENT (no chat bubble appears).
+    # Prefer PUBLIC_URL/WEBUI_URL, else upgrade to https when the proxy says so
+    # (Cloudflare/ALB/nginx set X-Forwarded-Proto). Fixes tunnel + real AWS.
+    import os as _os_try
     base_url = str(request.base_url).rstrip("/")
+    _pub_try = (_os_try.getenv("PUBLIC_URL") or _os_try.getenv("WEBUI_URL") or "").rstrip("/")
+    _xfp_try = (request.headers.get("x-forwarded-proto", "") or "").split(",")[0].strip().lower()
+    if _pub_try:
+        base_url = _pub_try
+    elif _xfp_try == "https" and base_url.startswith("http://"):
+        base_url = "https://" + base_url[len("http://"):]
     # Raw per-store overrides — only baked as data-* attrs when set, else the
     # widget inherits the live Brand theme via /api/embed/config.
     primary_ov = (row.get("primary_color") or "").strip()
@@ -2495,11 +2520,12 @@ async def embed_chat_stream(req: Request):
     try:
         with eng.connect() as conn:
             row2 = conn.execute(text(
-                "SELECT allowed_origins FROM public.dash_agent_embeds WHERE embed_id = :e"
+                "SELECT allowed_origins, origin_mode FROM public.dash_agent_embeds WHERE embed_id = :e"
             ), {"e": embed_id}).first()
             allowed = list(row2[0]) if row2 and row2[0] else []
+            o_mode = (row2[1] if row2 and len(row2) > 1 else None) or "strict"
             origin_hdr = _extract_origin(req)
-            headers.update(_per_embed_cors_headers(allowed, origin_hdr))
+            headers.update(_per_embed_cors_headers(allowed, origin_hdr, origin_mode=o_mode))
     except Exception:
         pass
 
