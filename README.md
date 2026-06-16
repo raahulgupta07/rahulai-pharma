@@ -631,7 +631,10 @@ re-run — it never overwrites an existing `.env`. Full guide: **[INSTALL.md](IN
 
 Production HTTPS (nginx + certbot): set `DOMAIN` in `.env`, then
 **[docs/INSTALL-NGINX.md](docs/INSTALL-NGINX.md)**. Embedding teams:
-**[docs/EMBED.md](docs/EMBED.md)**.
+**[docs/EMBED_GUIDE.md](docs/EMBED_GUIDE.md)** — step-by-step, screenshot-driven
+dev onboarding (copy keys → paste snippet → allow your site → test), mapped to
+the widget cockpit; deeper variants in **[docs/EMBED.md](docs/EMBED.md)** and
+ready SDKs in **[examples/](examples/)**.
 
 ### Manual (two commands)
 

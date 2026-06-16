@@ -490,7 +490,7 @@ Goal: AWS box self-configures; any team anywhere pastes a snippet → works, no 
 - `scripts/bootstrap_env.sh` — no `.env` → copy example + fill random `DB_PASS`/`SFTPGO_ADMIN_PASS`/`SUPER_ADMIN_PASS`/`CONNECTION_ENCRYPTION_KEY` (openssl, portable GNU+BSD sed), prints admin login once, leaves `OPENROUTER_API_KEY`. Never clobbers. (Tested: gens + idempotent.)
 - `install.sh` — preflight (docker/compose/openssl, ports 8011/2222, RAM) → bootstrap → prompt model key → `up` → poll health → print URL+admin. `make install`/`make bootstrap`.
 - `.github/workflows/release.yml` — tag `v*` → build+push `ghcr.io/<owner>/citypharma:<ver>+latest` (bun pre-pull retry, gha cache). NOT push-verified here (runs on their GitHub).
-- Docs: `INSTALL.md`, `docs/EMBED.md` (HTML/React/WordPress/HMAC/troubleshoot), `docs/INSTALL-NGINX.md` (nginx+certbot).
+- Docs: `INSTALL.md`, `docs/EMBED.md` (HTML/React/WordPress/HMAC/troubleshoot), `docs/EMBED_GUIDE.md` (2026-06-16: polished screenshot-driven dev onboarding mapped 1:1 to the widget cockpit panels — KEYS/CONFIG/DROP-IN SNIPPET/FULL PHP CODE/Access; screenshots go in `docs/images/embed/` per its `README.md` manifest of 8 PNGs `01-cockpit-overview`…`08-widget-open`), `docs/INSTALL-NGINX.md` (nginx+certbot), `EMBED_DEV_HANDOFF.md` + `examples/` (PHP/Python/Node/bash SDKs, served+downloadable from cockpit).
 
 **DEFERRED (opted out):** A3 `/setup` UI wizard (env-bootstrap already creates admin), C3 Redis rate-limit (single-replica per-process limit fine). **NOT yet validated on real AWS box** (only local :8011 + unit/e2e).
 
