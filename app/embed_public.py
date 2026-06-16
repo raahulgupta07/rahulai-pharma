@@ -168,6 +168,27 @@ def _is_burmese(s: str) -> bool:
     return any("က" <= c <= "႟" for c in (s or ""))
 
 
+def _embed_fast_analyst(project_slug: str, message: str, viewer_id):
+    """Single-agent fast-path for embed (flag-gated SINGLE_AGENT_FASTPATH, default
+    OFF). Simplest TRIVIAL/LOOKUP questions run a lone Analyst instead of the full
+    team — ~10-15 coordination turns drop to ~2-3. Returns an Agno Agent that
+    duck-types into team.run() (both embed consumers handle RunContent), or None to
+    fall back to the team. The Analyst has NO write tools, so this stays embed-safe
+    (allow_write_agents=False is moot — no Engineer in this path)."""
+    try:
+        import os as _efp_os
+        if str(_efp_os.getenv("SINGLE_AGENT_FASTPATH", "0")).strip().lower() not in ("1", "true", "yes", "on"):
+            return None
+        from dash.routing import classify_complexity as _efp_cc
+        dec = _efp_cc(project_slug, message)
+        if (dec or {}).get("tier") not in ("TRIVIAL", "LOOKUP"):
+            return None
+        from dash.team import create_single_analyst
+        return create_single_analyst(project_slug=project_slug, user_id=viewer_id)
+    except Exception:
+        return None
+
+
 def _consumer_followups(question: str, answer: str, max_n: int = 3) -> list[str]:
     """Cheap, no-LLM contextual follow-up suggestions for the embed widget.
     Heuristic on the question/answer shape — keeps latency at zero. Chips are
@@ -1773,19 +1794,22 @@ async def embed_chat(req: Request):
         team = None
         if not _shortcut_hit:
             from dash.team import create_project_team
-            team = create_project_team(
-                project_slug=project_slug,
-                agent_name="Embed Agent",
-                agent_role="",
-                agent_personality="friendly",
-                # Per-store team cache key. The store_id is baked into the system
-                # prompt at build time; with user_id=None every store collided on
-                # one cached team (citypharma_None_<lang>) and reused the FIRST
-                # store's baked store_id > cross-store number leak. synthetic_viewer
-                # is the per-embed (per-store) negative id > one team per store.
-                user_id=synthetic_viewer,
-                allow_write_agents=False, # embed = never a write-capable agent
-            )
+            # Single-agent fast-path (flag-gated) for simple LOOKUP questions.
+            team = _embed_fast_analyst(project_slug, message, synthetic_viewer)
+            if team is None:
+                team = create_project_team(
+                    project_slug=project_slug,
+                    agent_name="Embed Agent",
+                    agent_role="",
+                    agent_personality="friendly",
+                    # Per-store team cache key. The store_id is baked into the system
+                    # prompt at build time; with user_id=None every store collided on
+                    # one cached team (citypharma_None_<lang>) and reused the FIRST
+                    # store's baked store_id > cross-store number leak. synthetic_viewer
+                    # is the per-embed (per-store) negative id > one team per store.
+                    user_id=synthetic_viewer,
+                    allow_write_agents=False, # embed = never a write-capable agent
+                )
 
             ctx_note = ""
             if sess.get("external_user"):
@@ -2294,16 +2318,19 @@ async def embed_chat_stream(req: Request):
             except Exception:
                 pass
             from dash.team import create_project_team
-            team = create_project_team(
-                project_slug=project_slug,
-                agent_name="Embed Agent",
-                agent_role="",
-                agent_personality="friendly",
-                # Per-store team cache key (see chat path) — stops cross-store
-                # baked-prompt reuse under the shared citypharma_None_<lang> key.
-                user_id=synthetic_viewer,
-                allow_write_agents=False, # embed = never a write-capable agent
-            )
+            # Single-agent fast-path (flag-gated) for simple LOOKUP questions.
+            team = _embed_fast_analyst(project_slug, message, synthetic_viewer)
+            if team is None:
+                team = create_project_team(
+                    project_slug=project_slug,
+                    agent_name="Embed Agent",
+                    agent_role="",
+                    agent_personality="friendly",
+                    # Per-store team cache key (see chat path) — stops cross-store
+                    # baked-prompt reuse under the shared citypharma_None_<lang> key.
+                    user_id=synthetic_viewer,
+                    allow_write_agents=False, # embed = never a write-capable agent
+                )
 
             ctx_note = ""
             if sess.get("external_user"):

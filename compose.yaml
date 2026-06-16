@@ -240,6 +240,20 @@ services:
       # drop METRIC_SHORTCUT_DISABLED (cache hides the 70-220s repeat-question latency).
       - APIGW_CACHE_TTL=${APIGW_CACHE_TTL:-90}
       - METRIC_SHORTCUT_DISABLED=${METRIC_SHORTCUT_DISABLED:-0}
+      # Latency tuning (2026-06-16). SINGLE_AGENT_FASTPATH: simple TRIVIAL/LOOKUP
+      # pure-data questions skip the multi-agent team's leader<->member
+      # coordination (~10-15 serial LLM turns -> ~2-3). ON by default (verified
+      # 2026-06-16: cold LOOKUP 32-63s -> 8-18s, Burmese intact, no delegation);
+      # set 0 to disable. Anything needing the Researcher or above LOOKUP keeps
+      # the full team.
+      - SINGLE_AGENT_FASTPATH=${SINGLE_AGENT_FASTPATH:-1}
+      # History runs carried into each LLM turn (lower = less prompt = faster).
+      - NUM_HISTORY_RUNS=${NUM_HISTORY_RUNS:-3}
+      # Rerank fail-fast guards (cohere via OpenRouter could hang 21s).
+      - RERANK_SKIP_BELOW=${RERANK_SKIP_BELOW:-6}
+      - RERANK_TIMEOUT_S=${RERANK_TIMEOUT_S:-5}
+      - RERANK_MAX_MODELS=${RERANK_MAX_MODELS:-1}
+      - RERANK_API_ENABLED=${RERANK_API_ENABLED:-1}
       # Floor model reasoning_effort at "low" on every turn (streams a thinking
       # trace, +400-1000ms). OFF by default — this is a pharmacy-counter lookup
       # tool (stock / substitute / nearby-outlet), which needs zero reasoning;

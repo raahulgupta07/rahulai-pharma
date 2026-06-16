@@ -104,10 +104,14 @@ def invalidate_team_cache(project_slug: str | None = None):
     with _cache_lock:
         if project_slug is None:
             _team_cache.clear()
+            _single_cache.clear()
             return
         for k in list(_team_cache.keys()):
             if k.startswith(f"{project_slug}_"):
                 _team_cache.pop(k, None)
+        for k in list(_single_cache.keys()):
+            if k.startswith(f"single_{project_slug}_"):
+                _single_cache.pop(k, None)
 _TEAM_CACHE_TTL = 300 # 5 min — a cold rebuild costs 2-4s, so hold the team
 # longer to cut that off the hot path. Staleness is handled explicitly:
 # invalidate_team_cache(slug) fires on every feature_config/instruction change
@@ -483,6 +487,128 @@ def create_project_team(
     with _cache_lock:
         _team_cache[cache_key] = (team, time.time())
     return team
+
+
+_single_cache: dict[str, tuple] = {}  # cache_key -> (agent, created_at)
+
+
+def create_single_analyst(
+    project_slug: str,
+    user_id: int | None = None,
+):
+    """Lone Analyst agent (NO team/leader coordination) for the simplest
+    LOOKUP-tier, pure-data questions.
+
+    The multi-agent team pays ~10-15 serial LLM turns on leader<->member
+    coordination even when one Analyst answer would do (a 52s outlier used a
+    single search_all tool). This bypass runs the Analyst directly, cutting that
+    to ~2-3 turns. It is flag-gated by the caller (SINGLE_AGENT_FASTPATH) and
+    only used for TRIVIAL/LOOKUP + pure-data questions; anything needing the
+    Researcher or above LOOKUP keeps the full team.
+
+    Returns an Agno Agent that duck-types into the existing team.run() call site
+    (the stream consumer already handles RunContent/ToolCall* event names).
+    Returns None on any failure so the caller falls back to the team.
+    """
+    # Lang-aware cache — instructions bake the REPLY_LANG override (bilingual).
+    try:
+        from dash.instructions import REPLY_LANG as _RL
+        _lang = (_RL.get() or "en")
+    except Exception:
+        _lang = "en"
+    cache_key = f"single_{project_slug}_{user_id}_{_lang}"
+    now = time.time()
+    with _cache_lock:
+        hit = _single_cache.get(cache_key)
+        if hit and now - hit[1] < _TEAM_CACHE_TTL:
+            return hit[0]
+    try:
+        from db.session import create_project_knowledge, create_project_learnings
+        from agno.learn import LearnedKnowledgeConfig, LearningMachine, LearningMode
+
+        knowledge = create_project_knowledge(project_slug)
+        learnings = create_project_learnings(project_slug)
+        learning = LearningMachine(
+            knowledge=learnings,
+            learned_knowledge=LearnedKnowledgeConfig(mode=LearningMode.AGENTIC),
+        )
+        analyst = create_analyst(
+            project_slug=project_slug, knowledge=knowledge,
+            learning=learning, actual_user_id=user_id,
+        )
+
+        # Provider + federated tools — same wiring the team Analyst gets, so the
+        # fast-path Analyst can still reach multi-source data when present.
+        provider_tools: list = []
+        try:
+            from dash.providers import get_registry
+            registry = get_registry()
+            if not registry.list_for_project(project_slug):
+                try:
+                    asyncio.get_running_loop()
+                    asyncio.create_task(registry.load_for_project(project_slug))
+                except RuntimeError:
+                    try:
+                        asyncio.run(registry.load_for_project(project_slug))
+                    except Exception:
+                        pass
+            for p in (
+                registry.list_for_project(project_slug, agent_scope="analyst_only")
+                + registry.list_for_project(project_slug, agent_scope="shared")
+            ):
+                try:
+                    if getattr(p, "dialect", "") == "files":
+                        continue
+                    provider_tools.extend(p.emit_tools())
+                except Exception:
+                    pass
+        except Exception as e:
+            log.debug(f"single-analyst provider wiring skipped for {project_slug}: {e}")
+        try:
+            from dash.tools.federated_query import make_federated_tool
+            fed_tool = make_federated_tool(
+                project_slug=project_slug, agent_role="analyst", user_id=user_id,
+            )
+            if fed_tool is not None:
+                provider_tools.append(fed_tool)
+        except Exception:
+            pass
+        if provider_tools and hasattr(analyst, "tools") and isinstance(analyst.tools, list):
+            analyst.tools.extend(provider_tools)
+
+        # Match the team's per-agent guards.
+        try:
+            analyst.tool_call_limit = 15
+        except Exception:
+            pass
+        try:
+            analyst.num_history_runs = _NUM_HISTORY_RUNS
+        except Exception:
+            pass
+        try:
+            from dash.tools.build import sanitize_tool_schemas
+            _t = getattr(analyst, "tools", None)
+            if isinstance(_t, list):
+                sanitize_tool_schemas(_t)
+        except Exception as _se:
+            log.warning(f"single-analyst sanitize_tool_schemas failed: {_se}")
+
+        with _cache_lock:
+            _single_cache[cache_key] = (analyst, time.time())
+        return analyst
+    except Exception as e:
+        log.warning(f"create_single_analyst failed for {project_slug}: {e}")
+        return None
+
+
+def invalidate_single_cache(project_slug: str | None = None):
+    with _cache_lock:
+        if project_slug is None:
+            _single_cache.clear()
+            return
+        for k in list(_single_cache.keys()):
+            if k.startswith(f"single_{project_slug}_"):
+                _single_cache.pop(k, None)
 
 
 def _load_user_projects(user_id: int | None) -> list[dict]:

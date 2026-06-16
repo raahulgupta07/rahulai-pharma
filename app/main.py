@@ -3091,11 +3091,41 @@ async def super_chat(request: Request):
     # User message stays CLEAN (no system prompt prepended)
     context_msg = message
 
+    # Single-agent fast-path (flag-gated, default OFF): the simplest LOOKUP-tier,
+    # pure-data questions skip the multi-agent team's leader<->member coordination
+    # (~10-15 serial LLM turns -> ~2-3). Same .run() interface; the stream consumer
+    # already handles RunContent/ToolCall* (non-Team) event names. Anything needing
+    # the Researcher (routing_hint != "data") or above LOOKUP keeps the full team.
+    _fast_team = None
+    try:
+        import os as _fp_os
+        if str(_fp_os.getenv("SINGLE_AGENT_FASTPATH", "0")).strip().lower() in ("1", "true", "yes", "on") \
+                and not _chit and reasoning in ("auto", "", "fast") and routing_hint == "data":
+            from dash.routing import classify_complexity as _fp_cc
+            from dash.single_agent import locked_slug as _fp_ls
+            _fp_slug = _fp_ls()
+            if _fp_slug:
+                _fp_dec = _fp_cc(_fp_slug, message)
+                if (_fp_dec or {}).get("tier") in ("TRIVIAL", "LOOKUP"):
+                    from dash.team import create_single_analyst
+                    _fa = create_single_analyst(project_slug=_fp_slug, user_id=user.get("user_id"))
+                    if _fa is not None:
+                        _fast_team = _fa
+                        routing_info = {
+                            "routed_to": "Analyst", "slug": _fp_slug,
+                            "reason": f"single-agent fast-path ({(_fp_dec or {}).get('tier')})",
+                            "tier": (_fp_dec or {}).get("tier"), "fast_path": True,
+                        }
+    except Exception:
+        _fast_team = None
+
     # Load user's projects for routing
     from dash.team import _load_user_projects, create_project_team
     all_projects = _load_user_projects(user.get("user_id"))
 
-    if mode != "auto":
+    if _fast_team is not None:
+        team = _fast_team  # routing_info already set above
+    elif mode != "auto":
         # Pinned to specific project
         from sqlalchemy import text as sa_text
         from db import get_sql_engine
