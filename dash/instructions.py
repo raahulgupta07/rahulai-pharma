@@ -73,6 +73,30 @@ _BURMESE_SYSTEM_OVERRIDE = (
     "AND THE TAG NAMES / BRACKETED KEYS THEMSELVES — the keys stay exactly `[HEADLINE:`, "
     "`[LEAD:`, `[WHY:`, `[SO_WHAT:`, `[COMPOSITION:`, etc. NEVER translate or alter the "
     "bracketed tag keys; only the value text after the colon becomes Burmese.\n"
+    "ONE LANGUAGE ONLY: do NOT add, append, or interleave an English translation, "
+    "restatement, or parallel version of any sentence — Burmese only. This applies "
+    "REGARDLESS of the language used in earlier turns of this conversation; mirror "
+    "THIS question's language, not the history.\n"
+)
+
+# English system-prompt override — the SYMMETRIC counterpart of the Burmese one.
+# Appended LAST when REPLY_LANG=='en'. WITHOUT this, English had no system-level
+# enforcement (only Burmese did), so once a Burmese turn entered the session
+# history the model drifted to bilingual EN+MY output. This makes English an
+# equally hard rule and explicitly neutralises the prior-turn-language bias.
+_ENGLISH_SYSTEM_OVERRIDE = (
+    "\n\n"
+    "## LANGUAGE — HIGHEST-PRIORITY RULE\n"
+    "The user wrote in English. Write your ENTIRE answer in English ONLY — opening, "
+    "table headers, prose, and tip, all English.\n"
+    "ONE LANGUAGE ONLY: do NOT add, append, or interleave a Burmese (မြန်မာ) translation, "
+    "restatement, or parallel version of any sentence, heading, table header, label, or "
+    "tip. Do NOT echo the answer twice in two languages.\n"
+    "This applies REGARDLESS of the language used in EARLIER turns of this conversation — "
+    "even if previous questions or answers were in Burmese, reply to THIS question in "
+    "English only. Mirror THIS question's language, not the history.\n"
+    "Keep product/brand names, generic drug names, codes, numbers, currency and units "
+    "exactly as stored.\n"
 )
 _VALID_EXEC_TIERS = {"quick", "standard", "deep", "reasoning", "ultra"}
 _LEGACY_TIER_MAP = {"instant": "quick", "fast": "quick", "high": "deep", "max": "ultra"}
@@ -2179,11 +2203,16 @@ def build_analyst_instructions(user_id: str | None = None, project_slug: str | N
         except Exception:
             pass
 
-    # Phase 1 bilingual: for a Burmese turn, append the override LAST so it wins
-    # over the English format walls baked above. Cached per-language by dash.team.
+    # Phase 1 bilingual: append the language override LAST so it wins over the
+    # format walls baked above. Cached per-language by dash.team. BOTH languages
+    # now get a system-strength override (EN was previously unenforced → bilingual
+    # leak once Burmese entered the session history).
     try:
-        if (REPLY_LANG.get() or "en") == "my":
+        _ov_lang = (REPLY_LANG.get() or "en")
+        if _ov_lang == "my":
             final_prompt = final_prompt + _BURMESE_SYSTEM_OVERRIDE
+        else:
+            final_prompt = final_prompt + _ENGLISH_SYSTEM_OVERRIDE
     except Exception:
         pass
 

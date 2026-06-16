@@ -1758,6 +1758,17 @@ async def embed_chat(req: Request):
         except Exception:
             logger.debug("stock shortcut skipped", exc_info=True)
 
+        # Reply-language contract — set REPLY_LANG from THIS message BEFORE the
+        # team is built so create_project_team bakes the matching system override
+        # (EN or MY) and caches it per-language. Embeds previously never set this,
+        # so the team was always English-instructions and language relied solely
+        # on a weak inline note → bilingual leak on a language switch.
+        try:
+            from dash.instructions import REPLY_LANG as _REPLY_LANG
+            _REPLY_LANG.set("my" if _is_burmese(message) else "en")
+        except Exception:
+            pass
+
         # Team build + run ONLY when the fast-path did not already answer.
         team = None
         if not _shortcut_hit:
@@ -1802,14 +1813,19 @@ async def embed_chat(req: Request):
                 _sem = _llm_get_sem("qa_generation") # chat tier
             except Exception:
                 _sem = None
+            # Lang-scope the Agno memory session so a language switch starts a
+            # clean history lane (no cross-language history bleed → no bilingual
+            # drift). Embed session_id is not used for any user-facing history
+            # retrieval, so suffixing it is safe.
+            _mem_sid = f"embed_{token[:16]}_{'my' if _is_burmese(message) else 'en'}"
             if _sem is not None:
                 async with _sem:
                     response = await _asyncio.to_thread(
-                        team.run, message + ctx_note, session_id=f"embed_{token[:16]}"
+                        team.run, message + ctx_note, session_id=_mem_sid
                     )
             else:
                 response = await _asyncio.to_thread(
-                    team.run, message + ctx_note, session_id=f"embed_{token[:16]}"
+                    team.run, message + ctx_note, session_id=_mem_sid
                 )
             content = response.content or ""
             _usage = _embed_usage_from_response(response) # tokens + model for cost
@@ -2270,6 +2286,13 @@ async def embed_chat_stream(req: Request):
             return
 
         try:
+            # Reply-language contract — set BEFORE the team build so the matching
+            # system override (EN or MY) bakes in + caches per-language.
+            try:
+                from dash.instructions import REPLY_LANG as _REPLY_LANG
+                _REPLY_LANG.set("my" if _is_burmese(message) else "en")
+            except Exception:
+                pass
             from dash.team import create_project_team
             team = create_project_team(
                 project_slug=project_slug,
@@ -2289,13 +2312,17 @@ async def embed_chat_stream(req: Request):
                 import json as _json
                 ctx_note += f"\n[EMBED CONTEXT] user_attrs={_json.dumps(sess['user_attrs'])}"
             # Mirror the customer's language: Burmese question > Burmese answer,
-            # otherwise English. Keep numbers/units/product codes as-is.
+            # otherwise English. Keep numbers/units/product codes as-is. The
+            # no-translation clause stops a bilingual restatement (the system
+            # override is the real enforcer; this just reinforces it).
             if _is_burmese(message):
                 ctx_note += ("\n[LANGUAGE] The customer wrote in Burmese. Reply ONLY in "
-                             "Burmese (မြန်မာ). Keep product names, codes, numbers and units unchanged.")
+                             "Burmese (မြန်မာ) — do NOT add an English translation or "
+                             "restatement. Keep product names, codes, numbers and units unchanged.")
             else:
-                ctx_note += ("\n[LANGUAGE] The customer wrote in English. Reply ONLY in English. "
-                             "Keep product names, codes, numbers and units unchanged.")
+                ctx_note += ("\n[LANGUAGE] The customer wrote in English. Reply ONLY in English — "
+                             "do NOT add a Burmese translation or restatement, regardless of "
+                             "earlier turns. Keep product names, codes, numbers and units unchanged.")
 
             # Stream from Agno team. Pump a sync iterator into an asyncio
             # queue so the producer coroutine can interleave heartbeats
@@ -2309,7 +2336,9 @@ async def embed_chat_stream(req: Request):
                 try:
                     it = team.run(
                         message + ctx_note,
-                        session_id=f"embed_{token[:16]}",
+                        # Lang-scoped memory lane — clean history per language so
+                        # a language switch can't drag in the other language.
+                        session_id=f"embed_{token[:16]}_{'my' if _is_burmese(message) else 'en'}",
                         stream=True,
                         stream_events=True,
                     )

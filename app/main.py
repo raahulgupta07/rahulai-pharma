@@ -2975,6 +2975,18 @@ async def super_chat(request: Request):
     except Exception:
         pass
 
+    # Reply-language contract — detect THIS turn's language and set REPLY_LANG
+    # BEFORE _apply_reasoning_mode (reads it for the MY tag-scaffolding line) and
+    # BEFORE create_project_team (bakes + caches the per-language system override).
+    # super_chat builds its own team and previously NEVER set this → the analyst
+    # path was English-instructions always; now MY/EN are both enforced.
+    try:
+        from dash.instructions import REPLY_LANG as _REPLY_LANG
+        _is_my = any('က' <= _c <= '႟' for _c in (message or ""))
+        _REPLY_LANG.set("my" if _is_my else "en")
+    except Exception:
+        pass
+
     # Apply reasoning mode — build as SYSTEM instruction, not user message.
     # Chitchat/capability/greeting > plain pharmacist prose, NO dashboard tags/cards/charts.
     _chit = _is_chitchat(message)
