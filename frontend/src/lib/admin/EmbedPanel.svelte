@@ -1744,16 +1744,18 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
 
                           <!-- ACTIONS -->
                           <div class="emp-detail-actions">
-                            <button class="emp-btn emp-btn-sm emp-btn-accent" onclick={() => downloadDeployZip(eid, scope)} title="Ready-to-host folder (index.html + snippet + README), keys baked in">⤓ Deploy .zip</button>
-                            {#if isLive}
-                              <button class="emp-btn emp-btn-sm" onclick={() => window.open(`${baseUrl}/api/embed/try/${eid}`, '_blank')}><Icon name="play" size={16} /> Test chat <Icon name="trending-up" size={16} /></button>
-                            {/if}
-                            <button class="emp-btn emp-btn-sm" onclick={() => openWidgetCockpit(e)}><Icon name="settings" size={16} /> Configure appearance <Icon name="arrow-right" size={16} /></button>
-                            <button class="emp-btn emp-btn-sm" onclick={() => toggleEmbedEnabled(e)} title={isLive ? 'Disable — snippet stops working' : 'Enable'}>{isLive ? ' Disable' : ' Enable'}</button>
+                            <div class="emp-seg">
+                              <button class="emp-segbtn emp-segbtn-primary" onclick={() => downloadDeployZip(eid, scope)} title="Ready-to-host folder (index.html + snippet + README), keys baked in">⤓ Deploy</button>
+                              {#if isLive}
+                                <button class="emp-segbtn" onclick={() => window.open(`${baseUrl}/api/embed/try/${eid}`, '_blank')}><Icon name="play" size={16} /> Test</button>
+                              {/if}
+                              <button class="emp-segbtn" onclick={() => openWidgetCockpit(e)}><Icon name="settings" size={16} /> Configure</button>
+                              <button class="emp-segbtn" onclick={() => toggleEmbedEnabled(e)} title={isLive ? 'Disable — snippet stops working' : 'Enable'}>{isLive ? 'Disable' : 'Enable'}</button>
+                            </div>
                             {#if isStore}
                               <span class="emp-lock" title="Outlet widget tied to a DB store — permanent, cannot be deleted"><Icon name="lock" size={16} /> Locked</span>
                             {:else}
-                              <button class="emp-btn emp-btn-sm emp-btn-danger" onclick={() => deleteEmbed(e)}><Icon name="trash" size={16} /> Delete</button>
+                              <button class="emp-seg-del" onclick={() => deleteEmbed(e)}><Icon name="trash" size={16} /> Delete</button>
                             {/if}
                           </div>
                         </div>
@@ -1791,13 +1793,15 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
               <span class="emp-muted emp-fineprint">{embedScopeLabel(configEmbed)}</span>
             </div>
             <div class="emp-wc-head-actions">
-              {#if ceLive}<button class="emp-btn emp-btn-sm" onclick={() => window.open(`${baseUrl}/api/embed/try/${ceId}`, '_blank')}><Icon name="play" size={16} /> Test chat</button>{/if}
-              <button class="emp-btn emp-btn-sm emp-btn-accent" onclick={() => downloadDeployZip(ceId, ceScope)}>⤓ Deploy .zip</button>
-              <button class="emp-btn emp-btn-sm" onclick={() => toggleEmbedEnabled(configEmbed)} title={ceLive ? 'Disable' : 'Enable'}>{ceLive ? ' Disable' : ' Enable'}</button>
+              <div class="emp-seg">
+                {#if ceLive}<button class="emp-segbtn" onclick={() => window.open(`${baseUrl}/api/embed/try/${ceId}`, '_blank')}><Icon name="play" size={16} /> Test</button>{/if}
+                <button class="emp-segbtn emp-segbtn-primary" onclick={() => downloadDeployZip(ceId, ceScope)}>⤓ Deploy</button>
+                <button class="emp-segbtn" onclick={() => toggleEmbedEnabled(configEmbed)} title={ceLive ? 'Disable' : 'Enable'}>{ceLive ? 'Disable' : 'Enable'}</button>
+              </div>
               {#if isStoreEmbed(configEmbed)}
                 <span class="emp-lock" title="Outlet widget tied to a DB store — permanent, cannot be deleted"><Icon name="lock" size={16} /> Locked</span>
               {:else}
-                <button class="emp-btn emp-btn-sm emp-btn-danger" onclick={() => deleteEmbed(configEmbed)}><Icon name="trash" size={16} /> Delete</button>
+                <button class="emp-seg-del" onclick={() => deleteEmbed(configEmbed)}><Icon name="trash" size={16} /> Delete</button>
               {/if}
             </div>
           </section>
@@ -2642,7 +2646,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
  .emp-dl-k { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pw-muted, #877f74); font-weight: 600; min-width: 90px; }
  .emp-dl-snip { margin-top: 6px; }
  .emp-dl-snip-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
- .emp-detail-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+ .emp-detail-actions { display: flex; align-items: center; gap: 0; margin-top: 8px; flex-wrap: nowrap; overflow-x: auto; }
  .emp-dl-grouphead { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--pw-border, #e5ddcf); color: var(--pw-accent, #9a4a2f); }
  .emp-dl-grouphead:first-child { margin-top: 0; padding-top: 0; border-top: none; }
  .emp-dl-config { gap: 8px 18px; font-size: 12px; }
@@ -2721,6 +2725,16 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
  .emp-btn-danger:hover { background: #c0392b; color: #fff; }
  .emp-actions { display: flex; align-items: center; gap: 6px; }
  .emp-lock { font-size: 11px; opacity: 0.5; cursor: help; white-space: nowrap; letter-spacing: 0.02em; }
+
+ /* ---- segmented pill action bar ---- */
+ .emp-seg { display: inline-flex; align-items: stretch; border: 1px solid var(--pw-muted); border-radius: var(--pw-radius-sm); overflow-x: auto; max-width: 100%; background: var(--pw-bg); }
+ .emp-seg > * { flex-shrink: 0; }
+ .emp-segbtn { appearance: none; border: none; background: transparent; border-right: 1px solid var(--pw-muted); padding: 7px 14px; font: inherit; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--pw-ink); white-space: nowrap; transition: background 0.12s; }
+ .emp-segbtn:last-child { border-right: none; }
+ .emp-segbtn:hover { background: rgba(201, 99, 66, 0.08); }
+ .emp-segbtn-primary { color: var(--pw-accent); font-weight: 600; }
+ .emp-seg-del { border: 1px solid #e4b3a6; color: #b23b2e; background: transparent; border-radius: var(--pw-radius-sm); padding: 7px 14px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; margin-left: 10px; white-space: nowrap; }
+ .emp-seg-del:hover { background: rgba(178, 59, 46, 0.08); }
 
  /* ---- widgets: segmented tabs ---- */
  .wg-tabbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; border-bottom: 1px solid var(--pw-border, #ece6d9); }
@@ -2964,7 +2978,7 @@ $sig = hash_hmac("sha256", $canonical, getenv("CITYAGENT_EMBED_SECRET")); ?>
  .emp-crumb-link:hover { text-decoration: underline; }
  .emp-crumb-sep { color: var(--pw-muted, #877f74); }
  .emp-wc-name { font-family: var(--pw-serif, Georgia, serif); font-size: 18px; color: var(--pw-ink, #2c2a26); }
- .emp-wc-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+ .emp-wc-head-actions { display: flex; align-items: center; gap: 0; flex-wrap: nowrap; overflow-x: auto; }
  .emp-wc-tabs { display: inline-flex; border: 1px solid var(--pw-border, #e5ddcf); margin-bottom: 16px; flex-wrap: wrap; }
  .emp-wc-tab { padding: 7px 16px; font-size: 12px; font-weight: 600; background: #fff; color: #6b6557; border: none; border-right: 1px solid var(--pw-border, #e5ddcf); cursor: pointer; font-family: inherit; }
  .emp-wc-tab:last-child { border-right: none; }

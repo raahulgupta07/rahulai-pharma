@@ -44,3 +44,6 @@ knowledge/
 examples/embed-test/embed_fixtures.json
 examples/embed-test/embed_results.csv
 examples/embed-test/store_embeds.tsv
+
+# ad-hoc latency / pre-change backup snapshots (local only)
+.latency_backup_*/

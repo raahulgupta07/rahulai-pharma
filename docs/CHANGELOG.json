@@ -2,6 +2,16 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.49.0",
+      "date": "2026-06-17",
+      "title": "More accurate counter answers",
+      "items": [
+        "The assistant no longer makes up product lists — if there's no match it now says so plainly instead of inventing items.",
+        "Asking 'how many products do we have' now returns the correct count of distinct products, not the number of physical units.",
+        "You can now ask for the top products overall or within a category and get the real best-stocked items at your branch."
+      ]
+    },
+    {
       "version": "1.45.0",
       "date": "2026-06-15",
       "title": "Send data by SFTP",

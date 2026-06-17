@@ -444,7 +444,7 @@ services:
   # Claude Desktop / Cursor / Windsurf connect via `docker exec -i dash-mcp …`.
   # Opt-in: `docker compose --profile mcp up -d dash-mcp`.
   dash-mcp:
-    image: citypharma:latest
+    image: ${IMAGE_NAME:-citypharma}:${IMAGE_TAG:-latest}
     container_name: cp-mcp
     restart: unless-stopped
     command: ["tail", "-f", "/dev/null"]  # idle; clients invoke `docker exec -i dash-mcp python -m mcp_server`

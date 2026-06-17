@@ -21,7 +21,28 @@ permissions:
   packages: write
 
 jobs:
+  # Cheap fail-fast gate so a broken tag never publishes an image. The docker
+  # build (below) already fails on FE/compile errors; this catches obvious
+  # Python breakage in seconds before spending a full multi-stage build.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile-check core backend
+        run: |
+          python -m compileall -q dash app db || exit 1
+      - name: VERSION matches the git tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          want="${GITHUB_REF_NAME#v}"
+          have="$(tr -d '[:space:]' < VERSION)"
+          test "$want" = "$have" || { echo "tag $GITHUB_REF_NAME != VERSION $have"; exit 1; }
+
   build-push:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

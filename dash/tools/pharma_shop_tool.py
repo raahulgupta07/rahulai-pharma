@@ -266,14 +266,24 @@ def store_stock_summary(
     group_by: str = "",
     category: str = "",
     low_stock_threshold: int = 0,
+    top_products: bool = False,
     limit: int = 30,
 ) -> dict:
-    """Own-branch aggregate analytics: totals, per-category breakdown, low-stock list.
+    """Own-branch aggregate analytics: totals, per-category breakdown, low-stock list,
+    and the TOP PRODUCTS (highest-stock SKUs) — optionally within one category.
 
     SAFE for store-locked API keys — when a key is bound to one store, the queried
     site is FORCED to the bound store (any caller-supplied site is ignored), so a
     store key can NEVER aggregate another branch. The bound site is passed as a
     parameterized `WHERE b.site_code = %s` on every query.
+
+    FIELD MEANING — report the one that matches the user's word:
+      unique_articles       = COUNT of DISTINCT SKUs / product lines.
+                              USE THIS for "how many products / SKUs / unique items".
+      total_stock_qty       = SUM of physical units on the shelf (NOT a product count;
+                              a much larger number). USE for "how many units / total quantity".
+      total_inventory_value = SUM(stock_qty * cost) in MMK. USE for "inventory value / worth".
+      Units != SKUs. Never return total_stock_qty when asked for a SKU/product count.
 
     group_by: "" > overall totals (total_stock_qty, unique_articles,
                    total_inventory_value) for the branch.
@@ -281,7 +291,13 @@ def store_stock_summary(
     category: filter to one category (ILIKE) — returns that category's totals.
     low_stock_threshold: >0 > list articles with 0 < stock_qty <= threshold
                          (brand + qty), up to `limit`.
-    limit: cap on rows returned for the grouped / low-stock lists.
+    top_products: True > the TOP `limit` highest-stock SKUs at the branch, each with
+                  brand/salt/category/stock_qty/cost, ranked stock_qty DESC. Combine
+                  with `category` to get "top products IN that category". USE THIS for
+                  "top/best-selling/highest-stock products", "what are the top products
+                  in <category>", "show me the leading items". Returns REAL rows — the
+                  ONLY correct way to answer a top-products question (never invent rows).
+    limit: cap on rows returned for the grouped / low-stock / top-products lists.
 
     Cost/price columns (total_inventory_value) are Tier-1 own-branch data, allowed.
     """
@@ -309,6 +325,39 @@ def store_stock_summary(
                 where.append("category ILIKE %s")
                 params.append(f"%{category.strip()}%")
             where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+
+            # ── top products (highest-stock SKUs, optional category) ────────
+            if top_products:
+                cur.execute(
+                    f"""SELECT art_key, brand, generic, category, stock_qty, cost
+                        FROM {FLAT}
+                        {where_sql}{' AND' if where_sql else 'WHERE'} stock_qty > 0
+                        ORDER BY stock_qty DESC, brand
+                        LIMIT %s""",
+                    (*params, int(limit)))
+                def _ac(art_key):
+                    try:
+                        return int(art_key)
+                    except (TypeError, ValueError):
+                        return art_key
+                top = [
+                    {
+                        "article_code": _ac(r[0]),
+                        "brand": (r[1] or "").strip(),
+                        "salt": (r[2] or "").strip(),
+                        "category": (r[3] or "").strip(),
+                        "stock_qty": int(r[4]),
+                        "cost": float(r[5] or 0),
+                    }
+                    for r in cur.fetchall()
+                ]
+                return {
+                    "ok": True, "site": site_code or "all",
+                    "category": category.strip() if category else None,
+                    "top_products": True, "count": len(top),
+                    "results": top,
+                    "state": "ok" if top else "not_found",
+                }
 
             # ── low-stock list ──────────────────────────────────────────────
             if low_stock_threshold and int(low_stock_threshold) > 0:
