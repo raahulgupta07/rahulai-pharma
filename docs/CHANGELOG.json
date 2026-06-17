@@ -2,6 +2,15 @@
   "_note": "Customer-facing 'What's new' feed shown on the login screen + admin Overview. Newest release FIRST. Keep items short, plain-language, benefit-led (no internal table/tool names). Bump VERSION file when you cut a release and add a block here.",
   "releases": [
     {
+      "version": "1.50.0",
+      "date": "2026-06-17",
+      "title": "See how fast each answer was",
+      "items": [
+        "Every answer now shows a small badge — Dash 3.0 Instant for the quickest replies (stock checks, product counts), Dash 2.0 Fast, or Dash 1.0 Pro for deeper questions.",
+        "The badge is honest: it shows how the answer was actually produced, so you can see at a glance which questions come back instantly."
+      ]
+    },
+    {
       "version": "1.49.0",
       "date": "2026-06-17",
       "title": "More accurate counter answers",

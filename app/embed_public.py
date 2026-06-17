@@ -2318,6 +2318,7 @@ async def embed_chat_stream(req: Request):
                 "session_token": token,
                 "cache_hit": False,
                 "shortcut": "stock",
+                "engine": "3.0",  # served by the 0-LLM fast-path = Dash 3.0 Instant
             })
             logger.info("stock shortcut hit (stream, %dms, %d match) — no LLM",
                         _sc.get("elapsed_ms", 0), _sc.get("count", 0))
@@ -2357,6 +2358,8 @@ async def embed_chat_stream(req: Request):
             # _fc = this embed's feature_config (loaded with the embed row above).
             _engine = _resolve_embed_engine(_fc)
             team = _embed_fast_analyst(project_slug, message, synthetic_viewer, engine=_engine)
+            # Badge: single-agent fast-path = Dash 2.0 Fast; full team = Dash 1.0 Pro.
+            _served_engine = "2.0" if team is not None else "1.0"
             if team is None:
                 team = create_project_team(
                     project_slug=project_slug,
@@ -2610,6 +2613,7 @@ async def embed_chat_stream(req: Request):
                 "latency_ms": latency_ms,
                 "session_token": token,
                 "cache_hit": False,
+                "engine": _served_engine,  # 2.0 fast-analyst | 1.0 full team
             }
             if capped:
                 done_payload["truncated"] = True

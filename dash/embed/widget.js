@@ -436,6 +436,16 @@
     .agent-steps-head .think-time {
       opacity: 0.65; font-variant-numeric: tabular-nums; font-size: 11px;
     }
+    /* Speed badge — which engine served the answer (Dash 3.0 Instant / 2.0 Fast / 1.0 Pro). */
+    .agent-steps-head .dash-badge {
+      margin-left: 8px; font-size: 11px; font-weight: 600; padding: 1px 8px;
+      border-radius: 999px; letter-spacing: .2px; white-space: nowrap;
+      background: ${t.accent}1f; color: ${t.accent};
+    }
+    .agent-steps-head .dash-badge em { font-style: normal; font-weight: 500; opacity: .65; }
+    .agent-steps-head .dash-badge.dash-2, .agent-steps-head .dash-badge.dash-1 {
+      background: rgba(130,120,110,.14); color: ${t.dim};
+    }
     @keyframes agent-spin { to { transform: rotate(360deg); } }
     .agent-steps-head .think-bot { flex-shrink: 0; width: 22px; height: auto; margin: -2px 1px -2px -1px; vertical-align: middle; overflow: visible; }
     .think-bot .tb-gear { transform-box: fill-box; transform-origin: center; animation: tb-gear-spin 2.2s linear infinite; }
@@ -1556,6 +1566,22 @@
             setMood('done');
             ensureAnswerRow();
             div.innerHTML = renderAnswer(assembled || '(empty response)');
+            // Speed badge on the trace head: which engine served this answer.
+            try {
+              var eng = payload && payload.engine;
+              var head = strip && strip.parentNode && strip.querySelector('.agent-steps-head');
+              if (eng && head && !head.querySelector('.dash-badge')) {
+                var BADGE = { '3.0': ['Dash 3.0', 'Instant'], '2.0': ['Dash 2.0', 'Fast'], '1.0': ['Dash 1.0', 'Pro'] };
+                var m = BADGE[eng];
+                if (m) {
+                  var b = document.createElement('span');
+                  b.className = 'dash-badge dash-' + eng.charAt(0);
+                  b.innerHTML = m[0] + ' <em>' + m[1] + '</em>';
+                  var caret = head.querySelector('.caret');
+                  if (caret) head.insertBefore(b, caret); else head.appendChild(b);
+                }
+              }
+            } catch (_) {}
             messages.push({ role: 'bot', content: assembled });
             attachFeedback(div, msg, assembled);
             if (payload && payload.followups && payload.followups.length) {
