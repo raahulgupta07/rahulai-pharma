@@ -247,6 +247,10 @@ services:
       # set 0 to disable. Anything needing the Researcher or above LOOKUP keeps
       # the full team.
       - SINGLE_AGENT_FASTPATH=${SINGLE_AGENT_FASTPATH:-1}
+      # Dynamic / self-adapting schema (2026-06-17). ON: staged ingest ADAPTS to
+      # column drift (add/remove/type/rename) instead of quarantining; renames
+      # auto-map (high confidence) or queue for review. OFF = legacy quarantine.
+      - ADAPTIVE_SCHEMA=${ADAPTIVE_SCHEMA:-1}
       # History runs carried into each LLM turn (lower = less prompt = faster).
       - NUM_HISTORY_RUNS=${NUM_HISTORY_RUNS:-3}
       # Rerank fail-fast guards (cohere via OpenRouter could hang 21s).

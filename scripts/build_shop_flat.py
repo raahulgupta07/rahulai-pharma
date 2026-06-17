@@ -62,11 +62,32 @@ def _norm(v) -> str | None:
 def run() -> dict:
     """(Re)build citypharma.shop_flat. Returns a count dict."""
     from dash.tools.table_sync import latest_table, CATALOG_COLS, STOCK_COLS
+    # Phase 3 (dynamic schema): resolve PHYSICAL column names from the logical
+    # registry so a renamed source header doesn't break the rebuild. Fail-soft:
+    # resolve() falls back to DEFAULT_MAP then to the logical name itself.
+    try:
+        from dash.ingest.colmap import resolve as _rc
+    except Exception:
+        def _rc(_slug, _tbl, logical):  # fallback: identity
+            return logical
+    cat_article = _rc(SCHEMA, "catalog", "article_code")
+    cat_brand   = _rc(SCHEMA, "catalog", "brand")
+    cat_generic = _rc(SCHEMA, "catalog", "generic")
+    cat_comp    = _rc(SCHEMA, "catalog", "composition")
+    cat_cat     = _rc(SCHEMA, "catalog", "category")
+    stk_article = _rc(SCHEMA, "stock", "article_code")
+    stk_site    = _rc(SCHEMA, "stock", "site_code")
+    stk_qty     = _rc(SCHEMA, "stock", "stock_qty")
+    stk_cost    = _rc(SCHEMA, "stock", "cost")
 
     c, cur = _conn()
     try:
-        art = latest_table(cur, SCHEMA, CATALOG_COLS) or "articles_list_07052026"
-        stock = latest_table(cur, SCHEMA, STOCK_COLS) or "balance_stock_07052026"
+        # Find the current catalog/stock tables by their RESOLVED fingerprint
+        # columns (so a rename still locates the right dated table).
+        _cat_fp = tuple({cat_brand, cat_generic})
+        _stk_fp = tuple({stk_site, stk_qty, stk_article})
+        art = latest_table(cur, SCHEMA, _cat_fp) or latest_table(cur, SCHEMA, CATALOG_COLS) or "articles_list_07052026"
+        stock = latest_table(cur, SCHEMA, _stk_fp) or latest_table(cur, SCHEMA, STOCK_COLS) or "balance_stock_07052026"
         # Prefer the enriched view (COALESCE source, approved suggestions) as the
         # catalog source so approved gap-fills (e.g. a missing generic_name) flow
         # into shop_flat. The view is read-only over `art`; if it doesn't exist
@@ -80,10 +101,35 @@ def run() -> dict:
         ART = f'"{SCHEMA}"."{art}"'
         STOCK = f'"{SCHEMA}"."{stock}"'
 
+        # No-empty guard: if a REQUIRED resolved column is missing from the chosen
+        # source table, KEEP the last-good shop_flat (do NOT truncate/rebuild empty).
+        def _cols_of(tbl: str) -> set:
+            cur.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema = %s AND table_name = %s", (SCHEMA, tbl))
+            return {r[0] for r in cur.fetchall()}
+        _art_cols = _cols_of(art)
+        _stock_cols = _cols_of(stock)
+        _need_art = {cat_article, cat_brand, cat_generic}
+        _need_stock = {stk_article, stk_site, stk_qty}
+        _missing = sorted((_need_art - _art_cols) | (_need_stock - _stock_cols))
+        if _missing:
+            msg = (f"build_shop_flat: ABORT rebuild — required columns missing "
+                   f"{_missing} (art={art}, stock={stock}). Kept last-good shop_flat.")
+            log.warning(msg)
+            try:
+                from dash.ingest.schema_events import log_schema_event
+                log_schema_event(SCHEMA, "shop_flat", "rebuild",
+                                 {"skipped": True, "reason": "missing_columns", "missing": _missing,
+                                  "art": art, "stock": stock})
+            except Exception:
+                pass
+            return {"ok": False, "skipped": True, "reason": "missing_columns", "missing": _missing}
+
         # 1. catalog attrs keyed by normalized article_code
         cur.execute(
-            f"""SELECT article_code, brand_name, generic_name, composition, category
-                FROM {ART} WHERE article_code IS NOT NULL""")
+            f"""SELECT "{cat_article}", "{cat_brand}", "{cat_generic}", "{cat_comp}", "{cat_cat}"
+                FROM {ART} WHERE "{cat_article}" IS NOT NULL""")
         catalog: dict[str, tuple] = {}
         for ac, brand, generic, comp, cat in cur.fetchall():
             k = _norm(ac)
@@ -98,12 +144,12 @@ def run() -> dict:
         # 2. stock aggregated per (raw code, site); normalize + fold in Python so
         #    two raw codes that normalize equal collapse correctly.
         cur.execute(
-            f"""SELECT article_code, site_code,
-                       COALESCE(SUM(stock_qty),0),
-                       COALESCE(MAX(weighted_cost_price),0)
+            f"""SELECT "{stk_article}", "{stk_site}",
+                       COALESCE(SUM("{stk_qty}"),0),
+                       COALESCE(MAX("{stk_cost}"),0)
                 FROM {STOCK}
-                WHERE site_code IS NOT NULL
-                GROUP BY article_code, site_code""")
+                WHERE "{stk_site}" IS NOT NULL
+                GROUP BY "{stk_article}", "{stk_site}\"""")
         agg: dict[tuple, list] = {}   # (art_key, site) -> [qty, cost]
         for ac, site, qty, cost in cur.fetchall():
             k = _norm(ac)
@@ -190,6 +236,13 @@ def run() -> dict:
 
         cur.execute(f'SELECT count(*), count(*) FILTER (WHERE linked) FROM "{SCHEMA}".shop_flat;')
         total, linked_total = cur.fetchone()
+        try:
+            from dash.ingest.schema_events import log_schema_event
+            log_schema_event(SCHEMA, "shop_flat", "rebuild",
+                             {"skipped": False, "rows": int(total or 0),
+                              "art": art, "stock": stock})
+        except Exception:
+            pass
         return {
             "ok": True, "art_table": art, "stock_table": stock,
             "catalog_keys": len(catalog), "rows": int(total or 0),

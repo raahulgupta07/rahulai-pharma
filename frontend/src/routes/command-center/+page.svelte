@@ -17,6 +17,7 @@ import LLMConfigPanel from '$lib/admin/LLMConfigPanel.svelte';
  import AuthAdminPanel from '$lib/admin/AuthAdminPanel.svelte';
  import ObservabilityPanel from '$lib/admin/ObservabilityPanel.svelte';
 import SftpAccessPanel from '$lib/admin/SftpAccessPanel.svelte';
+ import ColumnMapReview from '$lib/admin/ColumnMapReview.svelte';
  import VersionCard from '$lib/VersionCard.svelte';
 
  /* ─── state ─── */
@@ -129,6 +130,7 @@ import SftpAccessPanel from '$lib/admin/SftpAccessPanel.svelte';
  stats: { label: 'Platform stats', subtitle: 'Usage, growth, and system metrics' },
  integrations: { label: 'Integrations', subtitle: 'Connector configuration and admin setup' },
  sftp: { label: 'SFTP Access', subtitle: 'Drop-folder ingest — users, keys, quotas, browse drops' },
+ colmap: { label: 'Column Mapping', subtitle: 'Review logical→physical column mappings; confirm/reject ambiguous renames' },
  connectors: { label: 'External connectors', subtitle: 'PostgreSQL · MySQL · BigQuery · PowerBI (super-admin)' },
  governance: { label: 'Governance', subtitle: 'Secret leaks · hooks · refusal audit' },
  'agent-os-admin': { label: 'Agent OS admin', subtitle: 'Drafts · fleet · workflows · evals' },
@@ -158,7 +160,7 @@ import SftpAccessPanel from '$lib/admin/SftpAccessPanel.svelte';
  const _railGroupsBase: { label: string; items: string[] }[] = [
  { label: 'Overview', items: ['cockpit'] },
  { label: 'People', items: ['projects'] },
- { label: 'Data', items: ['schemas','integrations','sftp'] },
+ { label: 'Data', items: ['schemas','integrations','sftp','colmap'] },
  { label: 'Platform', items: ['auth'] },
  { label: 'System', items: ['traces','logs','admin-settings','llm'] },
  { label: 'Trust & Governance', items: ['accuracy','golden','scope-audit'] },
@@ -3605,6 +3607,9 @@ import SftpAccessPanel from '$lib/admin/SftpAccessPanel.svelte';
 
 {:else if activeTab === 'sftp'}
   <SftpAccessPanel embedded />
+
+{:else if activeTab === 'colmap'}
+  <ColumnMapReview embedded />
 
 {/if}
 

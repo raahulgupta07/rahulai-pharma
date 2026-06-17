@@ -589,6 +589,22 @@ LANDMINES: curl auth header must be `-H "Authorization: Bearer $TOK"` (a `Bearer
 
 Loaded **real** data via the app — `articles_list_07052026` (4,886) + `balance_stock_07052026` (102,107) from `~/Downloads/New Folder With Items/OneDrive_1_5-6-2026/*.csv`. Benchmark = **11/11 correct** (counts, sums, value 11.34B MMK, per-site, Burmese, honest refusal). **Found + fixed a real bug** (`8ff786e`): `search_all` only accepted `query`, but the LLM passes extra kwargs unprompted (`project_slug`, `agent`) → Agno raised `ToolCallError` → the agent fell back to a degraded path that skipped `COUNT(DISTINCT)` → **confidently wrong** ("10" categories vs the real 101), no error shown. Fix: bind the slug as `_bound_slug` (so a tolerant `project_slug` param can't shadow it) + `**_kwargs` to swallow any invented arg. Affected EVERY "how many distinct/unique X" question — a high-frequency pharma query type. Verified Agno `@tool` tolerates `**kwargs` (both direct-call and pydantic validate_call) before rebuilding.
 
+### Dynamic / self-adapting schema (2026-06-17, flag `ADAPTIVE_SCHEMA`, live :8011, uncommitted)
+
+Uploaded-data schema changes no longer break the pipeline — they ADAPT and get recorded; ambiguous renames go to a review gate. 6 phases, plan `docs/plans/dynamic_schema.md`, harness `scripts/verify_dynamic_schema.py` (12/12). Pieces:
+- **Registry** (`public.dash_column_map`, migration 194) + resolver `dash/ingest/colmap.py`: logical name (`brand`,`cost`) → physical column (`brand_name`,`weighted_cost_price`). `resolve()` falls back DB-active → `DEFAULT_MAP` → identity. Seeded for `citypharma` (catalog 6 + stock 4).
+- **Adaptive ingest** (`app/upload.py:ingest_promote`, flag `ADAPTIVE_SCHEMA` default OFF=legacy quarantine): on drift → snapshot `{tbl}__bak`, widen retyped cols to TEXT (`loader.widen_columns_to_text`), `log_schema_event('adapt')`, evolve contract, load (added cols auto via `ensure_columns`, removed NULL-fill).
+- **`shop_flat` from registry** (`scripts/build_shop_flat.py`): SELECTs use `colmap.resolve(...)`, not hardcoded names → rename a header, chat still works. **No-empty guard**: required resolved col missing → abort rebuild, keep last-good, log `rebuild{skipped}`. shop_flat OUTPUT names stay stable so tools/Q&A are untouched.
+- **Rename gate** (`colmap.propose_remaps`/`decide_map`): name-similarity ≥0.85 auto-maps (active), else `pending`. UI: `ColumnMapReview.svelte` at **Command Center → Data → Column Mapping** (+ schema-change feed). Endpoints `GET/POST /ingest/{p}/colmap`, `/colmap/decide`, `GET /ingest/{p}/schema-events`.
+- **Audit + auto-retrain** (`dash/ingest/schema_events.py`): every change logged to `public.dash_schema_events`; adapt/confirm → `_notify_admins` + retrain.
+- **Empty-load guards** (separate, also shipped): `promote_file` refuses a 0-row load (`action:"empty"`); `ingest_promote` skips empty df; loaded-tally counts `rows_loaded>0` only. Fixes the "0 rows / trained 0% / retrain does nothing" silent-wipe class.
+
+**LANDMINE:** writes to `public.dash_*` MUST use **`get_write_engine()`** — `get_sql_engine()` is the guarded Engineer engine and **blocks public-schema writes** (`db/session.py:_guard_public_schema`, raises "Cannot write to the public schema"). Reads via either are fine. Caught by the harness; colmap/schema_events writes silently failed until switched.
+
+### Full data wipe + self-rebootstrap (2026-06-17)
+
+Blanked local :8011 to load new data. Procedure (no backup): DROP all `citypharma` tables + TRUNCATE all `public.dash_%` (incl users/projects/tokens) RESTART IDENTITY CASCADE + DROP per-user `user_N` schemas + AGE `SELECT drop_graph('citypharma_kg',true); create_graph('citypharma_kg')` + `cp-redis redis-cli FLUSHALL`. Then **restart cp-api TWICE** (first reseeds super-admin via `_create_default_admin`; second reseeds locked project via `ensure_locked_project` — it needs the admin owner to exist first, so a single restart leaves `dash_projects` empty). Re-seed registry: `python -c "from dash.ingest.colmap import seed_defaults; seed_defaults('citypharma')"`. **Login after a user wipe = `SUPER_ADMIN` / `SUPER_ADMIN_PASS` from env** (currently `demo` / the env value, NOT the old manual `Pharma2026!` — that hash is gone). To change it: set `SUPER_ADMIN_PASS` + `SUPER_ADMIN_RESET_PASS=1`, restart.
+
 ---
 
 ## Session changelog → `docs/DEVLOG.md`

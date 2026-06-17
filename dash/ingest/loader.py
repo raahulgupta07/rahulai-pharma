@@ -131,6 +131,21 @@ def ensure_columns(engine: Engine, schema: str, table: str, df: pd.DataFrame) ->
                 )
 
 
+def widen_columns_to_text(engine: Engine, schema: str, table: str, cols: list[str]) -> None:
+    """ALTER the given columns to TEXT (lossless widen) so adapted data whose
+    type changed still fits. Fail-soft per column."""
+    for col in cols or []:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(
+                    f'ALTER TABLE "{schema}"."{table}" '
+                    f'ALTER COLUMN "{col}" TYPE TEXT USING "{col}"::text'
+                ))
+            logger.info("widen_columns_to_text: %s.%s.%s -> TEXT", schema, table, col)
+        except Exception as exc:
+            logger.warning("widen_columns_to_text(%s.%s.%s): %s", schema, table, col, exc)
+
+
 # ---------------------------------------------------------------------------
 # Hash + period dedup
 # ---------------------------------------------------------------------------
@@ -223,6 +238,18 @@ def promote_file(
     }
 
     try:
+        # 0. Empty-load guard. A source that parsed to 0 data rows must NEVER
+        # create/replace/append a table — that silently wipes good data and
+        # trains the table to 0% health with no error. Refuse instead.
+        if df is None or len(df) == 0:
+            note = (
+                f"Refused empty load into {schema}.{target_table}: source parsed "
+                f"to 0 data rows (file kept its columns but no rows). Existing "
+                f"data, if any, was left untouched."
+            )
+            logger.warning(note)
+            return {**_result_base, "action": "empty", "rows_loaded": 0, "note": note}
+
         # 1. Stamp lineage onto a copy of the DataFrame
         df2 = stamp_lineage(df, lineage, load_key)
 

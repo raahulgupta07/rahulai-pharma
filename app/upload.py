@@ -9962,6 +9962,7 @@ async def ingest_promote(request: Request, project: str, batch_id: str, train: b
         raise HTTPException(404, "batch not found")
     engine, schema = _stage_resolve_engine(request, project)
     results = []
+    _any_adapt = False  # Phase 5: schema was adapted this batch -> notify + retrain
     for f in manifest.get("files", []):
         fn = f["filename"]
         if f.get("status") == "quarantine" and not force:
@@ -9973,22 +9974,74 @@ async def ingest_promote(request: Request, project: str, batch_id: str, train: b
             results.append({"filename": fn, "action": "error", "reason": f"read failed: {e}", "rows_loaded": 0})
             continue
 
+        # Empty-parse guard: a file that parsed to 0 data rows must not be
+        # promoted (it would create/keep an empty table and "train" it to 0%).
+        # Surface a clear error and leave any existing table data untouched.
+        if df is None or len(df) == 0:
+            results.append({"filename": fn, "action": "empty", "rows_loaded": 0,
+                            "reason": "file parsed to 0 data rows — not loaded. "
+                                      "Check the header row / sheet; previous data kept."})
+            continue
+
         ds = f.get("dataset") or _logical_dataset(fn)
         tbl = f.get("target_table") or ds
         contract = get_contract(project, ds)
         drift_diff = None
+        # ADAPTIVE_SCHEMA (default OFF): when on, schema drift is ADAPTED (new cols
+        # added, removed cols NULL-filled, changed types widened to TEXT, contract
+        # auto-evolved) instead of quarantined. OFF = byte-identical to old behavior.
+        _adaptive = os.getenv("ADAPTIVE_SCHEMA", "0").strip().lower() in ("1", "true", "yes", "on")
         if contract:
             chk = check_against_contract(contract, df)
             if chk["verdict"] == "drift":
                 drift_diff = chk.get("diff")
-                if not force:
+                if not force and not _adaptive:
                     quarantine_file(project, batch_id, fn, "schema drift vs contract")
                     results.append({"filename": fn, "action": "quarantine", "reason": "schema drift", "diff": drift_diff, "rows_loaded": 0})
                     continue
-                # force=true: load anyway, evolve contract to accept new shape
+                # ADAPT (flag on) or FORCE: load anyway + evolve the contract.
+                # Added cols are auto-added by promote_file's ensure_columns; removed
+                # cols NULL-fill on append. Snapshot first (reversible) + widen retyped.
+                try:
+                    from dash.ingest.schema_events import log_schema_event, snapshot_table_bak
+                    from dash.ingest.loader import table_exists as _tbl_exists, widen_columns_to_text as _widen
+                    if _tbl_exists(engine, schema, tbl):
+                        snapshot_table_bak(schema, tbl)
+                        _retyped = [rt.get("col") for rt in (drift_diff or {}).get("retyped", []) if rt.get("col")]
+                        if _retyped:
+                            _widen(engine, schema, tbl, _retyped)
+                    log_schema_event(project, tbl, "adapt", {
+                        "added": (drift_diff or {}).get("added", []),
+                        "removed": (drift_diff or {}).get("removed", []),
+                        "retyped": (drift_diff or {}).get("retyped", []),
+                        "renamed": (drift_diff or {}).get("renamed", []),
+                        "mode": "adaptive" if _adaptive else "force",
+                    })
+                    _any_adapt = True
+                    # Phase 5: tell admins the schema changed (fail-soft).
+                    try:
+                        from app.s3_sync import _notify_admins as _notify
+                        _dd = drift_diff or {}
+                        _summ = (f"+{len(_dd.get('added', []))} -{len(_dd.get('removed', []))} "
+                                 f"~{len(_dd.get('retyped', []))} renamed:{len(_dd.get('renamed', []))}")
+                        _notify("schema", f"Schema adapted: {tbl}",
+                                f"Project {project} table {tbl} auto-adapted on upload of {fn} ({_summ}). "
+                                f"Review any pending column mappings in Command Center > Data > Column Mapping.")
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
                 try:
                     contract = infer_contract(df, project, ds, fn)
                     save_contract(project, ds, contract)
+                except Exception:
+                    pass
+                # Phase 4: auto-map obvious renames (active) + park ambiguous as
+                # 'pending' for the review UI. Harmless for the non-matching table.
+                try:
+                    from dash.ingest.colmap import propose_remaps
+                    for _tl in ("catalog", "stock"):
+                        propose_remaps(project, _tl, drift_diff)
                 except Exception:
                     pass
         else:
@@ -10002,22 +10055,94 @@ async def ingest_promote(request: Request, project: str, batch_id: str, train: b
             r["warnings"] = [f"schema drift accepted: {drift_diff}"]
         results.append(r)
 
-    loaded = sum(1 for r in results if r.get("rows_loaded", 0) > 0 or r.get("action") in ("create", "append", "replace_period", "upsert"))
+    # Count only loads that actually wrote rows. An empty "create" (0 rows) is
+    # NOT a successful load and must not trigger auto-train or report promoted.
+    loaded = sum(1 for r in results if r.get("rows_loaded", 0) > 0)
+    empties = sum(1 for r in results if r.get("action") == "empty")
     quarantined = sum(1 for r in results if r.get("action") == "quarantine")
-    manifest["status"] = "promoted" if quarantined == 0 else "partial"
+    manifest["status"] = "promoted" if (quarantined == 0 and empties == 0) else "partial"
     write_manifest(project, batch_id, manifest)
 
     trained = False
-    if train and (loaded or force):
-        # Reuse the existing retrain entrypoint (spawns its own bg thread, returns
-        # immediately). promote already verified editor perm + request.state.user.
+    # Phase 5: retrain when explicitly asked OR when the schema was adapted this
+    # batch (metadata/Q&A must refresh to match the new shape). Only when rows
+    # actually loaded (avoid retraining a no-op). retrain spawns its own bg thread.
+    if (train or _any_adapt) and (loaded or force):
+        # promote already verified editor perm + request.state.user.
         try:
             await retrain_project(project, request)
             trained = True
         except Exception:
             trained = False
     return {"batch_id": batch_id, "status": manifest["status"], "results": results,
-            "loaded_files": loaded, "quarantined": quarantined, "train_triggered": trained}
+            "loaded_files": loaded, "quarantined": quarantined,
+            "schema_adapted": _any_adapt, "train_triggered": trained}
+
+
+@router.get("/ingest/{project}/colmap")
+def ingest_colmap_list(request: Request, project: str):
+    """List logical->physical column mappings (active + pending) for review."""
+    from dash.ingest.colmap import list_maps
+    maps = list_maps(project)
+    pending = [m for m in maps if m.get("status") == "pending"]
+    return {"maps": maps, "pending": pending, "pending_count": len(pending)}
+
+
+@router.get("/ingest/{project}/schema-events")
+def ingest_schema_events(request: Request, project: str, limit: int = 50):
+    """Recent schema-change feed (adapt / rebuild / empty events) for this project."""
+    try:
+        from db.session import get_sql_engine
+        from sqlalchemy import text as _t
+        eng = get_sql_engine()
+        lim = max(1, min(int(limit or 50), 200))
+        with eng.connect() as conn:
+            rows = conn.execute(_t(
+                "SELECT table_name, event, detail, created_at "
+                "FROM public.dash_schema_events WHERE project_slug = :p "
+                "ORDER BY id DESC LIMIT :n"
+            ), {"p": project, "n": lim}).mappings().all()
+        return {"events": [dict(r) for r in rows]}
+    except Exception as e:
+        return {"events": [], "error": str(e)}
+
+
+@router.post("/ingest/{project}/colmap/decide")
+async def ingest_colmap_decide(request: Request, project: str):
+    """Review decision on a column mapping. Body:
+    {table_logical, logical_name, decision: 'confirm'|'reject'|'map', physical_col?}.
+    On confirm/map, rebuilds shop_flat so the change takes effect immediately."""
+    from app.auth import check_project_permission
+    from dash.ingest.colmap import decide_map
+    user = getattr(getattr(request, "state", None), "user", None)
+    if user and not check_project_permission(user, project, required_role="editor"):
+        raise HTTPException(403, "Editor access required")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    decision = body.get("decision")
+    ok = decide_map(project, body.get("table_logical"), body.get("logical_name"),
+                    decision, body.get("physical_col"))
+    rebuilt = None
+    trained = False
+    if ok and decision in ("confirm", "map"):
+        try:
+            from scripts.build_shop_flat import run as _build_shop_flat
+            rebuilt = _build_shop_flat()
+        except Exception as e:
+            rebuilt = {"ok": False, "error": str(e)}
+        # Phase 5: refresh metadata/Q&A to match the confirmed mapping (best-effort).
+        try:
+            from dash.ingest.schema_events import log_schema_event
+            log_schema_event(project, body.get("table_logical") or "", "remap_confirmed",
+                             {"logical_name": body.get("logical_name"),
+                              "physical_col": body.get("physical_col"), "decision": decision})
+            await retrain_project(project, request)
+            trained = True
+        except Exception:
+            trained = False
+    return {"ok": ok, "rebuilt": rebuilt, "train_triggered": trained}
 
 
 @router.post("/ingest/{project}/{batch_id}/reject")
