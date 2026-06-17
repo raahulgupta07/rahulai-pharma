@@ -53,6 +53,57 @@ _MY_PATTERNS = [
 # Tokens to strip from a captured term (leftover qualifiers).
 _STRIP_WORDS = re.compile(r"\b(?:any|some|the|a|an|please|now|currently|right now|tablet|tablets|tab|tabs|medicine|medicines|drug|drugs)\b", re.I)
 
+# ── Pure SKU/product COUNT — "how many products/SKUs do we carry" ────────────
+# Answers from store_stock_summary().unique_articles deterministically. WHY this
+# is a fast-path and not left to the model: the model has repeatedly mis-mapped
+# "how many products" onto the top_products list tool (counting 30 rows) instead
+# of the totals path (1,721 SKUs). Code makes it correct AND ~0-LLM.
+_COUNT_PATTERNS = re.compile(
+    r"^\s*(?:how\s+many|number\s+of|count\s+of|total\s+(?:number\s+of\s+)?)\s*"
+    r"(?:unique|distinct|different|total)?\s*"
+    r"(?:products?|skus?|items?|drugs?|medicines?|articles?|product\s+lines?)\b",
+    re.IGNORECASE,
+)
+# If any of these appear, it is NOT a plain catalog-size count (it's a filtered /
+# stateful question) — fall through to the agent instead.
+_COUNT_EXCLUDE = re.compile(
+    r"\b(with|containing|contains|for|category|out\s+of\s+stock|low\s+stock|"
+    r"in\s+stock|available|expir|sold|sell|today|this\s+(?:week|month))\b",
+    re.IGNORECASE,
+)
+
+# ── Catalog browse by ingredient — "medicines with X / containing X" ─────────
+# Resolves to the same stock_check(term) the availability path uses (it matches
+# brand OR generic), just reached from "list/which medicines with <salt>" wording
+# the availability patterns don't catch. Symptom browse ("for fever") deliberately
+# does NOT match here — that needs the semantic catalog_search via the agent.
+_BROWSE_PATTERNS = [
+    re.compile(r"\b(?:medicines?|products?|drugs?|items?|brands?)\b.*?\b(?:with|containing|contains|that\s+have|having)\s+(.+?)\s*\??\s*$", re.I),
+    re.compile(r"^\s*(?:list|show|which|what)\b.*?\b(?:with|containing|contains)\s+(.+?)\s*\??\s*$", re.I),
+]
+
+
+def _is_count_query(msg: str) -> bool:
+    if len(msg) > 90 or not _COUNT_PATTERNS.match(msg):
+        return False
+    return not _COUNT_EXCLUDE.search(msg)
+
+
+def _extract_browse_term(message: str) -> str | None:
+    msg = (message or "").strip()
+    if not msg or len(msg) > 90:
+        return None
+    for pat in _BROWSE_PATTERNS:
+        m = pat.search(msg)
+        if m:
+            term = (m.group(1) or "").strip(" \t?.။")
+            term = _STRIP_WORDS.sub(" ", term).strip()
+            term = re.sub(r"\s{2,}", " ", term)
+            if not term or len(term) < 2:
+                return None
+            return term
+    return None
+
 
 def _looks_burmese(s: str) -> bool:
     return any("က" <= ch <= "႟" for ch in s)
@@ -126,10 +177,35 @@ def try_stock_shortcut(message: str, site_code: str = "", mask_qty: bool = False
     msg = (message or "").strip()
     if not msg:
         return None
+
+    # 1. Pure SKU/product COUNT (catalog size) — deterministic, ~0-LLM.
+    if _is_count_query(msg):
+        t0 = time.monotonic()
+        try:
+            from dash.tools.pharma_shop_tool import store_stock_summary
+            res = store_stock_summary()
+        except Exception:
+            return None
+        if not isinstance(res, dict) or not res.get("ok"):
+            return None
+        uniq = int(res.get("unique_articles") or 0)
+        if uniq <= 0:
+            return None
+        burmese = _looks_burmese(msg)
+        if burmese:
+            answer = f"သင့်ဆိုင်တွင် ကုန်ပစ္စည်းအမျိုးအစား (SKU) {uniq:,} မျိုး ရှိပါသည်။"
+        else:
+            answer = f"You have {uniq:,} unique products (SKUs) at your branch."
+        return {
+            "answer": answer, "count": uniq, "in_stock": 0,
+            "elapsed_ms": int((time.monotonic() - t0) * 1000), "term": "catalog_count",
+        }
+
+    # 2. Availability OR browse-by-ingredient — both resolve to stock_check(term).
     # Guard: clinical / advisory / comparative / multi-intent > agent.
     if _BAIL_PATTERNS.search(msg) or _MULTI.search(msg):
         return None
-    term = _extract_term(msg)
+    term = _extract_term(msg) or _extract_browse_term(msg)
     if not term:
         return None
     t0 = time.monotonic()

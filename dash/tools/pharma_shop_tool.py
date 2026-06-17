@@ -268,9 +268,15 @@ def store_stock_summary(
     low_stock_threshold: int = 0,
     top_products: bool = False,
     limit: int = 30,
+    site_code: str = "",
 ) -> dict:
     """Own-branch aggregate analytics: totals, per-category breakdown, low-stock list,
     and the TOP PRODUCTS (highest-stock SKUs) — optionally within one category.
+
+    `site_code` is ACCEPTED but IGNORED — the branch is auto-bound from the API key
+    (store-locked) so this aggregate can only ever cover the caller's own branch.
+    It exists only so a caller that passes site_code (per the SHOP CONTEXT rule) does
+    not trip a ValidationError / wasted retry turn.
 
     SAFE for store-locked API keys — when a key is bound to one store, the queried
     site is FORCED to the bound store (any caller-supplied site is ignored), so a
