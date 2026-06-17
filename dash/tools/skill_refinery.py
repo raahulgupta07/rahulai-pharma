@@ -167,10 +167,24 @@ def _hash_args(args: tuple, kwargs: dict) -> str:
 
 
 def _classify_result(result: Any) -> tuple[bool, str | None, str | None]:
-    """Heuristic: tool functions return strings; ones starting with ERROR/Error are failures."""
+    """Heuristic: a tool 'fails' only when it returns an explicit error.
+
+    - dict with ok==False  -> failure (the pharma/SQL tools' error contract).
+      ok==True OR state=="not_found" is a VALID no-data answer, NOT a failure.
+    - str starting with error/no rows/failed -> failure.
+    Anything else (normal dict, normal string) is success.
+    NOTE: the empty-string sentinel was REMOVED from the startswith tuple below —
+    str.startswith("") is always True, so it was mis-flagging EVERY string tool
+    result as a failure (telemetry showed 100% fail; skill-refinery penalised
+    healthy tools).
+    """
+    if isinstance(result, dict):
+        if result.get("ok") is False:
+            return False, "ToolReturnedError", str(result.get("error") or result)[:500]
+        return True, None, None
     if isinstance(result, str):
         head = result.lstrip()[:32].lower()
-        if head.startswith(("error", "no rows", "failed", "")):
+        if head.startswith(("error", "no rows", "failed")):
             return False, "ToolReturnedError", result[:500]
     return True, None, None
 
