@@ -3020,9 +3020,10 @@ async def super_chat(request: Request):
             _qb_e_ans = _qb_e["content"]
             _qb_e_routing = {"routed_to": "Analyst", "slug": _qb_eslug,
                              "reason": "learned query (instant)", "tier": "instant",
-                             "learned": True}
+                             "engine": "3.0", "learned": True}
             if stream:
                 def _qb_e_stream():
+                    yield f"event: RouterDecision\ndata: {_json.dumps({'engine': '3.0', 'tier': 'instant', 'cached': True, 'reason': 'proven query re-run (0-LLM)'}, default=str)}\n\n"
                     yield f"event: Routing\ndata: {_json.dumps(_qb_e_routing, default=str)}\n\n"
                     yield f"event: OriginalMessage\ndata: {_json.dumps({'message': message}, default=str)}\n\n"
                     yield f"event: TeamRunContent\ndata: {_json.dumps({'content': _qb_e_ans})}\n\n"
@@ -3046,9 +3047,10 @@ async def super_chat(request: Request):
             _ps_ans = _ps["content"]
             _ps_routing = {"routed_to": "Analyst", "slug": _qb_eslug,
                            "reason": "learned query (adapted)", "tier": "instant",
-                           "learned": True}
+                           "engine": "3.0", "learned": True}
             if stream:
                 def _ps_stream():
+                    yield f"event: RouterDecision\ndata: {_json.dumps({'engine': '3.0', 'tier': 'instant', 'cached': True, 'reason': 'proven shortcut (0-LLM)'}, default=str)}\n\n"
                     yield f"event: Routing\ndata: {_json.dumps(_ps_routing, default=str)}\n\n"
                     yield f"event: OriginalMessage\ndata: {_json.dumps({'message': message}, default=str)}\n\n"
                     yield f"event: TeamRunContent\ndata: {_json.dumps({'content': _ps_ans})}\n\n"
@@ -3290,8 +3292,13 @@ async def super_chat(request: Request):
                 _qb2 = None
         if _qb2 and _qb2.get("content"):
             _qb2_ans = _qb2["content"]
+            try:
+                routing_info["engine"] = "3.0"
+            except Exception:
+                pass
             if stream:
                 def _qb2_stream():
+                    yield f"event: RouterDecision\ndata: {_json.dumps({'engine': '3.0', 'tier': 'instant', 'cached': True, 'reason': 'proven query re-run (0-LLM)'}, default=str)}\n\n"
                     yield f"event: Routing\ndata: {_json.dumps(routing_info, default=str)}\n\n"
                     yield f"event: OriginalMessage\ndata: {_json.dumps({'message': message}, default=str)}\n\n"
                     yield f"event: TeamRunContent\ndata: {_json.dumps({'content': _qb2_ans})}\n\n"

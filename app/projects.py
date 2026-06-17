@@ -1014,7 +1014,12 @@ async def project_chat(slug: str, request: Request):
     # "1.0" = full multi-agent team. Empty = fall back to the env default
     # (SINGLE_AGENT_FASTPATH). Only the simplest TRIVIAL/LOOKUP questions actually
     # use the lone agent even on 2.0; anything heavier auto-uses the team.
-    engine_pref = (form.get("engine") or "").strip().lower() # ""|1.0|2.0
+    engine_pref = (form.get("engine") or "").strip().lower() # ""|1.0|2.0|3.0
+    # Dash 3.0 = Auto: pure smart routing (0-LLM fast-path > single agent > team),
+    # the env default. Treated as empty so the fast-paths fire and no tier is forced.
+    # The per-answer badge still reports 3.0 when a fast-path actually served.
+    if engine_pref == "3.0":
+        engine_pref = ""
     if effort:
         reasoning = {"low": "fast", "medium": "auto", "high": "deep", "max": "deep"}.get(effort, reasoning)
 
@@ -1467,6 +1472,7 @@ async def project_chat(slug: str, request: Request):
                 from dash.utils.sse import emit_event_sync as _emit_ac
                 async def _ac_stream():
                     _sid = session_id or ""
+                    yield _emit_ac("RouterDecision", {"engine": "3.0", "tier": "instant", "cached": True, "reason": "served from cache (0-LLM)"}, session_id=_sid, project_slug=slug)
                     try:
                         yield _emit_ac("ReasoningStep", _ac_trace, session_id=_sid, project_slug=slug)
                     except Exception:
@@ -1476,6 +1482,7 @@ async def project_chat(slug: str, request: Request):
                 return StreamingResponse(_ac_stream(), media_type="text/event-stream")
             return {"content": _ac_answer, "session_id": session_id,
                     "cached_answer": True, "similarity": _ac_sim,
+                    "routing": {"engine": "3.0"},
                     "elapsed_ms": _ac_elapsed, "trace": [_ac_trace]}
 
     # ── Metric-fallback short-circuit ────────────────────────────────────
@@ -1676,6 +1683,7 @@ async def project_chat(slug: str, request: Request):
                     # 2026-05-25 (Phase 7): pass session_id + project_slug so
                     # sse_audit captures every event for "broken stream" diag.
                     _sid = session_id or ""
+                    yield _emit("RouterDecision", {"engine": "3.0", "tier": "instant", "cached": True, "reason": "verified metric (0-LLM)"}, session_id=_sid, project_slug=slug)
                     try:
                         yield _emit("ReasoningStep", _trace_payload, session_id=_sid, project_slug=slug)
                     except Exception:
@@ -1693,6 +1701,7 @@ async def project_chat(slug: str, request: Request):
                     yield _emit("TeamRunCompleted", {}, session_id=_sid, project_slug=slug)
                 return StreamingResponse(_metric_stream(), media_type="text/event-stream")
             return {"content": _answer, "session_id": session_id,
+                    "routing": {"engine": "3.0"},
                     "matched_metric": _src_q, "verified_value": _v,
                     "sql": _ms_sql, "rows": _ms_rows, "columns": _ms_cols,
                     "row_count": _ms_rowcount, "elapsed_ms": _ms_elapsed,
@@ -1725,6 +1734,7 @@ async def project_chat(slug: str, request: Request):
                 from fastapi.responses import StreamingResponse
                 from dash.utils.sse import emit_event_sync as _emit
                 async def _qb_stream():
+                    yield _emit("RouterDecision", {"engine": "3.0", "tier": "instant", "cached": True, "reason": "proven query re-run (0-LLM)"}, session_id=_qb_sid, project_slug=slug)
                     try:
                         yield _emit("ReasoningStep", _qb_trace, session_id=_qb_sid, project_slug=slug)
                     except Exception:
@@ -1733,6 +1743,7 @@ async def project_chat(slug: str, request: Request):
                     yield _emit("TeamRunCompleted", {}, session_id=_qb_sid, project_slug=slug)
                 return StreamingResponse(_qb_stream(), media_type="text/event-stream")
             return {"content": _qb_answer, "session_id": session_id,
+                    "routing": {"engine": "3.0"},
                     "sql": _qb.get("sql"), "rows": _qb.get("rows"),
                     "columns": _qb.get("columns"), "row_count": _qb.get("row_count"),
                     "elapsed_ms": _qb.get("elapsed_ms"), "learned": True,
@@ -1758,6 +1769,7 @@ async def project_chat(slug: str, request: Request):
                 from fastapi.responses import StreamingResponse
                 from dash.utils.sse import emit_event_sync as _emit
                 async def _ps_stream():
+                    yield _emit("RouterDecision", {"engine": "3.0", "tier": "instant", "cached": True, "reason": "proven shortcut (0-LLM)"}, session_id=_ps_sid, project_slug=slug)
                     try:
                         yield _emit("ReasoningStep", _ps_trace, session_id=_ps_sid, project_slug=slug)
                     except Exception:
@@ -1766,6 +1778,7 @@ async def project_chat(slug: str, request: Request):
                     yield _emit("TeamRunCompleted", {}, session_id=_ps_sid, project_slug=slug)
                 return StreamingResponse(_ps_stream(), media_type="text/event-stream")
             return {"content": _ps_answer, "session_id": session_id,
+                    "routing": {"engine": "3.0"},
                     "sql": _ps.get("sql"), "rows": _ps.get("rows"),
                     "columns": _ps.get("columns"), "row_count": _ps.get("row_count"),
                     "elapsed_ms": _ps.get("elapsed_ms"), "learned": True,

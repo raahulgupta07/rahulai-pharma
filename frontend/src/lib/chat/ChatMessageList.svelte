@@ -1276,7 +1276,7 @@ function sourcesFromSql(queries: string[] | undefined): string[] {
             {@const _cost = costOf(_tin, _tout, _u?.model)}
             {@const _el = ((msg as any).traceDoneAt && (msg as any).traceStart) ? ((msg as any).traceDoneAt - (msg as any).traceStart) : 0}
             {@const _mode = ((msg as any).reasoningUsed || 'auto')}
-            {@const _engine = ((msg as any)?.routing?.engine === '2.0' ? 'Dash 2.0' : 'Dash 1.0')}
+            {@const _engine = ((msg as any)?.routing?.engine === '3.0' ? 'Dash 3.0' : (msg as any)?.routing?.engine === '2.0' ? 'Dash 2.0' : 'Dash 1.0')}
             {#if _srcs.length}
               <div class="msg-sources">
                 <span class="msg-sources-label">SOURCES</span>

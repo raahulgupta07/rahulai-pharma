@@ -2330,13 +2330,14 @@ import { parseClarify, parseRelated } from '$lib/chat/tag-parsers';
  // the backend as `engine`; complex/analytical questions still fall back to the
  // team even on Dash 2.0, so this never sacrifices answer quality.
  let dashEngine = $state<string>((() => {
- if (typeof window === 'undefined') return '2.0';
+ if (typeof window === 'undefined') return '3.0';
  const v = localStorage.getItem('dash_engine');
- return (v === '1.0' || v === '2.0') ? v : '2.0';
+ return (v === '1.0' || v === '2.0' || v === '3.0') ? v : '3.0';
  })());
  $effect(() => { try { localStorage.setItem('dash_engine', dashEngine); } catch {} });
  let engineMenuOpen = $state(false);
  const ENGINE_OPTIONS = [
+ { id: '3.0', label: 'Dash 3.0', tag: 'Auto', desc: 'Instant for simple asks — scales up only when needed', icon: 'sparkles' },
  { id: '2.0', label: 'Dash 2.0', tag: 'Fast', desc: 'Lookups in ~10s — single fast agent', icon: 'zap' },
  { id: '1.0', label: 'Dash 1.0', tag: 'Pro', desc: 'Full team — deepest, multi-step analysis', icon: 'layers' },
  ];
